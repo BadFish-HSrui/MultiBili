@@ -5,34 +5,39 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.window.core.layout.WindowSizeClass
+import tv.hsrui.bolo.utils.AppWindowSize
+import tv.hsrui.bolo.utils.getNowWindowSize
 import tv.hsrui.network.model.VideoCard
 
 @Composable
 fun ShowVerticalVideoGrid(videos: List<VideoCard>,modifier: Modifier = Modifier) {
-    val windowSizeClass = currentWindowAdaptiveInfoV2().windowSizeClass
+    val windowSize = getNowWindowSize()
 
     val columns: Int
     val isWideCard: Boolean
+    val contentSpacing: Dp
 
-    when {
-        windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND) -> {
-            columns = 4
-            isWideCard = true
+    when (windowSize){
+         AppWindowSize.EXPANDED -> {
+             columns = 4
+             isWideCard = true
+             contentSpacing = 12.dp
         }
 
-        windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND) -> {
-            columns = 3
-            isWideCard = true
+         AppWindowSize.MEDIUM -> {
+             columns = 3
+             isWideCard = true
+             contentSpacing = 8.dp
         }
 
-        else -> {
+        AppWindowSize.COMPACT -> {
             columns = 2
             isWideCard = false
+            contentSpacing = 4.dp
         }
     }
     LazyVerticalGrid(
@@ -49,8 +54,8 @@ fun ShowVerticalVideoGrid(videos: List<VideoCard>,modifier: Modifier = Modifier)
             }
         },
         contentPadding = PaddingValues(8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(contentSpacing),
+        horizontalArrangement = Arrangement.spacedBy(contentSpacing),
         modifier = modifier
     )
 }
