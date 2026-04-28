@@ -1,0 +1,35 @@
+package tv.hsrui.bolo.ui.common.videosPage
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import tv.hsrui.network.model.VideosResult
+
+abstract class VideosViewModel : ViewModel() {
+    private  val _uiState = MutableStateFlow<VideosUiState>(VideosUiState.Loading)
+    val uiState = _uiState.asStateFlow()
+
+    init {
+        loadVideos()
+    }
+
+    protected abstract suspend fun fetchVideos(): VideosResult
+
+    fun loadVideos() {
+        viewModelScope.launch {
+            _uiState.value = VideosUiState.Loading
+            try {
+                val result = fetchVideos()
+                if (result.isSuccess) {
+                    _uiState.value = VideosUiState.Success(result.validData.videosList)
+                } else {
+                    _uiState.value = VideosUiState.Error(result.message)
+                }
+            } catch (e: Exception) {
+                _uiState.value = VideosUiState.Error(e.message ?: "其他网络错误")
+            }
+        }
+    }
+}
