@@ -18,33 +18,14 @@ import org.jetbrains.compose.resources.painterResource
 
 import multibili.composeapp.generated.resources.Res
 import multibili.composeapp.generated.resources.compose_multiplatform
+import tv.hsrui.bolo.home.HomeScreen
+import tv.hsrui.bolo.main.MainScreen
 import tv.hsrui.bolo.ui.theme.AppTheme
 
 @Composable
 @Preview
 fun App() {
     AppTheme {
-        var showContent by remember { mutableStateOf(false) }
-        Column(
-            modifier = Modifier
-                .background(MaterialTheme.colorScheme.primaryContainer)
-                .safeContentPadding()
-                .fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Button(onClick = { showContent = !showContent }) {
-                Text("Click me!")
-            }
-            AnimatedVisibility(showContent) {
-                val greeting = remember { Greeting().greet() }
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Image(painterResource(Res.drawable.compose_multiplatform), null)
-                    Text("Compose: $greeting")
-                }
-            }
-        }
+        MainScreen()
     }
 }
