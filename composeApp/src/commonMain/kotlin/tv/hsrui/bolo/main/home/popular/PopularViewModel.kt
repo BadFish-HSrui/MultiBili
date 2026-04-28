@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.home.popular
+package tv.hsrui.bolo.main.home.popular
 
 import tv.hsrui.bolo.ui.common.videosPage.VideosViewModel
 import tv.hsrui.network.feature.popular.fetchPopularVideos

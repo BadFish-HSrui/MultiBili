@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.home.popular
+package tv.hsrui.bolo.main.home.popular
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
