@@ -63,6 +63,10 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(projects.network)
             implementation(libs.materialKolor)
+            implementation(libs.coil.compose)
+            implementation(libs.coil.network.ktor3)
+            implementation(libs.material.icons)
+            implementation(libs.material3.adaptive)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

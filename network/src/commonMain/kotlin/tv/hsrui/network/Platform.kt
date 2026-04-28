@@ -1,3 +1,3 @@
 package tv.hsrui.network
 
-expect fun platform(): String
+//expect fun platform(): String

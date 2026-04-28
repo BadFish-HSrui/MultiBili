@@ -1,3 +1,3 @@
 package tv.hsrui.network
 
-actual fun platform() = "JVM"
+//actual fun platform() = "JVM"

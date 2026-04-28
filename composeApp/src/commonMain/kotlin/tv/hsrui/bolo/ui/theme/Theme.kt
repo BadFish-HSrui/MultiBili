@@ -25,5 +25,6 @@ fun AppTheme(
         motionScheme = MotionScheme.expressive(),
         animate = true,
         content = content,
+        typography = rememberAppTypography()
     )
 }

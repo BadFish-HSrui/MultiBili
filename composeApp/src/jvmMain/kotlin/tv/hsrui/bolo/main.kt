@@ -11,7 +11,7 @@ fun main() = application {
         onCloseRequest = ::exitApplication,
         title = "MultiBili",
     ) {
-//        App()
-        Text((runBlocking{ fetchPopularVideos().toString() }))
+        App()
+//        Text((runBlocking{ fetchPopularVideos().toString() }))
     }
 }
