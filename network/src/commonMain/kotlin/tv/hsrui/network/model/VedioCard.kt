@@ -2,7 +2,6 @@ package tv.hsrui.network.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlin.time.Duration
 
 @Serializable
 data class VideoCard(
