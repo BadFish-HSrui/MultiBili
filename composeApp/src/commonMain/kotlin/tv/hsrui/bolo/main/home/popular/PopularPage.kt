@@ -15,6 +15,7 @@ fun PopularPage(
     val popularUiState by popularViewModel.uiState.collectAsState()
     VideosGridPage(
         uiState = popularUiState,
+        viewModel = popularViewModel,
         modifier = modifier
     )
 }
