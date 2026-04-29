@@ -7,10 +7,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import kotlinx.coroutines.launch
 import tv.hsrui.bolo.ui.components.ShowVerticalVideoGrid
 import tv.hsrui.bolo.utils.OnGridBottomReached
 
@@ -25,14 +23,11 @@ fun VideosGridPage(
     videoGridState.OnGridBottomReached(buffer = 4, isLoading = viewModel.isLoading) {
         viewModel.loadMoreVideos()
     }
-    val scope = rememberCoroutineScope()
 
     PullToRefreshBox(
         isRefreshing = viewModel.isRefreshing,
         onRefresh = {
-            scope.launch{
-                viewModel.loadVideos()
-            }
+            viewModel.loadVideos()
         }
     ){
         when (uiState) {
