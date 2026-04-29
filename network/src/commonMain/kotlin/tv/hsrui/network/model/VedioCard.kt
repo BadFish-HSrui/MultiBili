@@ -52,3 +52,17 @@ private fun String.toHttpsUrl(): String = when {
     startsWith("http://") -> replaceFirst("http://", "https://")
     else -> this
 }
+
+val VideoCardExample = VideoCard(
+    avid = 115327790751441,
+    bvid = "BV1gDxEzHE8Z",
+    pic = "http://i2.hdslb.com/bfs/archive/7a7aa5e03fb63167e51a9d3d7a28ed2749128a45.jpg",
+    title = "✨“我为你唱一曲如游丝的气息”《青衣DJ》✨/AI東 雪蓮",
+    description = "原曲：青衣DJ\n人声：AI东雪莲\n图/动态图/音频：\npan.quark.cn/s/5d94a5c96ba9\n本身想跑花旦风格的，但是发现这个底模跑不出好看的\n做了22张动图，没用上的图和动图放网盘里了\n中秋快乐！\n这几天感冒严重，打火机日语完整版过几天做完",
+    publishDate = 1759762729,
+    stat = VideoCard.Stat(view = 1919810, like = 114514),
+    _duration = 10000,
+    owner = VideoCard.Owner(
+        name = "东洋雪莲",
+        face = "https://i2.hdslb.com/bfs/face/4cbf2f66d23a324ecca8d3c07adbcafecfef829b.jpg"
+    ))

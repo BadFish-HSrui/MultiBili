@@ -2,7 +2,8 @@ package tv.hsrui.bolo.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.border
-import androidx.compose.foundation.focusable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,6 +47,7 @@ import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.utils.formatToString
 import tv.hsrui.network.model.VideoCard
+import tv.hsrui.network.model.VideoCardExample
 
 @Composable
 fun ShowVideoCard(
@@ -85,7 +87,10 @@ fun ShowVideoCard(
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
             }
-            .focusable()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {})
             .then(
                 if (isFocused) Modifier.zIndex(1F).scale(animatedScale).border(
                     width = 2.dp,
@@ -216,19 +221,5 @@ fun ShowVideoCard(
 @Preview
 @Composable
 fun PreviewVideoCard() {
-    val videoCard = VideoCard(
-        avid = 115327790751441,
-        bvid = "BV1gDxEzHE8Z",
-        pic = "http://i2.hdslb.com/bfs/archive/7a7aa5e03fb63167e51a9d3d7a28ed2749128a45.jpg",
-        title = "✨“我为你唱一曲如游丝的气息”《青衣DJ》✨/AI東 雪蓮",
-        description = "原曲：青衣DJ\n人声：AI东雪莲\n图/动态图/音频：\npan.quark.cn/s/5d94a5c96ba9\n本身想跑花旦风格的，但是发现这个底模跑不出好看的\n做了22张动图，没用上的图和动图放网盘里了\n中秋快乐！\n这几天感冒严重，打火机日语完整版过几天做完",
-        publishDate = 1759762729,
-        stat = VideoCard.Stat(view = 1919810, like = 114514),
-        _duration = 10000,
-        owner = VideoCard.Owner(
-            name = "东洋雪莲",
-            face = "https://i2.hdslb.com/bfs/face/4cbf2f66d23a324ecca8d3c07adbcafecfef829b.jpg"
-        )
-    )
-    ShowVideoCard(videoCard, isWide = false)
+    ShowVideoCard(VideoCardExample, isWide = false)
 }
