@@ -68,7 +68,7 @@ fun ShowVerticalVideoGrid(
                     key = { it.avid }
                 ) { video ->
                     ShowVideoCard(
-                        video,
+                        videoInfo = video,
                         isWide = isWideCard
                     )
                 }

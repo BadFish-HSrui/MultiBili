@@ -1,5 +1,8 @@
 package tv.hsrui.bolo.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,9 +26,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
@@ -33,31 +42,59 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
+import tv.hsrui.bolo.utils.formatToString
 import tv.hsrui.network.model.VideoCard
 
 @Composable
-fun ShowVideoCard(videoInfo: VideoCard, isWide: Boolean, modifier: Modifier = Modifier) {
+fun ShowVideoCard(
+    videoInfo: VideoCard,
+    isWide: Boolean,
+    modifier: Modifier = Modifier
+) {
     val infoTextStyle: TextStyle
     val coverAspectRatio: Float
     val maxTitleLines: Int
     val titleHeight: Dp
+    val roundedCornerSize: Dp
 
     if (isWide) {
         infoTextStyle = MaterialTheme.typography.labelMedium
         coverAspectRatio = 16F / 9F
         maxTitleLines = 1
         titleHeight = 16.dp
+        roundedCornerSize = 12.dp
 
     } else {
         infoTextStyle = MaterialTheme.typography.labelSmall
         coverAspectRatio = 4F / 3F
         maxTitleLines = 2
-        titleHeight = 36 .dp
+        titleHeight = 36.dp
+        roundedCornerSize = 4.dp
     }
+
+    var isFocused by remember { mutableStateOf(false) }
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isFocused) 1.08f else 1f
+    )
+
     Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(4.dp)
+        modifier = modifier
+            .onFocusChanged { focusState ->
+                isFocused = focusState.isFocused
+            }
+            .focusable()
+            .then(
+                if (isFocused) Modifier.zIndex(1F).scale(animatedScale).border(
+                    width = 2.dp,
+                    color = Color.Cyan,
+                    shape = RoundedCornerShape(roundedCornerSize)
+                )
+                else Modifier
+            ),
+        shape = RoundedCornerShape(roundedCornerSize)
     ) {
         Column {
             Box(modifier = Modifier.aspectRatio(coverAspectRatio)) {
@@ -160,7 +197,7 @@ fun ShowVideoCard(videoInfo: VideoCard, isWide: Boolean, modifier: Modifier = Mo
             Text(
                 text = videoInfo.title,
                 style = MaterialTheme.typography.bodySmall,
-                maxLines = maxTitleLines ,
+                maxLines = maxTitleLines,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .padding(start = 4.dp, top = 4.dp, end = 4.dp)
@@ -176,7 +213,7 @@ fun ShowVideoCard(videoInfo: VideoCard, isWide: Boolean, modifier: Modifier = Mo
     }
 }
 
-@Preview(widthDp = 300, heightDp = 300)
+@Preview
 @Composable
 fun PreviewVideoCard() {
     val videoCard = VideoCard(
@@ -194,13 +231,4 @@ fun PreviewVideoCard() {
         )
     )
     ShowVideoCard(videoCard, isWide = false)
-}
-
-fun Number.formatToString(): String {
-    val value = this.toLong()
-    return when {
-        value < 10000 -> value.toString()
-        value < 100000000 -> "${(value / 1000) / 10.0F}万"
-        else -> "${(value / 10000000) / 10.0F}亿"
-    }
 }
