@@ -27,7 +27,7 @@ fun VideosGridPage(
     PullToRefreshBox(
         isRefreshing = viewModel.isRefreshing,
         onRefresh = {
-            viewModel.loadVideos()
+            viewModel.refreshVideos()
         }
     ){
         when (uiState) {
