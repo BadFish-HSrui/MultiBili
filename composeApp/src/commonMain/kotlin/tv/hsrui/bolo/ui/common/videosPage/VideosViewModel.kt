@@ -15,6 +15,7 @@ abstract class VideosViewModel : ViewModel() {
     var pageNumber: Int = 1
 
     var isLoading: Boolean = false
+    var isRefreshing: Boolean = false
 
     init {
         loadVideos()
@@ -23,7 +24,10 @@ abstract class VideosViewModel : ViewModel() {
     protected abstract suspend fun fetchVideos(): VideosResult
 
     fun loadVideos() {
+        if (isRefreshing) return
         pageNumber = 1
+        isRefreshing = true
+
         viewModelScope.launch {
             _uiState.value = VideosUiState.Loading
             try {
@@ -37,6 +41,8 @@ abstract class VideosViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 _uiState.value = VideosUiState.Error(e.message ?: "其他网络错误")
+            }finally {
+                isRefreshing = false
             }
         }
     }
@@ -45,6 +51,7 @@ abstract class VideosViewModel : ViewModel() {
         if (isLoading) return
         isLoading = true
         pageNumber++
+
         viewModelScope.launch {
             try {
                 val result = fetchVideos()

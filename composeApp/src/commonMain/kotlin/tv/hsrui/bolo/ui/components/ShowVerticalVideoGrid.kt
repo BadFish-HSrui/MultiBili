@@ -15,24 +15,28 @@ import tv.hsrui.bolo.utils.getNowWindowSize
 import tv.hsrui.network.model.VideoCard
 
 @Composable
-fun ShowVerticalVideoGrid(videos: List<VideoCard>,gridState: LazyGridState,modifier: Modifier = Modifier) {
+fun ShowVerticalVideoGrid(
+    videos: List<VideoCard>,
+    gridState: LazyGridState,
+    modifier: Modifier = Modifier
+) {
     val windowSize = getNowWindowSize()
 
     val columns: Int
     val isWideCard: Boolean
     val contentSpacing: Dp
 
-    when (windowSize){
-         AppWindowSize.EXPANDED -> {
-             columns = 4
-             isWideCard = true
-             contentSpacing = 12.dp
+    when (windowSize) {
+        AppWindowSize.EXPANDED -> {
+            columns = 4
+            isWideCard = true
+            contentSpacing = 12.dp
         }
 
-         AppWindowSize.MEDIUM -> {
-             columns = 3
-             isWideCard = true
-             contentSpacing = 8.dp
+        AppWindowSize.MEDIUM -> {
+            columns = 3
+            isWideCard = true
+            contentSpacing = 8.dp
         }
 
         AppWindowSize.COMPACT -> {
