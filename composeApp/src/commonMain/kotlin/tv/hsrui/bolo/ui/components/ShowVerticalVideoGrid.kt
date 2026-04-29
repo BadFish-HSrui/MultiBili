@@ -31,24 +31,28 @@ fun ShowVerticalVideoGrid(
     val columns: Int
     val isWideCard: Boolean
     val contentSpacing: Dp
+    val toTopBuffer: Int
 
     when (windowSize) {
         AppWindowSize.EXPANDED -> {
             columns = 4
             isWideCard = true
             contentSpacing = 12.dp
+            toTopBuffer = 12
         }
 
         AppWindowSize.MEDIUM -> {
             columns = 3
             isWideCard = true
             contentSpacing = 8.dp
+            toTopBuffer = 8
         }
 
         AppWindowSize.COMPACT -> {
             columns = 2
             isWideCard = false
             contentSpacing = 4.dp
+            toTopBuffer = 4
         }
     }
     Box(modifier = modifier) {
@@ -76,7 +80,8 @@ fun ShowVerticalVideoGrid(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp)
-                    .size(48.dp)
+                    .size(48.dp),
+                buffer = toTopBuffer
             )
         }
     }
