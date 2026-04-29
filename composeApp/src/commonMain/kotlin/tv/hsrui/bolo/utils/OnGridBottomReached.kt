@@ -10,7 +10,7 @@ import androidx.compose.runtime.remember
 
 @Composable
 fun LazyGridState.OnGridBottomReached(
-    buffer: Int = 0,
+    buffer: Int = 8,
     isLoading: Boolean,
     onLoadMore: () -> Unit
 ) {
@@ -18,7 +18,7 @@ fun LazyGridState.OnGridBottomReached(
         derivedStateOf {
             val totalItems = layoutInfo.totalItemsCount
             val lastVisibleItemIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            totalItems != 0 && lastVisibleItemIndex >= totalItems - 1 - buffer
+            totalItems != 0 && lastVisibleItemIndex > totalItems - buffer
         }
     }
 

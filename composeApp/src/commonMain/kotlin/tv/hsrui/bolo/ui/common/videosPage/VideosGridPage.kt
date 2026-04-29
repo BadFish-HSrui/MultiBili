@@ -20,7 +20,7 @@ fun VideosGridPage(
 ) {
     val videoGridState = rememberLazyGridState()
 
-    videoGridState.OnGridBottomReached(buffer = 4, isLoading = viewModel.isLoading) {
+    videoGridState.OnGridBottomReached(buffer = 8, isLoading = viewModel.isLoading) {
         viewModel.loadMoreVideos()
     }
 
@@ -29,7 +29,7 @@ fun VideosGridPage(
         onRefresh = {
             viewModel.refreshVideos()
         }
-    ){
+    ) {
         when (uiState) {
             is VideosUiState.Loading -> {
                 Box(
@@ -53,7 +53,8 @@ fun VideosGridPage(
                 ShowVerticalVideoGrid(
                     uiState.videos,
                     gridState = videoGridState,
-                    modifier = modifier
+                    modifier = modifier.fillMaxSize(),
+                    needShowScrollToTopButton = true
                 )
             }
 
