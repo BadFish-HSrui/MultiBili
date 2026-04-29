@@ -30,6 +30,7 @@ fun ShowVerticalVideoGrid(
 
     val columns: Int
     val isWideCard: Boolean
+    val contentPadding: Dp
     val contentSpacing: Dp
     val toTopBuffer: Int
 
@@ -37,6 +38,7 @@ fun ShowVerticalVideoGrid(
         AppWindowSize.EXPANDED -> {
             columns = 4
             isWideCard = true
+            contentPadding = 16.dp
             contentSpacing = 12.dp
             toTopBuffer = 12
         }
@@ -44,6 +46,7 @@ fun ShowVerticalVideoGrid(
         AppWindowSize.MEDIUM -> {
             columns = 3
             isWideCard = true
+            contentPadding = 16.dp
             contentSpacing = 8.dp
             toTopBuffer = 8
         }
@@ -51,6 +54,7 @@ fun ShowVerticalVideoGrid(
         AppWindowSize.COMPACT -> {
             columns = 2
             isWideCard = false
+            contentPadding = 8.dp
             contentSpacing = 4.dp
             toTopBuffer = 4
         }
@@ -69,7 +73,7 @@ fun ShowVerticalVideoGrid(
                     )
                 }
             },
-            contentPadding = PaddingValues(8.dp),
+            contentPadding = PaddingValues(contentPadding),
             verticalArrangement = Arrangement.spacedBy(contentSpacing),
             horizontalArrangement = Arrangement.spacedBy(contentSpacing),
             state = gridState,
