@@ -6,6 +6,6 @@ import tv.hsrui.network.model.VideosResult
 
 class PopularViewModel : VideosViewModel() {
     override suspend fun fetchVideos(): VideosResult {
-        return fetchPopularVideos(pn = 1,ps = 24)
+        return fetchPopularVideos(pn = pageNumber,ps = 24)
     }
 }
