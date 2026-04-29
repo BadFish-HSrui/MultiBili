@@ -8,8 +8,13 @@ import kotlinx.coroutines.launch
 import tv.hsrui.network.model.VideosResult
 
 abstract class VideosViewModel : ViewModel() {
-    private  val _uiState = MutableStateFlow<VideosUiState>(VideosUiState.Loading)
+    private val _uiState = MutableStateFlow<VideosUiState>(VideosUiState.Loading)
     val uiState = _uiState.asStateFlow()
+
+    var canLoadMore: Boolean = false
+    var pageNumber: Int = 1
+
+    var isLoading: Boolean = false
 
     init {
         loadVideos()
@@ -18,17 +23,46 @@ abstract class VideosViewModel : ViewModel() {
     protected abstract suspend fun fetchVideos(): VideosResult
 
     fun loadVideos() {
+        pageNumber = 1
         viewModelScope.launch {
             _uiState.value = VideosUiState.Loading
             try {
                 val result = fetchVideos()
                 if (result.isSuccess) {
+                    pageNumber++
                     _uiState.value = VideosUiState.Success(result.validData.videosList)
+                    canLoadMore = result.validData.canLoadMore
                 } else {
                     _uiState.value = VideosUiState.Error(result.message)
                 }
             } catch (e: Exception) {
                 _uiState.value = VideosUiState.Error(e.message ?: "其他网络错误")
+            }
+        }
+    }
+
+    fun loadMoreVideos() {
+        if (isLoading) return
+        isLoading = true
+        pageNumber++
+        viewModelScope.launch {
+            _uiState.value = VideosUiState.Loading
+            try {
+                val result = fetchVideos()
+                if (result.isSuccess) {
+                    pageNumber++
+                    _uiState.value =
+                        VideosUiState.Success((_uiState.value as VideosUiState.Success).videos + result.validData.videosList)
+                    canLoadMore = result.validData.canLoadMore
+                } else {
+                    pageNumber--
+                    _uiState.value = VideosUiState.Error(result.message)
+                }
+            } catch (e: Exception) {
+                pageNumber--
+                _uiState.value = VideosUiState.Error(e.message ?: "其他网络错误")
+            } finally {
+                isLoading = false
             }
         }
     }

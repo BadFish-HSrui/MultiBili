@@ -9,5 +9,5 @@ interface VideosResult {
 
 data class ValidVideosData(
     val videosList: List<VideoCard>,
-    val noMore: Boolean = false
+    val canLoadMore: Boolean = true
 )
