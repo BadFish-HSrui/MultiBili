@@ -6,6 +6,12 @@ import tv.hsrui.network.model.VideosResult
 
 class RecommendViewModel : VideosViewModel() {
     override suspend fun fetchVideos(): VideosResult {
-        return fetchRecommendVideos(freshIndex = pageNumber,ps = 24)
+        return fetchRecommendVideos(freshIndex = pageNumber,ps = 24,)
+    }
+
+    override fun refreshVideos() {
+        isRefreshing = true
+        loadVideos()
+        isRefreshing = false
     }
 }

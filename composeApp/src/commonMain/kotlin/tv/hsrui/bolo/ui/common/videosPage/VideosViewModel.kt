@@ -18,13 +18,13 @@ abstract class VideosViewModel : ViewModel() {
     var isRefreshing: Boolean = false
 
     init {
+        pageNumber = 1
         loadVideos()
     }
 
     protected abstract suspend fun fetchVideos(): VideosResult
 
     fun loadVideos() {
-        pageNumber = 1
         viewModelScope.launch {
             _uiState.value = VideosUiState.Loading
             try {
@@ -68,7 +68,8 @@ abstract class VideosViewModel : ViewModel() {
         }
     }
 
-    fun refreshVideos() {
+    open fun refreshVideos() {
+        pageNumber = 1
         isRefreshing = true
         loadVideos()
         isRefreshing = false
