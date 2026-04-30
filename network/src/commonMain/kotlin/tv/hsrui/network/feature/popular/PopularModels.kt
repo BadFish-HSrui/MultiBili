@@ -12,10 +12,11 @@ data class PopularResponse(
     override val message: String = "-1",
     val data: PopularData? = null
 ) : VideosResult {
-    override val isSuccess get() = (code == 0 && data!= null)
-    override val validData get() = data?.let {
-        ValidVideosData(it.list,it.noMore)
-    } ?: ValidVideosData(emptyList())
+    override val isSuccess get() = (code == 0 && data != null)
+    override val validData
+        get() = data?.let {
+            ValidVideosData(it.list, it.noMore)
+        } ?: ValidVideosData(emptyList())
 }
 
 @Serializable

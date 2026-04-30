@@ -12,6 +12,7 @@ data class VideoCard(
     @SerialName("pubdate") val publishDate: Long,
     @SerialName("duration") private val _duration: Int,
     @SerialName("pic") private val pic: String,
+    @SerialName("pic_4_3") private val pic43: String? = null,
     @SerialName("stat") private val stat: Stat,
     @SerialName("owner") private val owner: Owner
 ) {
@@ -25,6 +26,7 @@ data class VideoCard(
     val upName by owner::name
     val upAvatarUrl by lazy { owner.face.toHttpsUrl() }
     val coverUrl by lazy { pic.toHttpsUrl() }
+    val coverUrl43 by lazy { pic43?.toHttpsUrl() ?: pic.toHttpsUrl() }
     val duration
         get() = if (_duration < 3600) { "${_duration / 60}:${_duration % 60}" }
             else { "${_duration / 3600}:${_duration % 3600 / 60}:${_duration % 60}" }

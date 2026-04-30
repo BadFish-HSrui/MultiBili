@@ -60,6 +60,7 @@ fun ShowVideoCard(
     val maxTitleLines: Int
     val titleHeight: Dp
     val roundedCornerSize: Dp
+    val coverUrl: String
 
     if (isWide) {
         infoTextStyle = MaterialTheme.typography.labelMedium
@@ -67,6 +68,7 @@ fun ShowVideoCard(
         maxTitleLines = 1
         titleHeight = 16.dp
         roundedCornerSize = 12.dp
+        coverUrl = videoInfo.coverUrl
 
     } else {
         infoTextStyle = MaterialTheme.typography.labelSmall
@@ -74,6 +76,7 @@ fun ShowVideoCard(
         maxTitleLines = 2
         titleHeight = 36.dp
         roundedCornerSize = 4.dp
+        coverUrl = videoInfo.coverUrl43
     }
 
     var isFocused by remember { mutableStateOf(false) }
@@ -104,7 +107,7 @@ fun ShowVideoCard(
         Column {
             Box(modifier = Modifier.aspectRatio(coverAspectRatio)) {
                 AsyncImage(
-                    model = videoInfo.coverUrl,
+                    model = coverUrl,
                     contentDescription = "视频封面",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
