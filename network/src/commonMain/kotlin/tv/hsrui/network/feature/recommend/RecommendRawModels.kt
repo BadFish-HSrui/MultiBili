@@ -56,7 +56,7 @@ fun RawRecommendItem.toVideoCard(): VideoCard {
         publishDate = publishDate,
         _duration = duration,
         pic = pic,
-        pic43 = pic43,
+        pic43 = if (pic43 != "" ) { pic43 } else null,
         stat = Stat(
             view = stat?.view ?: -1,
             like = stat?.like ?: -1,
