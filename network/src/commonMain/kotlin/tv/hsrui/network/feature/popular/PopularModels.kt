@@ -8,9 +8,9 @@ import tv.hsrui.network.model.ValidVideosData
 
 @Serializable
 data class PopularResponse(
-    val code: Int = -1,
+    private val code: Int = -1,
     override val message: String = "-1",
-    val data: PopularData? = null
+    private val data: PopularData? = null
 ) : VideosResult {
     override val isSuccess get() = (code == 0 && data != null)
     override val validData
