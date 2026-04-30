@@ -18,6 +18,10 @@ abstract class VideosViewModel : ViewModel() {
     var isRefreshing: Boolean = false
 
     init {
+        startLoading()
+    }
+
+    open fun startLoading() {
         pageNumber = 1
         loadVideos()
     }
