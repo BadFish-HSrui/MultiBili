@@ -1,0 +1,96 @@
+name: 构建 macOS 和 iOS 版本
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: '构建分支'
+        required: true
+        default: 'master'
+      clean-cache:
+        description: '清理 Gradle 缓存'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: 配置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: 配置缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.konan
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: 清理构建缓存（可选）
+        if: ${{ github.event.inputs.clean-cache == 'true' }}
+        run: ./gradlew clean
+
+      - name: 编译
+        run: |
+          chmod +x ./gradlew
+          ./gradlew \
+            :composeApp:packageDmg \
+            :composeApp:linkReleaseFrameworkIosArm64
+
+      - name: 编译无签名 iOS App
+        run: |
+          cd iosApp
+          xcodebuild build \
+            -workspace iosApp.xcworkspace \
+            -scheme iosApp \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+      - name: 打包为无签名 IPA
+        run: |
+          mkdir -p staging/ios
+          APP_PATH="iosApp/build/Build/Products/Release-iphoneos/iosApp.app"
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r staging/ios/iosApp-unsigned.ipa Payload
+          rm -rf Payload
+
+      - name: 收集构建产物
+        run: |
+          mkdir -p staging/macos staging/ios
+
+          if [ -d "composeApp/build/compose/binaries/main/dmg" ]; then
+            cp composeApp/build/compose/binaries/main/dmg/*.dmg staging/macos/
+          fi
+
+      - name: 上传 macOS 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: KMP-Build-macOS
+          path: staging/macos/*.dmg
+          retention-days: 7
+
+      - name: 上传 iOS 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: KMP-Build-iOS
+          path: staging/ios/*.ipa
+          retention-days: 7
