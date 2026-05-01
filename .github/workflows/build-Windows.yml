@@ -1,0 +1,68 @@
+name: 构建 Windows 版本
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: '构建分支'
+        required: true
+        default: 'master'
+      clean-cache:
+        description: '清理Gradle缓存'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: 配置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: 配置缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: 清理构建缓存（可选）
+        if: ${{ github.event.inputs.clean-cache == 'true' }}
+        run: ./gradlew clean
+
+      - name: 编译Windows安装包
+        run: ./gradlew :composeApp:packageMsi
+
+      - name: 收集构建产物
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path staging/windows-msi, staging/windows-exe
+
+          if (Test-Path "composeApp/build/compose/binaries/main/msi") {
+            Copy-Item composeApp/build/compose/binaries/main/msi/*.msi staging/windows-msi/
+          }
+
+          if (Test-Path "composeApp/build/compose/binaries/main/exe") {
+            Copy-Item composeApp/build/compose/binaries/main/exe/*.exe staging/windows-exe/
+          }
+
+      - name: 上传 Windows 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: KMP-Build-Windows
+          path: |
+            staging/windows-msi/*.msi
+            staging/windows-exe/*.exe
+          retention-days: 7
