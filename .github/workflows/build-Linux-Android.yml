@@ -22,13 +22,13 @@ jobs:
         with:
           ref: ${{ github.event.inputs.branch }}
 
-      - name: 获取compileSdk
-        id: android-versions
-        run: |
-          TOML_FILE="gradle/libs.versions.toml"
-          COMPILE_SDK=$(grep -E '^\s*android-compileSdk\s*=' "$TOML_FILE" | sed -E 's/.*=\s*"([^"]+)".*/\1/')
-          echo "compile-sdk=$COMPILE_SDK" >> $GITHUB_OUTPUT
-          echo "compileSdk = $COMPILE_SDK"
+#      - name: 获取compileSdk
+#        id: android-versions
+#        run: |
+#          TOML_FILE="gradle/libs.versions.toml"
+#          COMPILE_SDK=$(grep -E '^\s*android-compileSdk\s*=' "$TOML_FILE" | sed -E 's/.*=\s*"([^"]+)".*/\1/')
+#          echo "compile-sdk=$COMPILE_SDK" >> $GITHUB_OUTPUT
+#          echo "compileSdk = $COMPILE_SDK"
 
       - name: 配置JDK
         uses: actions/setup-java@v4
@@ -38,9 +38,6 @@ jobs:
 
       - name: 安装安卓SDK
         uses: android-actions/setup-android@v4
-        with:
-          accept-android-sdk-licenses: true
-          packages: 'platforms;android-${{ steps.android-versions.outputs.compile-sdk }}'
 
       - name: 配置缓存
         uses: actions/cache@v4
