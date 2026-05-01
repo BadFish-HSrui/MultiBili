@@ -1,0 +1,93 @@
+name: 构建Linux和Android版本
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: '构建分支'
+        required: true
+        default: 'master'
+      clean-cache:
+        description: '清理Gradle缓存'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: 获取compileSdk
+        id: android-versions
+        run: |
+          TOML_FILE="gradle/libs.versions.toml"
+          COMPILE_SDK=$(grep -E '^\s*android-compileSdk\s*=' "$TOML_FILE" | sed -E 's/.*=\s*"([^"]+)".*/\1/')
+          echo "compile-sdk=$COMPILE_SDK" >> $GITHUB_OUTPUT
+          echo "compileSdk = $COMPILE_SDK"
+
+      - name: 配置JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: 安装安卓SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: ${{ steps.android-versions.outputs.compile-sdk }}
+
+      - name: 配置缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: 清理构建缓存（可选）
+        if: ${{ github.event.inputs.clean-cache == 'true' }}
+        run: ./gradlew clean
+
+      - name: 安装rpm
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: 编译
+        run: |
+          chmod +x ./gradlew
+          ./gradlew \
+            :composeApp:packageDeb \
+            :composeApp:packageRpm \
+            :androidApp:assembleRelease
+
+      - name: 收集构建产物
+        run: |
+          mkdir -p staging/linux-deb staging/linux-rpm staging/android
+
+          if [ -d "composeApp/build/compose/binaries/main-release/deb" ]; then
+            cp composeApp/build/compose/binaries/main-release/deb/*.deb staging/linux-deb/ 2>/dev/null || true
+          fi
+
+          if [ -d "composeApp/build/compose/binaries/main-release/rpm" ]; then
+            cp composeApp/build/compose/binaries/main-release/rpm/*.rpm staging/linux-rpm/ 2>/dev/null || true
+          fi
+
+          if [ -d "androidApp/build/outputs/apk/release" ]; then
+            cp androidApp/build/outputs/apk/release/*.apk staging/android/ 2>/dev/null || true
+          fi
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: KMP-Build
+          path: |
+            staging/linux-deb/*.deb
+            staging/linux-rpm/*.rpm
+            staging/android/*.apk
+          retention-days: 7
