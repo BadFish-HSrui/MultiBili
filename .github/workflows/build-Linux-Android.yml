@@ -3,7 +3,6 @@ name: 构建Linux和Android版本
 on:
   workflow_dispatch:
     inputs:
-      branch:
       clean-cache:
         description: '清理Gradle缓存'
         required: false
@@ -58,6 +57,10 @@ jobs:
             :composeApp:packageDeb \
             :composeApp:packageRpm \
             :androidApp:assembleRelease
+
+      - name: 停止 Gradle Daemon
+        if: always()
+        run: ./gradlew --stop
 
       - name: 收集构建产物
         run: |

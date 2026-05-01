@@ -40,7 +40,11 @@ jobs:
         run: |
           ./gradlew \
             :composeApp:packageMsi \
-            :composeApp:packageExe \
+            :composeApp:packageExe
+
+      - name: 停止 Gradle Daemon
+        if: always()
+        run: ./gradlew --stop
 
       - name: 收集构建产物
         shell: powershell

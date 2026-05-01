@@ -67,6 +67,10 @@ jobs:
           zip -r staging/ios/iosApp-unsigned.ipa Payload
           rm -rf Payload
 
+      - name: 停止 Gradle Daemon
+        if: always()
+        run: ./gradlew --stop
+
       - name: 收集构建产物
         run: |
           mkdir -p staging/macos staging/ios
