@@ -37,7 +37,10 @@ jobs:
         run: ./gradlew clean
 
       - name: 编译Windows安装包
-        run: ./gradlew :composeApp:packageMsi
+        run: |
+          ./gradlew \
+            :composeApp:packageMsi \
+            :composeApp:packageExe \
 
       - name: 收集构建产物
         shell: powershell
