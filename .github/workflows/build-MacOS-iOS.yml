@@ -54,7 +54,7 @@ jobs:
         run: |
           cd iosApp
           xcodebuild build \
-            -workspace iosApp.xcworkspace \
+            -project iosApp.xcodeproj \
             -scheme iosApp \
             -configuration Release \
             -sdk iphoneos \
