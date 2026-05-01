@@ -39,7 +39,9 @@ jobs:
       - name: 安装安卓SDK
         uses: android-actions/setup-android@v3
         with:
-          api-level: ${{ steps.android-versions.outputs.compile-sdk }}
+          accept-android-sdk-licenses: true
+          packages: |
+            platforms;android-${{ steps.android-versions.outputs.compile-sdk }}
 
       - name: 配置缓存
         uses: actions/cache@v4
@@ -71,23 +73,30 @@ jobs:
           mkdir -p staging/linux-deb staging/linux-rpm staging/android
 
           if [ -d "composeApp/build/compose/binaries/main-release/deb" ]; then
-            cp composeApp/build/compose/binaries/main-release/deb/*.deb staging/linux-deb/ 2>/dev/null || true
+            cp composeApp/build/compose/binaries/main/deb/*.deb staging/linux-deb/ 2>/dev/null || true
           fi
 
           if [ -d "composeApp/build/compose/binaries/main-release/rpm" ]; then
-            cp composeApp/build/compose/binaries/main-release/rpm/*.rpm staging/linux-rpm/ 2>/dev/null || true
+            cp composeApp/build/compose/binaries/main/rpm/*.rpm staging/linux-rpm/ 2>/dev/null || true
           fi
 
           if [ -d "androidApp/build/outputs/apk/release" ]; then
             cp androidApp/build/outputs/apk/release/*.apk staging/android/ 2>/dev/null || true
           fi
 
-      - name: 上传构建产物
+      - name: 上传Linux构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: KMP-Build
+          name: KMP-Build-Linux
           path: |
             staging/linux-deb/*.deb
             staging/linux-rpm/*.rpm
+          retention-days: 7
+
+      - name: 上传Android构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: KMP-Build-Android
+          path: |
             staging/android/*.apk
           retention-days: 7
