@@ -37,11 +37,10 @@ jobs:
           java-version: '17'
 
       - name: 安装安卓SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           accept-android-sdk-licenses: true
-          packages: |
-            platforms;android-${{ steps.android-versions.outputs.compile-sdk }}
+          packages: 'platforms;android-${{ steps.android-versions.outputs.compile-sdk }}'
 
       - name: 配置缓存
         uses: actions/cache@v4
