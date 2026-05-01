@@ -68,11 +68,11 @@ jobs:
         run: |
           mkdir -p staging/linux-deb staging/linux-rpm staging/android
 
-          if [ -d "composeApp/build/compose/binaries/main-release/deb" ]; then
+          if [ -d "composeApp/build/compose/binaries/main/deb" ]; then
             cp composeApp/build/compose/binaries/main/deb/*.deb staging/linux-deb/ 2>/dev/null || true
           fi
 
-          if [ -d "composeApp/build/compose/binaries/main-release/rpm" ]; then
+          if [ -d "composeApp/build/compose/binaries/main/rpm" ]; then
             cp composeApp/build/compose/binaries/main/rpm/*.rpm staging/linux-rpm/ 2>/dev/null || true
           fi
 
