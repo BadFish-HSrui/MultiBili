@@ -75,7 +75,7 @@ compose.desktop {
         mainClass = "tv.hsrui.bolo.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "tv.hsrui.bolo"
             packageVersion = "1.0.0"
         }
