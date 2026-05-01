@@ -3,10 +3,6 @@ name: 构建Windows版本
 on:
   workflow_dispatch:
     inputs:
-      branch:
-        description: '构建分支'
-        required: true
-        default: 'master'
       clean-cache:
         description: '清理Gradle缓存'
         required: false
@@ -19,8 +15,6 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.branch }}
 
       - name: 配置 JDK
         uses: actions/setup-java@v4
