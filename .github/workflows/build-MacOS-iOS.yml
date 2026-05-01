@@ -61,7 +61,7 @@ jobs:
       - name: 打包为无签名 IPA
         run: |
           mkdir -p staging/ios
-          APP_PATH="iosApp/build/Build/Products/Release-iphoneos/iosApp.app"
+          APP_PATH=$(find iosApp/build/Build/Products/Release-iphoneos -name "*.app" -type d | head -1)
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r staging/ios/iosApp-unsigned.ipa Payload
