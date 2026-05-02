@@ -19,7 +19,7 @@ import tv.hsrui.bolo.main.home.recommend.RecommendPage
 @Composable
 fun HomeScreen(modifier: Modifier = Modifier) {
     val tabs = HomeTab.entries
-    val pagerState = rememberPagerState { tabs.size }
+    val pagerState = rememberPagerState(initialPage = tabs.indexOf(HomeTab.Recommend)) { tabs.size }
     val coroutineScope = rememberCoroutineScope()
 
     Column(modifier = modifier) {
@@ -44,6 +44,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
             when (tabs[page]) {
                 HomeTab.Popular -> PopularPage()
                 HomeTab.Recommend -> RecommendPage()
+                HomeTab.Following -> {Text("TODO")}
             }
         }
     }
