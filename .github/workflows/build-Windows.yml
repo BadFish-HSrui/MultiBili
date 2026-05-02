@@ -37,10 +37,7 @@ jobs:
         run: ./gradlew clean
 
       - name: 编译Windows安装包
-        run: |
-          ./gradlew \
-            :composeApp:packageMsi \
-            :composeApp:packageExe
+        run: ./gradlew :composeApp:packageMsi :composeApp:packageExe
 
       - name: 停止 Gradle Daemon
         if: always()
