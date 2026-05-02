@@ -78,6 +78,10 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Exe)
             packageName = "Multi Bili"
             packageVersion = libs.versions.appVersion.get()
+
+            macOS { iconFile.set(project.file("src/jvmMain/icons/mac_icon.icns")) }
+            linux { iconFile.set(project.file("src/jvmMain/icons/linux_icon.png")) }
+            windows { iconFile.set(project.file("src/jvmMain/icons/windows_icon.ico")) }
         }
     }
 }
