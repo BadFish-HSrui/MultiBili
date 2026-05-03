@@ -3,7 +3,7 @@
 
 # Multi Bili
 
-一个基于[KMP (Kotlin MultiPlatform)](https://kotlinlang.org/multiplatform/)的开源全平台B站客户端实现
+一个基于[KMP (Kotlin MultiPlatform)](https://kotlinlang.org/multiplatform/)的开源多平台B站客户端实现
 
 </div>
 
@@ -15,7 +15,7 @@
 - :zap: 运行流畅
 - :100: 无BUG
 
-#### 本项目支持以下平台:
+### 支持平台:
 
 | 平台        | 文件       |
 |-------------|-----------|
@@ -26,3 +26,7 @@
 | Linux(jvm)  | DEB RPM   |
 
 > 虽然理论上KMP支持`JS`和`WASM`，但因为依赖生态与运行效率问题，本项目短期内不会考虑Web版本(B站网页端还挺好用的)
+
+### 鸣谢
+- [SocialSisterYi/bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect): 提供B站Api信息
+- [jordond/MaterialKolor](https://github.com/jordond/MaterialKolor): 用于创建动态Material3色彩的Compose多平台库
