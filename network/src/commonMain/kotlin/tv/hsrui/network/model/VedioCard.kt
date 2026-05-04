@@ -1,8 +1,11 @@
 package tv.hsrui.network.model
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNames
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class VideoCard(
     @SerialName("aid") val avid: Long,
@@ -10,10 +13,10 @@ data class VideoCard(
     @SerialName("title") val title: String,
     @SerialName("pubdate") val publishDate: Long,
     @SerialName("duration") private val _duration: Int,
-    @SerialName("pic") private val pic: String,
+    @SerialName("pic") @JsonNames("cover") private val pic: String,
     @SerialName("pic_4_3") private val pic43: String? = null,
     @SerialName("stat") private val stat: Stat,
-    @SerialName("owner") private val owner: Owner
+    @SerialName("owner") @JsonNames("author")  private val owner: Owner
 ) {
 
     val viewCount by stat::view
@@ -23,7 +26,7 @@ data class VideoCard(
     val favoriteCount by stat::favorite
     val replyCount by stat::reply
     val upName by owner::name
-    val upAvatarUrl by lazy { owner.face.toHttpsUrl() }
+    val upAvatarUrl by lazy { owner.face?.toHttpsUrl() }
     val coverUrl by lazy { pic.toHttpsUrl() }
     val coverUrl43 by lazy { pic43?.toHttpsUrl() ?: pic.toHttpsUrl() }
     val duration
@@ -44,7 +47,7 @@ data class VideoCard(
     @Serializable
     data class Owner(
         val name: String,
-        val face: String
+        val face: String? = null
     )
 }
 
