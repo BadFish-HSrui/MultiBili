@@ -1,8 +1,6 @@
 package tv.hsrui.bolo.main
 
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.VerticalAlignTop
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -45,7 +43,7 @@ private fun CompactMainScreen(modifier: Modifier = Modifier) {
         modifier = modifier,
         topBar = {},
         bottomBar = {
-            NavigationBar {
+            NavigationBar(windowInsets = WindowInsets(bottom = 24)) {
                 MainTab.entries.forEach { tab -> 
                     NavigationBarItem(
                         selected = selectedTab == tab,
