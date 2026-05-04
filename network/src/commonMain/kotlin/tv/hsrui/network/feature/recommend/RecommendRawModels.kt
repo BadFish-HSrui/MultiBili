@@ -52,7 +52,6 @@ fun RawRecommendItem.toVideoCard(): VideoCard {
         avid = id,
         bvid = bvid,
         title = title,
-        description = "主页推荐Api无简介",
         publishDate = publishDate,
         _duration = duration,
         pic = pic,
