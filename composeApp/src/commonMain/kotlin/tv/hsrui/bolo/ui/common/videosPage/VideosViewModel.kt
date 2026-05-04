@@ -17,15 +17,6 @@ abstract class VideosViewModel : ViewModel() {
     var isLoading: Boolean = false
     var isRefreshing: Boolean = false
 
-    init {
-        startLoading()
-    }
-
-    open fun startLoading() {
-        pageNumber = 1
-        loadVideos()
-    }
-
     protected abstract suspend fun fetchVideos(): VideosResult
 
     fun loadVideos() {
@@ -38,7 +29,7 @@ abstract class VideosViewModel : ViewModel() {
                     _uiState.value = VideosUiState.Success(result.validData.videosList)
                     canLoadMore = result.validData.canLoadMore
                 } else {
-                    _uiState.value = VideosUiState.Error(result.message)
+                    _uiState.value = VideosUiState.Error("[Api请求错误0]: " + result.message)
                 }
             } catch (e: Exception) {
                 _uiState.value = VideosUiState.Error(e.message ?: "其他网络错误")
@@ -61,7 +52,7 @@ abstract class VideosViewModel : ViewModel() {
                     canLoadMore = result.validData.canLoadMore
                 } else {
                     pageNumber--
-                    _uiState.value = VideosUiState.Error(result.message)
+                    _uiState.value = VideosUiState.Error("[Api请求错误1]: " + result.message)
                 }
             } catch (e: Exception) {
                 pageNumber--

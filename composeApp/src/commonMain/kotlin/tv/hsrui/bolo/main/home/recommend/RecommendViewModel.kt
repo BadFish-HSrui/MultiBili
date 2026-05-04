@@ -6,13 +6,13 @@ import tv.hsrui.network.model.VideosResult
 import kotlin.random.Random
 
 class RecommendViewModel : VideosViewModel() {
-    override suspend fun fetchVideos(): VideosResult {
-        return fetchRecommendVideos(freshIndex = pageNumber,ps = 24)
-    }
-
-    override fun startLoading() {
+    init {
         pageNumber = Random.nextInt(114514)
         loadVideos()
+    }
+
+    override suspend fun fetchVideos(): VideosResult {
+        return fetchRecommendVideos(freshIndex = pageNumber, ps = 24)
     }
 
     override fun refreshVideos() {
