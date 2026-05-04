@@ -1,0 +1,35 @@
+package tv.hsrui.network.feature.region
+
+enum class Regions(val title: String,val tid: Int) {
+    Cinephile("影视", 1001),
+    Ent("娱乐", 1002),
+    Music("音乐", 1003),
+    Dance("舞蹈", 1004),
+    Douga("动画", 1005),
+    Painting("绘画", 1006),
+    Kichiku("鬼畜", 1007),
+    Game("游戏", 1008),
+    Information("资讯", 1009),
+    Knowledge("知识", 1010),
+    Ai("人工智能", 1011),
+    Tech("科技数码", 1012),
+    Car("汽车", 1013),
+    Fashion("时尚美妆", 1014),
+    Home("家装房产", 1015),
+    Outdoors("户外潮流", 1016),
+    Gym("健身", 1017),
+    Sports("体育运动", 1018),
+    Handmake("手工", 1019),
+    Food("美食", 1020),
+    Shortplay("小剧场", 1021),
+    Travel("旅行出行", 1022),
+    Rural("三农", 1023),
+    Animal("动物", 1024),
+    Parenting("亲子", 1025),
+    Health("健康", 1026),
+    Emotion("情感", 1027),
+    Mysticism("神秘学?", 1028), //隐藏分区,确实神秘()
+    Vlog("vlog", 1029),
+    LifeJoy("生活兴趣", 1030),
+    LifeExperience("生活经验", 1031)
+}
