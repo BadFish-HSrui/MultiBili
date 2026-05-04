@@ -5,8 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.window.core.layout.WindowSizeClass
 
 enum class AppWindowSize {
-    MEDIUM,
     EXPANDED,
+    MEDIUM,
     COMPACT
 }
 
