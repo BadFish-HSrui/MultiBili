@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import tv.hsrui.bolo.main.home.HomeScreen
@@ -39,15 +40,17 @@ private fun MediumMainScreen(modifier: Modifier = Modifier) {
 @Composable
 private fun CompactMainScreen(modifier: Modifier = Modifier) {
     var selectedTab by remember { mutableStateOf(MainTab.HOME) }
+    val saveableStateHolder = rememberSaveableStateHolder()
+
     Scaffold(
         modifier = modifier,
         topBar = {},
         bottomBar = {
             NavigationBar(windowInsets = WindowInsets(bottom = 24)) {
-                MainTab.entries.forEach { tab -> 
+                MainTab.entries.forEach { tab ->
                     NavigationBarItem(
                         selected = selectedTab == tab,
-                        onClick = {selectedTab = tab},
+                        onClick = { selectedTab = tab },
                         icon = { Icon(imageVector = tab.icon, contentDescription = tab.title) },
                         label = { Text(tab.title) }
                     )
@@ -55,12 +58,12 @@ private fun CompactMainScreen(modifier: Modifier = Modifier) {
             }
         }
     ) {
-        MainContent(selectedTab)
+        saveableStateHolder.SaveableStateProvider(selectedTab.name) { MainContent(selectedTab) }
     }
 }
 
 @Composable
-private fun MainContent(tab: MainTab,modifier: Modifier = Modifier) {
+private fun MainContent(tab: MainTab, modifier: Modifier = Modifier) {
     when (tab) {
         MainTab.HOME -> HomeScreen(modifier)
         MainTab.REGION -> RegionsScreen(modifier)
