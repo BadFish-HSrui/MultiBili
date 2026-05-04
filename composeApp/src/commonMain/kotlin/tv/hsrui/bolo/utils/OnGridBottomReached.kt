@@ -23,7 +23,7 @@ fun LazyGridState.OnGridBottomReached(
     }
 
     LaunchedEffect(shouldLoadMore) {
-        if (!isLoading) {
+        if (!isLoading && shouldLoadMore) {
             onLoadMore()
         }
     }

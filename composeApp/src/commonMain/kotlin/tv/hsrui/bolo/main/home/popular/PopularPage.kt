@@ -9,8 +9,8 @@ import tv.hsrui.bolo.ui.common.videosPage.VideosGridPage
 
 @Composable
 fun PopularPage(
-    popularViewModel: PopularViewModel = viewModel { PopularViewModel() },
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    popularViewModel: PopularViewModel = viewModel { PopularViewModel() }
 ) {
     val popularUiState by popularViewModel.uiState.collectAsState()
     VideosGridPage(

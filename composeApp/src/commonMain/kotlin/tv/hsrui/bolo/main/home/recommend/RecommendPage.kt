@@ -9,8 +9,8 @@ import tv.hsrui.bolo.ui.common.videosPage.VideosGridPage
 
 @Composable
 fun RecommendPage(
-    recommendViewModel: RecommendViewModel = viewModel { RecommendViewModel() },
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    recommendViewModel: RecommendViewModel = viewModel { RecommendViewModel() }
 ) {
     val recommendUiState by recommendViewModel.uiState.collectAsState()
     VideosGridPage(
