@@ -48,14 +48,14 @@ abstract class VideosViewModel : ViewModel() {
                 if (result.isSuccess) {
                     pageNumber++
                     _uiState.value =
-                        VideosUiState.Success((_uiState.value as VideosUiState.Success).videos + result.validData.videosList)
+                        VideosUiState.Success(
+                            ((_uiState.value as VideosUiState.Success).videos
+                                    + result.validData.videosList).distinctBy { it.avid })
                     canLoadMore = result.validData.canLoadMore
                 } else {
-                    pageNumber--
                     _uiState.value = VideosUiState.Error("[Api请求错误1]: " + result.message)
                 }
             } catch (e: Exception) {
-                pageNumber--
                 _uiState.value = VideosUiState.Error(e.message ?: "其他网络错误")
             } finally {
                 isLoading = false
