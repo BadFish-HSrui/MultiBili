@@ -1,6 +1,6 @@
 package tv.hsrui.network.feature.region
 
-enum class Regions(val title: String,val tid: Int) {
+enum class Region(val title: String, val tid: Int) {
     Cinephile("影视", 1001),
     Ent("娱乐", 1002),
     Music("音乐", 1003),

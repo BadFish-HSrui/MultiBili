@@ -6,12 +6,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import tv.hsrui.bolo.ui.common.videosPage.VideosGridPage
-import tv.hsrui.network.feature.region.Regions
+import tv.hsrui.network.feature.region.Region
 
 @Composable
 fun RegionFeedPage(
-    region: Regions,
-    regionFeedViewModel: RegionFeedViewModel = viewModel { RegionFeedViewModel(region) },
+    region: Region,
+    regionFeedViewModel: RegionFeedViewModel = viewModel(key = region.name) { RegionFeedViewModel(region) },
     modifier: Modifier = Modifier
 ) {
     val regionFeedUiState by regionFeedViewModel.uiState.collectAsState()
