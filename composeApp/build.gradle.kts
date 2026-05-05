@@ -56,6 +56,7 @@ kotlin {
             implementation(libs.coil.network.ktor3)
             implementation(libs.material.icons)
             implementation(libs.material3.adaptive)
+            implementation(libs.compose.webview.multiplatform)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
