@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -20,27 +21,61 @@ import tv.hsrui.bolo.utils.getNowWindowSize
 
 @Composable
 fun MainScreen(modifier: Modifier = Modifier) {
+    var selectedTab by remember { mutableStateOf(MainTab.HOME) }
+    val saveableStateHolder = rememberSaveableStateHolder()
+    val onClick: (MainTab) -> Unit = { selectedTab = it }
+
     when (getNowWindowSize()) {
-        AppWindowSize.EXPANDED -> ExpandedMainScreen(modifier)
-        AppWindowSize.MEDIUM -> MediumMainScreen(modifier)
-        AppWindowSize.COMPACT -> CompactMainScreen(modifier)
+        AppWindowSize.EXPANDED -> ExpandedMainScreen(
+            selectedTab,
+            saveableStateHolder,
+            onClick,
+            modifier
+        )
+
+        AppWindowSize.MEDIUM -> MediumMainScreen(
+            selectedTab,
+            saveableStateHolder,
+            onClick,
+            modifier
+        )
+
+        AppWindowSize.COMPACT -> CompactMainScreen(
+            selectedTab,
+            saveableStateHolder,
+            onClick,
+            modifier
+        )
     }
 }
 
 @Composable
-private fun ExpandedMainScreen(modifier: Modifier = Modifier) {
+private fun ExpandedMainScreen(
+    selectedTab: MainTab,
+    saveableStateHolder: SaveableStateHolder,
+    onClick: (MainTab) -> Unit,
+    modifier: Modifier = Modifier
+) {
 
 }
 
 @Composable
-private fun MediumMainScreen(modifier: Modifier = Modifier) {
+private fun MediumMainScreen(
+    selectedTab: MainTab,
+    saveableStateHolder: SaveableStateHolder,
+    onClick: (MainTab) -> Unit,
+    modifier: Modifier = Modifier
+) {
 
 }
 
 @Composable
-private fun CompactMainScreen(modifier: Modifier = Modifier) {
-    var selectedTab by remember { mutableStateOf(MainTab.HOME) }
-    val saveableStateHolder = rememberSaveableStateHolder()
+private fun CompactMainScreen(
+    selectedTab: MainTab,
+    saveableStateHolder: SaveableStateHolder,
+    onClick: (MainTab) -> Unit,
+    modifier: Modifier = Modifier
+) {
 
     Scaffold(
         modifier = modifier,
@@ -50,7 +85,7 @@ private fun CompactMainScreen(modifier: Modifier = Modifier) {
                 MainTab.entries.forEach { tab ->
                     NavigationBarItem(
                         selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
+                        onClick = { onClick(tab) },
                         icon = { Icon(imageVector = tab.icon, contentDescription = tab.title) },
                         label = { Text(tab.title) }
                     )
