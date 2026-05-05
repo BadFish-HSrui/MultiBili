@@ -8,7 +8,7 @@ import kotlinx.coroutines.launch
 import tv.hsrui.network.model.VideosResult
 
 abstract class VideosViewModel : ViewModel() {
-    private val _uiState = MutableStateFlow<VideosUiState>(VideosUiState.Loading)
+    protected val _uiState = MutableStateFlow<VideosUiState>(VideosUiState.Loading)
     val uiState = _uiState.asStateFlow()
 
     var canLoadMore: Boolean = false
@@ -66,7 +66,20 @@ abstract class VideosViewModel : ViewModel() {
     open fun refreshVideos() {
         pageNumber = 1
         isRefreshing = true
-        loadVideos()
+        viewModelScope.launch {
+            try {
+                val result = fetchVideos()
+                if (result.isSuccess) {
+                    pageNumber++
+                    _uiState.value = VideosUiState.Success(result.validData.videosList)
+                    canLoadMore = result.validData.canLoadMore
+                } else {
+                    _uiState.value = VideosUiState.Error("[Api请求错误0]: " + result.message)
+                }
+            } catch (e: Exception) {
+                _uiState.value = VideosUiState.Error(e.message ?: "其他网络错误")
+            }
+        }
         isRefreshing = false
     }
 }
