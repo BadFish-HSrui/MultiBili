@@ -56,6 +56,7 @@ private fun MediumMainScreen(
 ) {
     Row(modifier = modifier) {
         NavigationRail(
+            windowInsets = WindowInsets(),
             modifier = Modifier.fillMaxHeight()
         ) {
             Spacer(Modifier.weight(1F))

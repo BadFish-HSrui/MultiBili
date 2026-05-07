@@ -57,6 +57,8 @@ kotlin {
             implementation(libs.material.icons)
             implementation(libs.material3.adaptive)
             implementation(libs.compose.webview.multiplatform)
+            implementation(libs.ksafe)
+            implementation(libs.ksafe.compose)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
