@@ -18,6 +18,7 @@ import com.multiplatform.webview.web.rememberWebViewNavigator
 import com.multiplatform.webview.web.rememberWebViewState
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.getPlatform
 
 object LoginWebViewInterceptor {
@@ -49,7 +50,7 @@ fun LoginWebView(
 
     //测试时注释掉这一段可以不用重复登录
     LaunchedEffect(Unit) {
-        if (getPlatform().name.startsWith("iOS")) {
+        if (getPlatform().type == PlatformType.Ios) {
             clearWebView()
         } else {
             cookieManager.removeAllCookies()
