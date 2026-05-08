@@ -6,7 +6,12 @@ import kotlinx.serialization.Serializable
 sealed interface BoloRoute {
     @Serializable
     data object Main : BoloRoute
-    @Serializable
-    data object Login : BoloRoute
 
+    @Serializable
+    sealed interface Login : BoloRoute {
+        @Serializable
+        data object Screen : Login
+        @Serializable
+        data object Webview : Login
+    }
 }
