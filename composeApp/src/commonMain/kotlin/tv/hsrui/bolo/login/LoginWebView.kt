@@ -18,8 +18,9 @@ import com.multiplatform.webview.web.rememberWebViewNavigator
 import com.multiplatform.webview.web.rememberWebViewState
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
-import tv.hsrui.bolo.PlatformType
-import tv.hsrui.bolo.getPlatform
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.navigation.LocalNavigator
+import tv.hsrui.network.login.storage.LoginStorage
 
 object LoginWebViewInterceptor {
     var interceptedFlag by mutableStateOf(false)
@@ -30,13 +31,14 @@ object LoginWebViewInterceptor {
 }
 
 @Composable
-fun LoginWebView(
-    onLoginSuccess: (Map<String, String>) -> Unit
-) {
+fun LoginWebView() {
     val webViewState = rememberWebViewState("https://passport.bilibili.com/login")
-    val navigator = rememberWebViewNavigator()
+    val webNavigator = rememberWebViewNavigator()
     val cookieManager = remember { WebViewCookieManager() }
     val scope = rememberCoroutineScope()
+
+    val navigator = LocalNavigator.current
+    val loginStorage: LoginStorage = koinInject()
 
     val isLoginRedirect: (String) -> Boolean = { url ->
         !url.startsWith("https://passport.bili") && url.isNotEmpty()
@@ -45,17 +47,18 @@ fun LoginWebView(
     val onLoginDetected: suspend () -> Unit = {
         val cookies = cookieManager.getCookies("https://www.bilibili.com/")
         val cookieMap = cookies.associate { it.name to it.value }
-        onLoginSuccess(cookieMap)
+        loginStorage.saveCookie(cookieMap)
+        navigator.goHome()
     }
 
     //测试时注释掉这一段可以不用重复登录
-    LaunchedEffect(Unit) {
-        if (getPlatform().type == PlatformType.Ios) {
-            clearWebView()
-        } else {
-            cookieManager.removeAllCookies()
-        }
-    }
+//    LaunchedEffect(Unit) {
+//        if (getPlatform().type == PlatformType.Ios) {
+//            clearWebView()
+//        } else {
+//            cookieManager.removeAllCookies()
+//        }
+//    }
 
     LaunchedEffect(webViewState) {
         snapshotFlow { webViewState.loadingState }
@@ -80,7 +83,7 @@ fun LoginWebView(
     WebView(
         state = webViewState,
         modifier = Modifier.fillMaxSize(),
-        navigator = navigator,
+        navigator = webNavigator,
         onCreated = { nativeWebView ->
             setupWebViewInterceptor(nativeWebView)
         }

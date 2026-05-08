@@ -1,0 +1,45 @@
+package tv.hsrui.bolo.login
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.PlatformType
+import tv.hsrui.bolo.getPlatform
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.LocalNavigator
+import tv.hsrui.network.login.storage.LoginStorage
+
+@Preview
+@Composable
+fun LoginScreen(modifier: Modifier = Modifier) {
+    val navigator = LocalNavigator.current
+    val loginStorage: LoginStorage = koinInject()
+
+    if (!loginStorage.isLoggedIn) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (getPlatform().type != PlatformType.Desktop) {
+                    Button(
+                        onClick = { navigator.navigateTo(BoloRoute.Login.Webview) },
+                    ) {
+                        Text("Webview网页登录")
+                    }
+                }
+            }
+        }
+    } else {
+        Box(
+            Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) { Text(loginStorage.cookie.toString()) }
+    }
+}

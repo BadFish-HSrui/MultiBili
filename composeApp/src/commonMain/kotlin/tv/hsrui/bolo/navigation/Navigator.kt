@@ -16,6 +16,10 @@ class Navigator {
             backStack.removeLast()
         }
     }
+
+    fun goHome() {
+        backStack.removeRange(1, backStack.size)
+    }
 }
 
 val LocalNavigator = staticCompositionLocalOf<Navigator> {
