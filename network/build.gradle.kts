@@ -69,6 +69,7 @@ kotlin {
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.ksafe)
                 implementation(libs.ksafe.compose)
+                implementation(libs.koin.core)
             }
         }
 
