@@ -1,0 +1,14 @@
+package tv.hsrui.bolo.storage.kSafe
+
+import eu.anifantakis.lib.ksafe.KSafe
+import org.koin.core.module.Module
+import org.koin.core.qualifier.named
+import org.koin.dsl.module
+
+actual val KSafeModule: Module = module {
+    single(named("login")) {
+        KSafe(
+            fileName = "login"
+        )
+    }
+}
