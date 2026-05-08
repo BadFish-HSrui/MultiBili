@@ -7,7 +7,7 @@
 
 </div>
 
-### 本项目不包含以下特性：
+### 不包含以下特性：
 
 - :thumbsup: 丝滑的使用体验
 - :pencil2: 精心设计的UI
@@ -31,3 +31,4 @@
 - [SocialSisterYi/bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect): 提供B站Api信息
 - [jordond/MaterialKolor](https://github.com/jordond/MaterialKolor): 用于创建动态Material3色彩
 - [KevinnZou/compose-webview-multiplatform](https://github.com/KevinnZou/compose-webview-multiplatform): 用于加载ios与安卓的网页登录页面 
+- [ioannisa/KSafe](https://github.com/ioannisa/KSafe): 加密存储登录Cookie等信心
