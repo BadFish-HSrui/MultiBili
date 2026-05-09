@@ -178,24 +178,26 @@ fun ShowVideoCard(
                                     modifier = Modifier.size(10.dp)
                                 )
                                 Text(
-                                    videoInfo.likeCount.formatToString(),
+                                    "${videoInfo.likeCount.formatToString()} ${videoInfo.likeCount * 1000 / videoInfo.viewCount / 10.0F}%",
                                     style = infoTextStyle
                                 )
                             }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .padding(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Comment,
-                                    contentDescription = "评论量",
-                                    modifier = Modifier.size(10.dp)
-                                )
-                                Text(
-                                    videoInfo.replyCount.formatToString(),
-                                    style = infoTextStyle
-                                )
+                            if (videoInfo.replyCount != -1) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .padding(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.Comment,
+                                        contentDescription = "评论量",
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                    Text(
+                                        videoInfo.replyCount.formatToString(),
+                                        style = infoTextStyle
+                                    )
+                                }
                             }
                             Spacer(modifier = Modifier.weight(1F))
                         }
