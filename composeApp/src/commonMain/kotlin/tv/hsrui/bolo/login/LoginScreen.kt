@@ -20,26 +20,18 @@ import tv.hsrui.network.login.storage.LoginStorage
 @Composable
 fun LoginScreen(modifier: Modifier = Modifier) {
     val navigator = LocalNavigator.current
-    val loginStorage: LoginStorage = koinInject()
 
-    if (!loginStorage.isLoggedIn) {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                if (getPlatform().type != PlatformType.Desktop) {
-                    Button(
-                        onClick = { navigator.navigateTo(BoloRoute.Login.Webview) },
-                    ) {
-                        Text("Webview网页登录")
-                    }
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (getPlatform().type != PlatformType.Desktop) {
+                Button(
+                    onClick = { navigator.navigateTo(BoloRoute.Login.Webview) },
+                ) {
+                    Text("Webview网页登录")
                 }
             }
         }
-    } else {
-        Box(
-            Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) { Text(loginStorage.cookie.toString()) }
     }
 }
