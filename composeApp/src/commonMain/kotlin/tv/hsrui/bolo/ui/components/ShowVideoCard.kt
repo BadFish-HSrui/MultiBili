@@ -68,7 +68,7 @@ fun ShowVideoCard(
         maxTitleLines = 1
         titleHeight = 16.dp
         roundedCornerSize = 12.dp
-        coverUrl = videoInfo.coverUrl
+        coverUrl = videoInfo.coverUrl + "@800w_450h_1c.webp"
 
     } else {
         infoTextStyle = MaterialTheme.typography.labelSmall
@@ -76,7 +76,7 @@ fun ShowVideoCard(
         maxTitleLines = 2
         titleHeight = 36.dp
         roundedCornerSize = 4.dp
-        coverUrl = videoInfo.coverUrl43
+        coverUrl = videoInfo.coverUrl43 + "@400w_300h_1c.webp"
     }
 
     var isFocused by remember { mutableStateOf(false) }
