@@ -24,7 +24,7 @@ data class MyAccountInfo(
 @Serializable
 data class MyAccountData(
     val profile: MyAccountProfile = MyAccountProfile(),
-    val coins: Int = -1
+    val coins: Float = -1F
 )
 
 @Serializable
