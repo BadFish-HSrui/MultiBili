@@ -23,10 +23,11 @@ import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.storage.kSafe.KSafeModule
 import tv.hsrui.network.login.storage.LoginStorageModule
 import tv.hsrui.bolo.ui.theme.AppTheme
+import tv.hsrui.network.feature.account.myinfo.MyAccountInfoModule
 
 fun koinConfig(): KoinConfiguration {
     return koinConfiguration {
-        modules(KSafeModule, LoginStorageModule)
+        modules(KSafeModule, LoginStorageModule, MyAccountInfoModule)
     }
 }
 

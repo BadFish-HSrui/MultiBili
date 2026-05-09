@@ -19,6 +19,8 @@ import com.multiplatform.webview.web.rememberWebViewState
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.PlatformType
+import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.navigation.LocalNavigator
 import tv.hsrui.network.login.storage.LoginStorage
 
@@ -51,14 +53,13 @@ fun LoginWebView() {
         navigator.goHome()
     }
 
-    //测试时注释掉这一段可以不用重复登录
-//    LaunchedEffect(Unit) {
-//        if (getPlatform().type == PlatformType.Ios) {
-//            clearWebView()
-//        } else {
-//            cookieManager.removeAllCookies()
-//        }
-//    }
+    LaunchedEffect(Unit) {
+        if (getPlatform().type == PlatformType.Ios) {
+            clearWebView()
+        } else {
+            cookieManager.removeAllCookies()
+        }
+    }
 
     LaunchedEffect(webViewState) {
         snapshotFlow { webViewState.loadingState }
