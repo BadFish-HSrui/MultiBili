@@ -20,6 +20,8 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import multibili.composeapp.generated.resources.AppIconSquare
 import multibili.composeapp.generated.resources.Res
 import org.jetbrains.compose.resources.painterResource
@@ -40,6 +43,7 @@ import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.LocalNavigator
 import tv.hsrui.bolo.utils.AppWindowSize
 import tv.hsrui.bolo.utils.getNowWindowSize
+import tv.hsrui.network.feature.account.myinfo.MyAccountInfoManager
 import tv.hsrui.network.login.storage.LoginStorage
 
 @Composable
@@ -161,7 +165,17 @@ fun LoginOrAvatarImage(modifier: Modifier = Modifier) {
         modifier = modifier
     ) {
         if (loginStorage.isLoggedIn) {
-            Text("CCB")
+            val myAccountInfoManager: MyAccountInfoManager = koinInject()
+            val myAccountInfo by myAccountInfoManager.info.collectAsState()
+
+            LaunchedEffect(Unit) { myAccountInfoManager.loadInfo() }
+
+            AsyncImage(
+                model = myAccountInfo.face,
+                contentDescription = "个人主页",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
         } else {
             Image(
                 painter = painterResource(Res.drawable.AppIconSquare),

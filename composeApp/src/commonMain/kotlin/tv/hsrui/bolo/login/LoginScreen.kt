@@ -9,12 +9,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import org.koin.compose.koinInject
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.LocalNavigator
-import tv.hsrui.network.login.storage.LoginStorage
 
 @Preview
 @Composable
