@@ -11,7 +11,20 @@ sealed interface BoloRoute {
     sealed interface Login : BoloRoute {
         @Serializable
         data object Screen : Login
+
         @Serializable
         data object Webview : Login
+    }
+
+    @Serializable
+    sealed interface AccountFeature : BoloRoute {
+        @Serializable
+        data object List : AccountFeature
+        @Serializable
+        data object History : AccountFeature
+        @Serializable
+        data object WatchLater : AccountFeature
+        @Serializable
+        data object Favorite : AccountFeature
     }
 }

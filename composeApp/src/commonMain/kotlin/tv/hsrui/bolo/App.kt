@@ -53,6 +53,11 @@ fun App() {
 
                                 is BoloRoute.Login.Screen -> NavEntry(key = route) { LoginScreen() }
                                 is BoloRoute.Login.Webview -> NavEntry(key = route) { LoginWebView() }
+
+                                is BoloRoute.AccountFeature.List -> NavEntry(key = route) {}
+                                is BoloRoute.AccountFeature.WatchLater -> NavEntry(key = route) {}
+                                is BoloRoute.AccountFeature.History -> NavEntry(key = route) {}
+                                is BoloRoute.AccountFeature.Favorite -> NavEntry(key = route) {}
                             }
                         },
                         modifier = Modifier.padding(
