@@ -2,6 +2,7 @@ package tv.hsrui.bolo.main
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -24,8 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.SaveableStateHolder
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,93 +48,72 @@ import tv.hsrui.network.login.storage.LoginStorage
 
 @Composable
 fun MainScreen(modifier: Modifier = Modifier) {
-    var selectedTab by remember { mutableStateOf(MainTab.HOME) }
-    val saveableStateHolder = rememberSaveableStateHolder()
+    var selectedTab by rememberSaveable { mutableStateOf(MainTab.HOME) }
     val onClick: (MainTab) -> Unit = { selectedTab = it }
+    val saveableStateHolder = rememberSaveableStateHolder()
+    val isVerticalLayout = getNowWindowSize() == AppWindowSize.COMPACT
 
-    when (getNowWindowSize()) {
-        AppWindowSize.MEDIUM, AppWindowSize.EXPANDED -> MediumMainScreen(
-            selectedTab,
-            saveableStateHolder,
-            onClick,
-            modifier
-        )
-
-        AppWindowSize.COMPACT -> CompactMainScreen(
-            selectedTab,
-            saveableStateHolder,
-            onClick,
-            modifier
-        )
-    }
-}
-
-@Composable
-private fun MediumMainScreen(
-    selectedTab: MainTab,
-    saveableStateHolder: SaveableStateHolder,
-    onClick: (MainTab) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(modifier = modifier) {
-        NavigationRail(
-            windowInsets = WindowInsets(),
-            modifier = Modifier.fillMaxHeight()
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                LoginOrAvatarImage(modifier = Modifier.size(48.dp))
-                Spacer(Modifier.weight(0.8F))
-                MainTab.entries.forEach { tab ->
-                    NavigationRailItem(
-                        selected = selectedTab == tab,
-                        onClick = { onClick(tab) },
-                        icon = { Icon(imageVector = tab.icon, contentDescription = tab.title) },
-                        label = { Text(tab.title) }
-                    )
+    saveableStateHolder.SaveableStateProvider(key = selectedTab) {
+        Scaffold(
+            modifier = modifier,
+            topBar = {
+                if (isVerticalLayout) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 4.dp)
+                    ) {
+                        LoginOrAvatarImage(Modifier.size(42.dp))
+                    }
                 }
-                Spacer(Modifier.weight(1F))
-            }
-        }
-
-        saveableStateHolder.SaveableStateProvider(selectedTab.name) {
-            MainContent(selectedTab)
-        }
-    }
-}
-
-@Composable
-private fun CompactMainScreen(
-    selectedTab: MainTab,
-    saveableStateHolder: SaveableStateHolder,
-    onClick: (MainTab) -> Unit,
-    modifier: Modifier = Modifier
-) {
-
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 4.dp)) {
-                LoginOrAvatarImage(Modifier.size(42.dp))
-            }
-        },
-        bottomBar = {
-            NavigationBar(windowInsets = WindowInsets(bottom = 24)) {
-                MainTab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = selectedTab == tab,
-                        onClick = { onClick(tab) },
-                        icon = { Icon(imageVector = tab.icon, contentDescription = tab.title) },
-                        label = { Text(tab.title) }
-                    )
+            },
+            bottomBar = {
+                if (isVerticalLayout) {
+                    NavigationBar(windowInsets = WindowInsets(bottom = 24)) {
+                        MainTab.entries.forEach { tab ->
+                            NavigationBarItem(
+                                selected = selectedTab == tab,
+                                onClick = { onClick(tab) },
+                                icon = {
+                                    Icon(
+                                        imageVector = tab.icon,
+                                        contentDescription = tab.title
+                                    )
+                                },
+                                label = { Text(tab.title) }
+                            )
+                        }
+                    }
                 }
             }
-        }
-    ) { innerPadding ->
-        saveableStateHolder.SaveableStateProvider(selectedTab.name) {
-            MainContent(
-                tab = selectedTab,
-                modifier = Modifier.padding(innerPadding)
-            )
+        ) { innerPadding ->
+            Row(modifier = modifier) {
+                if (!isVerticalLayout) {
+                    NavigationRail(
+                        windowInsets = WindowInsets(),
+                        modifier = Modifier.fillMaxHeight()
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            LoginOrAvatarImage(modifier = Modifier.size(48.dp))
+                            Spacer(Modifier.weight(0.8F))
+                            MainTab.entries.forEach { tab ->
+                                NavigationRailItem(
+                                    selected = selectedTab == tab,
+                                    onClick = { onClick(tab) },
+                                    icon = {
+                                        Icon(
+                                            imageVector = tab.icon,
+                                            contentDescription = tab.title
+                                        )
+                                    },
+                                    label = { Text(tab.title) }
+                                )
+                            }
+                            Spacer(Modifier.weight(1F))
+                        }
+                    }
+                }
+                val paddingValues = if (isVerticalLayout) innerPadding else PaddingValues()
+                MainContent(selectedTab, Modifier.padding(paddingValues))
+            }
         }
     }
 }
