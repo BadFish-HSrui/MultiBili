@@ -40,7 +40,7 @@ import org.koin.compose.koinInject
 import tv.hsrui.bolo.main.home.HomeScreen
 import tv.hsrui.bolo.main.region.RegionsScreen
 import tv.hsrui.bolo.navigation.BoloRoute
-import tv.hsrui.bolo.navigation.LocalNavigator
+import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.utils.AppWindowSize
 import tv.hsrui.bolo.utils.getNowWindowSize
 import tv.hsrui.network.feature.account.myinfo.MyAccountInfoManager
@@ -130,10 +130,10 @@ private fun MainContent(tab: MainTab, modifier: Modifier = Modifier) {
 fun LoginOrAvatarImage(modifier: Modifier = Modifier) {
     val onClick: () -> Unit
     val loginStorage: LoginStorage = koinInject()
-    val navigator = LocalNavigator.current
+    val navigator: Navigator = koinInject()
 
     onClick = if (loginStorage.isLoggedIn) {
-        {}
+        { navigator.navigateTo(BoloRoute.AccountFeature.List) }
     } else {
         { navigator.navigateTo(BoloRoute.Login.Screen) }
     }

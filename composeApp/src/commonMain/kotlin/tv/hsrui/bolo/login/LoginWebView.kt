@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.getPlatform
-import tv.hsrui.bolo.navigation.LocalNavigator
+import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.network.login.storage.LoginStorage
 
 object LoginWebViewInterceptor {
@@ -39,7 +39,7 @@ fun LoginWebView() {
     val cookieManager = remember { WebViewCookieManager() }
     val scope = rememberCoroutineScope()
 
-    val navigator = LocalNavigator.current
+    val navigator: Navigator = koinInject()
     val loginStorage: LoginStorage = koinInject()
 
     val isLoginRedirect: (String) -> Boolean = { url ->
