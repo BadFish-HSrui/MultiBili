@@ -15,10 +15,16 @@ data class MyAccountInfo(
     val min by data.profile::mid
     val name by data.profile::name
     val face by data.profile::face
+    val sign by data.profile::sign
     val sex by data.profile::sex
     val level by data.profile::level
 
     val isVip: Boolean get() = (data.profile.vip.status == 1)
+    val vipTypeString: String get() = when(data.profile.vip.type) {
+        1 -> "大会员"
+        2 -> "年度大会员"
+        else -> ""
+    }
 }
 
 @Serializable
@@ -33,6 +39,7 @@ data class MyAccountProfile(
     val name: String = "",
     val sex: String = "",
     val face: String = "",
+    val sign: String = "",
     val level: Int = 0,
     val vip: MyAccountVip = MyAccountVip()
 )

@@ -7,8 +7,8 @@ class MyAccountInfoManager {
     private var _info = MutableStateFlow(MyAccountInfo())
     var info = _info.asStateFlow()
 
-    suspend fun loadInfo() {
-        if (!_info.value.isSuccess) {
+    suspend fun loadInfo(isForce: Boolean = false) {
+        if (isForce || !_info.value.isSuccess) {
             _info.value = fetchMyAccountInfo()
         }
     }
