@@ -23,7 +23,7 @@ import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -42,7 +42,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.utils.formatToString
@@ -55,7 +57,7 @@ fun ShowVideoCard(
     isWide: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val infoTextStyle: TextStyle
+    val infoTextSize: TextUnit
     val coverAspectRatio: Float
     val maxTitleLines: Int
     val titleHeight: Dp
@@ -63,7 +65,7 @@ fun ShowVideoCard(
     val coverUrl: String
 
     if (isWide) {
-        infoTextStyle = MaterialTheme.typography.labelMedium
+        infoTextSize = 12.sp
         coverAspectRatio = 16F / 9F
         maxTitleLines = 1
         titleHeight = 16.dp
@@ -71,7 +73,7 @@ fun ShowVideoCard(
         coverUrl = videoInfo.coverUrl + "@800w_450h_1c.webp"
 
     } else {
-        infoTextStyle = MaterialTheme.typography.labelSmall
+        infoTextSize = 10.sp
         coverAspectRatio = 4F / 3F
         maxTitleLines = 2
         titleHeight = 36.dp
@@ -87,6 +89,7 @@ fun ShowVideoCard(
 
     Card(
         modifier = modifier
+            .fillMaxSize()
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
             }
@@ -112,7 +115,10 @@ fun ShowVideoCard(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
-                CompositionLocalProvider(LocalContentColor provides Color.White) {
+                CompositionLocalProvider(
+                    LocalContentColor provides Color.White,
+                    LocalTextStyle provides TextStyle(fontSize = infoTextSize)
+                ) {
                     Column {
                         Row(
                             modifier = Modifier
@@ -130,8 +136,7 @@ fun ShowVideoCard(
                                     modifier = Modifier.size(10.dp)
                                 )
                                 Text(
-                                    videoInfo.viewCount.formatToString(),
-                                    style = infoTextStyle
+                                    videoInfo.viewCount.formatToString()
                                 )
                             }
                             Row(
@@ -145,8 +150,7 @@ fun ShowVideoCard(
                                     modifier = Modifier.size(10.dp)
                                 )
                                 Text(
-                                    videoInfo.danmakuCount.formatToString(),
-                                    style = infoTextStyle
+                                    videoInfo.danmakuCount.formatToString()
                                 )
                             }
                             Spacer(modifier = Modifier.weight(1F))
@@ -156,8 +160,7 @@ fun ShowVideoCard(
                                     .padding(4.dp)
                             ) {
                                 Text(
-                                    videoInfo.duration,
-                                    style = infoTextStyle
+                                    videoInfo.duration
                                 )
                             }
                         }
@@ -179,7 +182,6 @@ fun ShowVideoCard(
                                 )
                                 Text(
                                     "${videoInfo.likeCount.formatToString()} ${videoInfo.likeCount * 1000 / videoInfo.viewCount / 10.0F}%",
-                                    style = infoTextStyle
                                 )
                             }
                             if (videoInfo.replyCount != -1) {
@@ -194,8 +196,7 @@ fun ShowVideoCard(
                                         modifier = Modifier.size(10.dp)
                                     )
                                     Text(
-                                        videoInfo.replyCount.formatToString(),
-                                        style = infoTextStyle
+                                        videoInfo.replyCount.formatToString()
                                     )
                                 }
                             }
@@ -206,7 +207,8 @@ fun ShowVideoCard(
             }
             Text(
                 text = videoInfo.title,
-                style = MaterialTheme.typography.bodySmall,
+                fontSize = 13.sp,
+                lineHeight = 16.sp,
                 maxLines = maxTitleLines,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
@@ -215,7 +217,8 @@ fun ShowVideoCard(
             )
             Text(
                 videoInfo.upName,
-                style = infoTextStyle,
+                fontSize = 11.sp,
+                lineHeight = 12.sp,
                 modifier = Modifier.align(Alignment.End)
                     .padding(4.dp)
             )

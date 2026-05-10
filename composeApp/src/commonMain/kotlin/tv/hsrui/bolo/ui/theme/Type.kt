@@ -5,8 +5,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import multibili.composeapp.generated.resources.Res
 import multibili.composeapp.generated.resources.notosans_bold
 import multibili.composeapp.generated.resources.notosans_regular
@@ -36,16 +34,10 @@ fun rememberAppTypography(): Typography {
             titleSmall = baseline.titleSmall.copy(fontFamily = displayFontFamily),
             bodyLarge = baseline.bodyLarge.copy(fontFamily = bodyFontFamily),
             bodyMedium = baseline.bodyMedium.copy(fontFamily = bodyFontFamily),
-            bodySmall = baseline.bodySmall.copy(
-                fontSize = 13.sp,
-                fontFamily = bodyFontFamily),
+            bodySmall = baseline.bodySmall.copy(fontFamily = bodyFontFamily),
             labelLarge = baseline.labelLarge.copy(fontFamily = bodyFontFamily),
-            labelMedium = baseline.labelMedium.copy(
-                fontSize = 12.sp,
-                fontFamily = bodyFontFamily),
-            labelSmall = baseline.labelSmall.copy(
-                fontSize = 10.sp,
-                fontFamily = bodyFontFamily
+            labelMedium = baseline.labelMedium.copy(fontFamily = bodyFontFamily),
+            labelSmall = baseline.labelSmall.copy(fontFamily = bodyFontFamily
             ),
         )
     }
