@@ -8,15 +8,15 @@ import kotlinx.serialization.json.JsonNames
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class VideoCard(
-    @SerialName("aid") val avid: Long,
-    @SerialName("bvid") val bvid: String,
-    @SerialName("title") val title: String,
-    @SerialName("pubdate") val publishDate: Long,
-    @SerialName("duration") private val _duration: Int,
-    @SerialName("pic") @JsonNames("cover") private val pic: String,
-    @SerialName("pic_4_3") private val pic43: String? = null,
-    @SerialName("stat") private val stat: Stat,
-    @SerialName("owner") @JsonNames("author")  private val owner: Owner
+    @SerialName("aid") val avid: Long = 0,
+    @SerialName("bvid") val bvid: String = "",
+    @SerialName("title") val title: String = "",
+    @SerialName("pubdate") val publishDate: Long = 0,
+    @SerialName("duration") private val _duration: Int = 0,
+    @SerialName("pic") @JsonNames("cover") private val pic: String = "",
+    @SerialName("pic_4_3") private val pic43: String = "",
+    @SerialName("stat") private val stat: Stat = Stat(),
+    @SerialName("owner") @JsonNames("author") private val owner: Owner = Owner()
 ) {
 
     val viewCount by stat::view
@@ -26,12 +26,15 @@ data class VideoCard(
     val favoriteCount by stat::favorite
     val replyCount by stat::reply
     val upName by owner::name
-    val upAvatarUrl by lazy { owner.face?.toHttpsUrl() }
+    val upAvatarUrl by lazy { owner.face.toHttpsUrl() }
     val coverUrl by lazy { pic.toHttpsUrl() }
-    val coverUrl43 by lazy { pic43?.toHttpsUrl() ?: pic.toHttpsUrl() }
+    val coverUrl43 by lazy { pic43.toHttpsUrl().ifEmpty { pic.toHttpsUrl() } }
     val duration
-        get() = if (_duration < 3600) { "${_duration / 60}:${_duration % 60}" }
-            else { "${_duration / 3600}:${_duration % 3600 / 60}:${_duration % 60}" }
+        get() = if (_duration < 3600) {
+            "${_duration / 60}:${_duration % 60}"
+        } else {
+            "${_duration / 3600}:${_duration % 3600 / 60}:${_duration % 60}"
+        }
 
 
     @Serializable
@@ -46,12 +49,14 @@ data class VideoCard(
 
     @Serializable
     data class Owner(
-        val name: String,
-        val face: String? = null
+        val mid: Long = 0,
+        val name: String = "",
+        val face: String = ""
     )
 }
 
 private fun String.toHttpsUrl(): String = when {
+    isEmpty() -> ""
     startsWith("//") -> "https:$this"
     startsWith("http://") -> replaceFirst("http://", "https://")
     else -> this
@@ -68,4 +73,5 @@ val VideoCardExample = VideoCard(
     owner = VideoCard.Owner(
         name = "东洋雪莲",
         face = "https://i2.hdslb.com/bfs/face/4cbf2f66d23a324ecca8d3c07adbcafecfef829b.jpg"
-    ))
+    )
+)

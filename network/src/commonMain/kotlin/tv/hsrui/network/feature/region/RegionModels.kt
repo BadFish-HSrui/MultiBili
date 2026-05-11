@@ -9,16 +9,14 @@ import tv.hsrui.network.model.VideosResult
 data class RegionResponse(
     private val code: Int = -1,
     override val message: String = "-1",
-    private val data: RegionData? = null
+    private val data: RegionData = RegionData()
 ) : VideosResult {
-    override val isSuccess: Boolean get() = code == 0
+    override val isSuccess: Boolean get() = (code == 0)
     override val validData: ValidVideosData
-        get() = data?.let {
-            ValidVideosData(it.archives)
-        } ?: ValidVideosData(emptyList())
+        get() = ValidVideosData(videosList = data.archives, canLoadMore = true)
 }
 
 @Serializable
 data class RegionData(
-    val archives: List<VideoCard>
+    val archives: List<VideoCard> = emptyList()
 )

@@ -9,7 +9,7 @@ import tv.hsrui.network.model.VideoCard.Stat
 data class RawRecommendResponse(
     val code: Int = -1,
     val message: String = "",
-    val data: RawRecommendData? = null
+    val data: RawRecommendData = RawRecommendData()
 )
 
 @Serializable
@@ -19,22 +19,22 @@ data class RawRecommendData(
 
 @Serializable
 data class RawRecommendItem(
-    @SerialName("goto") val goto: String,
-    @SerialName("id") val id: Long,
-    @SerialName("bvid") val bvid: String,
-    @SerialName("title") val title: String,
-    @SerialName("pubdate") val publishDate: Long,
-    @SerialName("duration") val duration: Int,
-    @SerialName("pic") val pic: String,
-    @SerialName("pic_4_3") val pic43: String? = null,
-    val stat: RawStat? = null,
-    val owner: RawOwner
+    @SerialName("goto") val goto: String = "",
+    @SerialName("id") val id: Long = 0,
+    @SerialName("bvid") val bvid: String = "",
+    @SerialName("title") val title: String = "",
+    @SerialName("pubdate") val publishDate: Long = 0,
+    @SerialName("duration") val duration: Int = 0,
+    @SerialName("pic") val pic: String = "",
+    @SerialName("pic_4_3") val pic43: String = "",
+    val stat: RawStat = RawStat(),
+    val owner: RawOwner = RawOwner()
 )
 
 @Serializable
 data class RawOwner(
-    val name: String,
-    val face: String
+    val name: String = "",
+    val face: String = ""
 )
 
 @Serializable
@@ -55,14 +55,14 @@ fun RawRecommendItem.toVideoCard(): VideoCard {
         publishDate = publishDate,
         _duration = duration,
         pic = pic,
-        pic43 = if (pic43 != "" ) { pic43 } else null,
+        pic43 = pic43.ifEmpty { pic },
         stat = Stat(
-            view = stat?.view ?: -1,
-            like = stat?.like ?: -1,
-            coin = stat?.coin ?: -1,
-            favorite = stat?.favorite ?: -1,
-            danmaku = stat?.danmaku ?: -1,
-            reply = stat?.reply ?: -1
+            view = stat.view,
+            like = stat.like,
+            coin = stat.coin,
+            favorite = stat.favorite,
+            danmaku = stat.danmaku,
+            reply = stat.reply
         ),
         owner = VideoCard.Owner(
             name = owner.name,
