@@ -4,6 +4,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonNames
+import tv.hsrui.network.feature.utils.toHttpsUrl
 
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -53,13 +54,6 @@ data class VideoCard(
         val name: String = "",
         val face: String = ""
     )
-}
-
-private fun String.toHttpsUrl(): String = when {
-    isEmpty() -> ""
-    startsWith("//") -> "https:$this"
-    startsWith("http://") -> replaceFirst("http://", "https://")
-    else -> this
 }
 
 val VideoCardExample = VideoCard(
