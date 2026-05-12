@@ -8,4 +8,5 @@ object ApiUrls {
     const val ACCOUNT_INFO = "x/space/v2/info" //个人空间信息
     const val MY_ACCOUNT_INFO = "x/space/v2/myinfo" //我的个人空间信息
     const val FOLLOW_STATE = "x/relation/stat" //关注与被关注
+    const val HISTORY = "x/web-interface/history/cursor" //历史记录
 }
