@@ -34,7 +34,7 @@ import org.koin.compose.koinInject
 import tv.hsrui.bolo.ui.constant.color.BiliColor
 import tv.hsrui.bolo.ui.constant.color.BiliColor.getLevelColor
 import tv.hsrui.bolo.ui.theme.BoloShapes
-import tv.hsrui.bolo.utils.formatToString
+import tv.hsrui.bolo.utils.infoFormat.formatToString
 import tv.hsrui.network.feature.account.myinfo.MyAccountInfoManager
 
 @Composable

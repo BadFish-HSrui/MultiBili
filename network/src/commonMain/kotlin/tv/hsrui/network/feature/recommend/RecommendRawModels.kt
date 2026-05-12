@@ -53,7 +53,7 @@ fun RawRecommendItem.toVideoCard(): VideoCard {
         bvid = bvid,
         title = title,
         publishDate = publishDate,
-        _duration = duration,
+        duration = duration,
         pic = pic,
         pic43 = pic43.ifEmpty { pic },
         stat = Stat(

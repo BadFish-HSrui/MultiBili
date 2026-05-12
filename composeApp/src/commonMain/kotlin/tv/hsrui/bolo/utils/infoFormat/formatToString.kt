@@ -1,6 +1,6 @@
-package tv.hsrui.bolo.utils
+package tv.hsrui.bolo.utils.infoFormat
 
-fun Number.formatToString(): String {
+fun Int.formatToString(): String {
     val value = this.toLong()
     return when {
         value < 10000 -> value.toString()

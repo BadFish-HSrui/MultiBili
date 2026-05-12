@@ -48,7 +48,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.ui.theme.BoloShapes
-import tv.hsrui.bolo.utils.formatToString
+import tv.hsrui.bolo.utils.infoFormat.formatToDuration
+import tv.hsrui.bolo.utils.infoFormat.formatToString
 import tv.hsrui.network.model.VideoCard
 import tv.hsrui.network.model.VideoCardExample
 
@@ -90,7 +91,6 @@ fun ShowVideoCard(
 
     Card(
         modifier = modifier
-            .fillMaxSize()
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
             }
@@ -160,9 +160,7 @@ fun ShowVideoCard(
                                 modifier = Modifier
                                     .padding(4.dp)
                             ) {
-                                Text(
-                                    videoInfo.duration
-                                )
+                                Text(videoInfo.duration.formatToDuration())
                             }
                         }
                         Spacer(modifier = Modifier.weight(1F))
