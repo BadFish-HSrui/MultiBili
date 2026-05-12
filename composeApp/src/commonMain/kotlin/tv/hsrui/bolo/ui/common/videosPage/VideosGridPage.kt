@@ -18,7 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
 import kotlinx.coroutines.launch
-import tv.hsrui.bolo.ui.components.ShowVerticalVideoGrid
+import tv.hsrui.bolo.ui.components.video.ShowVerticalVideoGrid
 import tv.hsrui.bolo.utils.OnGridBottomReached
 import tv.hsrui.bolo.utils.setText
 

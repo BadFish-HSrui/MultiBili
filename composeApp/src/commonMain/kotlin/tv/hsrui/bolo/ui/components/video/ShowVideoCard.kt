@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.ui.components
+package tv.hsrui.bolo.ui.components.video
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.border
@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.automirrored.filled.ShortText
@@ -37,6 +36,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
+import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.bolo.utils.formatToString
 import tv.hsrui.network.model.VideoCard
 import tv.hsrui.network.model.VideoCardExample
@@ -61,7 +62,7 @@ fun ShowVideoCard(
     val coverAspectRatio: Float
     val maxTitleLines: Int
     val titleHeight: Dp
-    val roundedCornerSize: Dp
+    val cardShape: Shape
     val coverUrl: String
 
     if (isWide) {
@@ -69,7 +70,7 @@ fun ShowVideoCard(
         coverAspectRatio = 16F / 9F
         maxTitleLines = 1
         titleHeight = 16.dp
-        roundedCornerSize = 12.dp
+        cardShape = BoloShapes.InfoCard.Default
         coverUrl = videoInfo.coverUrl + "@800w_450h_1c.webp"
 
     } else {
@@ -77,7 +78,7 @@ fun ShowVideoCard(
         coverAspectRatio = 4F / 3F
         maxTitleLines = 2
         titleHeight = 36.dp
-        roundedCornerSize = 4.dp
+        cardShape = BoloShapes.InfoCard.Compact
         coverUrl = videoInfo.coverUrl43 + "@400w_300h_1c.webp"
     }
 
@@ -101,11 +102,11 @@ fun ShowVideoCard(
                 if (isFocused) Modifier.zIndex(1F).scale(animatedScale).border(
                     width = 2.dp,
                     color = Color.Cyan,
-                    shape = RoundedCornerShape(roundedCornerSize)
+                    shape = cardShape
                 )
                 else Modifier
             ),
-        shape = RoundedCornerShape(roundedCornerSize)
+        shape = cardShape
     ) {
         Column {
             Box(modifier = Modifier.aspectRatio(coverAspectRatio)) {

@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.ui.components
+package tv.hsrui.bolo.ui.components.video
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
