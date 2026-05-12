@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalContentColor
@@ -37,7 +36,6 @@ import tv.hsrui.bolo.ui.constant.color.BiliColor.getLevelColor
 import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.bolo.utils.formatToString
 import tv.hsrui.network.feature.account.myinfo.MyAccountInfoManager
-import kotlin.text.ifEmpty
 
 @Composable
 internal fun AccountInfoContent(modifier: Modifier = Modifier) {
