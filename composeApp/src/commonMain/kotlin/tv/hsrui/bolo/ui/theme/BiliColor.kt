@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.ui.constant.color
+package tv.hsrui.bolo.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
@@ -9,7 +9,7 @@ object BiliColor {
     const val LV4 = 0XFFFEB98D
     const val LV5 = 0XFFEE6829
     const val LV6 = 0XFFFE0000
-    const val BIG = 0xFFFC6397
+    const val theme = 0xFFFC6699
 
     fun getLevelColor(level: Int): Color {
         return Color(
@@ -23,4 +23,6 @@ object BiliColor {
             }
         )
     }
+
+    val ThemeColor = Color(theme)
 }

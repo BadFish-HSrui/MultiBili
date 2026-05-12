@@ -7,10 +7,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,7 +30,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -120,86 +117,76 @@ fun ShowVideoCard(
                     LocalContentColor provides Color.White,
                     LocalTextStyle provides TextStyle(fontSize = infoTextSize)
                 ) {
-                    Column {
+                    Row(Modifier.align(Alignment.TopStart)) {
                         Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .alpha(0.9f)
+                                .padding(4.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .padding(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.PlayCircle,
-                                    contentDescription = "播放量",
-                                    modifier = Modifier.size(10.dp)
-                                )
-                                Text(
-                                    videoInfo.viewCount.formatToString()
-                                )
-                            }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .padding(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ShortText,
-                                    contentDescription = "弹幕量",
-                                    modifier = Modifier.size(10.dp)
-                                )
-                                Text(
-                                    videoInfo.danmakuCount.formatToString()
-                                )
-                            }
-                            Spacer(modifier = Modifier.weight(1F))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .padding(4.dp)
-                            ) {
-                                Text(videoInfo.duration.formatToDuration())
-                            }
+                            Icon(
+                                imageVector = Icons.Filled.PlayCircle,
+                                contentDescription = "播放量",
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                videoInfo.viewCount.formatToString()
+                            )
                         }
-                        Spacer(modifier = Modifier.weight(1F))
                         Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .alpha(0.9f)
+                                .padding(4.dp)
                         ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ShortText,
+                                contentDescription = "弹幕量",
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                videoInfo.danmakuCount.formatToString()
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .align(Alignment.TopEnd)
+                    ) {
+                        Text(videoInfo.duration.formatToDuration())
+                    }
+
+                    Row(modifier = Modifier.align(Alignment.BottomStart)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .padding(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.ThumbUp,
+                                contentDescription = "点赞量",
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                "${videoInfo.likeCount.formatToString()} ${videoInfo.likeCount * 1000 / videoInfo.viewCount / 10.0F}%",
+                            )
+                        }
+                        if (videoInfo.replyCount != -1) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .padding(4.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.ThumbUp,
-                                    contentDescription = "点赞量",
+                                    imageVector = Icons.AutoMirrored.Filled.Comment,
+                                    contentDescription = "评论量",
                                     modifier = Modifier.size(10.dp)
                                 )
                                 Text(
-                                    "${videoInfo.likeCount.formatToString()} ${videoInfo.likeCount * 1000 / videoInfo.viewCount / 10.0F}%",
+                                    videoInfo.replyCount.formatToString()
                                 )
                             }
-                            if (videoInfo.replyCount != -1) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .padding(4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.Comment,
-                                        contentDescription = "评论量",
-                                        modifier = Modifier.size(10.dp)
-                                    )
-                                    Text(
-                                        videoInfo.replyCount.formatToString()
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.weight(1F))
                         }
                     }
                 }
@@ -227,6 +214,6 @@ fun ShowVideoCard(
 
 @Preview
 @Composable
-fun PreviewVideoCard() {
+private fun PreviewVideoCard() {
     ShowVideoCard(VideoCardExample, isWide = false)
 }

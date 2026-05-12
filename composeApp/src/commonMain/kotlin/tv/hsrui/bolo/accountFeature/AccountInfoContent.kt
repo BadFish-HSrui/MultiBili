@@ -31,8 +31,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import org.koin.compose.koinInject
-import tv.hsrui.bolo.ui.constant.color.BiliColor
-import tv.hsrui.bolo.ui.constant.color.BiliColor.getLevelColor
+import tv.hsrui.bolo.ui.theme.BiliColor
+import tv.hsrui.bolo.ui.theme.BiliColor.getLevelColor
 import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.bolo.utils.infoFormat.formatToString
 import tv.hsrui.network.feature.account.myinfo.MyAccountInfoManager
@@ -68,7 +68,7 @@ internal fun AccountInfoContent(modifier: Modifier = Modifier) {
                 if (myAccountInfo.isVip) {
                     Surface(
                         shape = CircleShape,
-                        color = Color(BiliColor.BIG),
+                        color = BiliColor.ThemeColor,
                         modifier = Modifier.width(68.dp)
                     ) {
                         Text(
@@ -98,7 +98,7 @@ internal fun AccountInfoContent(modifier: Modifier = Modifier) {
                     Text(
                         text = myAccountInfo.name,
                         textAlign = TextAlign.Center,
-                        color = if (myAccountInfo.isVip) Color(BiliColor.BIG) else LocalContentColor.current,
+                        color = if (myAccountInfo.isVip) BiliColor.ThemeColor else LocalContentColor.current,
                         modifier = Modifier.padding(horizontal = 4.dp)
                     )
 
