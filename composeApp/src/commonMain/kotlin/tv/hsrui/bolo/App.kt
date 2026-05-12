@@ -43,6 +43,7 @@ fun App() {
                     onBack = { navigator.goBack() },
                     entryProvider = { route ->
                         when (route) {
+                            is BoloRoute.Test -> NavEntry(key = route) { TestScreen() }
                             is BoloRoute.Main -> NavEntry(key = route) { MainScreen() }
 
                             is BoloRoute.Login.Screen -> NavEntry(key = route) { LoginScreen() }

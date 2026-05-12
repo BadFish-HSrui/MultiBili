@@ -5,6 +5,9 @@ import kotlinx.serialization.Serializable
 @Serializable
 sealed interface BoloRoute {
     @Serializable
+    data object Test : BoloRoute
+
+    @Serializable
     data object Main : BoloRoute
 
     @Serializable
