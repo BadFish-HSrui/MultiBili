@@ -13,9 +13,9 @@ data class HistoryVideosResponse(
                 list = list,
                 canLoadMore = canLoadMore,
                 loadParams = HistoryLoadParams(
-                    max = raw.data.max,
-                    viewAt = raw.data.viewAt,
-                    business = raw.data.business
+                    max = raw.data.cursor.max,
+                    viewAt = raw.data.cursor.viewAt,
+                    business = raw.data.cursor.business
                 )
             )
         }

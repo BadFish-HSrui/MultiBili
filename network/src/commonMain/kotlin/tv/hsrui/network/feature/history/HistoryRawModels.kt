@@ -13,10 +13,15 @@ data class HistoryRawResponse(
 
 @Serializable
 data class HistoryRawData(
+    val cursor: HistoryRowCursor = HistoryRowCursor(),
+    val list: List<HistoryRawItem> = emptyList()
+)
+
+@Serializable
+data class HistoryRowCursor(
     @SerialName("view_at") val viewAt: Long = 0,
     val max: Long = 0,
-    val business: String = "",
-    val list: List<HistoryRawItem> = emptyList()
+    val business: String = ""
 )
 
 @Serializable
