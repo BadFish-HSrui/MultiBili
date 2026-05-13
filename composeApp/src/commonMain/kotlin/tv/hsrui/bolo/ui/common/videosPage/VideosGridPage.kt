@@ -80,9 +80,7 @@ fun VideosGridPage(
                 ShowVerticalCardGrid(
                     cards =  uiState.videos,
                     keySelector = { it.avid },
-                    gridState = videoGridState,
-                    modifier = modifier.fillMaxSize(),
-                    needShowScrollToTopButton = true
+                    gridState = videoGridState
                 ) { video ->
                     ShowVideoCard(
                         videoInfo = video,
