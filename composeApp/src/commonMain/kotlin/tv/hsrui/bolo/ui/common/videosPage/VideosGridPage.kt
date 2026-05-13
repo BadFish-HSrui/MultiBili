@@ -18,7 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
 import kotlinx.coroutines.launch
-import tv.hsrui.bolo.ui.components.video.ShowVerticalVideoGrid
+import tv.hsrui.bolo.ui.components.grid.ShowVerticalCardGrid
+import tv.hsrui.bolo.ui.components.video.ShowVideoCard
 import tv.hsrui.bolo.utils.OnGridBottomReached
 import tv.hsrui.bolo.utils.setText
 
@@ -76,12 +77,18 @@ fun VideosGridPage(
             }
 
             is VideosUiState.Success -> {
-                ShowVerticalVideoGrid(
-                    uiState.videos,
+                ShowVerticalCardGrid(
+                    cards =  uiState.videos,
+                    keySelector = { it.avid },
                     gridState = videoGridState,
                     modifier = modifier.fillMaxSize(),
                     needShowScrollToTopButton = true
-                )
+                ) { video ->
+                    ShowVideoCard(
+                        videoInfo = video,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
 
         }

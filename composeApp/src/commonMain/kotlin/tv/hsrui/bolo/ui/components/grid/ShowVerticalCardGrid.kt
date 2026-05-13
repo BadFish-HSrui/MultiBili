@@ -1,9 +1,8 @@
-package tv.hsrui.bolo.ui.components.video
+package tv.hsrui.bolo.ui.components.grid
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -18,19 +17,19 @@ import androidx.compose.ui.unit.dp
 import tv.hsrui.bolo.utils.AppWindowSize
 import tv.hsrui.bolo.utils.ShowGridScrollToTopButton
 import tv.hsrui.bolo.utils.getNowWindowSize
-import tv.hsrui.network.model.VideoCard
 
 @Composable
-fun ShowVerticalVideoGrid(
-    videos: List<VideoCard>,
+fun <T> ShowVerticalCardGrid(
+    cards: List<T>,
+    keySelector: (T) -> Any,
     gridState: LazyGridState,
     modifier: Modifier = Modifier,
-    needShowScrollToTopButton: Boolean = false
+    needShowScrollToTopButton: Boolean = false,
+    howToShow: @Composable (T) -> Unit
 ) {
     val windowSize = getNowWindowSize()
 
     val columns: Int
-    val isWideCard: Boolean
     val contentPadding: Dp
     val contentSpacing: Dp
     val toTopBuffer: Int
@@ -38,7 +37,6 @@ fun ShowVerticalVideoGrid(
     when (windowSize) {
         AppWindowSize.EXPANDED -> {
             columns = 4
-            isWideCard = true
             contentPadding = 16.dp
             contentSpacing = 12.dp
             toTopBuffer = 12
@@ -46,7 +44,6 @@ fun ShowVerticalVideoGrid(
 
         AppWindowSize.MEDIUM -> {
             columns = 3
-            isWideCard = true
             contentPadding = 16.dp
             contentSpacing = 8.dp
             toTopBuffer = 8
@@ -54,7 +51,6 @@ fun ShowVerticalVideoGrid(
 
         AppWindowSize.COMPACT -> {
             columns = 2
-            isWideCard = false
             contentPadding = 8.dp
             contentSpacing = 4.dp
             toTopBuffer = 4
@@ -65,14 +61,10 @@ fun ShowVerticalVideoGrid(
             columns = GridCells.Fixed(columns),
             content = {
                 items(
-                    items = videos,
-                    key = { it.avid }
-                ) { video ->
-                    ShowVideoCard(
-                        videoInfo = video,
-                        isWide = isWideCard,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    items = cards,
+                    key = keySelector
+                ) { card ->
+                    howToShow(card)
                 }
             },
             contentPadding = PaddingValues(contentPadding),

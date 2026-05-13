@@ -58,3 +58,18 @@ private fun HistoryRawItem.toHistoryVideoCard(): HistoryVideoCard {
         regionString = regionString
     )
 }
+
+val HistoryVideoCardExample = HistoryVideoCard(
+    avid = 115327790751441,
+    bvid = "BV1gDxEzHE8Z",
+    title = "✨“我为你唱一曲如游丝的气息”《青衣DJ》✨/AI東 雪蓮",
+    subtitle = "",
+    coverUrl = "https://i2.hdslb.com/bfs/archive/7a7aa5e03fb63167e51a9d3d7a28ed2749128a45.jpg",
+    upName = "东洋雪莲",
+    upAvatarUrl = "https://i2.hdslb.com/bfs/face/4cbf2f66d23a324ecca8d3c07adbcafecfef829b.jpg",
+    upMid = 1060544882,
+    watchTime = 1778616753,
+    watchProgress = 21,
+    duration = 153,
+    regionString = "翻唱"
+)
