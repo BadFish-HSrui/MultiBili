@@ -22,7 +22,7 @@ import tv.hsrui.bolo.navigation.Navigator
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ShowTopBarWithBackButton(
+fun ShowTopBarWithNavigationButton(
     modifier: Modifier = Modifier,
     title: @Composable () -> Unit = { Text(stringResource(Res.string.app_name)) }
 ) {

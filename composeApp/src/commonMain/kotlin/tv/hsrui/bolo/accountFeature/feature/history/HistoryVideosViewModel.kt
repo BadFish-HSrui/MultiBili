@@ -1,0 +1,71 @@
+package tv.hsrui.bolo.accountFeature.feature.history
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import tv.hsrui.network.feature.history.HistoryLoadParams
+import tv.hsrui.network.feature.history.fetchHistoryVideos
+
+class HistoryVideosViewModel : ViewModel() {
+    private val _uiState = MutableStateFlow<HistoryVideosUiState>(HistoryVideosUiState.Loading)
+    val uiState = _uiState.asStateFlow()
+
+    var canLoadMore: Boolean = false
+    private var loadParams: HistoryLoadParams = HistoryLoadParams()
+    var isLoading: Boolean = false
+    var isRefreshing: Boolean = false
+
+    init {
+        loadVideos()
+    }
+
+    fun loadVideos() {
+        viewModelScope.launch {
+            try {
+                val result = fetchHistoryVideos()
+                if (result.isSuccess) {
+                    loadParams = result.validData.loadParams
+                    _uiState.value = HistoryVideosUiState.Success(result.validData.list)
+                    canLoadMore = result.validData.canLoadMore
+                } else {
+                    _uiState.value = HistoryVideosUiState.Error("[Api请求错误0]: " + result.message)
+                }
+            } catch (e: Exception) {
+                _uiState.value = HistoryVideosUiState.Error(e.message ?: "其他网络错误")
+            }
+        }
+    }
+
+    fun loadMoreVideos() {
+        if (isLoading) return
+        isLoading = true
+
+        viewModelScope.launch {
+            try {
+                val result = fetchHistoryVideos(loadParams = loadParams)
+                if (result.isSuccess) {
+                    loadParams = result.validData.loadParams
+                    _uiState.value =
+                        HistoryVideosUiState.Success(
+                            ((_uiState.value as HistoryVideosUiState.Success).videos
+                                    + result.validData.list).distinctBy { it.avid })
+                } else {
+                    _uiState.value = HistoryVideosUiState.Error("[Api请求错误1]: " + result.message)
+                }
+            } catch (e: Exception) {
+                _uiState.value = HistoryVideosUiState.Error(e.message ?: "其他网络错误")
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    fun refreshVideos() {
+        loadParams = HistoryLoadParams()
+        isRefreshing = true
+        loadVideos()
+        isRefreshing = false
+    }
+}

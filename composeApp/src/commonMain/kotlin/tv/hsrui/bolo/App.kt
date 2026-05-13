@@ -14,6 +14,7 @@ import org.koin.compose.koinInject
 import org.koin.dsl.KoinConfiguration
 import org.koin.dsl.koinConfiguration
 import tv.hsrui.bolo.accountFeature.AccountFeaturesScreen
+import tv.hsrui.bolo.accountFeature.feature.history.HistoryScreen
 import tv.hsrui.bolo.login.LoginScreen
 import tv.hsrui.bolo.login.LoginWebView
 import tv.hsrui.bolo.main.MainScreen
@@ -51,7 +52,7 @@ fun App() {
 
                             is BoloRoute.AccountFeature.List -> NavEntry(key = route) { AccountFeaturesScreen() }
                             is BoloRoute.AccountFeature.WatchLater -> NavEntry(key = route) {}
-                            is BoloRoute.AccountFeature.History -> NavEntry(key = route) {}
+                            is BoloRoute.AccountFeature.History -> NavEntry(key = route) { HistoryScreen() }
                             is BoloRoute.AccountFeature.Favorite -> NavEntry(key = route) {}
                         }
                     },
