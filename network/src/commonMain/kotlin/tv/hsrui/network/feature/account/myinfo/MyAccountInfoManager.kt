@@ -12,17 +12,21 @@ class MyAccountInfoManager {
     val info = _info.asStateFlow()
 
     suspend fun loadInfo(isForce: Boolean = false) {
-        if (isForce || !_info.value.isSuccess || !_followState.value.isSuccess) {
-            _info.value = fetchMyAccountInfo()
-            if (_info.value.isSuccess) {
-                _followState.value = fetchFollowState(mid = _info.value.mid)
-                _info.update { current ->
-                    current.copy(
-                        following = _followState.value.following,
-                        follower =_followState.value.follower,
-                    )
+        try{
+            if (isForce || !_info.value.isSuccess || !_followState.value.isSuccess) {
+                _info.value = fetchMyAccountInfo()
+                if (_info.value.isSuccess) {
+                    _followState.value = fetchFollowState(mid = _info.value.mid)
+                    _info.update { current ->
+                        current.copy(
+                            following = _followState.value.following,
+                            follower = _followState.value.follower,
+                        )
+                    }
                 }
             }
+        }catch (e: Exception){
+            /*TODO*/
         }
     }
 }
