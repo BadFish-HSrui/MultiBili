@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.ui.theme.BoloShapes
+import tv.hsrui.bolo.utils.AppWindowSize
+import tv.hsrui.bolo.utils.getNowWindowSize
 import tv.hsrui.bolo.utils.infoFormat.formatToDuration
 import tv.hsrui.bolo.utils.infoFormat.formatToString
 import tv.hsrui.network.model.VideoCard
@@ -53,31 +55,17 @@ import tv.hsrui.network.model.VideoCardExample
 @Composable
 fun ShowVideoCard(
     videoInfo: VideoCard,
-    isWide: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val infoTextSize: TextUnit
-    val coverAspectRatio: Float
-    val maxTitleLines: Int
-    val titleHeight: Dp
     val cardShape: Shape
-    val coverUrl: String
 
-    if (isWide) {
+    if (getNowWindowSize() != AppWindowSize.COMPACT) {
         infoTextSize = 12.sp
-        coverAspectRatio = 16F / 9F
-        maxTitleLines = 1
-        titleHeight = 16.dp
         cardShape = BoloShapes.InfoCard.Default
-        coverUrl = videoInfo.coverUrl + "@800w_450h_1c.webp"
-
     } else {
         infoTextSize = 10.sp
-        coverAspectRatio = 4F / 3F
-        maxTitleLines = 2
-        titleHeight = 36.dp
         cardShape = BoloShapes.InfoCard.Compact
-        coverUrl = videoInfo.coverUrl43 + "@400w_300h_1c.webp"
     }
 
     var isFocused by remember { mutableStateOf(false) }
@@ -106,9 +94,9 @@ fun ShowVideoCard(
         shape = cardShape
     ) {
         Column {
-            Box(modifier = Modifier.aspectRatio(coverAspectRatio)) {
+            Box(modifier = Modifier.aspectRatio(16F / 9F)) {
                 AsyncImage(
-                    model = coverUrl,
+                    model = videoInfo.coverUrl + "@800w_450h_1c.webp",
                     contentDescription = "视频封面",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
@@ -195,11 +183,11 @@ fun ShowVideoCard(
                 text = videoInfo.title,
                 fontSize = 13.sp,
                 lineHeight = 16.sp,
-                maxLines = maxTitleLines,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .padding(start = 4.dp, top = 4.dp, end = 4.dp)
-                    .height(titleHeight)
+                    .height(36.dp)
             )
             Text(
                 videoInfo.upName,
@@ -215,5 +203,5 @@ fun ShowVideoCard(
 @Preview
 @Composable
 private fun PreviewVideoCard() {
-    ShowVideoCard(VideoCardExample, isWide = false)
+    ShowVideoCard(VideoCardExample)
 }
