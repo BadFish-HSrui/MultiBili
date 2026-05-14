@@ -39,7 +39,8 @@ data class HistoryVideoCard(
     val watchTime: Long = 0,
     val watchProgress: Int = 0,
     val duration: Int = 0,
-    val regionString: String = ""
+    val regionString: String = "",
+    val typeString: String = ""
 )
 
 private fun HistoryRawItem.toHistoryVideoCard(): HistoryVideoCard {
@@ -55,7 +56,8 @@ private fun HistoryRawItem.toHistoryVideoCard(): HistoryVideoCard {
         watchTime = watchTime,
         watchProgress = watchProgress,
         duration = duration,
-        regionString = regionString
+        regionString = regionString,
+        typeString = typeString
     )
 }
 

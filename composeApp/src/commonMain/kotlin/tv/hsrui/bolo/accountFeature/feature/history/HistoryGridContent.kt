@@ -62,6 +62,7 @@ fun HistoryGridContent(
                 ) { video ->
                     ShowHistoryVideoCard(
                         videoInfo = video,
+                        onDeleted = { id -> viewModel.removeItem(id) },
                         modifier = Modifier.height(96.dp)
                     )
                 }

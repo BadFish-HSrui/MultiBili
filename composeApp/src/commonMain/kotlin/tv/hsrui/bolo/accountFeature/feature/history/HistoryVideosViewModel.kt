@@ -68,4 +68,14 @@ class HistoryVideosViewModel : ViewModel() {
         loadVideos()
         isRefreshing = false
     }
+
+    fun removeItem(id: Long) {
+        if (_uiState.value is HistoryVideosUiState.Success) {
+            _uiState.value = HistoryVideosUiState.Success(
+                (_uiState.value as HistoryVideosUiState.Success).videos.filter {
+                    it.avid != id
+                }
+            )
+        }
+    }
 }
