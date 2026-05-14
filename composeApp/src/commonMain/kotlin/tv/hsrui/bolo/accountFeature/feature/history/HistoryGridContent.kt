@@ -62,7 +62,7 @@ fun HistoryGridContent(
                 ) { video ->
                     ShowHistoryVideoCard(
                         videoInfo = video,
-                        modifier = Modifier.height(96.dp )
+                        modifier = Modifier.height(96.dp)
                     )
                 }
             }

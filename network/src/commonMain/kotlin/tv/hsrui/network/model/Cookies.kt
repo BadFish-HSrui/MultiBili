@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class Cookie(
+data class Cookies(
     @SerialName("DedeUserID__ckMd5") val dedeUserIDCkMd5: String = "",
     @SerialName("DedeUserID") val dedeUserID: Long = 0,
     @SerialName("SESSDATA") val sessData: String = "",
@@ -15,4 +15,6 @@ data class Cookie(
     @SerialName("buvid_fp") val buvidFp: String = "",
     @SerialName("buvid3") val buvid3: String = "",
     @SerialName("buvid4") val buvid4: String = "",
-)
+){
+    val csrf by this::biliJct
+}

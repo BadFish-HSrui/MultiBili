@@ -3,12 +3,14 @@ package tv.hsrui.bolo.ui.components.grid
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -48,22 +50,24 @@ fun <T> ShowHorizontalCardGrid(
             contentSpacing = 8.dp
         }
     }
-    Box(modifier = modifier.widthIn(max = 1280.dp)) {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(columns),
-            content = {
-                items(
-                    items = cards,
-                    key = keySelector
-                ) { card ->
-                    howToShow(card)
-                }
-            },
-            contentPadding = PaddingValues(contentPadding),
-            verticalArrangement = Arrangement.spacedBy(contentSpacing),
-            horizontalArrangement = Arrangement.spacedBy(contentSpacing),
-            state = gridState,
-            modifier = Modifier
-        )
+    Box(modifier = modifier.fillMaxSize()) {
+        Box(modifier = modifier.widthIn(max = 1280.dp).fillMaxSize().align(Alignment.TopCenter)) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(columns),
+                content = {
+                    items(
+                        items = cards,
+                        key = keySelector
+                    ) { card ->
+                        howToShow(card)
+                    }
+                },
+                contentPadding = PaddingValues(contentPadding),
+                verticalArrangement = Arrangement.spacedBy(contentSpacing),
+                horizontalArrangement = Arrangement.spacedBy(contentSpacing),
+                state = gridState,
+                modifier = Modifier
+            )
+        }
     }
 }

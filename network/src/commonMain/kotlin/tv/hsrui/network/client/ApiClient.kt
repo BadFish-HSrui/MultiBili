@@ -23,7 +23,7 @@ object ApiClient {
             install(DefaultRequest) {
                 header("User-Agent", "Bolo")
                 if(loginStorage.isLoggedIn) {
-                    header("Cookie", loginStorage.getCookieString())
+                    header("Cookie", loginStorage.getCookiesString())
                 }
             }
         }

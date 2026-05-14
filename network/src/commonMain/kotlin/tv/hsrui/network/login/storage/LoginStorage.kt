@@ -2,15 +2,15 @@ package tv.hsrui.network.login.storage
 
 import eu.anifantakis.lib.ksafe.KSafe
 import eu.anifantakis.lib.ksafe.invoke
-import tv.hsrui.network.model.Cookie
+import tv.hsrui.network.model.Cookies
 
 class LoginStorage(private val loginKSafe: KSafe) {
-    var cookie by loginKSafe(Cookie())
+    var cookies by loginKSafe(Cookies())
 
-    val isLoggedIn: Boolean get() = (cookie.sessData.isNotEmpty())
+    val isLoggedIn: Boolean get() = (cookies.sessData.isNotEmpty())
 
     fun saveCookie(cookieMap: Map<String, String>) {
-        cookie = Cookie(
+        cookies = Cookies(
             dedeUserIDCkMd5 = cookieMap["DedeUserID__ckMd5"] ?: "",
             dedeUserID = cookieMap["DedeUserID"]?.toLongOrNull() ?: 0,
             sessData = cookieMap["SESSDATA"] ?: "",
@@ -23,15 +23,15 @@ class LoginStorage(private val loginKSafe: KSafe) {
         )
     }
 
-    fun getCookieString(): String = buildString {
-        append("SESSDATA=${cookie.sessData}; ")
-        append("bili_jct=${cookie.biliJct}; ")
-        append("DedeUserID=${cookie.dedeUserID}; ")
-        append("DedeUserID__ckMd5=${cookie.dedeUserIDCkMd5}; ")
-        append("b_nut=${cookie.bNut}; ")
-        append("sid=${cookie.sid}; ")
-        append("buvid3=${cookie.buvid3}; ")
-        append("buvid4=${cookie.buvid4}; ")
-        append("buvid_fp=${cookie.buvidFp}")
+    fun getCookiesString(): String = buildString {
+        append("SESSDATA=${cookies.sessData}; ")
+        append("bili_jct=${cookies.biliJct}; ")
+        append("DedeUserID=${cookies.dedeUserID}; ")
+        append("DedeUserID__ckMd5=${cookies.dedeUserIDCkMd5}; ")
+        append("b_nut=${cookies.bNut}; ")
+        append("sid=${cookies.sid}; ")
+        append("buvid3=${cookies.buvid3}; ")
+        append("buvid4=${cookies.buvid4}; ")
+        append("buvid_fp=${cookies.buvidFp}")
     }
 }
