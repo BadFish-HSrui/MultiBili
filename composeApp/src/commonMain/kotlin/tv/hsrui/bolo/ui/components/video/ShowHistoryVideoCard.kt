@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.theme.BoloShapes
@@ -149,6 +151,7 @@ fun ShowHistoryVideoCard(
                     )
                 }
                 if (showDialog) {
+                    val snackbarManager: SnackbarManager = koinInject()
                     ShowConfirmDialog(
                         title = { Text("删除历史记录") },
                         onCancel = { showDialog = false },
@@ -161,12 +164,13 @@ fun ShowHistoryVideoCard(
                                     )
                                     if (result.isSuccess) {
                                         onDeleted(videoInfo.avid)
-                                        showDialog = false
                                     } else {
-                                        /*TODO*/
+                                        snackbarManager.showMessage(result.message)
                                     }
                                 } catch (e: Exception) {
-                                    /*TODO*/
+                                    snackbarManager.showMessage(e.toString())
+                                } finally {
+                                    showDialog = false
                                 }
                             }
                         },

@@ -4,7 +4,11 @@ import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.navigation3.runtime.NavEntry
@@ -22,13 +26,21 @@ import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.navigation.NavigatorModule
 import tv.hsrui.bolo.storage.kSafe.KSafeModule
+import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
+import tv.hsrui.bolo.ui.common.snackbar.SnackbarModule
 import tv.hsrui.bolo.ui.theme.AppTheme
 import tv.hsrui.network.feature.account.myinfo.MyAccountInfoModule
 import tv.hsrui.network.login.storage.LoginStorageModule
 
 fun koinConfig(): KoinConfiguration {
     return koinConfiguration {
-        modules(KSafeModule, LoginStorageModule, MyAccountInfoModule, NavigatorModule)
+        modules(
+            KSafeModule,
+            LoginStorageModule,
+            MyAccountInfoModule,
+            NavigatorModule,
+            SnackbarModule
+        )
     }
 }
 
@@ -37,8 +49,22 @@ fun App() {
     AppTheme {
         KoinApplication(configuration = koinConfig()) {
             val navigator: Navigator = koinInject()
+            val snackbarManager: SnackbarManager = koinInject()
+            val snackbarHostState = remember { SnackbarHostState() }
+
+            LaunchedEffect(Unit) {
+                snackbarManager.messages.collect { message ->
+                    snackbarHostState.showSnackbar(
+                        message = message.first,
+                        duration = message.second
+                    )
+                }
+            }
+
             val layoutDirection = LocalLayoutDirection.current
-            Scaffold { innerPadding ->
+            Scaffold(
+                snackbarHost = { SnackbarHost(snackbarHostState) }
+            ) { innerPadding ->
                 NavDisplay(
                     backStack = navigator.backStack,
                     onBack = { navigator.goBack() },
