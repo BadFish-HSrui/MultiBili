@@ -18,12 +18,14 @@ import multibili.composeapp.generated.resources.Res
 import multibili.composeapp.generated.resources.app_name
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShowTopBarWithNavigationButton(
     modifier: Modifier = Modifier,
+    goBackBefore: BoloRoute? = null,
     title: @Composable () -> Unit = { Text(stringResource(Res.string.app_name)) }
 ) {
     val navigator: Navigator = koinInject()
@@ -33,7 +35,9 @@ fun ShowTopBarWithNavigationButton(
         navigationIcon = {
             Row {
                 IconButton(
-                    onClick = { navigator.goBack() },
+                    onClick = {
+                        if (goBackBefore== null) navigator.goBack() else navigator.goBackBefore(goBackBefore)
+                    },
                     modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
