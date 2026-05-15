@@ -5,19 +5,24 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
+import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
 import tv.hsrui.bolo.ui.components.video.ShowHistoryVideoCard
 import tv.hsrui.bolo.utils.OnGridBottomReached
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun HistoryGridContent(
     modifier: Modifier = Modifier,
@@ -25,13 +30,14 @@ fun HistoryGridContent(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val historyGridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
 
     historyGridState.OnGridBottomReached(buffer = 8, isLoading = viewModel.isLoading) {
         viewModel.loadMoreVideos()
     }
 
     PullToRefreshBox(
-        isRefreshing = viewModel.isRefreshing,
+        isRefreshing = false,
         onRefresh = {
             viewModel.refreshVideos()
         },
@@ -55,16 +61,25 @@ fun HistoryGridContent(
             }
 
             is HistoryVideosUiState.Success -> {
-                ShowHorizontalCardGrid(
-                    cards = (uiState as HistoryVideosUiState.Success).videos,
-                    keySelector = { it.avid },
-                    gridState = historyGridState
-                ) { video ->
-                    ShowHistoryVideoCard(
-                        videoInfo = video,
-                        onDeleted = { id -> viewModel.removeItem(id) },
-                        modifier = Modifier.height(96.dp)
-                    )
+                Box {
+                    ShowHorizontalCardGrid(
+                        cards = (uiState as HistoryVideosUiState.Success).videos,
+                        keySelector = { it.avid },
+                        gridState = historyGridState
+                    ) { video ->
+                        ShowHistoryVideoCard(
+                            videoInfo = video,
+                            onDeleted = { id -> viewModel.removeItem(id) },
+                            modifier = Modifier.height(96.dp)
+                        )
+                    }
+                    ShowGridFABMenu(
+                        onBackToTop = { scope.launch { historyGridState.animateScrollToItem(0) } },
+                        onRefresh = { viewModel.refreshVideos() },
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                    ) {
+
+                    }
                 }
             }
         }

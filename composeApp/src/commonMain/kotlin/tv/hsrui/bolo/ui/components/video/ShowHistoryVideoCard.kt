@@ -120,7 +120,7 @@ fun ShowHistoryVideoCard(
                 ) {
                     AsyncImage(
                         model = videoInfo.upAvatarUrl + "@64w_64h.webp",
-                        contentDescription = "视频封面",
+                        contentDescription = null,
                         modifier = Modifier.clip(CircleShape).size(32.dp),
                         contentScale = ContentScale.Crop
                     )

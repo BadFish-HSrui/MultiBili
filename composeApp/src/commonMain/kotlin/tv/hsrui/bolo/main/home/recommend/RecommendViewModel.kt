@@ -19,6 +19,7 @@ class RecommendViewModel : VideosViewModel() {
     }
 
     override fun refreshVideos() {
+        _uiState.value = VideosUiState.Loading
         isRefreshing = true
         viewModelScope.launch {
             try {

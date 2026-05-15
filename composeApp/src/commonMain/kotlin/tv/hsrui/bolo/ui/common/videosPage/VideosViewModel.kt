@@ -64,6 +64,7 @@ abstract class VideosViewModel : ViewModel() {
     }
 
     open fun refreshVideos() {
+        _uiState.value = VideosUiState.Loading
         pageNumber = 1
         isRefreshing = true
         viewModelScope.launch {
