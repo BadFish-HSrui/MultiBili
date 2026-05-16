@@ -26,3 +26,6 @@ fun getNowWindowSize(): AppWindowSize {
         else -> AppWindowSize.COMPACT
     }
 }
+
+@Composable
+fun isCompact() = getNowWindowSize() == AppWindowSize.COMPACT

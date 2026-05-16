@@ -33,19 +33,16 @@ fun <T> ShowHorizontalCardGrid(
 
     when (windowSize) {
         AppWindowSize.EXPANDED -> {
-            columns = 2
             contentPadding = 16.dp
             contentSpacing = 12.dp
         }
 
         AppWindowSize.MEDIUM -> {
-            columns = 1
             contentPadding = 16.dp
             contentSpacing = 8.dp
         }
 
         AppWindowSize.COMPACT -> {
-            columns = 1
             contentPadding = 8.dp
             contentSpacing = 8.dp
         }
@@ -53,7 +50,7 @@ fun <T> ShowHorizontalCardGrid(
     Box(modifier = modifier.fillMaxSize()) {
         Box(modifier = modifier.widthIn(max = 1280.dp).fillMaxSize().align(Alignment.TopCenter)) {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(columns),
+                columns = GridCells.Adaptive(325.dp),
                 content = {
                     items(
                         items = cards,
