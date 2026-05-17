@@ -12,7 +12,7 @@ import tv.hsrui.network.client.ApiClient
 import tv.hsrui.network.constant.ApiUrls
 import tv.hsrui.network.login.storage.LoginStorage
 
-suspend fun fetchHistoryRow(
+suspend fun fetchHistoryRaw(
     loadParams: HistoryLoadParams,
     typeString: String,
     ps: Int
@@ -33,7 +33,7 @@ suspend fun fetchHistoryVideos(
     loadParams: HistoryLoadParams = HistoryLoadParams(),
     ps: Int = 30
 ): HistoryVideosResponse {
-    val response = fetchHistoryRow(
+    val response = fetchHistoryRaw(
         loadParams = loadParams,
         typeString = "archive",
         ps = ps

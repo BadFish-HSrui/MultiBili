@@ -34,7 +34,7 @@ import org.koin.compose.koinInject
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.theme.BiliColor.getLevelColor
 import tv.hsrui.bolo.ui.theme.BoloShapes
-import tv.hsrui.bolo.utils.infoFormat.formatToString
+import tv.hsrui.network.utils.formatCountToString
 import tv.hsrui.network.feature.account.myinfo.MyAccountInfoManager
 
 @Composable
@@ -122,12 +122,12 @@ internal fun AccountInfoContent(modifier: Modifier = Modifier) {
                             textAlign = TextAlign.Center,
                         )
                         Text(
-                            text = "关注: ${myAccountInfo.following.formatToString()}",
+                            text = "关注: ${myAccountInfo.following.formatCountToString()}",
                             modifier = Modifier.weight(1F).alpha(0.8F),
                             textAlign = TextAlign.Center
                         )
                         Text(
-                            text = "粉丝: ${myAccountInfo.follower.formatToString()}",
+                            text = "粉丝: ${myAccountInfo.follower.formatCountToString()}",
                             modifier = Modifier.weight(1F).alpha(0.8F),
                             textAlign = TextAlign.Center
                         )

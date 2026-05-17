@@ -16,25 +16,25 @@ data class VideoCard(
     @SerialName("title") val title: String = "",
     @SerialName("pubdate") val publishDate: Long = 0,
     @SerialName("duration") val duration: Int = 0,
-    @SerialName("pic") @JsonNames("cover") private val pic: String = "",
-    @SerialName("pic_4_3") private val pic43: String = "",
-    @SerialName("stat") private val stat: Stat = Stat(),
-    @SerialName("owner") @JsonNames("author") private val owner: Owner = Owner(),
+    @SerialName("pic") @JsonNames("cover") private val _cover: String = "",
+    @SerialName("pic_4_3") private val _cover43: String = "",
+    @SerialName("stat") private val _stat: Stat = Stat(),
+    @SerialName("owner") @JsonNames("author") private val _owner: Owner = Owner(),
 
     private val _publishDateString: String = "",
     private val _durationString: String = ""
 ) {
 
-    val viewCount by stat::view
-    val danmakuCount by stat::danmaku
-    val likeCount by stat::like
-    val coinCount by stat::coin
-    val favoriteCount by stat::favorite
-    val replyCount by stat::reply
-    val upName by owner::name
-    val upAvatarUrl by lazy { owner.face.toHttpsUrl() }
-    val coverUrl by lazy { pic.toHttpsUrl() }
-    val coverUrl43 by lazy { pic43.toHttpsUrl().ifEmpty { pic.toHttpsUrl() } }
+    val viewCount by _stat::view
+    val danmakuCount by _stat::danmaku
+    val likeCount by _stat::like
+    val coinCount by _stat::coin
+    val favoriteCount by _stat::favorite
+    val replyCount by _stat::reply
+    val upName by _owner::name
+    val upAvatarUrl by lazy { _owner.face.toHttpsUrl() }
+    val coverUrl by lazy { _cover.toHttpsUrl() }
+    val coverUrl43 by lazy { _cover43.toHttpsUrl().ifEmpty { _cover.toHttpsUrl() } }
 
     val publishDateString by lazy { _publishDateString.ifEmpty { publishDate.formatToDateTime() } }
     val durationString by lazy { _durationString.ifEmpty { duration.formatToDuration() } }
@@ -59,12 +59,12 @@ data class VideoCard(
 val VideoCardExample = VideoCard(
     avid = 115327790751441,
     bvid = "BV1gDxEzHE8Z",
-    pic = "http://i2.hdslb.com/bfs/archive/7a7aa5e03fb63167e51a9d3d7a28ed2749128a45.jpg",
+    _cover = "http://i2.hdslb.com/bfs/archive/7a7aa5e03fb63167e51a9d3d7a28ed2749128a45.jpg",
     title = "✨“我为你唱一曲如游丝的气息”《青衣DJ》✨/AI東 雪蓮",
     publishDate = 1759762729,
-    stat = VideoCard.Stat(view = 1919810, like = 114514),
+    _stat = VideoCard.Stat(view = 1919810, like = 114514),
     duration = 10000,
-    owner = VideoCard.Owner(
+    _owner = VideoCard.Owner(
         name = "东洋雪莲",
         face = "https://i2.hdslb.com/bfs/face/4cbf2f66d23a324ecca8d3c07adbcafecfef829b.jpg"
     )

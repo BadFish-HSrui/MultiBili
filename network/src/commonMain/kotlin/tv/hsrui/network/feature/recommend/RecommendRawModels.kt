@@ -54,9 +54,9 @@ fun RawRecommendItem.toVideoCard(): VideoCard {
         title = title,
         publishDate = publishDate,
         duration = duration,
-        pic = pic,
-        pic43 = pic43.ifEmpty { pic },
-        stat = Stat(
+        _cover = pic,
+        _cover43 = pic43.ifEmpty { pic },
+        _stat = Stat(
             view = stat.view,
             like = stat.like,
             coin = stat.coin,
@@ -64,7 +64,7 @@ fun RawRecommendItem.toVideoCard(): VideoCard {
             danmaku = stat.danmaku,
             reply = stat.reply
         ),
-        owner = VideoCard.Owner(
+        _owner = VideoCard.Owner(
             name = owner.name,
             face = owner.face
         )
