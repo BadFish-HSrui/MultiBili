@@ -5,5 +5,11 @@ fun Int.formatToDuration(): String {
     val minutes = this % 3600 / 60
     val seconds = this % 60
 
-    return "${if (hours > 0) "${hours}:" else ""}${if (minutes > 9) minutes else "0${minutes}"}:${if (seconds > 9) seconds else "0${seconds}"}"
+    return buildString {
+        append(hours.toString().padStart(2, '0'))
+        append(':')
+        append(minutes.toString().padStart(2, '0'))
+        append(':')
+        append(seconds.toString().padStart(2, '0'))
+    }
 }

@@ -46,7 +46,6 @@ import coil3.compose.AsyncImage
 import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.bolo.utils.AppWindowSize
 import tv.hsrui.bolo.utils.getNowWindowSize
-import tv.hsrui.network.utils.formatToDuration
 import tv.hsrui.network.utils.formatCountToString
 import tv.hsrui.network.model.VideoCard
 import tv.hsrui.network.model.VideoCardExample
