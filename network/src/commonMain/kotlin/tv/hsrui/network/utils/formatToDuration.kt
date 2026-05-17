@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.utils.infoFormat
+package tv.hsrui.network.utils
 
 fun Int.formatToDuration(): String {
     val hours = this / 3600

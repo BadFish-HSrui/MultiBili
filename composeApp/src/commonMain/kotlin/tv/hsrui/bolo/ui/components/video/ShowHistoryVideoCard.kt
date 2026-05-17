@@ -46,8 +46,8 @@ import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.theme.BoloShapes
-import tv.hsrui.bolo.utils.infoFormat.formatToDateTime
-import tv.hsrui.bolo.utils.infoFormat.formatToDuration
+import tv.hsrui.network.utils.formatToDateTime
+import tv.hsrui.network.utils.formatToDuration
 import tv.hsrui.network.feature.history.HistoryVideoCard
 import tv.hsrui.network.feature.history.HistoryVideoCardExample
 import tv.hsrui.network.feature.history.deleteHistory

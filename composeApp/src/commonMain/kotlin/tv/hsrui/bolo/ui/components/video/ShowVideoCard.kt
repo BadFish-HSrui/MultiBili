@@ -38,7 +38,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,8 +46,8 @@ import coil3.compose.AsyncImage
 import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.bolo.utils.AppWindowSize
 import tv.hsrui.bolo.utils.getNowWindowSize
-import tv.hsrui.bolo.utils.infoFormat.formatToDuration
-import tv.hsrui.bolo.utils.infoFormat.formatToString
+import tv.hsrui.network.utils.formatToDuration
+import tv.hsrui.network.utils.formatCountToString
 import tv.hsrui.network.model.VideoCard
 import tv.hsrui.network.model.VideoCardExample
 
@@ -117,7 +116,7 @@ fun ShowVideoCard(
                                 modifier = Modifier.size(10.dp)
                             )
                             Text(
-                                videoInfo.viewCount.formatToString()
+                                videoInfo.viewCount.formatCountToString()
                             )
                         }
                         Row(
@@ -131,7 +130,7 @@ fun ShowVideoCard(
                                 modifier = Modifier.size(10.dp)
                             )
                             Text(
-                                videoInfo.danmakuCount.formatToString()
+                                videoInfo.danmakuCount.formatCountToString()
                             )
                         }
                     }
@@ -142,7 +141,7 @@ fun ShowVideoCard(
                             .padding(4.dp)
                             .align(Alignment.TopEnd)
                     ) {
-                        Text(videoInfo.duration.formatToDuration())
+                        Text(videoInfo.durationString)
                     }
 
                     Row(modifier = Modifier.align(Alignment.BottomStart)) {
@@ -157,7 +156,7 @@ fun ShowVideoCard(
                                 modifier = Modifier.size(10.dp)
                             )
                             Text(
-                                "${videoInfo.likeCount.formatToString()} ${videoInfo.likeCount * 1000 / videoInfo.viewCount / 10.0F}%",
+                                "${videoInfo.likeCount.formatCountToString()} ${videoInfo.likeCount * 1000 / videoInfo.viewCount / 10.0F}%",
                             )
                         }
                         if (videoInfo.replyCount != -1) {
@@ -172,7 +171,7 @@ fun ShowVideoCard(
                                     modifier = Modifier.size(10.dp)
                                 )
                                 Text(
-                                    videoInfo.replyCount.formatToString()
+                                    videoInfo.replyCount.formatCountToString()
                                 )
                             }
                         }

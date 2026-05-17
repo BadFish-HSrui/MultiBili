@@ -70,6 +70,7 @@ kotlin {
                 implementation(libs.ksafe)
                 implementation(libs.ksafe.compose)
                 implementation(libs.koin.core)
+                implementation(libs.kotlinx.datetime)
             }
         }
 

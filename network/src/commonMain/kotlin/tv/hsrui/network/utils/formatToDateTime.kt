@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.utils.infoFormat
+package tv.hsrui.network.utils
 
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.number

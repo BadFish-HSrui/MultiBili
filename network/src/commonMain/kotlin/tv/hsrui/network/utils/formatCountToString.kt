@@ -1,6 +1,6 @@
-package tv.hsrui.bolo.utils.infoFormat
+package tv.hsrui.network.utils
 
-fun Int.formatToString(): String {
+fun Int.formatCountToString(): String {
     val value = this.toLong()
     return when {
         value < 10000 -> value.toString()

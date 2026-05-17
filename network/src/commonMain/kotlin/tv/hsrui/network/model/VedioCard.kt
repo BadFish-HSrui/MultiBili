@@ -5,6 +5,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonNames
 import tv.hsrui.network.feature.utils.toHttpsUrl
+import tv.hsrui.network.utils.formatToDateTime
+import tv.hsrui.network.utils.formatToDuration
 
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -17,7 +19,10 @@ data class VideoCard(
     @SerialName("pic") @JsonNames("cover") private val pic: String = "",
     @SerialName("pic_4_3") private val pic43: String = "",
     @SerialName("stat") private val stat: Stat = Stat(),
-    @SerialName("owner") @JsonNames("author") private val owner: Owner = Owner()
+    @SerialName("owner") @JsonNames("author") private val owner: Owner = Owner(),
+
+    private val _publishDateString: String = "",
+    private val _durationString: String = ""
 ) {
 
     val viewCount by stat::view
@@ -31,6 +36,8 @@ data class VideoCard(
     val coverUrl by lazy { pic.toHttpsUrl() }
     val coverUrl43 by lazy { pic43.toHttpsUrl().ifEmpty { pic.toHttpsUrl() } }
 
+    val publishDateString by lazy { _publishDateString.ifEmpty { publishDate.formatToDateTime() } }
+    val durationString by lazy { _durationString.ifEmpty { duration.formatToDuration() } }
     @Serializable
     data class Stat(
         val view: Int = -1,
