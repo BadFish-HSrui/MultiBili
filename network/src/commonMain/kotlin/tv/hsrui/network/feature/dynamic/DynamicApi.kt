@@ -16,3 +16,9 @@ private suspend fun fetchDynamicRaw(pn :Int, type: String , offset: String): Dyn
 
     return  result
 }
+
+suspend fun fetchFollowingVideos(pn: Int = 1,offset: String = ""): FollowingVideosResponse {
+    val response = fetchDynamicRaw(pn = pn, type = "video", offset = offset)
+
+    return FollowingVideosResponse(raw = response)
+}
