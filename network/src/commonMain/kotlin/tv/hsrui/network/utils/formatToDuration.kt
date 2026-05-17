@@ -6,8 +6,10 @@ fun Int.formatToDuration(): String {
     val seconds = this % 60
 
     return buildString {
-        append(hours.toString().padStart(2, '0'))
-        append(':')
+        if (hours > 0){
+            append(hours.toString().padStart(2, '0'))
+            append(':')
+        }
         append(minutes.toString().padStart(2, '0'))
         append(':')
         append(seconds.toString().padStart(2, '0'))
