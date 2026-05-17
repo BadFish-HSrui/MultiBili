@@ -57,30 +57,15 @@ abstract class VideosViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 _uiState.value = VideosUiState.Error(e.message ?: "其他网络错误")
-            } finally {
-                isLoading = false
             }
         }
+        isLoading = false
     }
 
-    open fun refreshVideos() {
-        _uiState.value = VideosUiState.Loading
+    fun refreshVideos() {
         pageNumber = 1
         isRefreshing = true
-        viewModelScope.launch {
-            try {
-                val result = fetchVideos()
-                if (result.isSuccess) {
-                    pageNumber++
-                    _uiState.value = VideosUiState.Success(result.validData.videosList)
-                    canLoadMore = result.validData.canLoadMore
-                } else {
-                    _uiState.value = VideosUiState.Error("[Api请求错误0]: " + result.message)
-                }
-            } catch (e: Exception) {
-                _uiState.value = VideosUiState.Error(e.message ?: "其他网络错误")
-            }
-        }
+        loadVideos()
         isRefreshing = false
     }
 }
