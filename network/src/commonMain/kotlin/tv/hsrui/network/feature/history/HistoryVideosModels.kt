@@ -41,7 +41,9 @@ data class HistoryVideoCard(
     val duration: Int = 0,
     val regionString: String = "",
     val typeString: String = ""
-)
+) {
+    val isFullyWatched get() = (watchProgress == -1)
+}
 
 private fun HistoryRawItem.toHistoryVideoCard(): HistoryVideoCard {
     return HistoryVideoCard(

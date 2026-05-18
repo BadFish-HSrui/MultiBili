@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,9 +76,13 @@ fun ShowHistoryVideoCard(
                     LocalTextStyle provides TextStyle(fontSize = 12.sp)
                 ) {
                     LinearProgressIndicator(
-                        progress = { videoInfo.watchProgress.toFloat() / videoInfo.duration.toFloat() },
+                        progress = {
+                            if (videoInfo.isFullyWatched) 1F
+                            else videoInfo.watchProgress.toFloat() / videoInfo.duration.toFloat()
+                        },
                         modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
                         color = BiliColor.ThemeColor,
+                        strokeCap = if (videoInfo.isFullyWatched) StrokeCap.Butt else StrokeCap.Round,
                         trackColor = Color.Transparent,
                         drawStopIndicator = {}
                     )
@@ -104,7 +109,8 @@ fun ShowHistoryVideoCard(
                             .align(Alignment.TopEnd)
                     ) {
                         Text(
-                            text = "${videoInfo.watchProgress.formatToDuration()}/${videoInfo.duration.formatToDuration()}",
+                            text = if (videoInfo.isFullyWatched) "已看完 ${videoInfo.duration.formatToDuration()}"
+                            else "${videoInfo.watchProgress.formatToDuration()}/${videoInfo.duration.formatToDuration()}",
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
