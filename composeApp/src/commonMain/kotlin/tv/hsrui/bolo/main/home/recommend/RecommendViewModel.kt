@@ -11,6 +11,10 @@ class RecommendViewModel : VideosViewModel() {
         loadVideos()
     }
 
+    override fun resetPageNumber() {
+        pageNumber++
+    }
+
     override suspend fun fetchVideos(): VideosResult {
         return fetchRecommendVideos(freshIndex = pageNumber, ps = 24)
     }
