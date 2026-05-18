@@ -116,7 +116,7 @@ fun ShowVideoCard(
                         .background(
                             brush = Brush.verticalGradient(
                                 listOf(
-                                    Color.Black.copy(alpha = 0.6f),
+                                    Color.Black.copy(alpha = 0.55f),
                                     Color.Transparent
                                 )
                             )
@@ -131,7 +131,7 @@ fun ShowVideoCard(
                             brush = Brush.verticalGradient(
                                 listOf(
                                     Color.Transparent,
-                                    Color.Black.copy(alpha = 0.6f)
+                                    Color.Black.copy(alpha = 0.55f)
                                 )
                             )
                         )
