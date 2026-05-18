@@ -4,7 +4,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonNames
-import tv.hsrui.network.feature.utils.toHttpsUrl
+import tv.hsrui.network.utils.toHttpsUrl
 import tv.hsrui.network.utils.formatToDateTime
 import tv.hsrui.network.utils.formatToDuration
 

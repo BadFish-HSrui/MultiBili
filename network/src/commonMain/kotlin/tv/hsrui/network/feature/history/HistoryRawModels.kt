@@ -2,7 +2,7 @@ package tv.hsrui.network.feature.history
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import tv.hsrui.network.feature.utils.toHttpsUrl
+import tv.hsrui.network.utils.toHttpsUrl
 
 @Serializable
 data class HistoryRawResponse(

@@ -155,7 +155,12 @@ fun ShowVideoCard(
                                 modifier = Modifier.size(10.dp)
                             )
                             Text(
-                                "${videoInfo.likeCount.formatCountToString()} ${videoInfo.likeCount * 1000 / videoInfo.viewCount / 10.0F}%",
+                                buildString {
+                                    append(videoInfo.likeCount.formatCountToString())
+                                    if (videoInfo.viewCount != 0) {
+                                        append(" ${videoInfo.likeCount * 1000 / videoInfo.viewCount / 10.0F}%")
+                                    }
+                                },
                             )
                         }
                         if (videoInfo.replyCount != -1) {

@@ -1,4 +1,4 @@
-package tv.hsrui.network.feature.utils
+package tv.hsrui.network.utils
 
 fun String.toHttpsUrl(): String = when {
     isEmpty() -> ""

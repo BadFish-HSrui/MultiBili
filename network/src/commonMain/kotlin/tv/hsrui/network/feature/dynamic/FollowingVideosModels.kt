@@ -5,6 +5,7 @@ import tv.hsrui.network.model.VideoCard
 import tv.hsrui.network.model.VideoCard.Owner
 import tv.hsrui.network.model.VideoCard.Stat
 import tv.hsrui.network.model.VideosResult
+import tv.hsrui.network.utils.toCountIntOrNull
 
 data class FollowingVideosResponse(val raw: DynamicRawResponse) : VideosResult {
     override val isSuccess: Boolean get() = (raw.code == 0)
@@ -28,9 +29,9 @@ fun DynamicRawResponse.DynamicRawItem.toVideoCard(): VideoCard =
         title = main.archive.title,
         _cover = main.archive.coverUrl,
         _stat = Stat(
-            view = main.archive.state.viewCountString.toIntOrNull() ?: 0,
+            view = main.archive.state.viewCountString.toCountIntOrNull() ?: 0,
             like = state.like.count,
-            danmaku = main.archive.state.danmakuCountString.toIntOrNull() ?: 0,
+            danmaku = main.archive.state.danmakuCountString.toCountIntOrNull() ?: 0,
             reply = state.comment.count
         ),
         _owner = Owner(
