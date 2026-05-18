@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import tv.hsrui.bolo.main.home.following.FollowingVideosPage
 import tv.hsrui.bolo.main.home.popular.PopularPage
 import tv.hsrui.bolo.main.home.recommend.RecommendPage
 
@@ -44,7 +45,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
             when (tabs[page]) {
                 HomeTab.Popular -> PopularPage()
                 HomeTab.Recommend -> RecommendPage()
-                HomeTab.Following -> {Text("TODO")}
+                HomeTab.Following -> FollowingVideosPage()
             }
         }
     }
