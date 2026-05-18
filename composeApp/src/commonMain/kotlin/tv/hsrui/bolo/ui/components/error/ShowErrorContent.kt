@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
@@ -17,6 +18,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -26,7 +29,11 @@ import org.jetbrains.compose.resources.painterResource
 import tv.hsrui.bolo.utils.setText
 
 @Composable
-fun ShowErrorContent(message: String = "", retry: (() -> Unit)? = null, modifier: Modifier = Modifier) {
+fun ShowErrorContent(
+    message: String = "",
+    retry: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
     var copyButtonText by remember { mutableStateOf("复制错误信息") }
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
@@ -35,13 +42,22 @@ fun ShowErrorContent(message: String = "", retry: (() -> Unit)? = null, modifier
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Image(
                 painter = painterResource(Res.drawable.ErrorPig),
                 contentDescription = "错误",
                 modifier = Modifier.widthIn(max = 192.dp).aspectRatio(1F)
             )
             if (message.isNotEmpty()) {
+                Text(
+                    text = message,
+                    textAlign = TextAlign.Center,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(bottom = 4.dp).widthIn(max = 512.dp)
+                )
                 Button(onClick = {
                     scope.launch {
                         clipboard.setText(message)
@@ -64,7 +80,7 @@ fun ShowErrorContent(message: String = "", retry: (() -> Unit)? = null, modifier
 @Composable
 private fun ErrorPreview() {
     ShowErrorContent(
-        message = "1",
+        message = "账号未登录",
         retry = {}
     )
 }
