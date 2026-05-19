@@ -54,9 +54,8 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
 
             val isExpanded = isExpanded()
             LaunchedEffect(Unit) {
-                if (isExpanded && navigator.backStack.last() == BoloRoute.AccountFeature.List) {
+                if (isExpanded && navigator.backStack.last() == BoloRoute.AccountFeature.List)
                     navigator.navigateTo(BoloRoute.AccountFeature.History)
-                }
             }
 
             /*TODO: 在compose-material3完成适配后，用SegmentedListItem代替Card*/
@@ -88,7 +87,7 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
                             Icon(
                                 imageVector = feature.icon,
                                 contentDescription = null,
-                                modifier = Modifier.padding(horizontal = 16.dp)
+                                modifier = Modifier.padding(start =16.dp, end = 8.dp)
                             )
                             Text(
                                 text = feature.title,
@@ -111,7 +110,7 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
                             Icon(
                                 imageVector = Icons.Rounded.Settings,
                                 contentDescription = null,
-                                modifier = Modifier.padding(horizontal = 16.dp)
+                                modifier = Modifier.padding(start =16.dp, end = 8.dp)
                             )
                             Text(
                                 text = "应用设置",
@@ -122,9 +121,6 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
                 }
             }
         }
-        if (isExpanded()) {
-            VerticalDivider(Modifier.align(Alignment.CenterEnd).fillMaxHeight())
-        }
+        if (isExpanded()) VerticalDivider(Modifier.align(Alignment.CenterEnd).fillMaxHeight())
     }
 }
-

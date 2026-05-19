@@ -21,4 +21,10 @@ sealed interface BoloRoute {
         @Serializable data object WatchLater : AccountFeature
         @Serializable data object Favorite : AccountFeature
     }
+
+    @Serializable
+    sealed interface BoloSetting : BoloRoute {
+        @Serializable data object List : BoloSetting
+        @Serializable data object About : BoloSetting
+    }
 }
