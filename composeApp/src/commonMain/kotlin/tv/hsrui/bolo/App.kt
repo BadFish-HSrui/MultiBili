@@ -6,11 +6,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
+import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
+import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
+import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
 import org.koin.compose.KoinApplication
@@ -44,6 +50,7 @@ fun koinConfig(): KoinConfiguration {
     }
 }
 
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun App() {
     AppTheme {
@@ -65,23 +72,49 @@ fun App() {
             Scaffold(
                 snackbarHost = { SnackbarHost(snackbarHostState) }
             ) { innerPadding ->
+                val listDetailStrategy = rememberListDetailSceneStrategy<BoloRoute>(
+                    directive = calculatePaneScaffoldDirective(currentWindowAdaptiveInfoV2()).copy(
+                        horizontalPartitionSpacerSize = 0.dp
+                    )
+                )
                 NavDisplay(
                     backStack = navigator.backStack,
                     onBack = { navigator.goBack() },
-                    entryProvider = { route ->
-                        when (route) {
-                            is BoloRoute.Test -> NavEntry(key = route) { TestScreen() }
-                            is BoloRoute.Main -> NavEntry(key = route) { MainScreen() }
+                    sceneStrategies = listOf(listDetailStrategy),
+                    entryProvider =
+                        { route ->
+                            when (route) {
+                                is BoloRoute.Test -> NavEntry(key = route) { TestScreen() }
+                                is BoloRoute.Main -> NavEntry(key = route) { MainScreen() }
 
-                            is BoloRoute.Login.Screen -> NavEntry(key = route) { LoginScreen() }
-                            is BoloRoute.Login.Webview -> NavEntry(key = route) { LoginWebView() }
+                                is BoloRoute.Login.Screen -> NavEntry(key = route) { LoginScreen() }
+                                is BoloRoute.Login.Webview -> NavEntry(key = route) { LoginWebView() }
 
-                            is BoloRoute.AccountFeature.List -> NavEntry(key = route) { AccountFeaturesScreen() }
-                            is BoloRoute.AccountFeature.WatchLater -> NavEntry(key = route) {}
-                            is BoloRoute.AccountFeature.History -> NavEntry(key = route) { HistoryScreen() }
-                            is BoloRoute.AccountFeature.Favorite -> NavEntry(key = route) {}
-                        }
-                    },
+                                is BoloRoute.AccountFeature -> {
+                                    when (route) {
+                                        is BoloRoute.AccountFeature.List -> NavEntry(
+                                            key = route,
+                                            metadata = ListDetailSceneStrategy.listPane()
+                                        ) { AccountFeaturesScreen() }
+
+                                        is BoloRoute.AccountFeature.WatchLater -> NavEntry(
+                                            key = route,
+                                            metadata = ListDetailSceneStrategy.detailPane()
+                                        ) {}
+
+                                        is BoloRoute.AccountFeature.History -> NavEntry(
+                                            key = route,
+                                            metadata = ListDetailSceneStrategy.detailPane()
+                                        ) { HistoryScreen(isEntryFromList = true) }
+
+                                        is BoloRoute.AccountFeature.Favorite -> NavEntry(
+                                            key = route,
+                                            metadata = ListDetailSceneStrategy.detailPane()
+                                        ) {}
+                                    }
+                                }
+                            }
+                        },
                     modifier = Modifier.padding(
                         top = innerPadding.calculateTopPadding(),
                         start = innerPadding.calculateStartPadding(layoutDirection),
