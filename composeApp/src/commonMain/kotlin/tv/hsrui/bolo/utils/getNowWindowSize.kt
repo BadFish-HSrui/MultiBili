@@ -3,6 +3,7 @@ package tv.hsrui.bolo.utils
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.runtime.Composable
 import androidx.window.core.layout.WindowSizeClass
+import tv.hsrui.bolo.getPlatform
 
 enum class AppWindowSize {
     EXPANDED,
@@ -17,7 +18,8 @@ fun getNowWindowSize(): AppWindowSize {
     return when {
         windowSizeClass.isWidthAtLeastBreakpoint(
             WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
-        ) -> AppWindowSize.EXPANDED
+        ) -> if (getPlatform().deviceCode.contains("iPhone")) AppWindowSize.MEDIUM
+        else AppWindowSize.EXPANDED
 
         windowSizeClass.isWidthAtLeastBreakpoint(
             WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND
@@ -32,5 +34,6 @@ fun isCompact() = getNowWindowSize() == AppWindowSize.COMPACT
 
 @Composable
 fun isMedium() = getNowWindowSize() == AppWindowSize.MEDIUM
+
 @Composable
 fun isExpanded() = getNowWindowSize() == AppWindowSize.EXPANDED

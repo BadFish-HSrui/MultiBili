@@ -72,8 +72,11 @@ fun App() {
             Scaffold(
                 snackbarHost = { SnackbarHost(snackbarHostState) }
             ) { innerPadding ->
+                val rawDirective = calculatePaneScaffoldDirective(currentWindowAdaptiveInfoV2())
+                val isIPhone = getPlatform().deviceCode.contains("iPhone")
                 val listDetailStrategy = rememberListDetailSceneStrategy<BoloRoute>(
-                    directive = calculatePaneScaffoldDirective(currentWindowAdaptiveInfoV2()).copy(
+                    directive = rawDirective.copy(
+                        maxHorizontalPartitions = if (isIPhone) 1 else rawDirective.maxHorizontalPartitions,
                         horizontalPartitionSpacerSize = 0.dp
                     )
                 )
