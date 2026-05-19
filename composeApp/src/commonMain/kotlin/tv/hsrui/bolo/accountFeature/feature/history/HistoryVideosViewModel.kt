@@ -15,7 +15,6 @@ class HistoryVideosViewModel : ViewModel() {
     var canLoadMore: Boolean = false
     private var loadParams: HistoryLoadParams = HistoryLoadParams()
     var isLoading: Boolean = false
-    var isRefreshing: Boolean = false
 
     init {
         loadVideos()
@@ -23,6 +22,7 @@ class HistoryVideosViewModel : ViewModel() {
 
     fun loadVideos() {
         viewModelScope.launch {
+            _uiState.value = HistoryVideosUiState.Loading
             try {
                 val result = fetchHistoryVideos()
                 if (result.isSuccess) {
@@ -64,9 +64,7 @@ class HistoryVideosViewModel : ViewModel() {
 
     fun refreshVideos() {
         loadParams = HistoryLoadParams()
-        isRefreshing = true
         loadVideos()
-        isRefreshing = false
     }
 
     fun removeItem(id: Long) {

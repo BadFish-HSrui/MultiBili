@@ -1,14 +1,15 @@
 package tv.hsrui.bolo
 
-enum class PlatformType{
+enum class PlatformType {
     Ios,
     Android,
     Desktop
 }
 
-interface Platform {
-    val name: String
+data class Platform(
+    val name: String,
+    val deviceCode: String,
     val type: PlatformType
-}
+)
 
 expect fun getPlatform(): Platform

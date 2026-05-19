@@ -29,3 +29,8 @@ fun getNowWindowSize(): AppWindowSize {
 
 @Composable
 fun isCompact() = getNowWindowSize() == AppWindowSize.COMPACT
+
+@Composable
+fun isMedium() = getNowWindowSize() == AppWindowSize.MEDIUM
+@Composable
+fun isExpanded() = getNowWindowSize() == AppWindowSize.EXPANDED

@@ -1,9 +1,7 @@
 package tv.hsrui.bolo
 
-class JVMPlatform: Platform {
-    override val name: String = "Java ${System.getProperty("java.version")}"
-
-    override val type: PlatformType = PlatformType.Desktop
-}
-
-actual fun getPlatform(): Platform = JVMPlatform()
+actual fun getPlatform(): Platform = Platform(
+    name = "Java ${System.getProperty("java.version")}",
+    deviceCode = "${System.getProperty("os.name")}-${System.getProperty("os.version")} (${System.getProperty("os.arch")})",
+    type = PlatformType.Desktop
+)

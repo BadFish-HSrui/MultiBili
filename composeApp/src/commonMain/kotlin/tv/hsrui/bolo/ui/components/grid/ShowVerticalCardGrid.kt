@@ -25,13 +25,11 @@ fun <T> ShowVerticalCardGrid(
     modifier: Modifier = Modifier,
     howToShow: @Composable (T) -> Unit
 ) {
-    val windowSize = getNowWindowSize()
-
     val columns: Int
     val contentPadding: Dp
     val contentSpacing: Dp
 
-    when (windowSize) {
+    when (getNowWindowSize()) {
         AppWindowSize.EXPANDED -> {
             columns = 4
             contentPadding = 16.dp

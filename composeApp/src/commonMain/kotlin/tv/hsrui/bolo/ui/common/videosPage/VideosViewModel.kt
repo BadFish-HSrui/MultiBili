@@ -15,7 +15,6 @@ abstract class VideosViewModel : ViewModel() {
     var pageNumber: Int = 1
 
     var isLoading: Boolean = false
-    var isRefreshing: Boolean = false
 
     protected abstract suspend fun fetchVideos(): VideosResult
 
@@ -66,8 +65,6 @@ abstract class VideosViewModel : ViewModel() {
 
     fun refreshVideos() {
         resetPageNumber()
-        isRefreshing = true
         loadVideos()
-        isRefreshing = false
     }
 }

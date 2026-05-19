@@ -35,13 +35,10 @@ import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.ui.theme.BoloShapes
-import tv.hsrui.bolo.utils.AppWindowSize
-import tv.hsrui.bolo.utils.getNowWindowSize
-import tv.hsrui.bolo.utils.isCompact
+import tv.hsrui.bolo.utils.isExpanded
 
 @Composable
 fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
-    val windowSize = getNowWindowSize()
     Box {
         Scaffold(
             topBar = {
@@ -55,15 +52,16 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
             val navigator: Navigator = koinInject()
             var selectedFeature by rememberSaveable { mutableStateOf(AccountFeature.History) }
 
+            val isExpanded = isExpanded()
             LaunchedEffect(Unit) {
-                if (windowSize != AppWindowSize.COMPACT && navigator.backStack.last() == BoloRoute.AccountFeature.List) {
+                if (isExpanded && navigator.backStack.last() == BoloRoute.AccountFeature.List) {
                     navigator.navigateTo(BoloRoute.AccountFeature.History)
                 }
             }
 
             /*TODO: 在compose-material3完成适配后，用SegmentedListItem代替Card*/
             LazyColumn(
-                modifier = Modifier.padding(innerPadding),
+                modifier = Modifier.padding(top = innerPadding.calculateTopPadding()),
                 contentPadding = PaddingValues(horizontal = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
@@ -78,8 +76,8 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
                             navigator.navigateTo(feature.route); selectedFeature = feature
                         },
                         shape = BoloShapes.List.Item,
-                        colors = if (feature == selectedFeature && !isCompact()) {
-                            CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)
+                        colors = if (feature == selectedFeature && isExpanded()) {
+                            CardDefaults.cardColors(MaterialTheme.colorScheme.secondaryContainer)
                         } else CardDefaults.cardColors(),
                         modifier = Modifier.fillMaxWidth().height(64.dp)
                     ) {
@@ -124,7 +122,7 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
                 }
             }
         }
-        if (!isCompact()) {
+        if (isExpanded()) {
             VerticalDivider(Modifier.align(Alignment.CenterEnd).fillMaxHeight())
         }
     }

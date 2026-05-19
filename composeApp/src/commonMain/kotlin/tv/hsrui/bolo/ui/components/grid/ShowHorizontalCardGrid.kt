@@ -25,13 +25,10 @@ fun <T> ShowHorizontalCardGrid(
     modifier: Modifier = Modifier,
     howToShow: @Composable (T) -> Unit
 ) {
-    val windowSize = getNowWindowSize()
-
-    val columns: Int
     val contentPadding: Dp
     val contentSpacing: Dp
 
-    when (windowSize) {
+    when (getNowWindowSize()) {
         AppWindowSize.EXPANDED -> {
             contentPadding = 16.dp
             contentSpacing = 12.dp
@@ -48,7 +45,7 @@ fun <T> ShowHorizontalCardGrid(
         }
     }
     Box(modifier = modifier.fillMaxSize()) {
-        Box(modifier = modifier.widthIn(max = 1280.dp).fillMaxSize().align(Alignment.TopCenter)) {
+        Box(modifier = Modifier.widthIn(max = 1280.dp).fillMaxSize().align(Alignment.TopCenter)) {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(325.dp),
                 content = {

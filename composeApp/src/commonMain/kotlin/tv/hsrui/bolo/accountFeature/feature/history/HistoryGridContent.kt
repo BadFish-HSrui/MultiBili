@@ -70,7 +70,7 @@ fun HistoryGridContent(
                         ShowHistoryVideoCard(
                             videoInfo = video,
                             onDeleted = { id -> viewModel.removeItem(id) },
-                            modifier = Modifier.height(96.dp)
+                            modifier = Modifier.height(88.dp)
                         )
                     }
                     ShowGridFABMenu(

@@ -41,8 +41,7 @@ import tv.hsrui.bolo.main.home.HomeScreen
 import tv.hsrui.bolo.main.region.RegionsScreen
 import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
-import tv.hsrui.bolo.utils.AppWindowSize
-import tv.hsrui.bolo.utils.getNowWindowSize
+import tv.hsrui.bolo.utils.isCompact
 import tv.hsrui.network.feature.account.myinfo.MyAccountInfoManager
 import tv.hsrui.network.login.storage.LoginStorage
 
@@ -51,7 +50,7 @@ fun MainScreen(modifier: Modifier = Modifier) {
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.HOME) }
     val onClick: (MainTab) -> Unit = { selectedTab = it }
     val saveableStateHolder = rememberSaveableStateHolder()
-    val isVerticalLayout = getNowWindowSize() == AppWindowSize.COMPACT
+    val isVerticalLayout = isCompact()
 
     saveableStateHolder.SaveableStateProvider(key = selectedTab) {
         Scaffold(
