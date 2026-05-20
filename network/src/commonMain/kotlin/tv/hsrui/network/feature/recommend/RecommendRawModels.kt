@@ -41,8 +41,6 @@ data class RawOwner(
 data class RawStat(
     val view: Int = -1,
     val like: Int = -1,
-    val coin: Int = -1,
-    val favorite: Int = -1,
     val danmaku: Int = -1,
     val reply: Int = -1
 )
@@ -59,8 +57,6 @@ fun RawRecommendItem.toVideoCard(): VideoCard {
         _stat = Stat(
             view = stat.view,
             like = stat.like,
-            coin = stat.coin,
-            favorite = stat.favorite,
             danmaku = stat.danmaku,
             reply = stat.reply
         ),

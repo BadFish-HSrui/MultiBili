@@ -9,7 +9,7 @@ object BiliColor {
     const val LV4 = 0XFFFEB98D
     const val LV5 = 0XFFEE6829
     const val LV6 = 0XFFFE0000
-    const val theme = 0xFFFC6699
+    const val THEME = 0xFFFE679A
 
     fun getLevelColor(level: Int): Color {
         return Color(
@@ -24,5 +24,5 @@ object BiliColor {
         )
     }
 
-    val ThemeColor = Color(theme)
+    val ThemeColor = Color(THEME)
 }

@@ -28,8 +28,6 @@ data class VideoCard(
     val viewCount by _stat::view
     val danmakuCount by _stat::danmaku
     val likeCount by _stat::like
-    val coinCount by _stat::coin
-    val favoriteCount by _stat::favorite
     val replyCount by _stat::reply
     val upName by _owner::name
     val upAvatarUrl by lazy { _owner.face.toHttpsUrl() }
@@ -42,8 +40,6 @@ data class VideoCard(
     data class Stat(
         val view: Int = -1,
         val like: Int = -1,
-        val coin: Int = -1,
-        val favorite: Int = -1,
         val danmaku: Int = -1,
         val reply: Int = -1
     )
