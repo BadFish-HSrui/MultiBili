@@ -1,5 +1,6 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -7,6 +8,7 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.composeHotReload)
+    alias(libs.plugins.buildkonfig)
 }
 
 kotlin {
@@ -100,21 +102,14 @@ compose.desktop {
             windows { iconFile.set(project.file("src/jvmMain/icons/windows_icon.ico")) }
         }
 
-//        buildTypes.release.proguard {
-//            configurationFiles.from("compose-desktop.pro")
-//        }
     }
 }
 
-//afterEvaluate {
-//    tasks.withType<JavaExec> {
-//        jvmArgs("--add-opens", "java.desktop/sun.awt=ALL-UNNAMED")
-//        jvmArgs("--add-opens", "java.desktop/java.awt.peer=ALL-UNNAMED")
-//
-//        if (System.getProperty("os.name").contains("Mac")) {
-//            jvmArgs("--add-opens", "java.desktop/sun.awt=ALL-UNNAMED")
-//            jvmArgs("--add-opens", "java.desktop/sun.lwawt=ALL-UNNAMED")
-//            jvmArgs("--add-opens", "java.desktop/sun.lwawt.macosx=ALL-UNNAMED")
-//        }
-//    }
-//}
+buildkonfig {
+    packageName = "tv.hsrui.bolo"
+    exposeObjectWithName = "BuildInfo"
+
+    defaultConfigs {
+        buildConfigField(STRING, "appVersion", libs.versions.appVersion.get())
+    }
+}
