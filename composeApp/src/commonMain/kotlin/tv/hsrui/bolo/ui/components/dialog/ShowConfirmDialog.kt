@@ -6,9 +6,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material3.BasicAlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,19 +43,21 @@ fun ShowConfirmDialog(
 
                 title()
 
-                Text(
-                    text = text,
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F)
-                )
+                if (text.isNotEmpty()){
+                    Text(
+                        text = text,
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F)
+                    )
+                }
 
                 Row {
-                    Button(onClick = onCancel) {
+                    OutlinedButton(onClick = onCancel) {
                         Text("取消")
                     }
                     Spacer(Modifier.padding(horizontal = 4.dp))
-                    Button(onClick = onConfirm) {
+                    OutlinedButton(onClick = onConfirm) {
                         Text("确认")
                     }
                 }

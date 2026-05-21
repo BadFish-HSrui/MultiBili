@@ -15,10 +15,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Comment
-import androidx.compose.material.icons.automirrored.filled.ShortText
-import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.automirrored.rounded.Comment
+import androidx.compose.material.icons.automirrored.rounded.ShortText
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -48,9 +48,9 @@ import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.bolo.utils.isCompact
-import tv.hsrui.network.utils.formatCountToString
 import tv.hsrui.network.model.VideoCard
 import tv.hsrui.network.model.VideoCardExample
+import tv.hsrui.network.utils.formatCountToString
 
 @Composable
 fun ShowVideoCard(
@@ -149,7 +149,7 @@ fun ShowVideoCard(
                                 .padding(4.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.PlayCircle,
+                                imageVector = Icons.Rounded.PlayCircle,
                                 contentDescription = "播放量",
                                 modifier = Modifier.size(10.dp)
                             )
@@ -163,7 +163,7 @@ fun ShowVideoCard(
                                 .padding(4.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ShortText,
+                                imageVector = Icons.AutoMirrored.Rounded.ShortText,
                                 contentDescription = "弹幕量",
                                 modifier = Modifier.size(10.dp)
                             )
@@ -189,7 +189,7 @@ fun ShowVideoCard(
                                 .padding(4.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.ThumbUp,
+                                imageVector = Icons.Rounded.ThumbUp,
                                 contentDescription = "点赞量",
                                 modifier = Modifier.size(10.dp)
                             )
@@ -209,7 +209,7 @@ fun ShowVideoCard(
                                     .padding(4.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Comment,
+                                    imageVector = Icons.AutoMirrored.Rounded.Comment,
                                     contentDescription = "评论量",
                                     modifier = Modifier.size(10.dp)
                                 )
