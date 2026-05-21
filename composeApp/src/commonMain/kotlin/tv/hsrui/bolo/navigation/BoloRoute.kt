@@ -27,4 +27,9 @@ sealed interface BoloRoute {
         @Serializable data object List : BoloSetting
         @Serializable data object About : BoloSetting
     }
+
+    @Serializable
+    sealed interface View : BoloRoute {
+        @Serializable data class Video(val avid: Long) : View
+    }
 }
