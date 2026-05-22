@@ -10,12 +10,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import tv.hsrui.network.feature.video.VideoInfoData
 
 @Composable
 fun VideoDescPage(
     videoInfo: VideoInfoData,
-    viewModel: RelatedViewModel,
+    viewModel: RelatedViewModel = viewModel(key = videoInfo.bvid) { RelatedViewModel(videoInfo.avid) },
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()

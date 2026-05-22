@@ -99,7 +99,7 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
 
                 item {
                     Card(
-                        onClick = { },
+                        onClick = { navigator.navigateTo(BoloRoute.BoloSetting.List) },
                         shape = BoloShapes.List.Bottom,
                         modifier = Modifier.fillMaxWidth().height(64.dp)
                     ) {
