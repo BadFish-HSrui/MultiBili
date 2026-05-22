@@ -14,8 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,18 +46,16 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
-import tv.hsrui.bolo.navigation.BoloRoute
-import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.navigation.openVideo
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.theme.BoloShapes
-import tv.hsrui.network.utils.formatToDateTime
-import tv.hsrui.network.utils.formatToDuration
 import tv.hsrui.network.feature.history.HistoryVideoCard
 import tv.hsrui.network.feature.history.HistoryVideoCardExample
 import tv.hsrui.network.feature.history.deleteHistory
+import tv.hsrui.network.utils.formatToDateTime
+import tv.hsrui.network.utils.formatToDuration
 
 @Composable
 fun ShowHistoryVideoCard(
@@ -182,7 +179,7 @@ fun ShowHistoryVideoCard(
                     modifier = Modifier.size(24.dp).align(Alignment.BottomEnd)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.DeleteForever,
+                        imageVector = Icons.Rounded.DeleteOutline,
                         contentDescription = "删除记录",
                         modifier = Modifier.size(20.dp).alpha(0.5F)
                     )
@@ -213,7 +210,7 @@ fun ShowHistoryVideoCard(
                         },
                         icon = {
                             Icon(
-                                imageVector = Icons.Default.Delete,
+                                imageVector = Icons.Rounded.DeleteOutline,
                                 contentDescription = null
                             )
                         },
