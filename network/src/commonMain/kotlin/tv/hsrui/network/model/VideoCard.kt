@@ -58,7 +58,7 @@ val VideoCardExample = VideoCard(
     _cover = "http://i2.hdslb.com/bfs/archive/7a7aa5e03fb63167e51a9d3d7a28ed2749128a45.jpg",
     title = "✨“我为你唱一曲如游丝的气息”《青衣DJ》✨/AI東 雪蓮",
     publishDate = 1759762729,
-    _stat = VideoCard.Stat(view = 1919810, like = 114514),
+    _stat = VideoCard.Stat(view = 1919810, like = 114514, danmaku = 512),
     duration = 10000,
     _owner = VideoCard.Owner(
         name = "东洋雪莲",

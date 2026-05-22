@@ -3,8 +3,7 @@ package tv.hsrui.bolo.ui.components.video
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,6 +45,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.Navigator
+import tv.hsrui.bolo.navigation.openVideo
 import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.bolo.utils.isCompact
 import tv.hsrui.network.model.VideoCard
@@ -85,10 +88,11 @@ fun ShowVideoCard(
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
             }
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {})
+            .combinedClickable(
+                onClick = {
+                    openVideo(videoInfo.bvid)
+                }
+            )
             .then(
                 if (isFocused) Modifier.zIndex(1F).scale(animatedScale).border(
                     width = 2.dp,

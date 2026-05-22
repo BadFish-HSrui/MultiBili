@@ -30,6 +30,6 @@ sealed interface BoloRoute {
 
     @Serializable
     sealed interface View : BoloRoute {
-        @Serializable data class Video(val avid: Long) : View
+        @Serializable data class VideoBV(val bvid: String) : View
     }
 }

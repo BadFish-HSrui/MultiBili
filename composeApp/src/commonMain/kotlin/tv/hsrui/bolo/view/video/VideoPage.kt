@@ -27,8 +27,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.utils.isExpanded
+import tv.hsrui.bolo.view.video.desc.RelatedViewModel
 import tv.hsrui.bolo.view.video.desc.VideoDescPage
 
 private enum class VideoInfoTab(val title: String) {
@@ -84,7 +86,11 @@ fun VideoPage(
                 ) { page ->
                     when (tabs[page]) {
                         VideoInfoTab.Desc -> {
-                            VideoDescPage(videoInfo, Modifier.fillMaxSize())
+                            VideoDescPage(
+                                videoInfo = videoInfo,
+                                viewModel = viewModel { RelatedViewModel(videoInfo.avid) },
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
 
                         VideoInfoTab.Reply -> {

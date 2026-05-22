@@ -2,7 +2,6 @@ package tv.hsrui.bolo.navigation
 
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavEntry
 import tv.hsrui.bolo.TestScreen
 import tv.hsrui.bolo.accountFeature.AccountFeaturesScreen
@@ -13,7 +12,6 @@ import tv.hsrui.bolo.login.LoginScreen
 import tv.hsrui.bolo.login.LoginWebView
 import tv.hsrui.bolo.main.MainScreen
 import tv.hsrui.bolo.view.video.VideoScreen
-import tv.hsrui.bolo.view.video.VideoViewModel
 
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
@@ -62,12 +60,8 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
         }
 
         is BoloRoute.View -> when (route) {
-            is BoloRoute.View.Video -> NavEntry(key = route) {
-                VideoScreen(viewModel {
-                    VideoViewModel(
-                        route.avid
-                    )
-                })
+            is BoloRoute.View.VideoBV -> NavEntry(key = route) {
+                VideoScreen(route.bvid)
             }
         }
     }

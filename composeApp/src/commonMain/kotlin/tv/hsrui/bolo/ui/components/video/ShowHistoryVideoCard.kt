@@ -1,6 +1,7 @@
 package tv.hsrui.bolo.ui.components.video
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,6 +47,9 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.Navigator
+import tv.hsrui.bolo.navigation.openVideo
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.theme.BiliColor
@@ -62,7 +66,16 @@ fun ShowHistoryVideoCard(
     onDeleted: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(modifier = modifier.widthIn(max = 512.dp), shape = BoloShapes.InfoCard.Default) {
+    Card(
+        shape = BoloShapes.InfoCard.Default,
+        modifier = modifier
+            .widthIn(max = 512.dp)
+            .combinedClickable(
+                onClick = {
+                    openVideo(bvid = videoInfo.bvid)
+                }
+            )
+    ) {
         Row {
             Box(modifier = Modifier.aspectRatio(16F / 9F)) {
                 AsyncImage(

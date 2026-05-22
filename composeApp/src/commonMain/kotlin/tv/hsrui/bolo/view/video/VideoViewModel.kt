@@ -7,11 +7,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import tv.hsrui.network.feature.video.fetchVideoInfo
 
-class VideoViewModel(private val avid: Long) : ViewModel() {
+class VideoViewModel(private val bvid: String) : ViewModel() {
     private val _uiState = MutableStateFlow<VideoUiState>(VideoUiState.Loading)
     val uiState = _uiState.asStateFlow()
-
-    var videoSize: Pair<Int, Int> = Pair(0, 0)
 
     init {
         loadVideoInfo()
@@ -21,7 +19,7 @@ class VideoViewModel(private val avid: Long) : ViewModel() {
         _uiState.value = VideoUiState.Loading
         viewModelScope.launch {
             try {
-                val result = fetchVideoInfo(avid = avid)
+                val result = fetchVideoInfo(bvid)
                 if (result.isSuccess) {
                     _uiState.value = VideoUiState.Success(result.data)
                 } else {
