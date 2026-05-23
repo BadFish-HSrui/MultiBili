@@ -1,4 +1,4 @@
-package tv.hsrui.network.feature.related.video
+package tv.hsrui.network.feature.video.related
 
 import kotlinx.serialization.Serializable
 import tv.hsrui.network.model.ValidVideosData

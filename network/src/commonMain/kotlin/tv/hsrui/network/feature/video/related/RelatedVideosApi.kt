@@ -1,4 +1,4 @@
-package tv.hsrui.network.feature.related.video
+package tv.hsrui.network.feature.video.related
 
 import io.ktor.client.call.body
 import io.ktor.client.request.get

@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -52,7 +53,9 @@ fun ShowVerticalVideoCard(
             Box(modifier = Modifier.aspectRatio(16F / 9F).background(Color.White)) {
                 AsyncImage(
                     model = videoInfo.coverUrl + "@480w_270h_1c.webp",
-                    contentDescription = null
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
                 )
 
                 Box(
