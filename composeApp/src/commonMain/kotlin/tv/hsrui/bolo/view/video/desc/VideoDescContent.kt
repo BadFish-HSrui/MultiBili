@@ -69,6 +69,7 @@ fun VideoDescContent(videoInfo: VideoInfoData) {
                 }
                 Spacer(Modifier.weight(1F))
                 RelationButton(
+                    upName = videoInfo.upName,
                     mid = videoInfo.upMid,
                     modifier = Modifier.height(24.dp)
                 )
