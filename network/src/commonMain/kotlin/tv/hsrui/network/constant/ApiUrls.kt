@@ -14,4 +14,15 @@ object ApiUrls {
     const val VIDEO_INFO = "x/web-interface/wbi/view" //视频播放信息
     const val VIDEO_RELATED = "x/web-interface/archive/related" //相关视频推荐
     const val RELATION = "x/web-interface/relation" //关系
+    const val MODIFY_RELATION = "x/relation/modify" //修改关系
+
+    object VideoAction {
+        const val LIKE = "x/web-interface/archive/like" //点赞
+        const val HAS_LIKE = "x/web-interface/archive/has/like" //点赞状态
+        const val DIS_LIKE = "x/v2/view/dislike" //点踩
+        const val COIN = "x/web-interface/coin/add" // 投币
+        const val HAS_COIN = "x/web-interface/archive/coins" //投币状态
+        const val HAS_FAVOURED = "x/v2/fav/video/favoured" //收藏状态
+        const val TRIPLE = "x/web-interface/archive/like/triple" //一键三连
+    }
 }

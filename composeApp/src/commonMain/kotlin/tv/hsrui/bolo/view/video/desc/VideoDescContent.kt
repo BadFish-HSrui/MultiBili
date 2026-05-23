@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.ui.components.button.RelationButton
+import tv.hsrui.bolo.ui.components.video.actionsBar.VideoActionsBar
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.utils.formatCountToString
 import tv.hsrui.network.utils.formatToDateTime
@@ -159,12 +160,13 @@ fun VideoDescContent(videoInfo: VideoInfoData) {
                         Text(
                             text = videoInfo.dynamicDescription,
                             style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 4.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp)
                                 .alpha(0.67F)
                         )
                     }
                 }
             }
+            VideoActionsBar(videoInfo = videoInfo, modifier = Modifier.padding(top = 8.dp))
         }
     }
 }
