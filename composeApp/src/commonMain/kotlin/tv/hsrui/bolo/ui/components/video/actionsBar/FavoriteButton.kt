@@ -3,9 +3,6 @@ package tv.hsrui.bolo.ui.components.video.actionsBar
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ThumbUp
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -19,10 +16,16 @@ import multibili.composeapp.generated.resources.Res
 import multibili.composeapp.generated.resources.favorite_icon
 import org.jetbrains.compose.resources.painterResource
 import tv.hsrui.bolo.ui.theme.BiliColor
+import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.utils.formatCountToString
 
 @Composable
-fun FavoriteButton(favoriteCount: Int, isFavoured: Boolean, modifier: Modifier = Modifier) {
+fun FavoriteButton(
+    videoInfo: VideoInfoData,
+    isFavoured: Boolean,
+    reloadState: suspend () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Box(modifier = modifier) {
         Surface(
             color = Color.Transparent
@@ -37,7 +40,7 @@ fun FavoriteButton(favoriteCount: Int, isFavoured: Boolean, modifier: Modifier =
                     modifier = Modifier.size(24.dp)
                 )
                 Text(
-                    text = favoriteCount.formatCountToString(),
+                    text = videoInfo.stateCount.favorite.formatCountToString(),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )

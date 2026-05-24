@@ -7,9 +7,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSerializable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.network.feature.video.VideoInfoData
@@ -19,13 +21,24 @@ import tv.hsrui.network.feature.video.actions.state.fetchVideoActionsStateFor
 @Composable
 fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
     var actionsState by rememberSerializable { mutableStateOf(VideoActionsStateResponse()) }
+    var trigger by rememberSaveable { mutableStateOf(0) }
     val snackbarManager: SnackbarManager = koinInject()
+    val reloadState: suspend () -> Unit = {
+        /*
+        TODO:
+           潜在问题是B站服务器内部状态同步延迟,
+           直接重新加载会获取到旧数据,
+           暂时使用100ms延迟解决,
+           未来可能改为使用乐观更新+延迟加载验证状态.
+        */
+        delay(100)
+        trigger++
+    }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(trigger) {
         try {
             val result = fetchVideoActionsStateFor(videoInfo.bvid)
-            println(result.isFavoured)
-            if (actionsState.isSuccess) {
+            if (result.isSuccess) {
                 actionsState = result
             } else {
                 snackbarManager.showMessage(actionsState.message)
@@ -40,16 +53,19 @@ fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         LikeButton(
-            likeCount = videoInfo.stateCount.like,
+            videoInfo = videoInfo,
             isLiked = actionsState.isLiked,
+            reloadState = reloadState
         )
         CoinButton(
-            coinCount = videoInfo.stateCount.coin,
-            hasCoin = actionsState.hasCoin
+            videoInfo = videoInfo,
+            hasCoin = actionsState.hasCoin,
+            reloadState = reloadState
         )
         FavoriteButton(
-            favoriteCount = videoInfo.stateCount.favorite,
-            isFavoured = actionsState.isFavoured
+            videoInfo = videoInfo,
+            isFavoured = actionsState.isFavoured,
+            reloadState = reloadState
         )
     }
 }

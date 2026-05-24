@@ -19,7 +19,6 @@ object ApiUrls {
     object VideoAction {
         const val LIKE = "x/web-interface/archive/like" //点赞
         const val HAS_LIKE = "x/web-interface/archive/has/like" //点赞状态
-        const val DIS_LIKE = "x/v2/view/dislike" //点踩
         const val COIN = "x/web-interface/coin/add" // 投币
         const val HAS_COIN = "x/web-interface/archive/coins" //投币状态
         const val HAS_FAVOURED = "x/v2/fav/video/favoured" //收藏状态
