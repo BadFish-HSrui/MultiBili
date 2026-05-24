@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.HorizontalDivider
@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.min
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.bolo.view.video.desc.VideoDescPage
+import tv.hsrui.network.utils.formatCountToString
 
 private enum class VideoInfoTab(val title: String) {
     Desc("简介"),
@@ -55,20 +56,14 @@ fun VideoPage(
             Column {
                 PrimaryTabRow(
                     selectedTabIndex = pagerState.currentPage,
-                    modifier = Modifier.padding(start = 32.dp).width(128.dp),
+                    modifier = Modifier.widthIn(max = 224.dp),
                     divider = {}
                 ) {
                     tabs.forEachIndexed { index, tab ->
                         Tab(
                             selected = (pagerState.currentPage == index),
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(
-                                        index
-                                    )
-                                }
-                            },
-                            text = { Text(tab.title) },
+                            onClick = { coroutineScope.launch { pagerState.animateScrollToPage(index) } },
+                            text = { Text(tab.title + if (tab == VideoInfoTab.Reply) "(${videoInfo.stateCount.reply.formatCountToString()})" else "") },
                             modifier = Modifier.height(32.dp)
                         )
                     }

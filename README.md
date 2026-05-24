@@ -7,6 +7,10 @@
 
 </div>
 
+### :warning:: 本项目目的不是实现官方客户端的所有功能,而是更专注于视频
+
+> 启动这个项目的原因就是我不喜欢官方客户端越来越多的在主页与视频下方推荐广告、会员购、专栏、直播、PGC内容
+
 ### 不包含以下特性：
 
 - :thumbsup: 丝滑的使用体验
@@ -14,18 +18,6 @@
 - :art: 高水平审美
 - :zap: 运行流畅
 - :100: 无BUG
-
-### 支持平台:
-
-| 平台           | 文件        |
-|--------------|-----------|
-| Android      | APK       |
-| iOS          | IPA (无签名) |
-| MacOS(jvm)   | DMG       |
-| Windows(jvm) | EXE MSI   |
-| Linux(jvm)   | DEB RPM   |
-
-> 虽然理论上KMP支持`JS`和`WASM`，但因为依赖生态与运行效率问题，本项目短期内不会考虑Web版本(B站网页端还挺好用的)
 
 ### 鸣谢
 - [SocialSisterYi/bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect): 提供B站Api信息
