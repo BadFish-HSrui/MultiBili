@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import multibili.composeapp.generated.resources.Res
 import multibili.composeapp.generated.resources.coin_icon
 import org.jetbrains.compose.resources.painterResource
@@ -32,6 +33,7 @@ import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.network.feature.video.CopyrightType
 import tv.hsrui.network.feature.video.VideoInfoData
+import tv.hsrui.network.feature.video.actions.coin.modifyVideoCoin
 import tv.hsrui.network.utils.formatCountToString
 
 @Composable
@@ -44,7 +46,7 @@ fun CoinButton(
     modifier: Modifier = Modifier
 ) {
     val canCoinCount =
-        (if (videoInfo.copyrightType == CopyrightType.Original) 2 else 1) - coinedCount
+        (if (videoInfo.copyrightType == CopyrightType.Reprint) 1 else 2) - coinedCount
     var showDialog by rememberSaveable { mutableStateOf(false) }
     val snackbarManager: SnackbarManager = koinInject()
     val scope = rememberCoroutineScope()
@@ -126,7 +128,23 @@ fun CoinButton(
                 }
             },
             onCancel = { showDialog = false },
-            onConfirm = {}
+            onConfirm = {
+                scope.launch {
+                    try {
+                        val result = modifyVideoCoin(avid = videoInfo.avid, coinCount = coinCount)
+                        if (result.isSuccess) {
+                            snackbarManager.showMessage("成功投币${coinCount}枚")
+                        } else {
+                            snackbarManager.showMessage("[${result.code}]: ${result.message}")
+                        }
+                    } catch (e: Exception) {
+                        snackbarManager.showMessage(e.message ?: "其他网络错误")
+                    } finally {
+                        reloadState()
+                        showDialog = false
+                    }
+                }
+            }
         )
     }
 }

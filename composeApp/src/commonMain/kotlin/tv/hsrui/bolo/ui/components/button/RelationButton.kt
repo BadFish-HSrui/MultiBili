@@ -93,10 +93,10 @@ fun RelationButton(upName: String, mid: Long, modifier: Modifier = Modifier) {
                         if (result.isSuccess) {
                             snackbarManager.showMessage("${relationAction.title} $upName 成功")
                         } else {
-                            snackbarManager.showMessage(result.message)
+                            snackbarManager.showMessage("[${result.code}]: ${result.message}")
                         }
                     } catch (e: Exception) {
-                        snackbarManager.showMessage(e.toString())
+                        snackbarManager.showMessage(e.message ?: "其他网络错误")
                     } finally {
                         trigger++
                         showDialog = false

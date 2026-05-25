@@ -7,7 +7,8 @@ import tv.hsrui.network.utils.toHttpsUrl
 
 enum class CopyrightType(val title: String) {
     Original("原创"),
-    Reprint("转载")
+    Reprint("转载"),
+    Other("未填写")
 }
 
 @Serializable
@@ -67,7 +68,13 @@ data class VideoInfoData(
     @SerialName("is_upower_exclusive") val isUpowerExclusive: Boolean = false, //充电专属视频
     @SerialName("is_season_display") val isSeasonDisplay: Boolean = false,
 ) {
-    val copyrightType: CopyrightType get() = if (_copyright == 1) CopyrightType.Original else CopyrightType.Reprint
+    val copyrightType: CopyrightType
+        get() = when (_copyright) {
+            1 -> CopyrightType.Original
+            2 -> CopyrightType.Reprint
+            3 -> CopyrightType.Other
+            else -> CopyrightType.Other
+        }
     val coverUrl by lazy { _pic.toHttpsUrl() }
     val publishDateString by lazy { publishDate.formatToDateTime() }
 
