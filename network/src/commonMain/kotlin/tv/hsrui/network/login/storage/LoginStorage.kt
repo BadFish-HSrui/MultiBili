@@ -2,6 +2,7 @@ package tv.hsrui.network.login.storage
 
 import eu.anifantakis.lib.ksafe.KSafe
 import eu.anifantakis.lib.ksafe.invoke
+import org.koin.mp.KoinPlatformTools
 import tv.hsrui.network.model.Cookies
 
 class LoginStorage(private val loginKSafe: KSafe) {
@@ -35,3 +36,5 @@ class LoginStorage(private val loginKSafe: KSafe) {
         append("buvid_fp=${cookies.buvidFp}")
     }
 }
+
+fun isLoggedIn(): Boolean = KoinPlatformTools.defaultContext().get().get<LoginStorage>().isLoggedIn

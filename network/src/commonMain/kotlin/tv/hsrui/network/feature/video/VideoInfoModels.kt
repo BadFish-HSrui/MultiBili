@@ -5,6 +5,11 @@ import kotlinx.serialization.Serializable
 import tv.hsrui.network.utils.formatToDateTime
 import tv.hsrui.network.utils.toHttpsUrl
 
+enum class CopyrightType(val title: String) {
+    Original("原创"),
+    Reprint("转载")
+}
+
 @Serializable
 data class VideoInfoResponse(
     @SerialName("code") private val _code: Int = -1,
@@ -62,12 +67,7 @@ data class VideoInfoData(
     @SerialName("is_upower_exclusive") val isUpowerExclusive: Boolean = false, //充电专属视频
     @SerialName("is_season_display") val isSeasonDisplay: Boolean = false,
 ) {
-    val copyrightString: String
-        get() = when (_copyright) {
-            1 -> "原创"
-            2 -> "转载"
-            else -> ""
-        }
+    val copyrightType: CopyrightType get() = if (_copyright == 1) CopyrightType.Original else CopyrightType.Reprint
     val coverUrl by lazy { _pic.toHttpsUrl() }
     val publishDateString by lazy { publishDate.formatToDateTime() }
 

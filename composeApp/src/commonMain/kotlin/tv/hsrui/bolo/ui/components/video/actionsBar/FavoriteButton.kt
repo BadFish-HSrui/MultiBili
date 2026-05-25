@@ -23,11 +23,13 @@ import tv.hsrui.network.utils.formatCountToString
 fun FavoriteButton(
     videoInfo: VideoInfoData,
     isFavoured: Boolean,
+    canClick: Boolean,
     reloadState: suspend () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier) {
         Surface(
+            onClick = {},
             color = Color.Transparent
         ) {
             Column(

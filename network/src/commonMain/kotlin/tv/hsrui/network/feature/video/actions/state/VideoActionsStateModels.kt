@@ -6,11 +6,11 @@ import kotlinx.serialization.Serializable
 data class VideoActionsStateResponse(
     val message: String = "",
     val isLiked: Boolean = false,
-    val coinCount: Int = 0,
+    val coinedCount: Int = 0,
     val isFavoured: Boolean = false
 ) {
     val isSuccess get() = (message.isEmpty())
-    val hasCoin get() = (coinCount != 0)
+    val isCoined get() = (coinedCount != 0)
 }
 
 @Serializable
@@ -30,7 +30,7 @@ data class VideoCoinStateResponse(
     private val data: VideoCoinData = VideoCoinData()
 ) {
     val isSuccess get() = (code == 0)
-    val coinsCount by data::multiply
+    val coinedCount by data::multiply
 
     @Serializable
     data class VideoCoinData(

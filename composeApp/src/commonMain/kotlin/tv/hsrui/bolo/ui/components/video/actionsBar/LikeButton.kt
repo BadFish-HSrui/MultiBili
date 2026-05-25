@@ -29,6 +29,7 @@ import tv.hsrui.network.utils.formatCountToString
 fun LikeButton(
     videoInfo: VideoInfoData,
     isLiked: Boolean,
+    canClick: Boolean,
     reloadState: suspend () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -39,16 +40,18 @@ fun LikeButton(
     Box(modifier = modifier) {
         Surface(
             onClick = {
-                scope.launch {
-                    try {
-                        val result = modifyVideoLike(avid = videoInfo.avid, action = action)
-                        if (!result.isSuccess) {
-                            snackbarManager.showMessage("[${result.code}]: ${result.message}")
+                if (canClick) {
+                    scope.launch {
+                        try {
+                            val result = modifyVideoLike(avid = videoInfo.avid, action = action)
+                            if (!result.isSuccess) {
+                                snackbarManager.showMessage("[${result.code}]: ${result.message}")
+                            }
+                        } catch (e: Exception) {
+                            snackbarManager.showMessage(e.toString())
+                        } finally {
+                            reloadState()
                         }
-                    } catch (e: Exception) {
-                        snackbarManager.showMessage(e.toString())
-                    } finally {
-                        reloadState()
                     }
                 }
             },

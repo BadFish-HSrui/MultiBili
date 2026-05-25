@@ -17,6 +17,7 @@ import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.video.actions.state.VideoActionsStateResponse
 import tv.hsrui.network.feature.video.actions.state.fetchVideoActionsStateFor
+import tv.hsrui.network.login.storage.isLoggedIn
 
 @Composable
 fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
@@ -34,17 +35,20 @@ fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
         delay(100)
         trigger++
     }
+    val isLogin = isLoggedIn()
 
     LaunchedEffect(trigger) {
-        try {
-            val result = fetchVideoActionsStateFor(videoInfo.bvid)
-            if (result.isSuccess) {
-                actionsState = result
-            } else {
-                snackbarManager.showMessage(actionsState.message)
+        if (isLogin){
+            try {
+                val result = fetchVideoActionsStateFor(videoInfo.bvid)
+                if (result.isSuccess) {
+                    actionsState = result
+                } else {
+                    snackbarManager.showMessage(actionsState.message)
+                }
+            } catch (e: Exception) {
+                snackbarManager.showMessage(e.message ?: "其他网络错误")
             }
-        } catch (e: Exception) {
-            snackbarManager.showMessage(e.message ?: "其他网络错误")
         }
     }
 
@@ -55,16 +59,20 @@ fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
         LikeButton(
             videoInfo = videoInfo,
             isLiked = actionsState.isLiked,
+            canClick = isLogin,
             reloadState = reloadState
         )
         CoinButton(
             videoInfo = videoInfo,
-            hasCoin = actionsState.hasCoin,
+            isCoined = actionsState.isCoined,
+            coinedCount = actionsState.coinedCount,
+            canClick = isLogin,
             reloadState = reloadState
         )
         FavoriteButton(
             videoInfo = videoInfo,
             isFavoured = actionsState.isFavoured,
+            canClick = isLogin,
             reloadState = reloadState
         )
     }

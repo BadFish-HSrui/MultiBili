@@ -28,7 +28,7 @@ suspend fun fetchVideoActionsStateFor(bvid: String): VideoActionsStateResponse {
     return VideoActionsStateResponse(
         message = message,
         isLiked = likeResponse.isLiked,
-        coinCount = coinResponse.coinsCount,
+        coinedCount = coinResponse.coinedCount,
         isFavoured = favouredResponse.isFavoured
     )
 
