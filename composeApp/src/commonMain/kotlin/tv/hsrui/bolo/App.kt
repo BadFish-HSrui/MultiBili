@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
@@ -17,6 +18,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.ui.NavDisplay
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
 import org.koin.dsl.KoinConfiguration
@@ -54,11 +59,13 @@ fun App() {
             val snackbarHostState = remember { SnackbarHostState() }
 
             LaunchedEffect(Unit) {
-                snackbarManager.messages.collect { message ->
-                    snackbarHostState.showSnackbar(
-                        message = message.first,
-                        duration = message.second
-                    )
+                snackbarManager.messages.collect { (message, duration) ->
+                    withTimeoutOrNull(duration) {
+                        snackbarHostState.showSnackbar(
+                            message = message,
+                            duration = SnackbarDuration.Indefinite
+                        )
+                    }
                 }
             }
 
@@ -78,7 +85,7 @@ fun App() {
                     backStack = navigator.backStack,
                     onBack = { navigator.goBack() },
                     sceneStrategies = listOf(listDetailStrategy),
-                    entryProvider = { navigationEntry(it) } ,
+                    entryProvider = { navigationEntry(it) },
                     modifier = Modifier.padding(
                         top = innerPadding.calculateTopPadding(),
                         start = innerPadding.calculateStartPadding(layoutDirection),
