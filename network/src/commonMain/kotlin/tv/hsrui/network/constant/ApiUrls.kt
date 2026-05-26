@@ -24,4 +24,10 @@ object ApiUrls {
         const val HAS_FAVOURED = "x/v2/fav/video/favoured" //收藏状态
         const val TRIPLE = "x/web-interface/archive/like/triple" //一键三连
     }
+
+    object WatchLater {
+        const val LIST = "x/v2/history/toview" //稍后再看列表
+        const val ADD = "x/v2/history/toview/add" //添加稍后再看
+        const val DELETE = "x/v2/history/toview/del" //移除稍后再看
+    }
 }

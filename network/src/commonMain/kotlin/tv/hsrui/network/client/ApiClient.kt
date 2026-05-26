@@ -22,6 +22,7 @@ object ApiClient {
             }
             install(DefaultRequest) {
                 header("User-Agent", "Bolo")
+                header("Referer", "https://www.bilibili.com/")
                 if(loginStorage.isLoggedIn) {
                     header("Cookie", loginStorage.getCookiesString())
                 }
