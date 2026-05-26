@@ -6,6 +6,7 @@ import androidx.navigation3.runtime.NavEntry
 import tv.hsrui.bolo.TestScreen
 import tv.hsrui.bolo.accountFeature.AccountFeaturesScreen
 import tv.hsrui.bolo.accountFeature.feature.history.HistoryScreen
+import tv.hsrui.bolo.accountFeature.feature.watchLater.WatchLaterScreen
 import tv.hsrui.bolo.boloSetting.BoloSettingsScreen
 import tv.hsrui.bolo.boloSetting.setting.about.AboutScreen
 import tv.hsrui.bolo.login.LoginScreen
@@ -43,7 +44,7 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
                 is BoloRoute.AccountFeature.WatchLater -> NavEntry(
                     key = route,
                     metadata = ListDetailSceneStrategy.detailPane()
-                ) {}
+                ) { WatchLaterScreen(isEntryFromList = true) }
             }
         }
 
