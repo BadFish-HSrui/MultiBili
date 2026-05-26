@@ -11,13 +11,14 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import tv.hsrui.bolo.model.Vid
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 
 @Composable
-fun VideoScreen(
-    bvid: String,
-    viewModel: VideoViewModel = viewModel(key = bvid) {
-        VideoViewModel(bvid)
+fun  VideoScreen(
+    vid: Vid,
+    viewModel: VideoViewModel = viewModel(key = vid.key) {
+        VideoViewModel(vid =  vid)
     },
     modifier: Modifier = Modifier
 ) {

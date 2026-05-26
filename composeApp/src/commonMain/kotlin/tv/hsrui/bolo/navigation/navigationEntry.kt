@@ -60,8 +60,8 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
         }
 
         is BoloRoute.View -> when (route) {
-            is BoloRoute.View.VideoBV -> NavEntry(key = route) {
-                VideoScreen(route.bvid)
+            is BoloRoute.View.Video -> NavEntry(key = route) {
+                VideoScreen(vid = route.vid)
             }
         }
     }
