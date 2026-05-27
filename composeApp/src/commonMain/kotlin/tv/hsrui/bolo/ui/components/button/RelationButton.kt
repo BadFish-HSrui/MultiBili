@@ -41,7 +41,6 @@ fun RelationButton(upName: String, mid: Long, modifier: Modifier = Modifier) {
         if (loginStorage.isLoggedIn) {
             try {
                 val result = fetchRelationWith(mid)
-                println(result)
                 if (result.isSuccess) {
                     relationString = result.data.to.relationString
                     isFollowing = result.data.to.isFollowing

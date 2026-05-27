@@ -13,11 +13,9 @@ import tv.hsrui.network.constant.ApiUrls
 import tv.hsrui.network.login.storage.LoginStorage
 
 suspend fun fetchRelationWith(mid: Long): RelationResponse {
-    println(mid)
     val response = ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.RELATION) {
         parameter("mid", mid)
     }
-    println(response.body<String>())
 
     return response.body()
 }

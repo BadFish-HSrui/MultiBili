@@ -8,18 +8,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -30,6 +33,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -45,6 +49,7 @@ import tv.hsrui.bolo.utils.isCompact
 import tv.hsrui.network.feature.account.myinfo.MyAccountInfoManager
 import tv.hsrui.network.login.storage.LoginStorage
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(modifier: Modifier = Modifier) {
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.HOME) }
@@ -52,16 +57,22 @@ fun MainScreen(modifier: Modifier = Modifier) {
     val saveableStateHolder = rememberSaveableStateHolder()
     val isVerticalLayout = isCompact()
 
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+
     saveableStateHolder.SaveableStateProvider(key = selectedTab) {
         Scaffold(
-            modifier = modifier,
+            modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
                 if (isVerticalLayout) {
-                    Column(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 4.dp)
-                    ) {
-                        LoginOrAvatarImage(Modifier.size(42.dp))
-                    }
+                    TopAppBar(
+                        title = { LoginOrAvatarImage(Modifier.size(42.dp)) },
+                        scrollBehavior = scrollBehavior,
+                        windowInsets = WindowInsets(),
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            scrolledContainerColor = MaterialTheme.colorScheme.surface
+                        )
+                    )
                 }
             },
             bottomBar = {
@@ -84,7 +95,7 @@ fun MainScreen(modifier: Modifier = Modifier) {
                 }
             }
         ) { innerPadding ->
-            Row(modifier = modifier) {
+            Row(modifier = Modifier) {
                 if (!isVerticalLayout) {
                     NavigationRail(
                         windowInsets = WindowInsets(),

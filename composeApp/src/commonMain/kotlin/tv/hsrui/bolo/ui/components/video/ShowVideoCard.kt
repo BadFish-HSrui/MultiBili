@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
@@ -242,8 +243,9 @@ fun ShowVideoCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .padding(start = 4.dp, top = 4.dp, end = 4.dp)
-                            .height(36.dp)
+                            .height(40.dp)
                     )
+                    HorizontalDivider(Modifier.height(2.dp))
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.alpha(0.67F)
@@ -264,7 +266,7 @@ fun ShowVideoCard(
                         videoInfo.publishDateString,
                         fontSize = 10.sp,
                         lineHeight = 12.sp,
-                        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp).alpha(0.5F)
+                        modifier = Modifier.padding(start = 8.dp).alpha(0.5F)
                     )
                 }
 
