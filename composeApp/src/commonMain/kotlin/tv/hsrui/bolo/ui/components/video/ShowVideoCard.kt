@@ -233,27 +233,26 @@ fun ShowVideoCard(
                     }
                 }
             }
-            Box(Modifier.fillMaxSize()) {
-                Column {
-                    Text(
-                        text = videoInfo.title,
-                        fontSize = 13.sp,
-                        lineHeight = 16.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .padding(start = 4.dp, top = 4.dp, end = 4.dp)
-                            .height(40.dp)
-                    )
-                    HorizontalDivider(Modifier.height(2.dp))
+            Text(
+                text = videoInfo.title,
+                fontSize = 13.sp,
+                lineHeight = 16.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .padding(start = 4.dp, top = 4.dp, end = 4.dp)
+                    .height(40.dp)
+            )
+            HorizontalDivider(Modifier.height(2.dp))
+            Box(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(start = 8.dp).alpha(0.5F)) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.alpha(0.67F)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.AccountBox,
                             contentDescription = "UP主",
-                            modifier = Modifier.padding(start = 8.dp).size(12.dp)
+                            modifier = Modifier.size(12.dp)
                         )
                         Text(
                             videoInfo.upName,
@@ -265,13 +264,12 @@ fun ShowVideoCard(
                     Text(
                         videoInfo.publishDateString,
                         fontSize = 10.sp,
-                        lineHeight = 12.sp,
-                        modifier = Modifier.padding(start = 8.dp).alpha(0.5F)
+                        lineHeight = 12.sp
                     )
                 }
 
                 if (dropdownMenuItems != null) {
-                    Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+                    Box(modifier = Modifier.align(Alignment.CenterEnd)) {
                         var expanded by remember { mutableStateOf(false) }
                         IconButton(
                             onClick = { expanded = true },
@@ -300,5 +298,5 @@ fun ShowVideoCard(
 @Preview(widthDp = 300, heightDp = 320)
 @Composable
 private fun PreviewVideoCard() {
-    ShowVideoCard(VideoCardExample)
+    ShowVideoCard(VideoCardExample) {}
 }
