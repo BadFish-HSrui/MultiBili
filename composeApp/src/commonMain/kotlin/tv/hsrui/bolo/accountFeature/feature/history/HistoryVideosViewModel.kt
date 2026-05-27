@@ -69,6 +69,7 @@ open class HistoryVideosViewModel : ViewModel() {
     }
 
     fun refreshVideos() {
+        _uiState.value = HistoryVideosUiState.Loading
         loadParams = HistoryLoadParams()
         loadVideos()
     }

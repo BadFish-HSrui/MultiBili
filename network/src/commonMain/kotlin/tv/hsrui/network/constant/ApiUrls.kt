@@ -29,6 +29,6 @@ object ApiUrls {
         const val LIST = "x/v2/history/toview" //稍后再看列表
         const val ADD = "x/v2/history/toview/add" //添加稍后再看
         const val DELETE = "x/v2/history/toview/del" //移除稍后再看
-        const val DELETE_ALL = "https://api.bilibili.com/x/v2/history/toview/clear" //清空稍后再看
+        const val DELETE_ALL = "x/v2/history/toview/clear" //清空稍后再看
     }
 }
