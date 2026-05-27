@@ -19,12 +19,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
-import tv.hsrui.bolo.ui.common.videosPage.VideosUiState
+import tv.hsrui.bolo.accountFeature.feature.history.HistoryVideosUiState
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
-import tv.hsrui.bolo.ui.components.video.ShowVerticalVideoCard
+import tv.hsrui.bolo.ui.components.video.ShowHistoryVideoCard
 import tv.hsrui.bolo.utils.isExpanded
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -34,7 +34,7 @@ fun WatchLaterScreen(
     isEntryFromList: Boolean = true,
     viewModel: WatchLaterViewModel = viewModel { WatchLaterViewModel() }
 ) {
-    val uiState: VideosUiState by viewModel.uiState.collectAsState()
+    val uiState: HistoryVideosUiState by viewModel.uiState.collectAsState()
     val watchLaterGridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
 
@@ -55,7 +55,7 @@ fun WatchLaterScreen(
             modifier = Modifier.padding(top = innerPadding.calculateTopPadding())
         ) {
             when (uiState) {
-                is VideosUiState.Loading -> {
+                is HistoryVideosUiState.Loading -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -64,22 +64,23 @@ fun WatchLaterScreen(
                     }
                 }
 
-                is VideosUiState.Error -> {
+                is HistoryVideosUiState.Error -> {
                     ShowErrorContent(
-                        message = (uiState as VideosUiState.Error).message,
+                        message = (uiState as HistoryVideosUiState.Error).message,
                         retry = { viewModel.refreshVideos() }
                     )
                 }
 
-                is VideosUiState.Success -> {
+                is HistoryVideosUiState.Success -> {
                     Box {
                         ShowHorizontalCardGrid(
-                            cards = (uiState as VideosUiState.Success).videos,
+                            cards = (uiState as HistoryVideosUiState.Success).videos,
                             keySelector = { it.avid },
                             gridState = watchLaterGridState
-                        ) { videoCard ->
-                            ShowVerticalVideoCard(
-                                videoInfo = videoCard,
+                        ) { video ->
+                            ShowHistoryVideoCard(
+                                videoInfo = video,
+                                onDeleted = {viewModel.removeItem(video.avid)},
                                 modifier = Modifier.height(88.dp)
                             )
                         }

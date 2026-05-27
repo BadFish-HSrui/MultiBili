@@ -1,24 +1,44 @@
 package tv.hsrui.network.feature.history
 
+import tv.hsrui.network.feature.watchLater.WatchLaterRawResponse
+import tv.hsrui.network.feature.watchLater.toHistoryVideoCard
+
 data class HistoryVideosResponse(
-    private val raw: HistoryRawResponse,
-    private val canLoadMore: Boolean
+    val isSuccess: Boolean,
+    val message: String,
+    val validData: ValidHistoryVideos
 ) {
-    val isSuccess: Boolean get() = (raw.code == 0)
-    val message: String get() = raw.message
-    val validData = raw.data.list
-        .map { it.toHistoryVideoCard() }
-        .let { list ->
-            ValidHistoryVideos(
-                list = list,
-                canLoadMore = canLoadMore,
-                loadParams = HistoryLoadParams(
-                    max = raw.data.cursor.max,
-                    viewAt = raw.data.cursor.viewAt,
-                    business = raw.data.cursor.business
+    constructor(raw: HistoryRawResponse,canLoadMore: Boolean): this(
+        isSuccess = (raw.code == 0),
+        message = raw.message,
+        validData = raw.data.list
+            .map { it.toHistoryVideoCard() }
+            .let { list ->
+                ValidHistoryVideos(
+                    list = list,
+                    canLoadMore = canLoadMore,
+                    loadParams = HistoryLoadParams(
+                        max = raw.data.cursor.max,
+                        viewAt = raw.data.cursor.viewAt,
+                        business = raw.data.cursor.business
+                    )
                 )
-            )
-        }
+            }
+    )
+
+    constructor(raw: WatchLaterRawResponse): this(
+        isSuccess = raw.isSuccess,
+        message = raw.message,
+        validData = raw.data.list
+            .map { it.toHistoryVideoCard() }
+            .let { list ->
+                ValidHistoryVideos(
+                    list = list,
+                    canLoadMore = false,
+                    loadParams = HistoryLoadParams()
+                )
+            }
+    )
 }
 
 data class ValidHistoryVideos(
@@ -36,7 +56,7 @@ data class HistoryVideoCard(
     val upName: String = "",
     val upAvatarUrl: String = "",
     val upMid: Long = 0,
-    val watchTime: Long = 0,
+    val addTime: Long = 0,
     val watchProgress: Int = 0,
     val duration: Int = 0,
     val regionString: String = "",
@@ -55,7 +75,7 @@ private fun HistoryRawItem.toHistoryVideoCard(): HistoryVideoCard {
         upName = upName,
         upAvatarUrl = upAvatarUrl,
         upMid = upMid,
-        watchTime = watchTime,
+        addTime = watchTime,
         watchProgress = watchProgress,
         duration = duration,
         regionString = regionString,
@@ -72,7 +92,7 @@ val HistoryVideoCardExample = HistoryVideoCard(
     upName = "东洋雪莲",
     upAvatarUrl = "https://i2.hdslb.com/bfs/face/4cbf2f66d23a324ecca8d3c07adbcafecfef829b.jpg",
     upMid = 1060544882,
-    watchTime = 1778616753,
+    addTime = 1778616753,
     watchProgress = 21,
     duration = 153,
     regionString = "翻唱"

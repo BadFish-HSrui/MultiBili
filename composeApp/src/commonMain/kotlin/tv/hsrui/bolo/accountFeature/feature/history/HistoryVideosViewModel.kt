@@ -6,9 +6,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import tv.hsrui.network.feature.history.HistoryLoadParams
+import tv.hsrui.network.feature.history.HistoryVideosResponse
 import tv.hsrui.network.feature.history.fetchHistoryVideos
 
-class HistoryVideosViewModel : ViewModel() {
+open class HistoryVideosViewModel : ViewModel() {
     private val _uiState = MutableStateFlow<HistoryVideosUiState>(HistoryVideosUiState.Loading)
     val uiState = _uiState.asStateFlow()
 
@@ -20,11 +21,16 @@ class HistoryVideosViewModel : ViewModel() {
         loadVideos()
     }
 
+
+    open suspend fun firstLoad(): HistoryVideosResponse {
+        return fetchHistoryVideos()
+    }
+
     fun loadVideos() {
         viewModelScope.launch {
             _uiState.value = HistoryVideosUiState.Loading
             try {
-                val result = fetchHistoryVideos()
+                val result = firstLoad()
                 if (result.isSuccess) {
                     loadParams = result.validData.loadParams
                     _uiState.value = HistoryVideosUiState.Success(result.validData.list)

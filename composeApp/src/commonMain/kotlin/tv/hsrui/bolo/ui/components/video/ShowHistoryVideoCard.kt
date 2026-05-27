@@ -165,7 +165,7 @@ fun ShowHistoryVideoCard(
                             maxLines = 1
                         )
                         Text(
-                            text = videoInfo.watchTime.formatToDateTime(),
+                            text = videoInfo.addTime.formatToDateTime(),
                             style = MaterialTheme.typography.labelSmall,
                             maxLines = 1
                         )
