@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,10 +17,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Comment
 import androidx.compose.material.icons.automirrored.rounded.ShortText
+import androidx.compose.material.icons.rounded.AccountBox
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
@@ -31,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -59,6 +65,7 @@ import tv.hsrui.network.utils.formatCountToString
 fun ShowVideoCard(
     videoInfo: VideoCard,
     modifier: Modifier = Modifier,
+    dropdownMenuItems: @Composable (ColumnScope.(onDismiss: () -> Unit) -> Unit)? = null
 ) {
     val infoTextSize: TextUnit
     val cardShape: Shape
@@ -69,12 +76,12 @@ fun ShowVideoCard(
         infoTextSize = 12.sp
         cardShape = BoloShapes.InfoCard.Default
         coverAspectRatio = 16F / 9F
-        coverUrl = videoInfo.coverUrl+ "@800w_450h_1c.webp"
+        coverUrl = videoInfo.coverUrl + "@800w_450h_1c.webp"
     } else {
         infoTextSize = 10.sp
         cardShape = BoloShapes.InfoCard.Compact
         coverAspectRatio = 4F / 3F
-        coverUrl = videoInfo.coverUrl43+ "@400w_300h_1c.webp"
+        coverUrl = videoInfo.coverUrl43 + "@400w_300h_1c.webp"
     }
 
     var isFocused by remember { mutableStateOf(false) }
@@ -84,6 +91,7 @@ fun ShowVideoCard(
     )
 
     Card(
+        shape = cardShape,
         modifier = modifier
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
@@ -93,15 +101,14 @@ fun ShowVideoCard(
                     openVideo(videoInfo.bvid)
                 }
             )
-            .then(
-                if (isFocused) Modifier.zIndex(1F).scale(animatedScale).border(
-                    width = 2.dp,
-                    color = Color.Cyan,
-                    shape = cardShape
-                )
-                else Modifier
-            ),
-        shape = cardShape
+//            .then(
+//                if (isFocused) Modifier.zIndex(1F).scale(animatedScale).border(
+//                    width = 2.dp,
+//                    color = Color.Cyan,
+//                    shape = cardShape
+//                )
+//                else Modifier
+//            )
     ) {
         Column {
             Box(modifier = Modifier.aspectRatio(coverAspectRatio)) {
@@ -225,28 +232,70 @@ fun ShowVideoCard(
                     }
                 }
             }
-            Text(
-                text = videoInfo.title,
-                fontSize = 13.sp,
-                lineHeight = 16.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .padding(start = 4.dp, top = 4.dp, end = 4.dp)
-                    .height(36.dp)
-            )
-            Text(
-                videoInfo.upName,
-                fontSize = 11.sp,
-                lineHeight = 12.sp,
-                modifier = Modifier.align(Alignment.End)
-                    .padding(4.dp)
-            )
+            Box(Modifier.fillMaxSize()) {
+                Column {
+                    Text(
+                        text = videoInfo.title,
+                        fontSize = 13.sp,
+                        lineHeight = 16.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .padding(start = 4.dp, top = 4.dp, end = 4.dp)
+                            .height(36.dp)
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.alpha(0.67F)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.AccountBox,
+                            contentDescription = "UP主",
+                            modifier = Modifier.padding(start = 8.dp).size(12.dp)
+                        )
+                        Text(
+                            videoInfo.upName,
+                            fontSize = 11.sp,
+                            lineHeight = 12.sp,
+                            modifier = Modifier
+                        )
+                    }
+                    Text(
+                        videoInfo.publishDateString,
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp).alpha(0.5F)
+                    )
+                }
+
+                if (dropdownMenuItems != null) {
+                    Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+                        var expanded by remember { mutableStateOf(false) }
+                        IconButton(
+                            onClick = { expanded = true },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.MoreVert,
+                                contentDescription = "更多操作",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                            shape = BoloShapes.InfoCard.Default
+                        ) {
+                            dropdownMenuItems { expanded = false }
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
-@Preview
+@Preview(widthDp = 300, heightDp = 320)
 @Composable
 private fun PreviewVideoCard() {
     ShowVideoCard(VideoCardExample)

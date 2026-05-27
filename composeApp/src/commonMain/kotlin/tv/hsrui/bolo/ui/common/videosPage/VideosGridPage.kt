@@ -11,6 +11,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.launch
+import tv.hsrui.bolo.ui.components.dropdownMenu.items.WatchLaterMenuItem
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.grid.ShowVerticalCardGrid
@@ -64,7 +65,9 @@ fun VideosGridPage(
                         ShowVideoCard(
                             videoInfo = video,
                             modifier = Modifier.fillMaxSize()
-                        )
+                        ){ onDismiss ->
+                                WatchLaterMenuItem(avid = video.avid, onDismiss = onDismiss)
+                        }
                     }
                     ShowGridFABMenu(
                         onBackToTop = { scope.launch { videoGridState.animateScrollToItem(0) } },
