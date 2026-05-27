@@ -3,7 +3,7 @@ package tv.hsrui.network.feature.watchLater
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class AddWatchLaterResponse(
+data class ModifyWatchLaterResponse(
     val code: Int = -1,
     val message: String = "-1"
 ){

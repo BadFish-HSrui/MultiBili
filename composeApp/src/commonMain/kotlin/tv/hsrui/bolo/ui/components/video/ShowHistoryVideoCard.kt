@@ -45,22 +45,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
-import org.koin.compose.koinInject
 import tv.hsrui.bolo.navigation.openVideo
-import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.network.feature.history.HistoryVideoCard
 import tv.hsrui.network.feature.history.HistoryVideoCardExample
-import tv.hsrui.network.feature.history.deleteHistory
 import tv.hsrui.network.utils.formatToDateTime
 import tv.hsrui.network.utils.formatToDuration
 
 @Composable
 fun ShowHistoryVideoCard(
     videoInfo: HistoryVideoCard,
-    onDeleted: (Long) -> Unit,
+    onDelete: suspend () -> Unit,
+    deleteDialogTitle: String,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -83,7 +81,7 @@ fun ShowHistoryVideoCard(
                 )
                 CompositionLocalProvider(
                     LocalContentColor provides Color.White,
-                    LocalTextStyle provides TextStyle(fontSize = 12.sp)
+                    LocalTextStyle provides TextStyle(fontSize = 10.sp)
                 ) {
                     LinearProgressIndicator(
                         progress = {
@@ -173,7 +171,7 @@ fun ShowHistoryVideoCard(
                 }
 
                 var showDialog by rememberSaveable { mutableStateOf(false) }
-                val coroutineScope = rememberCoroutineScope()
+                val scope = rememberCoroutineScope()
                 IconButton(
                     onClick = { showDialog = true },
                     modifier = Modifier.size(24.dp).align(Alignment.BottomEnd)
@@ -185,27 +183,13 @@ fun ShowHistoryVideoCard(
                     )
                 }
                 if (showDialog) {
-                    val snackbarManager: SnackbarManager = koinInject()
                     ShowConfirmDialog(
-                        title = { Text("删除历史记录") },
+                        title = { Text(deleteDialogTitle) },
                         onCancel = { showDialog = false },
                         onConfirm = {
-                            coroutineScope.launch {
-                                try {
-                                    val result = deleteHistory(
-                                        typeString = videoInfo.typeString,
-                                        id = videoInfo.avid
-                                    )
-                                    if (result.isSuccess) {
-                                        onDeleted(videoInfo.avid)
-                                    } else {
-                                        snackbarManager.showMessage(result.message)
-                                    }
-                                } catch (e: Exception) {
-                                    snackbarManager.showMessage(e.toString())
-                                } finally {
-                                    showDialog = false
-                                }
+                            scope.launch {
+                                onDelete()
+                                showDialog = false
                             }
                         },
                         icon = {
@@ -218,7 +202,7 @@ fun ShowHistoryVideoCard(
                             appendLine("确认删除:")
                             appendLine(videoInfo.title)
                             appendLine()
-                            append("*会同时删除所有设备上的记录*")
+                            append("*会同时在所有设备上删除*")
                         }
                     )
                 }
@@ -230,5 +214,5 @@ fun ShowHistoryVideoCard(
 @Preview(heightDp = 128)
 @Composable
 fun PreviewHistoryVideoCard() {
-    ShowHistoryVideoCard(HistoryVideoCardExample, onDeleted = {})
+    ShowHistoryVideoCard(HistoryVideoCardExample, onDelete = {}, deleteDialogTitle = "")
 }

@@ -18,7 +18,7 @@ suspend fun fetchWatchLaterVideos(): HistoryVideosResponse {
     return HistoryVideosResponse(raw = response.body())
 }
 
-suspend fun addWatchLater(avid: Long): AddWatchLaterResponse {
+suspend fun addWatchLater(avid: Long): ModifyWatchLaterResponse {
     val loginStorage: LoginStorage = getKoin().get()
 
     val response = ApiClient.httpClient.post(ApiUrls.BASE + ApiUrls.WatchLater.ADD) {
@@ -26,6 +26,56 @@ suspend fun addWatchLater(avid: Long): AddWatchLaterResponse {
             FormDataContent(
                 Parameters.build {
                     append("aid", avid.toString())
+                    append("csrf", loginStorage.cookies.csrf)
+                }
+            )
+        )
+    }
+
+    return response.body()
+}
+
+suspend fun deleteWatchLater(avid: Long): ModifyWatchLaterResponse {
+    val loginStorage: LoginStorage = getKoin().get()
+
+    val response = ApiClient.httpClient.post(ApiUrls.BASE + ApiUrls.WatchLater.DELETE) {
+        setBody(
+            FormDataContent(
+                Parameters.build {
+                    append("aid", avid.toString())
+                    append("csrf", loginStorage.cookies.csrf)
+                }
+            )
+        )
+    }
+
+    return response.body()
+}
+
+suspend fun deleteAllViewedFromWatchLater(): ModifyWatchLaterResponse {
+    val loginStorage: LoginStorage = getKoin().get()
+
+    val response = ApiClient.httpClient.post(ApiUrls.BASE + ApiUrls.WatchLater.DELETE) {
+        setBody(
+            FormDataContent(
+                Parameters.build {
+                    append("viewed", true.toString())
+                    append("csrf", loginStorage.cookies.csrf)
+                }
+            )
+        )
+    }
+
+    return response.body()
+}
+
+suspend fun deleteAllWatchLater(): ModifyWatchLaterResponse {
+    val loginStorage: LoginStorage = getKoin().get()
+
+    val response = ApiClient.httpClient.post(ApiUrls.BASE + ApiUrls.WatchLater.DELETE_ALL) {
+        setBody(
+            FormDataContent(
+                Parameters.build {
                     append("csrf", loginStorage.cookies.csrf)
                 }
             )

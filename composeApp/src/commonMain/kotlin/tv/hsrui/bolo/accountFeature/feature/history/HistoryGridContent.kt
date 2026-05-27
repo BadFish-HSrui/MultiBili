@@ -16,11 +16,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
 import tv.hsrui.bolo.ui.components.video.ShowHistoryVideoCard
 import tv.hsrui.bolo.utils.OnGridBottomReached
+import tv.hsrui.network.feature.history.deleteHistory
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -61,6 +64,7 @@ fun HistoryGridContent(
             }
 
             is HistoryVideosUiState.Success -> {
+                val snackbarManager: SnackbarManager = koinInject()
                 Box {
                     ShowHorizontalCardGrid(
                         cards = (uiState as HistoryVideosUiState.Success).videos,
@@ -69,7 +73,22 @@ fun HistoryGridContent(
                     ) { video ->
                         ShowHistoryVideoCard(
                             videoInfo = video,
-                            onDeleted = { id -> viewModel.removeItem(id) },
+                            onDelete = {
+                                try {
+                                    val result = deleteHistory(
+                                        typeString = video.typeString,
+                                        id = video.avid
+                                    )
+                                    if (result.isSuccess) {
+                                        viewModel.removeItem(video.avid)
+                                    } else {
+                                        snackbarManager.showMessage(result.message)
+                                    }
+                                } catch (e: Exception) {
+                                    snackbarManager.showMessage(e.toString())
+                                }
+                            },
+                            deleteDialogTitle = "删除历史记录",
                             modifier = Modifier.height(88.dp)
                         )
                     }
