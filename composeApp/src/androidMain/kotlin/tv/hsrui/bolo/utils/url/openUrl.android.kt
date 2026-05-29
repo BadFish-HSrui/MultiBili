@@ -8,9 +8,14 @@ object AppContext {
     lateinit var instance: Application
 }
 
-actual fun openUrl(url: String) {
-    val intent = Intent(Intent.ACTION_VIEW, url.toUri()).apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+actual suspend fun openUrl(url: String): Boolean {
+    return try {
+        val intent = Intent(Intent.ACTION_VIEW, url.toUri()).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        AppContext.instance.startActivity(intent)
+        true
+    } catch (e: Exception) {
+        false
     }
-    AppContext.instance.startActivity(intent)
 }
