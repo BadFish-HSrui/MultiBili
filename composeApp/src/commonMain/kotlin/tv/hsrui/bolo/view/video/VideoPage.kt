@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.min
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.bolo.view.video.desc.VideoDescPage
+import tv.hsrui.bolo.view.video.reply.VideoReplyPage
 import tv.hsrui.network.utils.formatCountToString
 
 private enum class VideoInfoTab(val title: String) {
@@ -84,7 +85,10 @@ fun VideoPage(
                         }
 
                         VideoInfoTab.Reply -> {
-                            /*TODO*/
+                            VideoReplyPage(
+                                videoInfo = videoInfo,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
                     }
                 }
