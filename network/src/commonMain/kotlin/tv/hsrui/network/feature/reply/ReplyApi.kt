@@ -20,7 +20,5 @@ suspend fun fetchRepliesWith(
         parameter("ps", ps)
     }
 
-    println("DEBUG: $replyType;$pn")
-
     return  response.body()
 }

@@ -65,8 +65,8 @@ fun VideosGridPage(
                         ShowVideoCard(
                             videoInfo = video,
                             modifier = Modifier.fillMaxSize()
-                        ){ onDismiss ->
-                                WatchLaterMenuItem(avid = video.avid, onDismiss = onDismiss)
+                        ) { onDismiss ->
+                            WatchLaterMenuItem(avid = video.avid, onDismiss = onDismiss)
                         }
                     }
                     ShowGridFABMenu(

@@ -40,7 +40,7 @@ abstract class VideosViewModel : ViewModel() {
     }
 
     fun loadMoreVideos() {
-        if (isLoading) return
+        if (isLoading || !canLoadMore) return
         isLoading = true
         pageNumber++
 
@@ -58,9 +58,10 @@ abstract class VideosViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 _uiState.value = VideosUiState.Error(e.message ?: "其他网络错误")
+            } finally {
+                isLoading = false
             }
         }
-        isLoading = false
     }
 
     fun refreshVideos() {
