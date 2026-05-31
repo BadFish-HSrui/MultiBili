@@ -31,4 +31,8 @@ object ApiUrls {
         const val DELETE = "x/v2/history/toview/del" //移除稍后再看
         const val DELETE_ALL = "x/v2/history/toview/clear" //清空稍后再看
     }
+
+    object Reply {
+        const val LIST = "x/v2/reply" //评论列表
+    }
 }

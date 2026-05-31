@@ -7,22 +7,22 @@ import kotlinx.serialization.Serializable
 data class ReplyResponse(
     val code: Int = -1,
     val message: String = "",
-    val data: ReplyData = ReplyData()
+    val data: RepliesData = RepliesData()
 ) {
     val isSuccess get() = (code == 0)
 }
 
 @Serializable
-data class ReplyData(
+data class RepliesData(
     @SerialName("page") private val _page: ReplyPage = ReplyPage(),
     @SerialName("upper") private val _upper: ReplyUpper = ReplyUpper(),
     @SerialName("replies") private val _replies: List<ReplyItem>? = null
 ) {
     val rootReplyCount by _page::rootCount
     val allReplyCount by _page::allCount
+    val hasMore get() = _page.allCount > (_page.pn * _page.ps)
 
-    val hasTopReply: Boolean get() = (_upper.top != null)
-    val topReply: ReplyItem get() = _upper.top ?: ReplyItem()
+    val topReply by _upper::top
 
     val canReply: Boolean get() = (_replies != null)
     val replies: List<ReplyItem> get() = _replies ?: emptyList()
