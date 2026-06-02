@@ -16,7 +16,7 @@ import tv.hsrui.network.feature.video.VideoInfoData
 @Composable
 fun VideoDescPage(
     videoInfo: VideoInfoData,
-    viewModel: RelatedViewModel = viewModel(key = videoInfo.bvid) { RelatedViewModel(videoInfo.avid) },
+    viewModel: RelatedViewModel = viewModel(key = "desc_${videoInfo.bvid}") { RelatedViewModel(videoInfo.avid) },
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()

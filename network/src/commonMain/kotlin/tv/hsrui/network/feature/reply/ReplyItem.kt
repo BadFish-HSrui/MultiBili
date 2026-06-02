@@ -2,6 +2,7 @@ package tv.hsrui.network.feature.reply
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import tv.hsrui.network.feature.reply.actions.ReplyLikeState
 import tv.hsrui.network.utils.formatToDateTime
 import tv.hsrui.network.utils.toHttpsUrl
 
@@ -26,8 +27,11 @@ data class ReplyItem(
     val isHide: Boolean get() = (_stateCode == 17)
     val isFans: Boolean get() = (_fansCode == 1)
     val replyDateString by lazy { _replyDate.formatToDateTime() }
-    val isLiked get() = (_actionCode == 1)
-    val isDisliked get() = (_actionCode == 2)
+    val likeState get() = when(_actionCode) {
+        1 -> ReplyLikeState.Like
+        2 -> ReplyLikeState.Dislike
+        else -> ReplyLikeState.Normal
+    }
 
     val userName by _userInfo::userName
     val userAvatarUrl by lazy { _userInfo.userAvatar.toHttpsUrl() }

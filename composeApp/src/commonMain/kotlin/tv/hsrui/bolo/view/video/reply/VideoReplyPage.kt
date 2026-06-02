@@ -7,15 +7,15 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import tv.hsrui.bolo.ui.common.reply.RepliesGridPage
 import tv.hsrui.bolo.ui.common.reply.RepliesViewModel
-import tv.hsrui.network.feature.reply.ReplyType
+import tv.hsrui.network.feature.reply.ReplySectionType
 import tv.hsrui.network.feature.video.VideoInfoData
 
 @Composable
 fun VideoReplyPage(
     videoInfo: VideoInfoData,
     modifier: Modifier = Modifier,
-    videoRepliesViewModel: RepliesViewModel = viewModel(key = videoInfo.bvid) {
-        RepliesViewModel(ReplyType.VideoReply(videoInfo.avid))
+    videoRepliesViewModel: RepliesViewModel = viewModel(key = "reply_${videoInfo.bvid}") {
+        RepliesViewModel(ReplySectionType.VideoReply(videoInfo.avid))
     }
 ) {
     val videoRepliesUiState by videoRepliesViewModel.uiState.collectAsState()

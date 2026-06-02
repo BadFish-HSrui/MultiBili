@@ -8,10 +8,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.hsrui.network.feature.reply.ReplyResponse
 import tv.hsrui.network.feature.reply.ReplySort
-import tv.hsrui.network.feature.reply.ReplyType
+import tv.hsrui.network.feature.reply.ReplySectionType
 import tv.hsrui.network.feature.reply.fetchRepliesWith
 
-class RepliesViewModel(val replyType: ReplyType) : ViewModel() {
+class RepliesViewModel(val replySection: ReplySectionType) : ViewModel() {
     private val _uiState = MutableStateFlow<RepliesUiState>(RepliesUiState.Loading)
     val uiState = _uiState.asStateFlow()
 
@@ -34,7 +34,7 @@ class RepliesViewModel(val replyType: ReplyType) : ViewModel() {
     }
 
     suspend fun fetchReplies(): ReplyResponse =
-        fetchRepliesWith(replyType = replyType, sort = sortType.value, pn = pageNumber, ps = 20)
+        fetchRepliesWith(replySection = replySection, sort = sortType.value, pn = pageNumber, ps = 20)
 
     fun loadReplies() {
         viewModelScope.launch {

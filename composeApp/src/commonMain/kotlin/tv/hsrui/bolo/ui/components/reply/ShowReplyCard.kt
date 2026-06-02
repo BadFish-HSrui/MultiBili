@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import kotlinx.serialization.json.Json
 import tv.hsrui.bolo.debug.previewJson.replyResponseJsonExample
+import tv.hsrui.bolo.ui.components.reply.actionsBar.ReplyActionsBar
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.theme.BiliColor.getLevelColor
 import tv.hsrui.network.feature.reply.ReplyItem
@@ -50,7 +51,7 @@ fun ShowReplyCard(replyInfo: ReplyItem, modifier: Modifier = Modifier, isTop: Bo
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(Color.Black)
+//                        .background(Color.Black)
                 )
                 Column(modifier = Modifier.padding(start = 4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -117,37 +118,39 @@ fun ShowReplyCard(replyInfo: ReplyItem, modifier: Modifier = Modifier, isTop: Bo
                 modifier = Modifier.padding(top = 12.dp)
             )
 
-            Surface(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                shape = CardDefaults.shape
-            ) {
-                Column(Modifier.padding(4.dp)) {
-                    replyInfo.previewReplies?.forEach { preReply ->
-                        val (annotatedString, inlineContentMap) =
-                            remember { preReply.content.toRichString(scope) }
+            if (!replyInfo.previewReplies.isNullOrEmpty() && replyInfo.replyCount >= 0) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    shape = CardDefaults.shape
+                ) {
+                    Column(Modifier.padding(4.dp)) {
+                        replyInfo.previewReplies?.forEach { preReply ->
+                            val (annotatedString, inlineContentMap) =
+                                remember { preReply.content.toRichString(scope) }
 
-                        Text(
-                            text = buildAnnotatedString {
-                                withStyle(
-                                    style = SpanStyle(LocalContentColor.current.copy(alpha = 0.67F))
-                                ) {
-                                    append("${preReply.userName}: ")
-                                }
-                                append(annotatedString)
-                            },
-                            inlineContent = inlineContentMap,
-                            maxLines = 1,
-                            style = MaterialTheme.typography.bodyMedium,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    if (replyInfo.replyCount > 0) {
-                        Text(
-                            text = "共${replyInfo.replyCount}条回复,点击查看 >",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = BiliColor.Blue,
-                            modifier = Modifier.padding(start = 4.dp)
-                        )
+                            Text(
+                                text = buildAnnotatedString {
+                                    withStyle(
+                                        style = SpanStyle(LocalContentColor.current.copy(alpha = 0.67F))
+                                    ) {
+                                        append("${preReply.userName}: ")
+                                    }
+                                    append(annotatedString)
+                                },
+                                inlineContent = inlineContentMap,
+                                maxLines = 1,
+                                style = MaterialTheme.typography.bodyMedium,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (replyInfo.replyCount > 0) {
+                            Text(
+                                text = "共${replyInfo.replyCount}条回复,点击查看 >",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BiliColor.Blue,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -162,7 +165,7 @@ fun ReplyCardPreview() {
         remember {
             Json { ignoreUnknownKeys = true }.decodeFromString<ReplyResponse>(
                 replyResponseJsonExample
-            ).data.replies[1]
+            ).data.replies[19]
         }
 
     ShowReplyCard(replyItem, isTop = true)
