@@ -102,7 +102,8 @@ fun RepliesGridPage(
                             gridState = repliesGridState
                         ) { reply ->
                             ShowReplyCard(
-                                replyInfo = reply
+                                replyInfo = reply,
+                                updateReply = { viewModel.updateReply(it) }
                             )
                         }
                         ShowGridFABMenu(

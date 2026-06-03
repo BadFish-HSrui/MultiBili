@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import tv.hsrui.network.feature.reply.ReplyItem
 import tv.hsrui.network.feature.reply.ReplyResponse
 import tv.hsrui.network.feature.reply.ReplySort
 import tv.hsrui.network.feature.reply.ReplySectionType
@@ -33,8 +34,26 @@ class RepliesViewModel(val replySection: ReplySectionType) : ViewModel() {
         refreshReplies()
     }
 
+    fun updateReply(reply: ReplyItem) {
+        _uiState.update { oldState ->
+            if (oldState is RepliesUiState.Success) {
+                oldState.copy(
+                    topReply = if (oldState.topReply?.rpid == reply.rpid) reply else oldState.topReply,
+                    replies = oldState.replies.map { if (it.rpid == reply.rpid) reply else it }
+                )
+            } else {
+                oldState
+            }
+        }
+    }
+
     suspend fun fetchReplies(): ReplyResponse =
-        fetchRepliesWith(replySection = replySection, sort = sortType.value, pn = pageNumber, ps = 20)
+        fetchRepliesWith(
+            replySection = replySection,
+            sort = sortType.value,
+            pn = pageNumber,
+            ps = 20
+        )
 
     fun loadReplies() {
         viewModelScope.launch {

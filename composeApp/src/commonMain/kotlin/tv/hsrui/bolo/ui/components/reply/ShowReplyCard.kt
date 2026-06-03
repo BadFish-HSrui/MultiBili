@@ -39,7 +39,12 @@ import tv.hsrui.network.feature.reply.ReplyItem
 import tv.hsrui.network.feature.reply.ReplyResponse
 
 @Composable
-fun ShowReplyCard(replyInfo: ReplyItem, modifier: Modifier = Modifier, isTop: Boolean = false) {
+fun ShowReplyCard(
+    replyInfo: ReplyItem,
+    updateReply: (ReplyItem) -> Unit,
+    modifier: Modifier = Modifier,
+    isTop: Boolean = false
+) {
     val scope = rememberCoroutineScope()
 
     Card(modifier = modifier.fillMaxWidth()) {
@@ -118,6 +123,12 @@ fun ShowReplyCard(replyInfo: ReplyItem, modifier: Modifier = Modifier, isTop: Bo
                 modifier = Modifier.padding(top = 12.dp)
             )
 
+            ReplyActionsBar(
+                replyInfo = replyInfo,
+                updateReply = updateReply,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
             if (!replyInfo.previewReplies.isNullOrEmpty() && replyInfo.replyCount >= 0) {
                 Surface(
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
@@ -168,5 +179,5 @@ fun ReplyCardPreview() {
             ).data.replies[19]
         }
 
-    ShowReplyCard(replyItem, isTop = true)
+    ShowReplyCard(replyItem, updateReply = {},isTop = true)
 }
