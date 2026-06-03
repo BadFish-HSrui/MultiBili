@@ -33,6 +33,7 @@ import tv.hsrui.bolo.ui.common.snackbar.SnackbarModule
 import tv.hsrui.bolo.ui.theme.AppTheme
 import tv.hsrui.network.feature.account.myinfo.MyAccountInfoModule
 import tv.hsrui.network.login.storage.LoginStorageModule
+import tv.hsrui.network.wbi.WbiManagerModule
 
 fun koinConfig(): KoinConfiguration {
     return koinConfiguration {
@@ -41,7 +42,8 @@ fun koinConfig(): KoinConfiguration {
             LoginStorageModule,
             MyAccountInfoModule,
             NavigatorModule,
-            SnackbarModule
+            SnackbarModule,
+            WbiManagerModule
         )
     }
 }

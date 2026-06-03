@@ -13,4 +13,10 @@ actual val KSafeModule: Module = module {
             fileName = "login"
         )
     }
+    single(named("wbi")) {
+        KSafe(
+            context = androidApplication(),
+            fileName = "wbi"
+        )
+    }
 }
