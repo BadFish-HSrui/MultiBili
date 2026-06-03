@@ -16,11 +16,11 @@ class RepliesViewModel(val replySection: ReplySectionType) : ViewModel() {
     private val _uiState = MutableStateFlow<RepliesUiState>(RepliesUiState.Loading)
     val uiState = _uiState.asStateFlow()
 
-    private val _sortType = MutableStateFlow(ReplySort.Like)
+    private val _sortType = MutableStateFlow(ReplySort.Popular)
     val sortType = _sortType.asStateFlow()
 
     var canLoadMore: Boolean = false
-    var pageNumber: Int = 1
+    var loadParamsString: String = ""
     var isLoading: Boolean = false
 
     init {
@@ -51,8 +51,7 @@ class RepliesViewModel(val replySection: ReplySectionType) : ViewModel() {
         fetchRepliesWith(
             replySection = replySection,
             sort = sortType.value,
-            pn = pageNumber,
-            ps = 20
+            loadParamsString = loadParamsString,
         )
 
     fun loadReplies() {
@@ -64,6 +63,7 @@ class RepliesViewModel(val replySection: ReplySectionType) : ViewModel() {
                     _uiState.value =
                         RepliesUiState.Success(result.data.topReply, result.data.replies)
                     canLoadMore = result.data.hasMore
+                    loadParamsString = result.data.loadParamsString
                 } else {
                     _uiState.value = RepliesUiState.Error("[${result.code}]: ${result.message}")
                 }
@@ -76,7 +76,6 @@ class RepliesViewModel(val replySection: ReplySectionType) : ViewModel() {
     fun loadMoreReplies() {
         if (isLoading || !canLoadMore) return
         isLoading = true
-        pageNumber++
 
         viewModelScope.launch {
             try {
@@ -87,6 +86,8 @@ class RepliesViewModel(val replySection: ReplySectionType) : ViewModel() {
                         (oldState as RepliesUiState.Success).copy(
                             replies = (oldState.replies + result.data.replies).distinctBy { it.rpid })
                     }
+                    canLoadMore = result.data.hasMore
+                    loadParamsString = result.data.loadParamsString
                 } else {
                     _uiState.value = RepliesUiState.Error("[${result.code}]: ${result.message}")
                 }
@@ -99,7 +100,7 @@ class RepliesViewModel(val replySection: ReplySectionType) : ViewModel() {
     }
 
     fun refreshReplies() {
-        pageNumber = 1
+        loadParamsString = ""
         loadReplies()
     }
 }
