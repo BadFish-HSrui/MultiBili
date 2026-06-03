@@ -17,7 +17,7 @@ data class ReplyItem(
     @SerialName("fansgrade") private val _fansCode: Int = 0,
     @SerialName("ctime") private val _replyDate: Long = 0,
     @SerialName("like") val likeCount: Int = -1,
-    @SerialName("action") private val _actionCode: Int = 0,
+    @SerialName("action") val actionCode: Int = 0,
     @SerialName("member") private val _userInfo: ReplyUserInfo = ReplyUserInfo(),
     @SerialName("content") val content: ReplyContent = ReplyContent(),
     @SerialName("replies") val previewReplies: List<ReplyItem>? = null,
@@ -27,7 +27,7 @@ data class ReplyItem(
     val isHide: Boolean get() = (_stateCode == 17)
     val isFans: Boolean get() = (_fansCode == 1)
     val replyDateString by lazy { _replyDate.formatToDateTime() }
-    val likeState get() = when(_actionCode) {
+    val likeState get() = when(actionCode) {
         1 -> ReplyLikeState.Like
         2 -> ReplyLikeState.Dislike
         else -> ReplyLikeState.Normal
