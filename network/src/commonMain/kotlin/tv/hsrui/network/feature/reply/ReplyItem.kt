@@ -9,6 +9,7 @@ import tv.hsrui.network.utils.toHttpsUrl
 @Serializable
 data class ReplyItem(
     @SerialName("rpid") val rpid: Long = 0,
+    @SerialName("root") val rootRpid: Long = 0,
     @SerialName("oid") val oid: Long = 0,
     @SerialName("type") val typeCode: Int = 0,
     @SerialName("mid") val userMid: Long = 0,

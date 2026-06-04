@@ -36,6 +36,7 @@ object ApiUrls {
         const val LIST = "x/v2/reply/wbi/main" //评论列表
         const val LIKE = "x/v2/reply/action" //点赞
         const val DISLIKE = "x/v2/reply/hate" //点踩
+        const val SEND = "x/v2/reply/add" //发送评论
     }
 
     const val WBI = "x/web-interface/nav" //用于获取WbiKey，实际上是导航栏接口
