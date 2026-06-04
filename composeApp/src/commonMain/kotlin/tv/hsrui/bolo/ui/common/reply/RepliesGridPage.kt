@@ -1,11 +1,13 @@
 package tv.hsrui.bolo.ui.common.reply
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -21,17 +23,27 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.launch
+import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
 import tv.hsrui.bolo.ui.components.reply.ShowReplyCard
+import tv.hsrui.bolo.ui.components.reply.ShowReplyInput
 import tv.hsrui.bolo.utils.OnGridBottomReached
+import tv.hsrui.network.feature.reply.ReplyItem
+import tv.hsrui.network.feature.reply.ReplySectionType.Companion.ReplySectionType
+import tv.hsrui.network.feature.reply.send.sendSubReply
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -42,7 +54,6 @@ fun RepliesGridPage(
 ) {
     val sortType by viewModel.sortType.collectAsState()
     val repliesGridState = rememberLazyGridState()
-    val scope = rememberCoroutineScope()
 
     repliesGridState.OnGridBottomReached(buffer = 4, isLoading = viewModel.isLoading) {
         viewModel.loadMoreReplies()
@@ -73,6 +84,9 @@ fun RepliesGridPage(
             }
 
             is RepliesUiState.Success -> {
+                var replyTarget by remember { mutableStateOf<ReplyItem?>(null) }
+                val scope = rememberCoroutineScope()
+
                 Column {
                     Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
                         Spacer(Modifier.weight(1F))
@@ -103,14 +117,67 @@ fun RepliesGridPage(
                         ) { reply ->
                             ShowReplyCard(
                                 replyInfo = reply,
+                                sendReply = { replyTarget = reply },
                                 updateReply = { viewModel.updateReply(it) }
                             )
                         }
                         ShowGridFABMenu(
-                            onBackToTop = { scope.launch { repliesGridState.animateScrollToItem(0) } },
+                            onBackToTop = {
+                                scope.launch {
+                                    repliesGridState.animateScrollToItem(0)
+                                }
+                            },
                             onRefresh = { viewModel.refreshReplies() },
                             modifier = Modifier.align(Alignment.BottomEnd),
                         )
+
+                        replyTarget?.let { target ->
+                            Dialog(
+                                onDismissRequest = { replyTarget = null },
+                                properties = DialogProperties(
+                                    usePlatformDefaultWidth = false,
+                                )
+                            ) {
+                                Box(
+                                    Modifier.fillMaxSize()
+                                        .clickable(
+                                            interactionSource = null,
+                                            indication = null,
+                                            onClick = { replyTarget = null }
+                                        )
+                                ) {
+                                    ShowReplyInput(
+                                        labelText = "回复 @${target.userName}",
+                                        onSend = { message ->
+                                            scope.launch {
+                                                try {
+                                                    val result = sendSubReply(
+                                                        message = message,
+                                                        replySection = ReplySectionType(
+                                                            target.typeCode,
+                                                            target.oid
+                                                        ) ?: error("无法处理的评论类型"),
+                                                        targetReply = target
+                                                    )
+                                                    if (result.isSuccess) {
+                                                        viewModel.updateReply(target.copy(replyCount = target.replyCount + 1))
+                                                        showSnackbarMessage("评论发送成功")
+                                                    } else {
+                                                        showSnackbarMessage("[${result.code}]: ${result.message}")
+                                                    }
+                                                } catch (e: Exception) {
+                                                    showSnackbarMessage(e.message ?: "其他网络错误")
+                                                } finally {
+                                                    replyTarget = null
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.align(Alignment.BottomCenter)
+                                            .imePadding()
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

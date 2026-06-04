@@ -21,8 +21,5 @@ suspend fun fetchRepliesWith(
             parameter("pagination_str", """{"offset":"$loadParamsString"}""")
         }
     }
-    println("""{"offset":"$loadParamsString"}""")
-    println(response.bodyAsText())
-    println("RESPONSE: " + response.body<ReplyResponse>().data.loadParamsString)
     return response.body()
 }

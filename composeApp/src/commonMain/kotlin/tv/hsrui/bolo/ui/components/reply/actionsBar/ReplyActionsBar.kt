@@ -36,6 +36,7 @@ import tv.hsrui.network.utils.formatCountToString
 @Composable
 fun ReplyActionsBar(
     replyInfo: ReplyItem,
+    sendReply: () -> Unit,
     updateReply: (ReplyItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -132,7 +133,7 @@ fun ReplyActionsBar(
         Text(
             text = "回复",
             style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.clickable(onClick = {})
+            modifier = Modifier.clickable(onClick = { sendReply() })
         )
     }
 }

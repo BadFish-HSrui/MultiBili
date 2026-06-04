@@ -41,6 +41,7 @@ import tv.hsrui.network.feature.reply.ReplyResponse
 @Composable
 fun ShowReplyCard(
     replyInfo: ReplyItem,
+    sendReply: () -> Unit,
     updateReply: (ReplyItem) -> Unit,
     modifier: Modifier = Modifier,
     isTop: Boolean = false
@@ -125,11 +126,12 @@ fun ShowReplyCard(
 
             ReplyActionsBar(
                 replyInfo = replyInfo,
+                sendReply = sendReply,
                 updateReply = updateReply,
                 modifier = Modifier.padding(top = 8.dp)
             )
 
-            if (!replyInfo.previewReplies.isNullOrEmpty() && replyInfo.replyCount >= 0) {
+            if (!replyInfo.previewReplies.isNullOrEmpty() || replyInfo.replyCount > 0) {
                 Surface(
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                     shape = CardDefaults.shape
@@ -179,5 +181,5 @@ fun ReplyCardPreview() {
             ).data.replies[19]
         }
 
-    ShowReplyCard(replyItem, updateReply = {},isTop = true)
+    ShowReplyCard(replyItem, updateReply = {}, sendReply = {}, isTop = true)
 }
