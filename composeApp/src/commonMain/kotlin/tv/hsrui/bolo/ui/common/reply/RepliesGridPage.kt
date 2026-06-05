@@ -149,7 +149,7 @@ fun RepliesGridPage(
                                 onValueChange = {},
                                 label = {
                                     Text(
-                                        text = "占位",
+                                        text = viewModel.replyLabelText,
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 },

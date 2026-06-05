@@ -51,6 +51,7 @@ fun ShowReplyInput(
     ) {
         Box(
             Modifier.fillMaxSize()
+                .imePadding()
                 .clickable(
                     interactionSource = null,
                     indication = null,
@@ -61,7 +62,6 @@ fun ShowReplyInput(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .imePadding()
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp)
                     .padding(bottom = 4.dp)
@@ -79,7 +79,11 @@ fun ShowReplyInput(
                     },
                     trailingIcon = {
                         IconButton(
-                            onClick = { onSend(text) }
+                            onClick = {
+                                if (text.length <= 1000) {
+                                    onSend(text)
+                                }
+                            }
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.Send,
