@@ -11,6 +11,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSerializable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
@@ -39,7 +40,7 @@ fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
     val isLogin = isLoggedIn()
 
     LaunchedEffect(trigger) {
-        if (isLogin){
+        if (isLogin) {
             try {
                 val result = fetchVideoActionsStateFor(videoInfo.bvid)
                 if (result.isSuccess) {
@@ -48,6 +49,7 @@ fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
                     snackbarManager.showMessage(actionsState.message)
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 snackbarManager.showMessage(e.message ?: "其他网络错误")
             }
         }
