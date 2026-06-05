@@ -22,8 +22,7 @@ data class ReplyItem(
     @SerialName("member") private val _userInfo: ReplyUserInfo = ReplyUserInfo(),
     @SerialName("content") val content: ReplyContent = ReplyContent(),
     @SerialName("replies") val previewReplies: List<ReplyItem>? = null,
-    @SerialName("attr") private val _attr: Long = 0,
-//    @SerialName("up_action") private val _upAction: UpAction = UpAction()
+    @SerialName("up_action") private val _upAction: UpAction = UpAction()
 ) {
     val isHide: Boolean get() = (_stateCode == 17)
     val isFans: Boolean get() = (_fansCode == 1)
@@ -40,12 +39,8 @@ data class ReplyItem(
     val isFollowing by _userInfo::isFollowing
     val isFollowed by _userInfo::isFollowed
 
-    /* attr的含义不确定，但先这么用吧出了问题再说（ */
-    val isUpReply get() = (((_attr ushr 1) and 1) == 1L)
-    val isUpLiked get() = (((_attr ushr 8) and 1) == 1L)
-    val isUpReplied get() = (((_attr ushr 9) and 1) == 1L)
-//    val isUpLiked by _upAction::isUpLiked
-//    val isUpReplied by _upAction::isUpReplied
+    val isUpLiked by _upAction::isUpLiked
+    val isUpReplied by _upAction::isUpReplied
 
     @Serializable
     data class ReplyUserInfo(
@@ -61,11 +56,11 @@ data class ReplyItem(
         )
     }
 
-//    @Serializable
-//    data class UpAction(
-//        @SerialName("like") val isUpLiked: Boolean = false,
-//        @SerialName("reply") val isUpReplied: Boolean = false
-//    )
+    @Serializable
+    data class UpAction(
+        @SerialName("like") val isUpLiked: Boolean = false,
+        @SerialName("reply") val isUpReplied: Boolean = false
+    )
 
     @Serializable
     data class ReplyContent(

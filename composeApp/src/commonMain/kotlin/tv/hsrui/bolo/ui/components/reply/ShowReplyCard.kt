@@ -41,6 +41,7 @@ import tv.hsrui.network.feature.reply.ReplyResponse
 @Composable
 fun ShowReplyCard(
     replyInfo: ReplyItem,
+    isUpReply: Boolean,
     sendReply: () -> Unit,
     updateReply: (ReplyItem) -> Unit,
     modifier: Modifier = Modifier,
@@ -61,7 +62,7 @@ fun ShowReplyCard(
                 )
                 Column(modifier = Modifier.padding(start = 4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (replyInfo.isUpReply) {
+                        if (isUpReply) {
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
                                 color = BiliColor.ThemeColor,
@@ -181,5 +182,5 @@ fun ReplyCardPreview() {
             ).data.replies[19]
         }
 
-    ShowReplyCard(replyItem, updateReply = {}, sendReply = {}, isTop = true)
+    ShowReplyCard(replyItem,false, {},{}, isTop = true)
 }
