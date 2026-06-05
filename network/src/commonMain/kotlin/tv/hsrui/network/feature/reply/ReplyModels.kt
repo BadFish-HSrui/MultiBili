@@ -16,7 +16,8 @@ data class ReplyResponse(
 data class RepliesData(
     @SerialName("cursor") private val _cursor: ReplyCursor = ReplyCursor(),
     @SerialName("top_replies") private val _topReplies: List<ReplyItem>? = null,
-    @SerialName("replies") private val _replies: List<ReplyItem>? = null
+    @SerialName("replies") private val _replies: List<ReplyItem>? = null,
+    @SerialName("control") private val _inputControl: ReplyInputControl = ReplyInputControl()
 ) {
     val topReply get() = _topReplies?.firstOrNull()
 
@@ -25,6 +26,8 @@ data class RepliesData(
 
     val canReply: Boolean get() = (_replies != null)
     val replies: List<ReplyItem> get() = _replies ?: emptyList()
+
+    val replyLabelText by _inputControl::replyLabelText
 
     @Serializable
     data class ReplyCursor(
@@ -36,4 +39,9 @@ data class RepliesData(
             @SerialName("next_offset") val loadParamsString: String = ""
         )
     }
+
+    @Serializable
+    data class ReplyInputControl(
+        @SerialName("root_input_text") val replyLabelText: String = ""
+    )
 }

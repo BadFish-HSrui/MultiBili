@@ -23,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
@@ -72,6 +71,12 @@ fun ShowReplyInput(
                     onValueChange = { text = it },
                     textStyle = MaterialTheme.typography.bodyMedium,
                     maxLines = 5,
+                    supportingText = {
+                        Text(
+                            "${text.length}/1000",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    },
                     trailingIcon = {
                         IconButton(
                             onClick = { onSend(text) }
@@ -83,7 +88,6 @@ fun ShowReplyInput(
                         }
                     },
                     label = { Text(labelText) },
-
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp)

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -14,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -26,11 +28,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
@@ -41,19 +45,21 @@ import tv.hsrui.bolo.ui.components.reply.ShowReplyInput
 import tv.hsrui.bolo.utils.OnGridBottomReached
 import tv.hsrui.network.feature.reply.ReplyItem
 import tv.hsrui.network.feature.reply.ReplySectionType.Companion.ReplySectionType
+import tv.hsrui.network.feature.reply.ReplySort
+import tv.hsrui.network.feature.reply.send.sendRootReply
 import tv.hsrui.network.feature.reply.send.sendSubReply
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun RepliesGridPage(
     viewModel: RepliesViewModel,
     uiState: RepliesUiState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    upMid: Long = 0L
 ) {
     val sortType by viewModel.sortType.collectAsState()
     val repliesGridState = rememberLazyGridState()
-    val subReplyText = remember { mutableStateOf("") }
-    var lastSubReplyId by remember { mutableStateOf(0L) }
 
     repliesGridState.OnGridBottomReached(buffer = 4, isLoading = viewModel.isLoading) {
         viewModel.loadMoreReplies()
@@ -83,6 +89,10 @@ fun RepliesGridPage(
             }
 
             is RepliesUiState.Success -> {
+                var inputRootReply by remember { mutableStateOf(false) }
+                val rootReplyText = rememberSaveable { mutableStateOf("") }
+                val subReplyText = rememberSaveable { mutableStateOf("") }
+                var lastSubReplyId by rememberSaveable { mutableStateOf(0L) }
                 var replyTarget by remember { mutableStateOf<ReplyItem?>(null) }
                 val scope = rememberCoroutineScope()
 
@@ -108,7 +118,7 @@ fun RepliesGridPage(
                         }
                     }
 
-                    Box {
+                    Box(Modifier.weight(1F)) {
                         ShowHorizontalCardGrid(
                             cards = uiState.replies,
                             keySelector = { it.rpid },
@@ -116,6 +126,7 @@ fun RepliesGridPage(
                         ) { reply ->
                             ShowReplyCard(
                                 replyInfo = reply,
+                                isUpReply = (reply.userMid == upMid),
                                 sendReply = { replyTarget = reply },
                                 updateReply = { viewModel.updateReply(it) }
                             )
@@ -129,6 +140,34 @@ fun RepliesGridPage(
                             onRefresh = { viewModel.refreshReplies() },
                             modifier = Modifier.align(Alignment.BottomEnd),
                         )
+                    }
+
+                    Surface {
+                        Box(Modifier.padding(bottom = 32.dp)) {
+                            OutlinedTextField(
+                                value = rootReplyText.value,
+                                onValueChange = {},
+                                label = {
+                                    Text(
+                                        text = "占位",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                },
+                                textStyle = MaterialTheme.typography.bodyMedium,
+                                readOnly = true,
+                                singleLine = true,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable(onClick = { inputRootReply = true })
+                            )
+                            HorizontalDivider()
+                        }
                     }
                 }
 
@@ -167,6 +206,36 @@ fun RepliesGridPage(
                             }
                         },
                         onDismiss = { replyTarget = null }
+                    )
+                }
+
+                if (inputRootReply) {
+                    ShowReplyInput(
+                        text = rootReplyText,
+                        labelText = viewModel.replyLabelText,
+                        onSend = { message ->
+                            scope.launch {
+                                try {
+                                    val result = sendRootReply(
+                                        message = message,
+                                        replySection = viewModel.replySection
+                                    )
+                                    if (result.isSuccess) {
+                                        delay(100.milliseconds)
+                                        rootReplyText.value = ""
+                                        showSnackbarMessage("评论发送成功")
+                                        viewModel.setSortType(ReplySort.Latest)
+                                    } else {
+                                        showSnackbarMessage("[${result.code}]: ${result.message}")
+                                    }
+                                } catch (e: Exception) {
+                                    showSnackbarMessage(e.message ?: "其他网络错误")
+                                } finally {
+                                    inputRootReply = false
+                                }
+                            }
+                        },
+                        onDismiss = { inputRootReply = false }
                     )
                 }
             }

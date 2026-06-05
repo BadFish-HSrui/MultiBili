@@ -18,6 +18,7 @@ import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.video.actions.state.VideoActionsStateResponse
 import tv.hsrui.network.feature.video.actions.state.fetchVideoActionsStateFor
 import tv.hsrui.network.login.storage.isLoggedIn
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
@@ -32,7 +33,7 @@ fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
            暂时使用100ms延迟解决,
            未来可能改为使用乐观更新+延迟加载验证状态.
         */
-        delay(100)
+        delay(100.milliseconds)
         trigger++
     }
     val isLogin = isLoggedIn()

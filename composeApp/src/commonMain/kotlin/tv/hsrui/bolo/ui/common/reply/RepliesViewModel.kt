@@ -18,6 +18,7 @@ class RepliesViewModel(val replySection: ReplySectionType) : ViewModel() {
 
     private val _sortType = MutableStateFlow(ReplySort.Popular)
     val sortType = _sortType.asStateFlow()
+    var replyLabelText = ""
 
     var canLoadMore: Boolean = false
     var loadParamsString: String = ""
@@ -31,6 +32,11 @@ class RepliesViewModel(val replySection: ReplySectionType) : ViewModel() {
         _sortType.update {
             ReplySort.entries[(it.ordinal + 1) % ReplySort.entries.size]
         }
+        refreshReplies()
+    }
+
+    fun setSortType(sort: ReplySort) {
+        _sortType.value = sort
         refreshReplies()
     }
 
@@ -64,6 +70,7 @@ class RepliesViewModel(val replySection: ReplySectionType) : ViewModel() {
                         RepliesUiState.Success(result.data.topReply, result.data.replies)
                     canLoadMore = result.data.hasMore
                     loadParamsString = result.data.loadParamsString
+                    replyLabelText = result.data.replyLabelText
                 } else {
                     _uiState.value = RepliesUiState.Error("[${result.code}]: ${result.message}")
                 }

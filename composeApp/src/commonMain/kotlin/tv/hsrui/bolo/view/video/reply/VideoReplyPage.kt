@@ -21,6 +21,7 @@ fun VideoReplyPage(
     val videoRepliesUiState by videoRepliesViewModel.uiState.collectAsState()
     RepliesGridPage(
         viewModel = videoRepliesViewModel,
-        uiState = videoRepliesUiState
+        uiState = videoRepliesUiState,
+        upMid = videoInfo.upMid
     )
 }
