@@ -23,6 +23,9 @@ fun <T> ShowHorizontalCardGrid(
     keySelector: (T) -> Any,
     gridState: LazyGridState,
     modifier: Modifier = Modifier,
+    noContentPadding: Boolean = false,
+    noContentSpacing: Boolean = false,
+    topContent: @Composable (() -> Unit)? = null,
     howToShow: @Composable (T) -> Unit
 ) {
     val contentPadding: Dp
@@ -48,20 +51,25 @@ fun <T> ShowHorizontalCardGrid(
         Box(modifier = Modifier.widthIn(max = 1280.dp).fillMaxSize().align(Alignment.TopCenter)) {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(325.dp),
-                content = {
-                    items(
-                        items = cards,
-                        key = keySelector
-                    ) { card ->
-                        howToShow(card)
-                    }
-                },
-                contentPadding = PaddingValues(contentPadding),
-                verticalArrangement = Arrangement.spacedBy(contentSpacing),
-                horizontalArrangement = Arrangement.spacedBy(contentSpacing),
+                contentPadding = PaddingValues(if (noContentPadding) 0.dp else contentPadding),
+                verticalArrangement = Arrangement.spacedBy(if (noContentSpacing) 0.dp else contentSpacing),
+                horizontalArrangement = Arrangement.spacedBy(if (noContentSpacing) 0.dp else contentSpacing),
                 state = gridState,
                 modifier = Modifier
-            )
+            ) {
+                if (topContent != null){
+                    item(key = "top") {
+                        topContent()
+                    }
+                }
+
+                items(
+                    items = cards,
+                    key = keySelector
+                ) { card ->
+                    howToShow(card)
+                }
+            }
         }
     }
 }
