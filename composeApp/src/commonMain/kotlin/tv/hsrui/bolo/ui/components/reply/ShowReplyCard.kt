@@ -1,7 +1,7 @@
 package tv.hsrui.bolo.ui.components.reply
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,6 +44,7 @@ fun ShowReplyCard(
     isUpReply: Boolean,
     sendReply: () -> Unit,
     updateReply: (ReplyItem) -> Unit,
+    onViewClick: (ReplyItem) -> Unit,
     modifier: Modifier = Modifier,
     isTop: Boolean = false
 ) {
@@ -162,7 +163,9 @@ fun ShowReplyCard(
                                 text = "共${replyInfo.replyCount}条回复,点击查看 >",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = BiliColor.Blue,
-                                modifier = Modifier.padding(start = 4.dp)
+                                modifier = Modifier
+                                    .clickable(onClick = { onViewClick(replyInfo) })
+                                    .padding(start = 4.dp)
                             )
                         }
                     }
@@ -182,5 +185,5 @@ fun ReplyCardPreview() {
             ).data.replies[19]
         }
 
-    ShowReplyCard(replyItem,false, {},{}, isTop = true)
+    ShowReplyCard(replyItem, false, {}, {}, {}, isTop = true)
 }

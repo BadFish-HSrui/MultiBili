@@ -22,6 +22,7 @@ fun VideoReplyPage(
     RepliesGridPage(
         viewModel = videoRepliesViewModel,
         uiState = videoRepliesUiState,
-        upMid = videoInfo.upMid
+        upMid = videoInfo.upMid,
+        modifier = modifier
     )
 }

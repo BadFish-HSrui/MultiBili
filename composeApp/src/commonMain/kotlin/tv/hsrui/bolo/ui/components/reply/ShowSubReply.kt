@@ -43,7 +43,7 @@ fun ShowSubReply(
 ) {
     val scope = rememberCoroutineScope()
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AsyncImage(

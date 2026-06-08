@@ -13,15 +13,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberBottomSheetScaffoldState
+import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
@@ -44,13 +50,12 @@ import tv.hsrui.bolo.ui.components.reply.ShowReplyCard
 import tv.hsrui.bolo.ui.components.reply.ShowReplyInput
 import tv.hsrui.bolo.utils.OnGridBottomReached
 import tv.hsrui.network.feature.reply.ReplyItem
-import tv.hsrui.network.feature.reply.ReplySectionType.Companion.ReplySectionType
 import tv.hsrui.network.feature.reply.ReplySort
 import tv.hsrui.network.feature.reply.send.sendRootReply
 import tv.hsrui.network.feature.reply.send.sendSubReply
 import kotlin.time.Duration.Companion.milliseconds
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun RepliesGridPage(
     viewModel: RepliesViewModel,
@@ -94,79 +99,115 @@ fun RepliesGridPage(
                 val subReplyText = rememberSaveable { mutableStateOf("") }
                 var lastSubReplyId by rememberSaveable { mutableStateOf(0L) }
                 var replyTarget by remember { mutableStateOf<ReplyItem?>(null) }
+                var viewingReply by remember { mutableStateOf<ReplyItem?>(null) }
                 val scope = rememberCoroutineScope()
 
-                Column {
-                    Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                        Spacer(Modifier.weight(1F))
-                        Surface(
-                            onClick = { viewModel.nextSortType() },
-                            modifier = Modifier.height(24.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.Sort,
-                                    contentDescription = "排序方式",
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = sortType.sortTitle,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 12.sp
+                val sheetState = rememberStandardBottomSheetState(
+                    initialValue = SheetValue.Hidden,
+                    skipHiddenState = false,
+                )
+
+                val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
+
+                BottomSheetScaffold(
+                    scaffoldState = scaffoldState,
+                    sheetPeekHeight = 0.dp,
+                    sheetContent = {
+                        viewingReply?.let { viewingReply ->
+                            val viewModel = viewModel(key = viewingReply.rpid.toString()) {
+                                SubRepliesViewModel(
+                                    replySection = viewModel.replySection,
+                                    rootReplyID = viewingReply.rpid
                                 )
                             }
-                        }
-                    }
+                            val uiState by viewModel.uiState.collectAsState()
 
-                    Box(Modifier.weight(1F)) {
-                        ShowHorizontalCardGrid(
-                            cards = uiState.replies,
-                            keySelector = { it.rpid },
-                            gridState = repliesGridState
-                        ) { reply ->
-                            ShowReplyCard(
-                                replyInfo = reply,
-                                isUpReply = (reply.userMid == upMid),
-                                sendReply = { replyTarget = reply },
-                                updateReply = { viewModel.updateReply(it) }
+                            SubRepliesGridPage(
+                                viewModel = viewModel,
+                                uiState = uiState,
+                                upMid = upMid
                             )
                         }
-                        ShowGridFABMenu(
-                            onBackToTop = {
-                                scope.launch {
-                                    repliesGridState.animateScrollToItem(0)
-                                }
-                            },
-                            onRefresh = { viewModel.refreshReplies() },
-                            modifier = Modifier.align(Alignment.BottomEnd),
-                        )
                     }
-
-                    Surface {
-                        Box(Modifier.padding(bottom = 32.dp)) {
-                            OutlinedTextField(
-                                value = rootReplyText.value,
-                                onValueChange = {},
-                                label = {
-                                    Text(
-                                        text = viewModel.replyLabelText,
-                                        style = MaterialTheme.typography.bodySmall
+                ) {
+                    Column {
+                        Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            Spacer(Modifier.weight(1F))
+                            Surface(
+                                onClick = { viewModel.nextSortType() },
+                                modifier = Modifier.height(24.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.Sort,
+                                        contentDescription = "排序方式",
+                                        modifier = Modifier.size(16.dp)
                                     )
+                                    Text(
+                                        text = sortType.sortTitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        Box(Modifier.weight(1F)) {
+                            ShowHorizontalCardGrid(
+                                cards = uiState.replies,
+                                keySelector = { it.rpid },
+                                gridState = repliesGridState
+                            ) { reply ->
+                                ShowReplyCard(
+                                    replyInfo = reply,
+                                    isUpReply = (reply.userMid == upMid),
+                                    sendReply = { replyTarget = reply },
+                                    onViewClick = {
+                                        scope.launch {
+                                            viewingReply = it
+                                            sheetState.expand()
+                                        }
+                                    },
+                                    updateReply = { viewModel.updateReply(it) }
+                                )
+                            }
+                            ShowGridFABMenu(
+                                onBackToTop = {
+                                    scope.launch {
+                                        repliesGridState.animateScrollToItem(0)
+                                    }
                                 },
-                                textStyle = MaterialTheme.typography.bodyMedium,
-                                readOnly = true,
-                                singleLine = true,
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .fillMaxWidth()
-                                    .height(48.dp)
+                                onRefresh = { viewModel.refreshReplies() },
+                                modifier = Modifier.align(Alignment.BottomEnd),
                             )
-                            Box(
-                                modifier = Modifier
-                                    .matchParentSize()
-                                    .clickable(onClick = { inputRootReply = true })
-                            )
-                            HorizontalDivider()
+                        }
+
+                        Surface {
+                            Box(Modifier.padding(bottom = 32.dp)) {
+                                OutlinedTextField(
+                                    value = rootReplyText.value,
+                                    onValueChange = {},
+                                    label = {
+                                        Text(
+                                            text = viewModel.replyLabelText,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    },
+                                    textStyle = MaterialTheme.typography.bodyMedium,
+                                    readOnly = true,
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp)
+                                        .fillMaxWidth()
+                                        .height(48.dp)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .clickable(onClick = { inputRootReply = true })
+                                )
+                                HorizontalDivider()
+                            }
                         }
                     }
                 }
@@ -185,10 +226,7 @@ fun RepliesGridPage(
                                 try {
                                     val result = sendSubReply(
                                         message = message,
-                                        replySection = ReplySectionType(
-                                            target.typeCode,
-                                            target.oid
-                                        ) ?: error("无法处理的评论类型"),
+                                        replySection = viewModel.replySection,
                                         targetReply = target
                                     )
                                     if (result.isSuccess) {
@@ -221,7 +259,7 @@ fun RepliesGridPage(
                                         replySection = viewModel.replySection
                                     )
                                     if (result.isSuccess) {
-                                        delay(100.milliseconds)
+                                        delay(200.milliseconds)
                                         rootReplyText.value = ""
                                         showSnackbarMessage("评论发送成功")
                                         viewModel.setSortType(ReplySort.Latest)
