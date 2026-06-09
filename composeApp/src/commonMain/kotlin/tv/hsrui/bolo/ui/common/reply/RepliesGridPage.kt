@@ -1,5 +1,6 @@
 package tv.hsrui.bolo.ui.common.reply
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,7 +30,9 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,9 +41,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.NavigationEventTransitionState
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
@@ -108,25 +118,60 @@ fun RepliesGridPage(
                 )
 
                 val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
+                val sheetDownState = rememberNavigationEventState(NavigationEventInfo.None)
+                val sheetDownProgress by remember {
+                    derivedStateOf {
+                        when (val state = sheetDownState.transitionState) {
+                            is NavigationEventTransitionState.InProgress -> state.latestEvent.progress
+                            is NavigationEventTransitionState.Idle -> 0F
+                        }
+                    }
+                }
+
+                LaunchedEffect(sheetDownState) {
+
+                }
+
+                NavigationBackHandler(
+                    state = sheetDownState,
+                    isBackEnabled = sheetState.currentValue != SheetValue.Hidden,
+                    onBackCompleted = {
+                        scope.launch {
+                            sheetState.hide()
+                            viewingReply = null
+                        }
+                    }
+                )
 
                 BottomSheetScaffold(
                     scaffoldState = scaffoldState,
                     sheetPeekHeight = 0.dp,
+                    sheetContainerColor = Color.Transparent,
                     sheetContent = {
-                        viewingReply?.let { viewingReply ->
-                            val viewModel = viewModel(key = viewingReply.rpid.toString()) {
-                                SubRepliesViewModel(
-                                    replySection = viewModel.replySection,
-                                    rootReplyID = viewingReply.rpid
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer {
+                                    translationY = size.height * (sheetDownProgress * 0.75f)
+                                    alpha = 1f - (sheetDownProgress * 0.3f)
+                                }
+                                .background(BottomSheetDefaults.ContainerColor)
+                        ) {
+                            viewingReply?.let { viewingReply ->
+                                val viewModel = viewModel(key = viewingReply.rpid.toString()) {
+                                    SubRepliesViewModel(
+                                        replySection = viewModel.replySection,
+                                        rootReplyID = viewingReply.rpid
+                                    )
+                                }
+                                val uiState by viewModel.uiState.collectAsState()
+
+                                SubRepliesGridPage(
+                                    viewModel = viewModel,
+                                    uiState = uiState,
+                                    upMid = upMid
                                 )
                             }
-                            val uiState by viewModel.uiState.collectAsState()
-
-                            SubRepliesGridPage(
-                                viewModel = viewModel,
-                                uiState = uiState,
-                                upMid = upMid
-                            )
                         }
                     }
                 ) {

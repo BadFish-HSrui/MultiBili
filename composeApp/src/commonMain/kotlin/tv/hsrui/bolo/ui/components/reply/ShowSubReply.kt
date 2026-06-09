@@ -112,11 +112,16 @@ fun ShowSubReply(
                 modifier = Modifier.padding(vertical = 8.dp)
             )
         }
+
         HorizontalDivider()
 
         if (isTop) {
-            Spacer(Modifier.height(32.dp))
-            HorizontalDivider()
+            Text(
+                text = "相关回复",
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier
+                    .padding(start = 8.dp, top = 24.dp)
+            )
         }
     }
 }
