@@ -30,7 +30,6 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -128,10 +127,6 @@ fun RepliesGridPage(
                     }
                 }
 
-                LaunchedEffect(sheetDownState) {
-
-                }
-
                 NavigationBackHandler(
                     state = sheetDownState,
                     isBackEnabled = sheetState.currentValue != SheetValue.Hidden,
@@ -201,7 +196,24 @@ fun RepliesGridPage(
                             ShowHorizontalCardGrid(
                                 cards = uiState.replies,
                                 keySelector = { it.rpid },
-                                gridState = repliesGridState
+                                gridState = repliesGridState,
+                                topContent = {
+                                    uiState.topReply?.let { topReply ->
+                                        ShowReplyCard(
+                                            replyInfo = topReply,
+                                            isUpReply = (topReply.userMid == upMid),
+                                            sendReply = { replyTarget = topReply },
+                                            updateReply = { viewModel.updateReply(it) },
+                                            onViewClick = {
+                                                scope.launch {
+                                                    viewingReply = topReply
+                                                    sheetState.expand()
+                                                }
+                                            },
+                                            isTop = true
+                                        )
+                                    }
+                                }
                             ) { reply ->
                                 ShowReplyCard(
                                     replyInfo = reply,
@@ -209,7 +221,7 @@ fun RepliesGridPage(
                                     sendReply = { replyTarget = reply },
                                     onViewClick = {
                                         scope.launch {
-                                            viewingReply = it
+                                            viewingReply = reply
                                             sheetState.expand()
                                         }
                                     },

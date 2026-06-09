@@ -44,7 +44,7 @@ fun ShowReplyCard(
     isUpReply: Boolean,
     sendReply: () -> Unit,
     updateReply: (ReplyItem) -> Unit,
-    onViewClick: (ReplyItem) -> Unit,
+    onViewClick: () -> Unit,
     modifier: Modifier = Modifier,
     isTop: Boolean = false
 ) {
@@ -164,7 +164,7 @@ fun ShowReplyCard(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = BiliColor.Blue,
                                 modifier = Modifier
-                                    .clickable(onClick = { onViewClick(replyInfo) })
+                                    .clickable(onClick = onViewClick)
                                     .padding(start = 4.dp)
                             )
                         }
