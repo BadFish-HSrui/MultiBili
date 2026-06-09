@@ -28,6 +28,7 @@ class SubRepliesViewModel(val replySection: ReplySectionType, val rootReplyID: L
         _uiState.update { oldState ->
             if (oldState is SubRepliesUiState.Success) {
                 oldState.copy(
+                    rootReply = if (oldState.rootReply.rpid == reply.rpid) reply else oldState.rootReply,
                     subReplies = oldState.subReplies.map { if (it.rpid == reply.rpid) reply else it }
                 )
             } else {

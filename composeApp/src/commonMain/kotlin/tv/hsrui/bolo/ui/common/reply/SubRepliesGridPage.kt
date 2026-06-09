@@ -80,7 +80,7 @@ fun SubRepliesGridPage(
                                 replyInfo = uiState.rootReply,
                                 isUpReply = (uiState.rootReply.userMid == upMid),
                                 sendReply = { replyTarget = uiState.rootReply },
-                                updateReply = {},
+                                updateReply = { viewModel.updateReply(it) },
                                 isTop = true
                             )
                         }
