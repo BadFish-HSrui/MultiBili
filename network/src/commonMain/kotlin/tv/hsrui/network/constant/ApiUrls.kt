@@ -40,5 +40,9 @@ object ApiUrls {
         const val SEND = "x/v2/reply/add" //发送评论
     }
 
+    object Play {
+        const val VIDEO = "x/player/wbi/playurl" //视频播放信息
+    }
+
     const val WBI = "x/web-interface/nav" //用于获取WbiKey，实际上是导航栏接口
 }
