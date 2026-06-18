@@ -9,6 +9,8 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.composeHotReload)
     alias(libs.plugins.buildkonfig)
+    // CocoaPods 插件 — 自动管理 iOS 依赖（VLCKit）并生成 cinterop
+    kotlin("native.cocoapods")
 }
 
 kotlin {
@@ -36,12 +38,30 @@ kotlin {
         }
     }
 
+    cocoapods {
+        version = "1.0"
+        summary = "Bolo Compose App"
+        homepage = "https://hsrui.tv/bolo"
+        ios.deploymentTarget = "16.0"
+        podfile = project.file("../iosApp/Podfile")
+
+        pod("MobileVLCKit") {
+            version = "~> 3.7"
+        }
+
+        framework {
+            baseName = "ComposeApp"
+            isStatic = true
+        }
+    }
+
     jvm()
 
     sourceSets {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.activity.compose)
+            implementation(libs.libvlc)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -74,6 +94,7 @@ kotlin {
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
+            implementation(libs.vlcj)
         }
     }
 }

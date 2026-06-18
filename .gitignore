@@ -19,3 +19,8 @@ captures
 node_modules/
 
 .other/
+
+# CocoaPods
+iosApp/Pods/
+iosApp/iosApp.xcworkspace/
+composeApp/composeApp.podspec
