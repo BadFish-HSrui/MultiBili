@@ -13,6 +13,8 @@ enum class AudioQuality(
     companion object {
         private val qualityCodeMap = entries.associateBy { it.code }
 
+        val best get() = entries.maxBy { it.code }
+
         fun AudioQuality(code: Int): AudioQuality? {
             return qualityCodeMap[code]
         }
