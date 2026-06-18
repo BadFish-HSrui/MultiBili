@@ -17,6 +17,8 @@ enum class VideoQuality(
     companion object {
         private val qualityCodeMap = entries.associateBy { it.code }
 
+        val best get() = entries.maxBy { it.code }
+
         fun VideoQuality(code: Int): VideoQuality? {
             return qualityCodeMap[code]
         }
