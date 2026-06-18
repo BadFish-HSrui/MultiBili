@@ -17,6 +17,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.compose.KoinApplication
@@ -34,6 +36,7 @@ import tv.hsrui.bolo.ui.theme.AppTheme
 import tv.hsrui.network.feature.account.myinfo.MyAccountInfoModule
 import tv.hsrui.network.login.storage.LoginStorageModule
 import tv.hsrui.network.wbi.WbiManagerModule
+import kotlin.time.Duration.Companion.milliseconds
 
 fun koinConfig(): KoinConfiguration {
     return koinConfiguration {
@@ -59,7 +62,7 @@ fun App() {
 
             LaunchedEffect(Unit) {
                 snackbarManager.messages.collect { (message, duration) ->
-                    withTimeoutOrNull(duration) {
+                    withTimeoutOrNull(duration.milliseconds) {
                         snackbarHostState.showSnackbar(
                             message = message,
                             duration = SnackbarDuration.Indefinite
@@ -84,6 +87,10 @@ fun App() {
                     backStack = navigator.backStack,
                     onBack = { navigator.goBack() },
                     sceneStrategies = listOf(listDetailStrategy),
+                    entryDecorators = listOf(
+                        rememberSaveableStateHolderNavEntryDecorator(),
+                        rememberViewModelStoreNavEntryDecorator(),
+                    ),
                     entryProvider = { navigationEntry(it) },
                     modifier = Modifier.padding(
                         top = innerPadding.calculateTopPadding(),
