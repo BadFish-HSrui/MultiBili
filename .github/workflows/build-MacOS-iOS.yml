@@ -42,13 +42,13 @@ jobs:
           chmod +x ./gradlew
           ./gradlew \
             :composeApp:packageDmg \
-            :composeApp:linkReleaseFrameworkIosArm64
+            :composeApp:podInstall
 
       - name: 编译无签名 iOS App
         run: |
           cd iosApp
           xcodebuild build \
-            -project iosApp.xcodeproj \
+            -workspace iosApp.xcworkspace \
             -scheme iosApp \
             -configuration Release \
             -sdk iphoneos \
