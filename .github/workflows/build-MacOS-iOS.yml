@@ -22,6 +22,9 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
+      - name: 切换 Xcode 26.3
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+
       - name: 配置缓存
         uses: actions/cache@v4
         with:
