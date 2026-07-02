@@ -31,6 +31,7 @@ import tv.hsrui.bolo.boloSetting.setting.BoloSetting
 import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
+import tv.hsrui.bolo.utils.calculateWithoutBottom
 import tv.hsrui.bolo.utils.isExpanded
 
 @Composable
@@ -56,7 +57,7 @@ fun BoloSettingsScreen(modifier: Modifier = Modifier) {
             }
 
             LazyColumn(
-                modifier = Modifier.padding(top = innerPadding.calculateTopPadding())
+                modifier = Modifier.padding(innerPadding.calculateWithoutBottom())
             ) {
                 items(settings) { setting ->
                     Surface(

@@ -36,7 +36,8 @@ fun ShowTopBarWithNavigationButton(
             Row {
                 IconButton(
                     onClick = {
-                        if (goBackBefore== null) navigator.goBack() else navigator.goBackBefore(goBackBefore)
+                        if (goBackBefore == null) navigator.goBack()
+                        else navigator.goBackBefore(goBackBefore)
                     },
                     modifier = Modifier.size(40.dp)
                 ) {
@@ -58,7 +59,6 @@ fun ShowTopBarWithNavigationButton(
                 }
             }
         },
-        windowInsets = WindowInsets(),
         modifier = modifier
     )
 }

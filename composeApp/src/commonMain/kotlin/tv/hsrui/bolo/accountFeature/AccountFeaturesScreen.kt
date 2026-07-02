@@ -35,6 +35,7 @@ import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.ui.theme.BoloShapes
+import tv.hsrui.bolo.utils.calculateWithoutBottom
 import tv.hsrui.bolo.utils.isExpanded
 
 @Composable
@@ -60,7 +61,7 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
 
             /*TODO: 在compose-material3完成适配后，用SegmentedListItem代替Card*/
             LazyColumn(
-                modifier = Modifier.padding(top = innerPadding.calculateTopPadding()),
+                modifier = Modifier.padding(innerPadding.calculateWithoutBottom()),
                 contentPadding = PaddingValues(horizontal = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
@@ -87,7 +88,7 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
                             Icon(
                                 imageVector = feature.icon,
                                 contentDescription = null,
-                                modifier = Modifier.padding(start =16.dp, end = 8.dp)
+                                modifier = Modifier.padding(start = 16.dp, end = 8.dp)
                             )
                             Text(
                                 text = feature.title,
@@ -110,7 +111,7 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
                             Icon(
                                 imageVector = Icons.Rounded.Settings,
                                 contentDescription = null,
-                                modifier = Modifier.padding(start =16.dp, end = 8.dp)
+                                modifier = Modifier.padding(start = 16.dp, end = 8.dp)
                             )
                             Text(
                                 text = "应用设置",

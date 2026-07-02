@@ -24,6 +24,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import tv.hsrui.bolo.utils.calculateWithoutBottom
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
@@ -66,7 +67,7 @@ fun WatchLaterScreen(
             onRefresh = {
                 viewModel.refreshVideos()
             },
-            modifier = Modifier.padding(top = innerPadding.calculateTopPadding())
+            modifier = Modifier.padding(innerPadding.calculateWithoutBottom())
         ) {
             when (uiState) {
                 is HistoryVideosUiState.Loading -> {

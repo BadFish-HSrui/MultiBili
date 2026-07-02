@@ -2,7 +2,6 @@ package tv.hsrui.bolo.main
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -42,6 +41,7 @@ import multibili.composeapp.generated.resources.Res
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.main.home.HomeScreen
+import tv.hsrui.bolo.utils.calculateWithoutBottom
 import tv.hsrui.bolo.main.region.RegionsScreen
 import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
@@ -61,13 +61,12 @@ fun MainScreen(modifier: Modifier = Modifier) {
 
     saveableStateHolder.SaveableStateProvider(key = selectedTab) {
         Scaffold(
-            modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+            modifier = if (isVerticalLayout) modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else modifier,
             topBar = {
                 if (isVerticalLayout) {
                     TopAppBar(
                         title = { LoginOrAvatarImage(Modifier.size(42.dp)) },
                         scrollBehavior = scrollBehavior,
-                        windowInsets = WindowInsets(),
                         colors = TopAppBarDefaults.topAppBarColors(
                             containerColor = MaterialTheme.colorScheme.surface,
                             scrolledContainerColor = MaterialTheme.colorScheme.surface
@@ -95,10 +94,13 @@ fun MainScreen(modifier: Modifier = Modifier) {
                 }
             }
         ) { innerPadding ->
-            Row(modifier = Modifier) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding.calculateWithoutBottom())
+            ) {
                 if (!isVerticalLayout) {
                     NavigationRail(
-                        windowInsets = WindowInsets(),
                         modifier = Modifier.fillMaxHeight()
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -121,8 +123,7 @@ fun MainScreen(modifier: Modifier = Modifier) {
                         }
                     }
                 }
-                val paddingValues = if (isVerticalLayout) innerPadding else PaddingValues()
-                MainContent(selectedTab, Modifier.padding(paddingValues))
+                MainContent(selectedTab, Modifier.weight(1F).fillMaxHeight())
             }
         }
     }

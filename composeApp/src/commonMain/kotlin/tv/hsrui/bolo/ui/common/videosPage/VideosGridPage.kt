@@ -36,12 +36,14 @@ fun VideosGridPage(
         isRefreshing = false,
         onRefresh = {
             viewModel.refreshVideos()
-        }
+        },
+        modifier = modifier
+            .fillMaxSize()
     ) {
         when (uiState) {
             is VideosUiState.Loading -> {
                 Box(
-                    modifier = modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator()
@@ -56,11 +58,14 @@ fun VideosGridPage(
             }
 
             is VideosUiState.Success -> {
-                Box {
+                Box(
+                    modifier = Modifier.fillMaxSize()
+                ) {
                     ShowVerticalCardGrid(
                         cards = uiState.videos,
                         keySelector = { it.avid },
-                        gridState = videoGridState
+                        gridState = videoGridState,
+                        modifier = Modifier.fillMaxSize()
                     ) { video ->
                         ShowVideoCard(
                             videoInfo = video,

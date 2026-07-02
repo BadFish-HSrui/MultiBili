@@ -1,6 +1,8 @@
 package tv.hsrui.bolo.login
 
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -81,14 +83,16 @@ fun LoginWebView() {
             }
     }
 
-    WebView(
-        state = webViewState,
-        modifier = Modifier.fillMaxSize(),
-        navigator = webNavigator,
-        onCreated = { nativeWebView ->
-            setupWebViewInterceptor(nativeWebView)
-        }
-    )
+    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+        WebView(
+            state = webViewState,
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            navigator = webNavigator,
+            onCreated = { nativeWebView ->
+                setupWebViewInterceptor(nativeWebView)
+            }
+        )
+    }
 }
 
 expect suspend fun clearWebView()

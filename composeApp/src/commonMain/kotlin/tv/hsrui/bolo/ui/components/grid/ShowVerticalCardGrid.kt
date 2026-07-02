@@ -64,7 +64,7 @@ fun <T> ShowVerticalCardGrid(
                 verticalArrangement = Arrangement.spacedBy(contentSpacing),
                 horizontalArrangement = Arrangement.spacedBy(contentSpacing),
                 state = gridState,
-                modifier = Modifier
+                modifier = Modifier.fillMaxSize()
             )
         }
     }

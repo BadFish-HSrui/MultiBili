@@ -5,6 +5,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import tv.hsrui.bolo.utils.calculateWithoutBottom
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.utils.isExpanded
 
@@ -18,6 +19,6 @@ fun HistoryScreen(modifier: Modifier = Modifier, isEntryFromList: Boolean = true
             }
         }
     ) { innerPadding ->
-        HistoryGridContent(modifier = Modifier.padding(top = innerPadding.calculateTopPadding()))
+        HistoryGridContent(modifier = Modifier.padding(innerPadding.calculateWithoutBottom()))
     }
 }

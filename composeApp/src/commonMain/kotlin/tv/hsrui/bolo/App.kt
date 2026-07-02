@@ -1,8 +1,5 @@
 package tv.hsrui.bolo
 
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -14,7 +11,6 @@ import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneSt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
@@ -71,10 +67,9 @@ fun App() {
                 }
             }
 
-            val layoutDirection = LocalLayoutDirection.current
             Scaffold(
                 snackbarHost = { SnackbarHost(snackbarHostState) }
-            ) { innerPadding ->
+            ) {
                 val rawDirective = calculatePaneScaffoldDirective(currentWindowAdaptiveInfoV2())
                 val isIPhone = getPlatform().deviceCode.contains("iPhone")
                 val listDetailStrategy = rememberListDetailSceneStrategy<BoloRoute>(
@@ -91,12 +86,7 @@ fun App() {
                         rememberSaveableStateHolderNavEntryDecorator(),
                         rememberViewModelStoreNavEntryDecorator(),
                     ),
-                    entryProvider = { navigationEntry(it) },
-                    modifier = Modifier.padding(
-                        top = innerPadding.calculateTopPadding(),
-                        start = innerPadding.calculateStartPadding(layoutDirection),
-                        end = innerPadding.calculateEndPadding(layoutDirection)
-                    )
+                    entryProvider = { navigationEntry(it) }
                 )
             }
         }

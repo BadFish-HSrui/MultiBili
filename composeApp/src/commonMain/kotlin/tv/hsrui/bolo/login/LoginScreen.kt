@@ -3,7 +3,9 @@ package tv.hsrui.bolo.login
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -20,15 +22,20 @@ import tv.hsrui.bolo.navigation.Navigator
 fun LoginScreen(modifier: Modifier = Modifier) {
     val navigator: Navigator = koinInject()
 
-    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
+    Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
+        Box(
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            contentAlignment = Alignment.Center
         ) {
-            if (getPlatform().type != PlatformType.Desktop) {
-                Button(
-                    onClick = { navigator.navigateTo(BoloRoute.Login.Webview) },
-                ) {
-                    Text("Webview网页登录")
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (getPlatform().type != PlatformType.Desktop) {
+                    Button(
+                        onClick = { navigator.navigateTo(BoloRoute.Login.Webview) },
+                    ) {
+                        Text("Webview网页登录")
+                    }
                 }
             }
         }

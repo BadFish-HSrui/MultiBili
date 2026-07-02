@@ -2,6 +2,8 @@ package tv.hsrui.bolo.main.home
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -23,7 +25,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
     val pagerState = rememberPagerState(initialPage = tabs.indexOf(HomeTab.Recommend)) { tabs.size }
     val coroutineScope = rememberCoroutineScope()
 
-    Column(modifier = modifier) {
+    Column(modifier = modifier.fillMaxSize()) {
         PrimaryTabRow(selectedTabIndex = pagerState.currentPage + 1) {
             Spacer(Modifier.weight(1F))
             tabs.forEachIndexed { index, tab ->
@@ -40,12 +42,15 @@ fun HomeScreen(modifier: Modifier = Modifier) {
 
         HorizontalPager(
             state = pagerState,
-            beyondViewportPageCount = 1
+            beyondViewportPageCount = 1,
+            modifier = Modifier
+                .weight(1F)
+                .fillMaxWidth()
         ) { page ->
             when (tabs[page]) {
-                HomeTab.Popular -> PopularPage()
-                HomeTab.Recommend -> RecommendPage()
-                HomeTab.Following -> FollowingVideosPage()
+                HomeTab.Popular -> PopularPage(Modifier.fillMaxSize())
+                HomeTab.Recommend -> RecommendPage(Modifier.fillMaxSize())
+                HomeTab.Following -> FollowingVideosPage(Modifier.fillMaxSize())
             }
         }
     }
