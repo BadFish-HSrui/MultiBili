@@ -30,6 +30,10 @@ actual fun BoloVideoPlayer(
         AndroidView(
             factory = { ctx ->
                 VLCVideoLayout(ctx).also { layout ->
+                    layout.layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                    )
                     controller.bindVideo(layout)
                 }
             },

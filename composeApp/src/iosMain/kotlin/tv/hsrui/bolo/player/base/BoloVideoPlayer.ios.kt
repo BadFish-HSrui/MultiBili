@@ -30,6 +30,7 @@ actual fun BoloVideoPlayer(
         onDispose {
             drawableBound = false
             controller.release()
+            controller.removeObservers()
         }
     }
 

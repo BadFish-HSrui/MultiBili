@@ -3,7 +3,7 @@ package tv.hsrui.network.feature.player
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
 import tv.hsrui.network.feature.player.enumModels.VideoCodec
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
-import tv.hsrui.network.utils.getTargetOrSmallerOrLarger
+import tv.hsrui.network.utils.getTargetOrSmallerOrLargerOrNull
 
 data class VideoSource(
     val isSuccess: Boolean,
@@ -12,9 +12,9 @@ data class VideoSource(
     private val _audio: Map<AudioQuality, BiliDashObject>?
 ) {
     fun getVideo(quality: VideoQuality?, codec: VideoCodec): BiliDashObject =
-        _video.getTargetOrSmallerOrLarger(quality ?: VideoQuality.best)
-            ?.getTargetOrSmallerOrLarger(codec) ?: BiliDashObject()
+        _video.getTargetOrSmallerOrLargerOrNull(quality ?: VideoQuality.best)
+            ?.getTargetOrSmallerOrLargerOrNull(codec) ?: BiliDashObject()
 
     fun getAudio(quality: AudioQuality?): BiliDashObject? =
-        _audio?.getTargetOrSmallerOrLarger(quality ?: AudioQuality.best)
+        _audio?.getTargetOrSmallerOrLargerOrNull(quality ?: AudioQuality.best)
 }

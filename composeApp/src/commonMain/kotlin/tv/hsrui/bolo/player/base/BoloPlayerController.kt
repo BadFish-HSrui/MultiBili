@@ -31,9 +31,9 @@ import kotlinx.coroutines.flow.StateFlow
  * ## 平台底层实现
  * | 平台    | 底层技术                              |
  * |---------|---------------------------------------|
- * | Android | ExoPlayer (Media3) + OkHttp DataSource |
- * | iOS     | AVPlayer + AVMutableComposition        |
- * | Desktop | VLC (vlcj)                            |
+ * | Android | VLC (LibVLC Android 3.7.4)            |
+ * | iOS     | VLC (MobileVLCKit ~>3.7, CocoaPods)   |
+ * | Desktop | VLC (vlcj 4.12.1)                     |
  */
 expect class BoloPlayerController(
     autoPlay: Boolean = true,
@@ -59,13 +59,14 @@ expect class BoloPlayerController(
 
     /**
      * 跳转到指定位置
-     * @param positionMs 目标位置（毫秒）
+     * @param position 目标位置（秒）
      */
-    fun seekTo(positionMs: Long)
+    fun seekTo(position: Int)
 
     /**
      * 调整音量增益。
-     * @param gain 增益值，0 = 静音，100 = 原始音量（默认），200 = 200% 增益
+     * @param gain 增益值，0 = 静音，100 = 原始音量，200 = 200% 增益。
+     *             所有平台 VLC volume 范围均为 0-200。
      */
     fun setVolumeGain(gain: Int)
 

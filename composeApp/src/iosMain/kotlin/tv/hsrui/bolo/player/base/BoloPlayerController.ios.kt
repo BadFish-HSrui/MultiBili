@@ -33,6 +33,9 @@ actual class BoloPlayerController actual constructor(
     private var hasReachedPlaying = false
     private var initialized = false
 
+    // NSNotification observer tokens，用于注销通知
+    private val observers = mutableListOf<Any>()
+
     // ── 位置恢复 ──
     private var lastSavedPositionMs = 0L
 
@@ -45,34 +48,31 @@ actual class BoloPlayerController actual constructor(
     private var pendingPauseAfterSeek = false
 
     init {
-        println("[PLAYER] init  creating VLCMediaPlayer")
         AVAudioSession.sharedInstance().apply {
             setCategory(AVAudioSessionCategoryPlayback, AVAudioSessionModeMoviePlayback, 0u, null)
             setActive(true, null)
         }
 
-        NSNotificationCenter.defaultCenter.addObserverForName(
+        observers += NSNotificationCenter.defaultCenter.addObserverForName(
             VLCMediaPlayerStateChanged, null, NSOperationQueue.mainQueue
         ) { _ -> onStateChanged() }
 
-        NSNotificationCenter.defaultCenter.addObserverForName(
+        observers += NSNotificationCenter.defaultCenter.addObserverForName(
             VLCMediaPlayerTimeChanged, null, NSOperationQueue.mainQueue
         ) { _ -> updateTimeAndDuration() }
 
         // 后台 → 保存 + 释放
-        NSNotificationCenter.defaultCenter.addObserverForName(
+        observers += NSNotificationCenter.defaultCenter.addObserverForName(
             UIApplicationDidEnterBackgroundNotification, null,
             NSOperationQueue.mainQueue
         ) { _ ->
-            println("[PLAYER] didEnterBackground  isPlaying=${_state.value.isPlaying}")
             release()
         }
         // 前台 → 重建
-        NSNotificationCenter.defaultCenter.addObserverForName(
+        observers += NSNotificationCenter.defaultCenter.addObserverForName(
             UIApplicationWillEnterForegroundNotification, null,
             NSOperationQueue.mainQueue
         ) { _ ->
-            println("[PLAYER] willEnterForeground  lastSaved=$lastSavedPositionMs  wasPlaying=$wasPlayingBeforeBackground  lastUrl=${lastVideoUrl != null}")
             restoreFromSavedState()
         }
     }
@@ -82,22 +82,17 @@ actual class BoloPlayerController actual constructor(
      * 类似 Android 的 bindVideo()。
      */
     fun bindDrawable(view: UIView) {
-        println("[PLAYER] bindDrawable  initialized=$initialized  lastSaved=$lastSavedPositionMs  lastUrl=${lastVideoUrl != null}")
         mediaPlayer.drawable = view
         if (!initialized || mediaPlayer.media == null) {
             // VLC 已释放（release() 清空了 media），需要重建
             val url = lastVideoUrl
             if (url != null) {
-                println("[PLAYER] bindDrawable  rebuilding from saved state")
                 initialized = true
                 hasReachedPlaying = false
                 loadInternal(url, lastAudioUrl, restorePosition = true)
             } else {
-                println("[PLAYER] bindDrawable  no URL cached, waiting for load()")
                 initialized = true
             }
-        } else {
-            println("[PLAYER] bindDrawable  already playing, just rebind drawable")
         }
     }
 
@@ -110,23 +105,59 @@ actual class BoloPlayerController actual constructor(
                 if (!hasReachedPlaying)
                     _state.value = _state.value.copy(isBuffering = true)
             VLCMediaPlayerState.VLCMediaPlayerStatePlaying -> {
-                println("[PLAYER] state=Playing  pendingSeek=$pendingSeekMs  pendingPause=$pendingPauseAfterSeek")
-                _state.value = _state.value.copy(isPlaying = true, isBuffering = false)
+                var videoCodec = ""
+                var audioCodec = ""
+                var videoWidth = 0
+                var videoHeight = 0
+                var videoBr: Long = 0L
+                var audioBr: Long = 0L
+                
+                val tracks = mediaPlayer.media?.tracksInformation as? List<Map<Any?, Any?>>
+                tracks?.forEach { track ->
+                    val type = track["type"] as? String
+                    if (type == "video") {
+                        val codecObj = track["codec"]
+                        if (codecObj is String) {
+                            videoCodec = codecObj.uppercase()
+                        } else if (codecObj is Number) {
+                            videoCodec = intToFourCC(codecObj.toInt())
+                        }
+                        videoWidth = (track["width"] as? Number)?.toInt() ?: 0
+                        videoHeight = (track["height"] as? Number)?.toInt() ?: 0
+                        videoBr = (track["bitrate"] as? Number)?.toLong()?.takeIf { it > 0L } ?: 0L
+                    } else if (type == "audio") {
+                        val codecObj = track["codec"]
+                        if (codecObj is String) {
+                            audioCodec = codecObj.uppercase()
+                        } else if (codecObj is Number) {
+                            audioCodec = intToFourCC(codecObj.toInt())
+                        }
+                        audioBr = (track["bitrate"] as? Number)?.toLong()?.takeIf { it > 0L } ?: 0L
+                    }
+                }
+                
+                _state.value = _state.value.copy(
+                    isPlaying = true, 
+                    isBuffering = false,
+                    videoCodec = videoCodec,
+                    videoWidth = videoWidth,
+                    videoHeight = videoHeight,
+                    videoBitrate = videoBr,
+                    audioCodec = audioCodec,
+                    audioBitrate = audioBr
+                )
                 if (pendingSeekMs > 0) {
                     val ms = pendingSeekMs
                     pendingSeekMs = 0L
                     val mediaLength = mediaPlayer.media?.length?.value?.longValue ?: 0L
-                    println("[PLAYER] Playing seek: mediaLength=$mediaLength  targetMs=$ms")
                     if (mediaLength > 0 && ms > 1000 && ms < mediaLength) {
                         val ratio = ms.toFloat() / mediaLength.toFloat()
-                        println("[PLAYER] Playing seek to ratio=$ratio")
                         mediaPlayer.position = ratio
-                        _state.value = _state.value.copy(currentPositionMs = ms)
+                        _state.value = _state.value.copy(currentPosition = (ms / 1000).toInt())
                     }
                 }
                 if (pendingPauseAfterSeek) {
                     pendingPauseAfterSeek = false
-                    println("[PLAYER] Playing pause after seek")
                     mediaPlayer.pause()
                     _state.value = _state.value.copy(isPlaying = false)
                 }
@@ -136,10 +167,16 @@ actual class BoloPlayerController actual constructor(
                 _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
             VLCMediaPlayerState.VLCMediaPlayerStateStopped ->
                 _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
-            VLCMediaPlayerState.VLCMediaPlayerStateEnded ->
-                _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
+            VLCMediaPlayerState.VLCMediaPlayerStateEnded -> {
+                val duration = getDurationForCompletion()
+                _state.value = _state.value.copy(
+                    isPlaying = false,
+                    isBuffering = false,
+                    currentPosition = duration
+                )
+                lastSavedPositionMs = duration * 1000L
+            }
             VLCMediaPlayerState.VLCMediaPlayerStateError -> {
-                println("[PLAYER] state=Error")
                 _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
                 onError(BoloPlayerError.UnknownError("VLC 播放错误"))
             }
@@ -149,53 +186,43 @@ actual class BoloPlayerController actual constructor(
 
     private fun updateTimeAndDuration() {
         val posMs = mediaPlayer.time.value?.longValue ?: return
-        _state.value = _state.value.copy(currentPositionMs = posMs)
-        // 仅当 remainingTime 有效时才更新 duration（VLCKit 有时返回 0）
+        
+        _state.value = _state.value.copy(
+            currentPosition = (posMs / 1000).toInt(),
+            transferSpeed = 0L
+        )
+        // VLCKit 的 remainingTime 通常为负值（表示剩余时间），无效时返回 0
         val remaining = mediaPlayer.remainingTime?.value?.longValue ?: return
-        if (remaining > 0) {
-            val durMs = posMs + remaining
-            _state.value = _state.value.copy(durationMs = durMs)
+        if (remaining < 0) {
+            val durMs = posMs - remaining  // 减去负数 = 加上绝对值
+            _state.value = _state.value.copy(duration = (durMs / 1000).toInt())
         }
     }
 
     private fun savePositionFromCurrent() {
-        val displayPos = _state.value.currentPositionMs
+        val displayPos = _state.value.currentPosition * 1000L
         val timeVal = mediaPlayer.time.value
         val posMs = timeVal?.longValue
-        println("[PLAYER] savePosition  displayPos=$displayPos  timeVal=$timeVal  posMs=$posMs")
         if (posMs == null) {
-            println("[PLAYER] savePosition  timeVal is null, keeping lastSaved=$lastSavedPositionMs")
             return
         }
         when {
-            displayPos == 0L && posMs > 0 -> {
-                lastSavedPositionMs = posMs
-                println("[PLAYER] savePosition  first save: $posMs")
-            }
-            posMs >= displayPos && posMs <= displayPos + 1000 -> {
-                lastSavedPositionMs = posMs
-                println("[PLAYER] savePosition  accepted: $posMs")
-            }
-            posMs > 0 -> {
-                lastSavedPositionMs = displayPos
-                println("[PLAYER] savePosition  out of range ($posMs), fallback to display=$displayPos")
-            }
+            displayPos == 0L && posMs > 0 -> lastSavedPositionMs = posMs
+            posMs >= displayPos && posMs <= displayPos + 1000 -> lastSavedPositionMs = posMs
+            posMs > 0 -> lastSavedPositionMs = displayPos
         }
     }
 
     private fun restoreFromSavedState() {
         val videoUrl = lastVideoUrl
         if (videoUrl == null) {
-            println("[PLAYER] restoreFromSavedState  no URL, skip")
             return
         }
-        println("[PLAYER] restoreFromSavedState  url=$videoUrl  lastSaved=$lastSavedPositionMs  duration=${_state.value.durationMs}")
         hasReachedPlaying = false
         loadInternal(videoUrl, lastAudioUrl, restorePosition = true)
     }
 
     actual fun load(videoUrl: String, audioUrl: String?) {
-        println("[PLAYER] load  videoUrl=$videoUrl")
         lastVideoUrl = videoUrl
         lastAudioUrl = audioUrl
         initialized = true
@@ -208,7 +235,6 @@ actual class BoloPlayerController actual constructor(
         audioUrl: String?,
         restorePosition: Boolean
     ) {
-        println("[PLAYER] loadInternal  restore=$restorePosition  lastSaved=$lastSavedPositionMs  duration=${_state.value.durationMs}  wasPlaying=$wasPlayingBeforeBackground")
         val nsUrl = NSURL.URLWithString(videoUrl)
         if (nsUrl == null) {
             onError(BoloPlayerError.NetworkError("视频 URL 无效: $videoUrl"))
@@ -229,45 +255,43 @@ actual class BoloPlayerController actual constructor(
         }
         media.addOptions(options)
         mediaPlayer.media = media
-        println("[PLAYER] loadInternal  media set")
 
         // 延迟 seek：此时 media.length 尚未就绪（为 0），必须在 Playing 事件中执行
         pendingSeekMs = 0L
         pendingPauseAfterSeek = false
         if (restorePosition && lastSavedPositionMs > 0) {
             pendingSeekMs = lastSavedPositionMs
-            _state.value = _state.value.copy(currentPositionMs = lastSavedPositionMs)
-            println("[PLAYER] loadInternal  deferred seek: $pendingSeekMs ms")
+            _state.value = _state.value.copy(currentPosition = (lastSavedPositionMs / 1000).toInt())
         }
 
         val shouldPlay = autoPlay || (restorePosition && wasPlayingBeforeBackground)
         val shouldPauseAfterSeek = !shouldPlay && pendingSeekMs > 0
 
         if (shouldPlay || shouldPauseAfterSeek) {
-            println("[PLAYER] loadInternal  calling play(), shouldPauseAfterSeek=$shouldPauseAfterSeek")
             pendingPauseAfterSeek = shouldPauseAfterSeek
             play()
-        } else {
-            println("[PLAYER] loadInternal  not playing (autoPlay=$autoPlay restore=$restorePosition wasPlaying=$wasPlayingBeforeBackground)")
         }
     }
 
     actual fun play() {
-        println("[PLAYER] play()")
         mediaPlayer.play()
         _state.value = _state.value.copy(isPlaying = true)
     }
 
     actual fun pause() {
-        println("[PLAYER] pause()")
         mediaPlayer.pause()
         _state.value = _state.value.copy(isPlaying = false)
     }
 
-    actual fun seekTo(positionMs: Long) {
-        val durationMs = mediaPlayer.media?.length?.value?.longValue ?: _state.value.durationMs
+    actual fun seekTo(position: Int) {
+        val targetPosition = _state.value.duration
+            .takeIf { it > 0 }
+            ?.let { position.coerceIn(0, it) }
+            ?: position.coerceAtLeast(0)
+        val durationMs = mediaPlayer.media?.length?.value?.longValue ?: (_state.value.duration * 1000L)
         if (durationMs > 0) {
-            mediaPlayer.position = positionMs.toFloat() / durationMs.toFloat()
+            mediaPlayer.position = (targetPosition * 1000f) / durationMs.toFloat()
+            _state.value = _state.value.copy(currentPosition = targetPosition)
         }
     }
 
@@ -277,12 +301,31 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun release() {
-        println("[PLAYER] release  isPlaying=${_state.value.isPlaying}  displayPos=${_state.value.currentPositionMs}")
         wasPlayingBeforeBackground = _state.value.isPlaying
         savePositionFromCurrent()
         mediaPlayer.stop()
         mediaPlayer.media = null
         initialized = false
-        println("[PLAYER] release  done  lastSaved=$lastSavedPositionMs  wasPlaying=$wasPlayingBeforeBackground")
+    }
+
+    /** 注销所有 NSNotification 监听器，应在 Composable dispose 时调用 */
+    fun removeObservers() {
+        observers.forEach { NSNotificationCenter.defaultCenter.removeObserver(it) }
+        observers.clear()
+    }
+
+    private fun intToFourCC(codec: Int): String {
+        return charArrayOf(
+            (codec and 0xFF).toChar(),
+            ((codec shr 8) and 0xFF).toChar(),
+            ((codec shr 16) and 0xFF).toChar(),
+            ((codec shr 24) and 0xFF).toChar()
+        ).concatToString().uppercase()
+    }
+
+    private fun getDurationForCompletion(): Int {
+        val stateDuration = _state.value.duration
+        if (stateDuration > 0) return stateDuration
+        return ((mediaPlayer.media?.length?.value?.longValue ?: 0L) / 1000).toInt().coerceAtLeast(0)
     }
 }

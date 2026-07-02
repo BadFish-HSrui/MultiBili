@@ -51,6 +51,7 @@ actual class BoloPlayerController actual constructor(
                     override fun playing(mediaPlayer: MediaPlayer) {
                         _state.value = _state.value.copy(isPlaying = true, isBuffering = false)
                         startPositionPolling()
+                        readTrackInfo(mediaPlayer)
                     }
 
                     override fun paused(mediaPlayer: MediaPlayer) {
@@ -63,7 +64,13 @@ actual class BoloPlayerController actual constructor(
                     }
 
                     override fun finished(mediaPlayer: MediaPlayer) {
-                        _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
+                        val duration = getDurationForCompletion(mediaPlayer)
+                        _state.value = _state.value.copy(
+                            isPlaying = false,
+                            isBuffering = false,
+                            currentPosition = duration
+                        )
+                        lastSavedPositionMs = duration * 1000L
                         stopPositionPolling()
                     }
 
@@ -77,7 +84,7 @@ actual class BoloPlayerController actual constructor(
                     }
 
                     override fun lengthChanged(mediaPlayer: MediaPlayer, newLength: Long) {
-                        _state.value = _state.value.copy(durationMs = newLength)
+                        _state.value = _state.value.copy(duration = (newLength / 1000).toInt())
                     }
                 }
             )
@@ -134,13 +141,11 @@ actual class BoloPlayerController actual constructor(
             player.controls().pause()
         }
 
-        // 读取媒体信息
-        readTrackInfo(player)
     }
 
     private fun readTrackInfo(player: MediaPlayer) {
-        var videoBr: Long? = null
-        var audioBr: Long? = null
+        var videoBr: Long = 0L
+        var audioBr: Long = 0L
         player.media().info().videoTracks().forEach { track ->
             val codec = track.codecName() ?: ""
             val br = track.bitRate().toLong()
@@ -168,8 +173,13 @@ actual class BoloPlayerController actual constructor(
         mediaPlayerComponent?.mediaPlayer()?.controls()?.pause()
     }
 
-    actual fun seekTo(positionMs: Long) {
-        mediaPlayerComponent?.mediaPlayer()?.controls()?.setTime(positionMs)
+    actual fun seekTo(position: Int) {
+        val targetPosition = _state.value.duration
+            .takeIf { it > 0 }
+            ?.let { position.coerceIn(0, it) }
+            ?: position.coerceAtLeast(0)
+        mediaPlayerComponent?.mediaPlayer()?.controls()?.setTime(targetPosition * 1000L)
+        _state.value = _state.value.copy(currentPosition = targetPosition)
     }
 
     actual fun setVolumeGain(gain: Int) {
@@ -187,11 +197,10 @@ actual class BoloPlayerController actual constructor(
         try { mediaPlayerComponent?.mediaPlayer()?.release() } catch (_: Exception) {}
         try { mediaPlayerComponent?.release() } catch (_: Exception) {}
         mediaPlayerComponent = null
-        scope.coroutineContext[Job]?.cancel()
     }
 
     private fun savePositionFromCurrent() {
-        val displayPos = _state.value.currentPositionMs
+        val displayPos = _state.value.currentPosition * 1000L
         val posMs = mediaPlayerComponent?.mediaPlayer()?.status()?.time() ?: return
         when {
             displayPos == 0L && posMs > 0 -> lastSavedPositionMs = posMs
@@ -205,7 +214,12 @@ actual class BoloPlayerController actual constructor(
         positionPollingJob = scope.launch {
             while (isActive) {
                 val posMs = mediaPlayerComponent?.mediaPlayer()?.status()?.time() ?: 0L
-                _state.value = _state.value.copy(currentPositionMs = posMs)
+                val stats = mediaPlayerComponent?.mediaPlayer()?.media()?.info()?.statistics()
+                val speed = stats?.inputBitrate()?.toLong()?.let { if (it > 0L) it * 8 else 0L } ?: 0L
+                _state.value = _state.value.copy(
+                    currentPosition = (posMs / 1000).toInt(),
+                    transferSpeed = speed
+                )
                 delay(500)
             }
         }
@@ -213,5 +227,16 @@ actual class BoloPlayerController actual constructor(
 
     private fun stopPositionPolling() {
         positionPollingJob?.cancel()
+    }
+
+    private fun getDurationForCompletion(player: MediaPlayer? = mediaPlayerComponent?.mediaPlayer()): Int {
+        val stateDuration = _state.value.duration
+        if (stateDuration > 0) return stateDuration
+        val lengthMs = try {
+            player?.status()?.length() ?: 0L
+        } catch (_: Exception) {
+            0L
+        }
+        return (lengthMs / 1000).toInt().coerceAtLeast(0)
     }
 }

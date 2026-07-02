@@ -8,10 +8,10 @@ data class BoloPlayerState(
     val isPlaying: Boolean = false,
     /** 是否正在缓冲 */
     val isBuffering: Boolean = false,
-    /** 当前播放位置（毫秒） */
-    val currentPositionMs: Long = 0L,
-    /** 视频总时长（毫秒），0 表示尚未获取 */
-    val durationMs: Long = 0L,
+    /** 当前播放位置（秒） */
+    val currentPosition: Int = 0,
+    /** 视频总时长（秒），0 表示尚未获取 */
+    val duration: Int = 0,
     /** 视频编码格式（如 AVC、HEVC、AV1） */
     val videoCodec: String = "",
     /** 音频编码格式（如 AAC、OPUS、MP3） */
@@ -20,10 +20,10 @@ data class BoloPlayerState(
     val videoWidth: Int = 0,
     /** 视频高度（像素） */
     val videoHeight: Int = 0,
-    /** 视频码率（bps），容器声明值，平台不支持时为 null */
-    val videoBitrate: Long? = null,
-    /** 音频码率（bps），容器声明值，平台不支持时为 null */
-    val audioBitrate: Long? = null,
-    /** 实时传输速度（bps），平台不支持时为 null */
-    val transferSpeed: Long? = null
+    /** 视频码率（bps），获取不到时为 0L */
+    val videoBitrate: Long = 0L,
+    /** 音频码率（bps），获取不到时为 0L */
+    val audioBitrate: Long = 0L,
+    /** 实时传输速度（bps），获取不到时为 0L */
+    val transferSpeed: Long = 0L
 )
