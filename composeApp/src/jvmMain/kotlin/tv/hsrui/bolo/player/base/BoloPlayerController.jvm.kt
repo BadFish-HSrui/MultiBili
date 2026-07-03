@@ -96,7 +96,7 @@ actual class BoloPlayerController actual constructor(
         }
     }
 
-    actual fun load(videoUrl: String, audioUrl: String?) {
+    actual fun load(videoUrl: String, audioUrl: String?, startPosition: Int) {
         lastVideoUrl = videoUrl
         lastAudioUrl = audioUrl
         val player = ensureInitialized() ?: run {
@@ -132,9 +132,16 @@ actual class BoloPlayerController actual constructor(
             return
         }
 
-        // 恢复位置
-        if (lastSavedPositionMs > 1000) {
-            player.controls().setTime(lastSavedPositionMs)
+        val startPositionMs = startPosition.takeIf { it > 0 }?.let { it * 1000L } ?: 0L
+        when {
+            startPositionMs > 0 -> {
+                player.controls().setTime(startPositionMs)
+                _state.value = _state.value.copy(currentPosition = startPosition)
+            }
+            lastSavedPositionMs > 1000 -> {
+                player.controls().setTime(lastSavedPositionMs)
+                _state.value = _state.value.copy(currentPosition = (lastSavedPositionMs / 1000).toInt())
+            }
         }
 
         if (!autoPlay && !wasPlayingBeforeBackground) {
@@ -174,12 +181,12 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun seekTo(position: Int) {
-        val targetPosition = _state.value.duration
-            .takeIf { it > 0 }
-            ?.let { position.coerceIn(0, it) }
-            ?: position.coerceAtLeast(0)
-        mediaPlayerComponent?.mediaPlayer()?.controls()?.setTime(targetPosition * 1000L)
-        _state.value = _state.value.copy(currentPosition = targetPosition)
+        if (!isSeekPositionValid(position)) {
+            return
+        }
+        val player = mediaPlayerComponent?.mediaPlayer() ?: return
+        player.controls().setTime(position * 1000L)
+        _state.value = _state.value.copy(currentPosition = position)
     }
 
     actual fun setVolumeGain(gain: Int) {
@@ -238,5 +245,10 @@ actual class BoloPlayerController actual constructor(
             0L
         }
         return (lengthMs / 1000).toInt().coerceAtLeast(0)
+    }
+
+    private fun isSeekPositionValid(position: Int): Boolean {
+        val duration = _state.value.duration
+        return position >= 0 && (duration <= 0 || position <= duration)
     }
 }

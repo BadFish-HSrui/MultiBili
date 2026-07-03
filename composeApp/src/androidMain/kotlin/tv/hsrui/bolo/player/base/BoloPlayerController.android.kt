@@ -39,6 +39,8 @@ actual class BoloPlayerController actual constructor(
 
     private var lastVideoUrl: String? = null
     private var lastAudioUrl: String? = null
+    private var hasPendingLoadRequest = false
+    private var pendingLoadStartPositionSec = 0
 
     fun bindLifecycle(lifecycle: Lifecycle) {
         try { lifecycleObserver?.let { this.lifecycle?.removeObserver(it) } } catch (_: Exception) {}
@@ -79,8 +81,14 @@ actual class BoloPlayerController actual constructor(
     }
 
     fun bindVideo(layout: VLCVideoLayout) {
+        if (videoLayout === layout && initialized) {
+            return
+        }
         videoLayout = layout
         if (initialized) {
+            if (::mediaPlayer.isInitialized) {
+                attachVideoLayout(layout, detachFirst = true)
+            }
             return
         }
         initialized = true
@@ -183,27 +191,73 @@ actual class BoloPlayerController actual constructor(
         }
         // 在 Compose 中包裹原生视频组件时，必须使用 TextureView 而不是 SurfaceView。
         // SurfaceView 由于其独立的 Window 层级，经常会导致在 Compose 测量和渲染时出现尺寸不同步、四边黑边等异常情况。
+        attachVideoLayout(layout, detachFirst = false)
+
+        val url = lastVideoUrl
+        if (url != null) {
+            val startPosition = pendingLoadStartPositionSec
+            val isPendingLoad = hasPendingLoadRequest
+            pendingLoadStartPositionSec = 0
+            hasPendingLoadRequest = false
+            loadInternal(
+                videoUrl = url,
+                audioUrl = lastAudioUrl,
+                startPosition = startPosition,
+                restorePosition = !isPendingLoad
+            )
+        }
+    }
+
+    fun unbindVideo(layout: VLCVideoLayout) {
+        if (videoLayout !== layout) {
+            return
+        }
+        videoLayout = null
+        if (initialized && ::mediaPlayer.isInitialized) {
+            try { mediaPlayer.detachViews() } catch (_: Exception) {}
+        }
+    }
+
+    private fun attachVideoLayout(layout: VLCVideoLayout, detachFirst: Boolean) {
+        if (detachFirst) {
+            try { mediaPlayer.detachViews() } catch (_: Exception) {}
+        }
         mediaPlayer.attachViews(layout, null, true, true)
         try {
             mediaPlayer.scale = 0f
         } catch (_: Exception) {}
-
-        val url = lastVideoUrl
-        if (url != null) {
-            loadInternal(url, lastAudioUrl)
-        }
     }
 
-    actual fun load(videoUrl: String, audioUrl: String?) {
+    actual fun load(videoUrl: String, audioUrl: String?, startPosition: Int) {
         lastVideoUrl = videoUrl
         lastAudioUrl = audioUrl
+        pendingLoadStartPositionSec = startPosition.takeIf { it > 0 } ?: 0
+        hasPendingLoadRequest = true
         if (::libVLC.isInitialized) {
-            loadInternal(videoUrl, audioUrl)
+            val pendingStartPosition = pendingLoadStartPositionSec
+            pendingLoadStartPositionSec = 0
+            hasPendingLoadRequest = false
+            loadInternal(
+                videoUrl = videoUrl,
+                audioUrl = audioUrl,
+                startPosition = pendingStartPosition,
+                restorePosition = false
+            )
         }
     }
 
-    private fun loadInternal(videoUrl: String, audioUrl: String?) {
-        val savedPosition = lastSavedPositionMs
+    private fun loadInternal(
+        videoUrl: String,
+        audioUrl: String?,
+        startPosition: Int = 0,
+        restorePosition: Boolean = true
+    ) {
+        val startPositionMs = startPosition.takeIf { it > 0 }?.let { it * 1000L } ?: 0L
+        val savedPosition = when {
+            startPositionMs > 0 -> startPositionMs
+            restorePosition -> lastSavedPositionMs
+            else -> 0L
+        }
 
         pendingPauseAfterStart = false
 
@@ -228,10 +282,11 @@ actual class BoloPlayerController actual constructor(
             _state.value = _state.value.copy(currentPosition = (savedPosition / 1000).toInt())
         }
 
-        val shouldPlay = autoPlay || wasPlayingBeforeBackground
+        val shouldPlay = autoPlay || (restorePosition && wasPlayingBeforeBackground)
         val shouldPauseAfterSeek = !shouldPlay && savedPosition > 0
 
         if (shouldPlay || shouldPauseAfterSeek) {
+            pendingPauseAfterStart = shouldPauseAfterSeek
             play()
             // seek 延迟到 Playing 事件执行 —— VLC 此时才完成媒体初始化
             // 若用户在上一个周期离开太快导致 seek 未执行，
@@ -251,10 +306,10 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun seekTo(position: Int) {
-        val targetPosition = _state.value.duration
-            .takeIf { it > 0 }
-            ?.let { position.coerceIn(0, it) }
-            ?: position.coerceAtLeast(0)
+        if (!isSeekPositionValid(position)) {
+            return
+        }
+        val targetPosition = position
         val currentState = mediaPlayer.playerState
         // libVLC states: 5 = Stopped, 6 = Ended
         if (currentState == 5 || currentState == 6) {
@@ -262,7 +317,12 @@ actual class BoloPlayerController actual constructor(
             if (url != null) {
                 lastSavedPositionMs = targetPosition * 1000L
                 _state.value = _state.value.copy(currentPosition = targetPosition)
-                loadInternal(url, lastAudioUrl)
+                loadInternal(
+                    videoUrl = url,
+                    audioUrl = lastAudioUrl,
+                    startPosition = targetPosition,
+                    restorePosition = false
+                )
             }
         } else {
             val requestedTime = targetPosition * 1000L
@@ -286,6 +346,7 @@ actual class BoloPlayerController actual constructor(
         if (::libVLC.isInitialized) {
             try { libVLC.release() } catch (_: Exception) {}
         }
+        videoLayout = null
         initialized = false
     }
 
@@ -297,6 +358,11 @@ actual class BoloPlayerController actual constructor(
         } catch (_: Exception) {
             0
         }
+    }
+
+    private fun isSeekPositionValid(position: Int): Boolean {
+        val duration = _state.value.duration
+        return position >= 0 && (duration <= 0 || position <= duration)
     }
 
 }

@@ -17,6 +17,9 @@ class VideoPlayerViewModel(var avid: Long, var cid: Long) : ViewModel() {
     private val _uiState = MutableStateFlow<VideoPlayerUiState>(VideoPlayerUiState.Loading)
     val uiState = _uiState.asStateFlow()
 
+    private val _currentVideoQuality = MutableStateFlow(VideoQuality.best)
+    val currentVideoQuality = _currentVideoQuality.asStateFlow()
+
     var videoQuality: VideoQuality = VideoQuality.best
     var videoCodec: VideoCodec = VideoCodec.HEVC
     var audioQuality: AudioQuality? = AudioQuality.best
@@ -32,8 +35,6 @@ class VideoPlayerViewModel(var avid: Long, var cid: Long) : ViewModel() {
         }
     })
 
-    private lateinit var quality: VideoQuality
-
     init {
         viewModelScope.launch {
             loadVideo()
@@ -41,7 +42,7 @@ class VideoPlayerViewModel(var avid: Long, var cid: Long) : ViewModel() {
         }
     }
 
-    private fun playVideo() {
+    private fun playVideo(startPosition: Int = 0) {
         val currentState = uiState.value
         if (currentState !is VideoPlayerUiState.Success) return
 
@@ -51,8 +52,14 @@ class VideoPlayerViewModel(var avid: Long, var cid: Long) : ViewModel() {
         videoQuality = video.quality as VideoQuality
         videoCodec = video.codec
         audioQuality = audio?.let { it.quality as AudioQuality }
+        _currentVideoQuality.value = videoQuality
 
-        controller.load(videoUrl = video.baseUrl, audioUrl = audio?.baseUrl)
+        controller.load(videoUrl = video.baseUrl, audioUrl = audio?.baseUrl, startPosition)
+    }
+
+    fun switchQuality(newVideoQuality: VideoQuality) {
+        videoQuality = newVideoQuality
+        playVideo(controller.state.value.currentPosition)
     }
 
     suspend fun fetchPlayInfo(): VideoSource {

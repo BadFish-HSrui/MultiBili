@@ -11,6 +11,8 @@ data class VideoSource(
     private val _video: Map<VideoQuality, Map<VideoCodec, BiliDashObject>>,
     private val _audio: Map<AudioQuality, BiliDashObject>?
 ) {
+    val videoQualities: List<VideoQuality> = _video.keys.sortedByDescending { it.code }
+
     fun getVideo(quality: VideoQuality?, codec: VideoCodec): BiliDashObject =
         _video.getTargetOrSmallerOrLargerOrNull(quality ?: VideoQuality.best)
             ?.getTargetOrSmallerOrLargerOrNull(codec) ?: BiliDashObject()

@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * DisposableEffect(controller) { onDispose { controller.release() } }
  *
- * controller.load(videoUrl = "...", audioUrl = "...")
+ * controller.load(videoUrl = "...", audioUrl = "...", startPosition = 0)
  *
  * BoloVideoPlayer(controller = controller, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))
  *
@@ -48,8 +48,9 @@ expect class BoloPlayerController(
      *
      * @param videoUrl 视频流 URL（仅视频轨道，Bilibili m4s）
      * @param audioUrl 音频流 URL（仅音频轨道，Bilibili m4s）
+     * @param startPosition 加载完成后的起始位置（秒），默认从 0 开始
      */
-    fun load(videoUrl: String, audioUrl: String? = null)
+    fun load(videoUrl: String, audioUrl: String? = null, startPosition: Int = 0)
 
     /** 开始/恢复播放 */
     fun play()

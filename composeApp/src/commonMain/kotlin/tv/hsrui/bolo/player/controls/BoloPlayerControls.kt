@@ -10,16 +10,26 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -27,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,12 +48,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.VideoPlayerViewModel
 import tv.hsrui.bolo.ui.theme.BiliColor
+import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.utils.formatToDuration
 
@@ -51,12 +65,20 @@ import tv.hsrui.network.utils.formatToDuration
 fun BoloPlayerControls(
     videoInfo: VideoInfoData,
     viewModel: VideoPlayerViewModel,
+    isFullscreen: Boolean,
+    onFullscreenChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val navigator: Navigator = koinInject()
     val playState by viewModel.controller.state.collectAsState()
+    val playerUiState by viewModel.uiState.collectAsState()
+    val currentVideoQuality by viewModel.currentVideoQuality.collectAsState()
     var sliderPosition by remember { mutableStateOf<Float?>(null) }
-    var controlsVisible by remember { mutableStateOf(false) }
+    var controlsVisible by remember { mutableStateOf(true) }
+    val videoQualities = (playerUiState as? VideoPlayerUiState.Success)
+        ?.videoSource
+        ?.videoQualities
+        .orEmpty()
 
     Box(
         modifier = modifier
@@ -110,6 +132,7 @@ fun BoloPlayerControls(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .fillMaxWidth()
+                        .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -138,23 +161,25 @@ fun BoloPlayerControls(
                         }
                     }
 
-                    // TODO: 接入全屏状态后，仅在全屏播放时显示视频名称。
-                    // Text(
-                    //     text = videoInfo.title,
-                    //     modifier = Modifier
-                    //         .padding(start = 8.dp)
-                    //         .weight(1f),
-                    //     style = MaterialTheme.typography.titleMedium,
-                    //     color = Color.White,
-                    //     maxLines = 1,
-                    //     overflow = TextOverflow.Ellipsis
-                    // )
+                    if (isFullscreen) {
+                        Text(
+                            text = videoInfo.title,
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 Column(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
+                        .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
                         .padding(horizontal = 16.dp, vertical = 16.dp)
                 ) {
                     val sliderInteractionSource = remember { MutableInteractionSource() }
@@ -220,8 +245,77 @@ fun BoloPlayerControls(
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White
                         )
+
+                        Spacer(Modifier.weight(1f))
+
+                        if (videoQualities.isNotEmpty()) {
+                            QualityMenu(
+                                qualities = videoQualities,
+                                currentQuality = currentVideoQuality,
+                                onQualitySelected = viewModel::switchQuality
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { onFullscreenChange(!isFullscreen) },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                contentDescription = if (isFullscreen) "退出全屏" else "全屏",
+                                tint = Color.White
+                            )
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QualityMenu(
+    qualities: List<VideoQuality>,
+    currentQuality: VideoQuality,
+    onQualitySelected: (VideoQuality) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        TextButton(
+            onClick = { expanded = true },
+            colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
+        ) {
+            Text(
+                text = currentQuality.shortTitle,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            qualities.forEach { quality ->
+                val selected = quality == currentQuality
+                DropdownMenuItem(
+                    text = { Text(quality.title) },
+                    trailingIcon = {
+                        if (selected) {
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = "当前画质"
+                            )
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        if (!selected) {
+                            onQualitySelected(quality)
+                        }
+                    }
+                )
             }
         }
     }

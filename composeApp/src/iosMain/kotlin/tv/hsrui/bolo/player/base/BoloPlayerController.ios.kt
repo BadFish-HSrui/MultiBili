@@ -222,18 +222,24 @@ actual class BoloPlayerController actual constructor(
         loadInternal(videoUrl, lastAudioUrl, restorePosition = true)
     }
 
-    actual fun load(videoUrl: String, audioUrl: String?) {
+    actual fun load(videoUrl: String, audioUrl: String?, startPosition: Int) {
         lastVideoUrl = videoUrl
         lastAudioUrl = audioUrl
         initialized = true
         hasReachedPlaying = false
-        loadInternal(videoUrl, audioUrl, restorePosition = false)
+        loadInternal(
+            videoUrl = videoUrl,
+            audioUrl = audioUrl,
+            restorePosition = false,
+            startPosition = startPosition
+        )
     }
 
     private fun loadInternal(
         videoUrl: String,
         audioUrl: String?,
-        restorePosition: Boolean
+        restorePosition: Boolean,
+        startPosition: Int = 0
     ) {
         val nsUrl = NSURL.URLWithString(videoUrl)
         if (nsUrl == null) {
@@ -259,9 +265,15 @@ actual class BoloPlayerController actual constructor(
         // 延迟 seek：此时 media.length 尚未就绪（为 0），必须在 Playing 事件中执行
         pendingSeekMs = 0L
         pendingPauseAfterSeek = false
-        if (restorePosition && lastSavedPositionMs > 0) {
-            pendingSeekMs = lastSavedPositionMs
-            _state.value = _state.value.copy(currentPosition = (lastSavedPositionMs / 1000).toInt())
+        val startPositionMs = startPosition.takeIf { it > 0 }?.let { it * 1000L } ?: 0L
+        val seekPositionMs = when {
+            startPositionMs > 0 -> startPositionMs
+            restorePosition && lastSavedPositionMs > 0 -> lastSavedPositionMs
+            else -> 0L
+        }
+        if (seekPositionMs > 0) {
+            pendingSeekMs = seekPositionMs
+            _state.value = _state.value.copy(currentPosition = (seekPositionMs / 1000).toInt())
         }
 
         val shouldPlay = autoPlay || (restorePosition && wasPlayingBeforeBackground)
@@ -284,14 +296,13 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun seekTo(position: Int) {
-        val targetPosition = _state.value.duration
-            .takeIf { it > 0 }
-            ?.let { position.coerceIn(0, it) }
-            ?: position.coerceAtLeast(0)
+        if (!isSeekPositionValid(position)) {
+            return
+        }
         val durationMs = mediaPlayer.media?.length?.value?.longValue ?: (_state.value.duration * 1000L)
         if (durationMs > 0) {
-            mediaPlayer.position = (targetPosition * 1000f) / durationMs.toFloat()
-            _state.value = _state.value.copy(currentPosition = targetPosition)
+            mediaPlayer.position = (position * 1000f) / durationMs.toFloat()
+            _state.value = _state.value.copy(currentPosition = position)
         }
     }
 
@@ -327,5 +338,10 @@ actual class BoloPlayerController actual constructor(
         val stateDuration = _state.value.duration
         if (stateDuration > 0) return stateDuration
         return ((mediaPlayer.media?.length?.value?.longValue ?: 0L) / 1000).toInt().coerceAtLeast(0)
+    }
+
+    private fun isSeekPositionValid(position: Int): Boolean {
+        val duration = _state.value.duration
+        return position >= 0 && (duration <= 0 || position <= duration)
     }
 }
