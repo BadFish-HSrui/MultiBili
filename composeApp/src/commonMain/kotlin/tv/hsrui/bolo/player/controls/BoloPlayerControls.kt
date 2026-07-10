@@ -55,6 +55,7 @@ import org.koin.compose.koinInject
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.VideoPlayerViewModel
+import tv.hsrui.bolo.player.base.BoloPlayerSpeed
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.video.VideoInfoData
@@ -248,6 +249,11 @@ fun BoloPlayerControls(
 
                         Spacer(Modifier.weight(1f))
 
+                        SpeedMenu(
+                            currentSpeed = playState.playbackSpeed,
+                            onSpeedSelected = viewModel.controller::setPlaybackSpeed
+                        )
+
                         if (videoQualities.isNotEmpty()) {
                             QualityMenu(
                                 qualities = videoQualities,
@@ -268,6 +274,53 @@ fun BoloPlayerControls(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeedMenu(
+    currentSpeed: BoloPlayerSpeed,
+    onSpeedSelected: (BoloPlayerSpeed) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        TextButton(
+            onClick = { expanded = true },
+            colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
+        ) {
+            Text(
+                text = currentSpeed.title,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            BoloPlayerSpeed.entries.forEach { speed ->
+                val selected = speed == currentSpeed
+                DropdownMenuItem(
+                    text = { Text(speed.title) },
+                    trailingIcon = {
+                        if (selected) {
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = "当前倍速"
+                            )
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        if (!selected) {
+                            onSpeedSelected(speed)
+                        }
+                    }
+                )
             }
         }
     }

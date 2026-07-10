@@ -13,6 +13,7 @@ import uk.co.caprica.vlcj.factory.discovery.NativeDiscovery
 import uk.co.caprica.vlcj.player.base.MediaPlayer
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
 import uk.co.caprica.vlcj.player.component.CallbackMediaPlayerComponent
+import java.io.File
 
 actual class BoloPlayerController actual constructor(
     private val autoPlay: Boolean,
@@ -30,8 +31,9 @@ actual class BoloPlayerController actual constructor(
     private var wasPlayingBeforeBackground = false
 
     // ── 重建所需数据 ──
-    private var lastVideoUrl: String? = null
-    private var lastAudioUrl: String? = null
+    private var lastMpd: BoloDashMpd? = null
+    private var lastMpdFile: File? = null
+    private var playbackSpeed = BoloPlayerSpeed.default
 
     private val scope = CoroutineScope(Dispatchers.IO + Job())
 
@@ -52,6 +54,7 @@ actual class BoloPlayerController actual constructor(
                         _state.value = _state.value.copy(isPlaying = true, isBuffering = false)
                         startPositionPolling()
                         readTrackInfo(mediaPlayer)
+                        applyPlaybackSpeed(mediaPlayer)
                     }
 
                     override fun paused(mediaPlayer: MediaPlayer) {
@@ -96,11 +99,16 @@ actual class BoloPlayerController actual constructor(
         }
     }
 
-    actual fun load(videoUrl: String, audioUrl: String?, startPosition: Int) {
-        lastVideoUrl = videoUrl
-        lastAudioUrl = audioUrl
+    internal actual fun load(mpd: BoloDashMpd, startPosition: Int) {
+        lastMpd = mpd
         val player = ensureInitialized() ?: run {
             onError(BoloPlayerError.UnknownError("VLC 未初始化，无法加载视频"))
+            return
+        }
+        val mpdFile = try {
+            writeMpdFile(mpd)
+        } catch (e: Exception) {
+            onError(BoloPlayerError.UnknownError("DASH MPD 文件写入失败: ${e.message}", e))
             return
         }
 
@@ -112,11 +120,9 @@ actual class BoloPlayerController actual constructor(
                 else -> opts.add(":http-header-fields=$key: $value")
             }
         }
-        if (audioUrl != null) {
-            opts.add(":input-slave=$audioUrl")
-        }
         try {
-            player.media().play(videoUrl, *opts.toTypedArray())
+            player.media().play(mpdFile.toURI().toString(), *opts.toTypedArray())
+            applyPlaybackSpeed(player)
         } catch (e: Exception) {
             val msg = e.message ?: ""
             when {
@@ -148,6 +154,10 @@ actual class BoloPlayerController actual constructor(
             player.controls().pause()
         }
 
+    }
+
+    internal actual fun reportLoadError(error: BoloPlayerError) {
+        onError(error)
     }
 
     private fun readTrackInfo(player: MediaPlayer) {
@@ -194,6 +204,11 @@ actual class BoloPlayerController actual constructor(
         mediaPlayerComponent?.mediaPlayer()?.audio()?.setVolume(vlcVolume)
     }
 
+    actual fun setPlaybackSpeed(speed: BoloPlayerSpeed) {
+        playbackSpeed = speed
+        applyPlaybackSpeed()
+    }
+
     actual fun release() {
         // 保存当前状态
         wasPlayingBeforeBackground = _state.value.isPlaying
@@ -203,7 +218,18 @@ actual class BoloPlayerController actual constructor(
         try { mediaPlayerComponent?.mediaPlayer()?.controls()?.stop() } catch (_: Exception) {}
         try { mediaPlayerComponent?.mediaPlayer()?.release() } catch (_: Exception) {}
         try { mediaPlayerComponent?.release() } catch (_: Exception) {}
+        runCatching { lastMpdFile?.delete() }
+        lastMpdFile = null
         mediaPlayerComponent = null
+    }
+
+    private fun writeMpdFile(mpd: BoloDashMpd): File {
+        val mpdDir = File(System.getProperty("java.io.tmpdir"), "bolo_dash_mpd").apply { mkdirs() }
+        val mpdFile = File(mpdDir, "bolo_${System.currentTimeMillis()}.mpd")
+        runCatching { lastMpdFile?.delete() }
+        mpdFile.writeText(mpd.xml, Charsets.UTF_8)
+        lastMpdFile = mpdFile
+        return mpdFile
     }
 
     private fun savePositionFromCurrent() {
@@ -250,5 +276,16 @@ actual class BoloPlayerController actual constructor(
     private fun isSeekPositionValid(position: Int): Boolean {
         val duration = _state.value.duration
         return position >= 0 && (duration <= 0 || position <= duration)
+    }
+
+    private fun applyPlaybackSpeed(player: MediaPlayer? = mediaPlayerComponent?.mediaPlayer()) {
+        if (player != null) {
+            try {
+                if (player.controls().setRate(playbackSpeed.rateNumber)) {
+                    playbackSpeed = BoloPlayerSpeed.fromRateNumber(player.status().rate())
+                }
+            } catch (_: Exception) {}
+        }
+        _state.value = _state.value.copy(playbackSpeed = playbackSpeed)
     }
 }

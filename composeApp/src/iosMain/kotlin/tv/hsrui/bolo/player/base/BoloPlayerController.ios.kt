@@ -1,6 +1,9 @@
 package tv.hsrui.bolo.player.base
 
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.convert
+import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,14 +14,20 @@ import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFAudio.AVAudioSessionModeMoviePlayback
 import platform.AVFAudio.setActive
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
+import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIView
 import cocoapods.MobileVLCKit.VLCMediaPlayerStateChanged
 import cocoapods.MobileVLCKit.VLCMediaPlayerTimeChanged
+import platform.posix.fclose
+import platform.posix.fopen
+import platform.posix.fwrite
+import platform.posix.time
 
 @OptIn(ExperimentalForeignApi::class)
 actual class BoloPlayerController actual constructor(
@@ -40,8 +49,9 @@ actual class BoloPlayerController actual constructor(
     private var lastSavedPositionMs = 0L
 
     // ── 重建所需数据 ──
-    private var lastVideoUrl: String? = null
-    private var lastAudioUrl: String? = null
+    private var lastMpd: BoloDashMpd? = null
+    private var lastMpdFilePath: String? = null
+    private var playbackSpeed = BoloPlayerSpeed.default
 
     // ── 延迟 seek ── (VLC 需要时间打开媒体，seek 必须在 Playing 事件中执行)
     private var pendingSeekMs = 0L
@@ -85,11 +95,11 @@ actual class BoloPlayerController actual constructor(
         mediaPlayer.drawable = view
         if (!initialized || mediaPlayer.media == null) {
             // VLC 已释放（release() 清空了 media），需要重建
-            val url = lastVideoUrl
-            if (url != null) {
+            val mpd = lastMpd
+            if (mpd != null) {
                 initialized = true
                 hasReachedPlaying = false
-                loadInternal(url, lastAudioUrl, restorePosition = true)
+                loadInternal(mpd, restorePosition = true)
             } else {
                 initialized = true
             }
@@ -146,6 +156,7 @@ actual class BoloPlayerController actual constructor(
                     audioCodec = audioCodec,
                     audioBitrate = audioBr
                 )
+                applyPlaybackSpeed()
                 if (pendingSeekMs > 0) {
                     val ms = pendingSeekMs
                     pendingSeekMs = 0L
@@ -214,36 +225,37 @@ actual class BoloPlayerController actual constructor(
     }
 
     private fun restoreFromSavedState() {
-        val videoUrl = lastVideoUrl
-        if (videoUrl == null) {
+        val mpd = lastMpd
+        if (mpd == null) {
             return
         }
         hasReachedPlaying = false
-        loadInternal(videoUrl, lastAudioUrl, restorePosition = true)
+        loadInternal(mpd, restorePosition = true)
     }
 
-    actual fun load(videoUrl: String, audioUrl: String?, startPosition: Int) {
-        lastVideoUrl = videoUrl
-        lastAudioUrl = audioUrl
+    internal actual fun load(mpd: BoloDashMpd, startPosition: Int) {
+        lastMpd = mpd
         initialized = true
         hasReachedPlaying = false
         loadInternal(
-            videoUrl = videoUrl,
-            audioUrl = audioUrl,
+            mpd = mpd,
             restorePosition = false,
             startPosition = startPosition
         )
     }
 
+    internal actual fun reportLoadError(error: BoloPlayerError) {
+        onError(error)
+    }
+
     private fun loadInternal(
-        videoUrl: String,
-        audioUrl: String?,
+        mpd: BoloDashMpd,
         restorePosition: Boolean,
         startPosition: Int = 0
     ) {
-        val nsUrl = NSURL.URLWithString(videoUrl)
+        val nsUrl = writeMpdFile(mpd)
         if (nsUrl == null) {
-            onError(BoloPlayerError.NetworkError("视频 URL 无效: $videoUrl"))
+            onError(BoloPlayerError.UnknownError("DASH MPD 文件写入失败"))
             return
         }
 
@@ -256,11 +268,9 @@ actual class BoloPlayerController actual constructor(
                 else -> options["http-header-fields"] = "$key: $value"
             }
         }
-        if (audioUrl != null) {
-            options["input-slave"] = audioUrl
-        }
         media.addOptions(options)
         mediaPlayer.media = media
+        applyPlaybackSpeed()
 
         // 延迟 seek：此时 media.length 尚未就绪（为 0），必须在 Playing 事件中执行
         pendingSeekMs = 0L
@@ -311,6 +321,11 @@ actual class BoloPlayerController actual constructor(
         mediaPlayer.audio?.volume = vlcVolume
     }
 
+    actual fun setPlaybackSpeed(speed: BoloPlayerSpeed) {
+        playbackSpeed = speed
+        applyPlaybackSpeed()
+    }
+
     actual fun release() {
         wasPlayingBeforeBackground = _state.value.isPlaying
         savePositionFromCurrent()
@@ -319,8 +334,34 @@ actual class BoloPlayerController actual constructor(
         initialized = false
     }
 
+    private fun writeMpdFile(mpd: BoloDashMpd): NSURL? {
+        val dir = NSTemporaryDirectory() + "/bolo_dash_mpd"
+        NSFileManager.defaultManager.createDirectoryAtPath(
+            path = dir,
+            withIntermediateDirectories = true,
+            attributes = null,
+            error = null
+        )
+        lastMpdFilePath?.let { NSFileManager.defaultManager.removeItemAtPath(it, null) }
+        val path = "$dir/bolo_${time(null)}.mpd"
+        val bytes = mpd.xml.encodeToByteArray()
+        val file = fopen(path, "wb") ?: return null
+        val written = bytes.usePinned { pinned ->
+            fwrite(pinned.addressOf(0), 1.convert(), bytes.size.convert(), file)
+        }
+        fclose(file)
+        if (written != bytes.size.convert<ULong>()) {
+            NSFileManager.defaultManager.removeItemAtPath(path, null)
+            return null
+        }
+        lastMpdFilePath = path
+        return NSURL.fileURLWithPath(path)
+    }
+
     /** 注销所有 NSNotification 监听器，应在 Composable dispose 时调用 */
     fun removeObservers() {
+        lastMpdFilePath?.let { NSFileManager.defaultManager.removeItemAtPath(it, null) }
+        lastMpdFilePath = null
         observers.forEach { NSNotificationCenter.defaultCenter.removeObserver(it) }
         observers.clear()
     }
@@ -343,5 +384,13 @@ actual class BoloPlayerController actual constructor(
     private fun isSeekPositionValid(position: Int): Boolean {
         val duration = _state.value.duration
         return position >= 0 && (duration <= 0 || position <= duration)
+    }
+
+    private fun applyPlaybackSpeed() {
+        try {
+            mediaPlayer.rate = playbackSpeed.rateNumber
+            playbackSpeed = BoloPlayerSpeed.fromRateNumber(mediaPlayer.rate)
+        } catch (_: Exception) {}
+        _state.value = _state.value.copy(playbackSpeed = playbackSpeed)
     }
 }

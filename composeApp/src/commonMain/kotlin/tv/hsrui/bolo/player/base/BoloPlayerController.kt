@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * DisposableEffect(controller) { onDispose { controller.release() } }
  *
- * controller.load(videoUrl = "...", audioUrl = "...", startPosition = 0)
+ * controller.load(video = videoDashObject, audio = audioDashObject, startPosition = 0)
  *
  * BoloVideoPlayer(controller = controller, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))
  *
@@ -42,15 +42,11 @@ expect class BoloPlayerController(
     /** 当前播放器状态（StateFlow，可在 Composable 中 collectAsState） */
     val state: StateFlow<BoloPlayerState>
 
-    /**
-     * 加载 DASH 视频源并开始播放（如 autoPlay=true）。
-     * 可随时调用以切换视频。
-     *
-     * @param videoUrl 视频流 URL（仅视频轨道，Bilibili m4s）
-     * @param audioUrl 音频流 URL（仅音频轨道，Bilibili m4s）
-     * @param startPosition 加载完成后的起始位置（秒），默认从 0 开始
-     */
-    fun load(videoUrl: String, audioUrl: String? = null, startPosition: Int = 0)
+    /** 加载已在 commonMain 合成好的 DASH MPD。业务层应调用同包扩展函数 load(video, audio, startPosition)。 */
+    internal fun load(mpd: BoloDashMpd, startPosition: Int = 0)
+
+    /** commonMain 扩展函数在 MPD 合成失败时通过平台控制器上报错误。 */
+    internal fun reportLoadError(error: BoloPlayerError)
 
     /** 开始/恢复播放 */
     fun play()
@@ -70,6 +66,12 @@ expect class BoloPlayerController(
      *             所有平台 VLC volume 范围均为 0-200。
      */
     fun setVolumeGain(gain: Int)
+
+    /**
+     * 调整播放速度。
+     * @param speed 倍速枚举，包含展示标题和 VLC 实际速率值。
+     */
+    fun setPlaybackSpeed(speed: BoloPlayerSpeed)
 
     /**
      * 释放底层播放器资源。

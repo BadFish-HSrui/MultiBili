@@ -12,6 +12,8 @@ data class BoloPlayerState(
     val currentPosition: Int = 0,
     /** 视频总时长（秒），0 表示尚未获取 */
     val duration: Int = 0,
+    /** 当前播放速度 */
+    val playbackSpeed: BoloPlayerSpeed = BoloPlayerSpeed.default,
     /** 视频编码格式（如 AVC、HEVC、AV1） */
     val videoCodec: String = "",
     /** 音频编码格式（如 AAC、OPUS、MP3） */

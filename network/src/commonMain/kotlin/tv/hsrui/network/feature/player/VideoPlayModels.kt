@@ -25,17 +25,20 @@ data class VideoPlayData(
 ) {
     val videoFormatMap: Map<VideoQuality, Map<VideoCodec, BiliDashObject>>
         get() = _dashData.video
+            .map { it.withFallbackDuration(_dashData.duration) }
             .filter { it.quality is VideoQuality }
             .groupBy { it.quality as VideoQuality }
             .mapValues { (_, dashObjectList) -> dashObjectList.associateBy { it.codec } }
 
     val audioFormatMap: Map<AudioQuality, BiliDashObject>?
         get() = _dashData.audio
+            ?.map { it.withFallbackDuration(_dashData.duration) }
             ?.filter { it.quality is AudioQuality }
             ?.associateBy { it.quality as AudioQuality }
 
     @Serializable
     data class DashData(
+        val duration: Long = 0L,
         val video: List<BiliDashObject> = emptyList(),
         val audio: List<BiliDashObject>? = emptyList()
     )
@@ -45,14 +48,39 @@ data class VideoPlayData(
 data class BiliDashObject(
     @SerialName("id") private val _qualityCode: Int = 0,
     @SerialName("base_url") val baseUrl: String = "",
+    @SerialName("backup_url") val backupUrl: List<String> = emptyList(),
     @SerialName("codecs") val codecString: String = "",
-    @SerialName("codecid") private val _codecCode: Int = 0
+    @SerialName("codecid") private val _codecCode: Int = 0,
+    @SerialName("mime_type") val mimeType: String = "",
+    @SerialName("frame_rate") val frameRate: String = "",
+    @SerialName("segment_base") val segmentBase: BiliSegmentBase? = null,
+    val bandwidth: Long = 0L,
+    val width: Int = 0,
+    val height: Int = 0,
+    val duration: Long = 0L,
 ) {
     val quality: Quality? by lazy {
         _qualityCode.let { if (it < 256) VideoQuality(it) else AudioQuality(it) }
     }
 
     val codec by lazy { VideoCodec(_codecCode) }
+
+    fun withFallbackDuration(duration: Long): BiliDashObject =
+        if (this.duration > 0 || duration <= 0) this else copy(duration = duration)
+}
+
+@Serializable
+data class BiliSegmentBase(
+    @SerialName("initialization") val initialization: String = "",
+    @SerialName("Initialization") val initializationPascalCase: String = "",
+    @SerialName("index_range") val indexRange: String = "",
+    @SerialName("indexRange") val indexRangeCamelCase: String = ""
+) {
+    val resolvedInitialization: String
+        get() = initialization.ifBlank { initializationPascalCase }
+
+    val resolvedIndexRange: String
+        get() = indexRange.ifBlank { indexRangeCamelCase }
 }
 
 fun VideoPlayResponse.toVideoSource(): VideoSource {

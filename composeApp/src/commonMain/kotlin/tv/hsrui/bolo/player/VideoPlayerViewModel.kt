@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.player.base.BoloPlayerController
 import tv.hsrui.bolo.player.base.BoloPlayerError
+import tv.hsrui.bolo.player.base.load
 import tv.hsrui.network.feature.player.VideoSource
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
 import tv.hsrui.network.feature.player.enumModels.VideoCodec
@@ -54,7 +55,7 @@ class VideoPlayerViewModel(var avid: Long, var cid: Long) : ViewModel() {
         audioQuality = audio?.let { it.quality as AudioQuality }
         _currentVideoQuality.value = videoQuality
 
-        controller.load(videoUrl = video.baseUrl, audioUrl = audio?.baseUrl, startPosition)
+        controller.load(video = video, audio = audio, startPosition = startPosition)
     }
 
     fun switchQuality(newVideoQuality: VideoQuality) {
