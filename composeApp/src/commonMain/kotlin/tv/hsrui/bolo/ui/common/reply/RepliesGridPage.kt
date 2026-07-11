@@ -1,6 +1,5 @@
 package tv.hsrui.bolo.ui.common.reply
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,8 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Sort
-import androidx.compose.material3.BottomSheetDefaults
-import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -23,15 +20,12 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.rememberBottomSheetScaffoldState
-import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,8 +34,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -108,70 +100,43 @@ fun RepliesGridPage(
                 val subReplyText = rememberSaveable { mutableStateOf("") }
                 var lastSubReplyId by rememberSaveable { mutableStateOf(0L) }
                 var replyTarget by remember { mutableStateOf<ReplyItem?>(null) }
-                var viewingReply by remember { mutableStateOf<ReplyItem?>(null) }
                 val scope = rememberCoroutineScope()
+                val subRepliesSurfaceState = rememberSubRepliesSurfaceState()
+                val subRepliesBackState = rememberNavigationEventState(NavigationEventInfo.None)
+                val latestPredictiveBackProgress = remember { FloatArray(1) }
+                val predictiveBackProgress =
+                    when (val state = subRepliesBackState.transitionState) {
+                        is NavigationEventTransitionState.InProgress -> state.latestEvent.progress
+                        is NavigationEventTransitionState.Idle -> null
+                    }
 
-                val sheetState = rememberStandardBottomSheetState(
-                    initialValue = SheetValue.Hidden,
-                    skipHiddenState = false,
-                )
-
-                val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
-                val sheetDownState = rememberNavigationEventState(NavigationEventInfo.None)
-                val sheetDownProgress by remember {
-                    derivedStateOf {
-                        when (val state = sheetDownState.transitionState) {
-                            is NavigationEventTransitionState.InProgress -> state.latestEvent.progress
-                            is NavigationEventTransitionState.Idle -> 0F
-                        }
+                SideEffect {
+                    predictiveBackProgress?.let { progress ->
+                        latestPredictiveBackProgress[0] = progress
                     }
                 }
 
                 NavigationBackHandler(
-                    state = sheetDownState,
-                    isBackEnabled = sheetState.currentValue != SheetValue.Hidden,
-                    onBackCompleted = {
+                    state = subRepliesBackState,
+                    isBackEnabled = subRepliesSurfaceState.isVisible,
+                    onBackCancelled = {
+                        val progress = latestPredictiveBackProgress[0]
+                        latestPredictiveBackProgress[0] = 0f
                         scope.launch {
-                            sheetState.hide()
-                            viewingReply = null
+                            subRepliesSurfaceState.cancelPredictiveBack(progress)
+                        }
+                    },
+                    onBackCompleted = {
+                        val progress = latestPredictiveBackProgress[0]
+                        latestPredictiveBackProgress[0] = 0f
+                        scope.launch {
+                            subRepliesSurfaceState.dismissFromPredictiveBack(progress)
                         }
                     }
                 )
 
-                // TODO: 未来弃用Sheet直接使用自定义动画Surface实现子评论展示
-                BottomSheetScaffold(
-                    scaffoldState = scaffoldState,
-                    sheetPeekHeight = 0.dp,
-                    sheetContainerColor = Color.Transparent,
-                    sheetContent = {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .graphicsLayer {
-                                    translationY = size.height * (sheetDownProgress * 0.75f)
-                                    alpha = 1f - (sheetDownProgress * 0.3f)
-                                }
-                                .background(BottomSheetDefaults.ContainerColor)
-                        ) {
-                            viewingReply?.let { viewingReply ->
-                                val viewModel = viewModel(key = viewingReply.rpid.toString()) {
-                                    SubRepliesViewModel(
-                                        replySection = viewModel.replySection,
-                                        rootReplyID = viewingReply.rpid
-                                    )
-                                }
-                                val uiState by viewModel.uiState.collectAsState()
-
-                                SubRepliesGridPage(
-                                    viewModel = viewModel,
-                                    uiState = uiState,
-                                    upMid = upMid
-                                )
-                            }
-                        }
-                    }
-                ) {
-                    Column {
+                Box(modifier = modifier.fillMaxSize()) {
+                    Column(Modifier.fillMaxSize()) {
                         Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
                             Spacer(Modifier.weight(1F))
                             Surface(
@@ -206,9 +171,9 @@ fun RepliesGridPage(
                                             sendReply = { replyTarget = topReply },
                                             updateReply = { viewModel.updateReply(it) },
                                             onViewClick = {
+                                                latestPredictiveBackProgress[0] = 0f
                                                 scope.launch {
-                                                    viewingReply = topReply
-                                                    sheetState.expand()
+                                                    subRepliesSurfaceState.show(topReply)
                                                 }
                                             },
                                             isTop = true
@@ -221,9 +186,9 @@ fun RepliesGridPage(
                                     isUpReply = (reply.userMid == upMid),
                                     sendReply = { replyTarget = reply },
                                     onViewClick = {
+                                        latestPredictiveBackProgress[0] = 0f
                                         scope.launch {
-                                            viewingReply = reply
-                                            sheetState.expand()
+                                            subRepliesSurfaceState.show(reply)
                                         }
                                     },
                                     updateReply = { viewModel.updateReply(it) }
@@ -267,6 +232,31 @@ fun RepliesGridPage(
                                 HorizontalDivider()
                             }
                         }
+                    }
+
+                    SubRepliesSurface(
+                        state = subRepliesSurfaceState,
+                        predictiveBackProgress = predictiveBackProgress,
+                        onDismissRequest = {
+                            scope.launch {
+                                subRepliesSurfaceState.dismiss()
+                            }
+                        }
+                    ) { viewingReply ->
+                        val subRepliesViewModel = viewModel(key = viewingReply.rpid.toString()) {
+                            SubRepliesViewModel(
+                                replySection = viewModel.replySection,
+                                rootReplyID = viewingReply.rpid
+                            )
+                        }
+                        val subRepliesUiState by subRepliesViewModel.uiState.collectAsState()
+
+                        SubRepliesGridPage(
+                            viewModel = subRepliesViewModel,
+                            uiState = subRepliesUiState,
+                            upMid = upMid,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
                 }
 
