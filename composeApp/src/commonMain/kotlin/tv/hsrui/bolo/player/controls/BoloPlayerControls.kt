@@ -139,12 +139,18 @@ fun BoloPlayerControls(
                 ) {
                     // 导航按钮
                     IconButton(
-                        onClick = { navigator.goBack() },
+                        onClick = {
+                            if (isFullscreen) {
+                                onFullscreenChange(false)
+                            } else {
+                                navigator.goBack()
+                            }
+                        },
                         modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
-                            contentDescription = "返回",
+                            contentDescription = if (isFullscreen) "退出全屏" else "返回",
                             tint = Color.White
                         )
                     }

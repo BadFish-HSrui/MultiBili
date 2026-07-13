@@ -3,7 +3,6 @@ package tv.hsrui.bolo.player.base
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +27,7 @@ actual class BoloPlayerController actual constructor(
         private const val DebugMpd = "[Bolo_Player_Debug_MPD]"
         private const val SpeedProbeWindowMs = 8_000L
         private const val EnableVlcNativeVerbose = false
+        private const val EnableSpeedChangeProbe = false
     }
 
     private data class VlcStatsSnapshot(
@@ -65,24 +65,131 @@ actual class BoloPlayerController actual constructor(
         }
     }
 
+    private data class TrackSnapshot(
+        val trackCount: Int = 0,
+        val videoCodec: String = "",
+        val videoWidth: Int = 0,
+        val videoHeight: Int = 0,
+        val videoBitrate: Long = 0L,
+        val audioCodec: String = "",
+        val audioBitrate: Long = 0L
+    )
+
+    private class SpeedApplyGate {
+        data class ApplyTicket(
+            val mediaGeneration: Long,
+            val requestRevision: Long
+        )
+
+        private enum class Phase {
+            Inactive,
+            Loading,
+            Buffering,
+            Playing,
+            Paused
+        }
+
+        private var phase = Phase.Inactive
+        private var mediaGeneration = 0L
+        private var requestRevision = 0L
+        private var appliedGeneration = -1L
+        private var appliedRevision = -1L
+        private var phaseBeforeBuffering = Phase.Inactive
+
+        @Synchronized
+        fun onMediaChanged() {
+            mediaGeneration += 1
+            phase = Phase.Loading
+            phaseBeforeBuffering = Phase.Loading
+        }
+
+        @Synchronized
+        fun onOpening() {
+            phase = Phase.Loading
+            phaseBeforeBuffering = Phase.Loading
+        }
+
+        @Synchronized
+        fun onBuffering() {
+            if (phase != Phase.Buffering) {
+                phaseBeforeBuffering = phase
+            }
+            phase = Phase.Buffering
+        }
+
+        @Synchronized
+        fun onBufferingCompleted() {
+            if (phase == Phase.Buffering) {
+                phase = phaseBeforeBuffering
+            }
+        }
+
+        @Synchronized
+        fun onPlaying(): ApplyTicket? {
+            phase = Phase.Playing
+            return consumeIfNeeded()
+        }
+
+        @Synchronized
+        fun onPaused() {
+            phase = Phase.Paused
+        }
+
+        @Synchronized
+        fun onInactive() {
+            phase = Phase.Inactive
+            phaseBeforeBuffering = Phase.Inactive
+        }
+
+        @Synchronized
+        fun onSpeedRequested(): ApplyTicket? {
+            requestRevision += 1
+            return when (phase) {
+                Phase.Playing, Phase.Paused -> consumeIfNeeded()
+                Phase.Inactive, Phase.Loading, Phase.Buffering -> null
+            }
+        }
+
+        @Synchronized
+        fun isCurrent(ticket: ApplyTicket): Boolean =
+            appliedGeneration == ticket.mediaGeneration &&
+                appliedRevision == ticket.requestRevision &&
+                mediaGeneration == ticket.mediaGeneration &&
+                phase != Phase.Inactive
+
+        private fun consumeIfNeeded(): ApplyTicket? {
+            if (appliedGeneration == mediaGeneration && appliedRevision == requestRevision) {
+                return null
+            }
+            appliedGeneration = mediaGeneration
+            appliedRevision = requestRevision
+            return ApplyTicket(mediaGeneration, requestRevision)
+        }
+    }
+
     private val _state = MutableStateFlow(BoloPlayerState())
     actual val state: StateFlow<BoloPlayerState> = _state.asStateFlow()
 
     internal var videoLayout: VLCVideoLayout? = null
-    private lateinit var libVLC: LibVLC
-    internal lateinit var mediaPlayer: MediaPlayer
-    private var initialized = false
+    @Volatile
+    private var libVLC: LibVLC? = null
+    @Volatile
+    private var mediaPlayer: MediaPlayer? = null
+    private var disposed = false
+    private var playerGeneration = 0L
 
-    private var wasPlayingBeforeBackground = false
     private var lifecycleObserver: DefaultLifecycleObserver? = null
-    private var lifecycle: Lifecycle? = null
+    private var lifecycleOwner: LifecycleOwner? = null
+    private var playWhenReady = autoPlay
+    private val speedLock = Any()
+    private val speedApplyGate = SpeedApplyGate()
 
     // 恢复后需要暂停（之前是暂停状态离开）
     private var pendingPauseAfterStart = false
 
     private var pendingSeekMs = 0L
 
-    // 位置恢复（仅在 onStop 更新，不被 TimeChanged 覆盖）
+    // 恢复位置不被 TimeChanged 覆盖，只在主动 seek 或释放底层播放器时更新。
     private var lastSavedPositionMs = 0L
 
     private var lastMpd: BoloDashMpd? = null
@@ -96,13 +203,16 @@ actual class BoloPlayerController actual constructor(
     private var activeSpeedChangeSeq = 0L
     private var lastSpeedProbeStats: VlcStatsSnapshot? = null
 
-    fun bindLifecycle(lifecycle: Lifecycle) {
-        try { lifecycleObserver?.let { this.lifecycle?.removeObserver(it) } } catch (_: Exception) {}
-        this.lifecycle = lifecycle
+    fun bindLifecycle(owner: LifecycleOwner) {
+        if (disposed || lifecycleOwner === owner) {
+            return
+        }
+        removeLifecycleObserver()
+        lifecycleOwner = owner
 
         val observer = object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
-                if (!initialized) {
+                if (mediaPlayer == null) {
                     val layout = videoLayout
                     if (layout != null && layout.isAttachedToWindow) {
                         bindVideo(layout)
@@ -110,165 +220,182 @@ actual class BoloPlayerController actual constructor(
                 }
             }
             override fun onStop(owner: LifecycleOwner) {
-                if (initialized && ::mediaPlayer.isInitialized) {
-                    wasPlayingBeforeBackground = _state.value.isPlaying
-                    val displayPos = _state.value.currentPosition * 1000L
-                    try {
-                        val pos = mediaPlayer.getTime()
-                        // TimeChanged 间隔 ~500ms，getTime() 应在此范围内超前
-                        // 若不在此范围则说明 VLC 状态异常，保持 displayPos
-                        when {
-                            displayPos == 0L && pos > 0 -> lastSavedPositionMs = pos
-                            pos >= displayPos && pos <= displayPos + 1000 -> lastSavedPositionMs = pos
-                            pos > 0 -> lastSavedPositionMs = displayPos
-                        }
-                    } catch (e: Exception) {
-                        lastSavedPositionMs = displayPos
-                    }
-                    _state.value = _state.value.copy(currentPosition = (lastSavedPositionMs / 1000).toInt())
+                val player = mediaPlayer
+                if (player != null) {
                     release()
                 }
             }
         }
         lifecycleObserver = observer
-        lifecycle.addObserver(observer)
+        owner.lifecycle.addObserver(observer)
+    }
+
+    fun unbindLifecycle(owner: LifecycleOwner): Boolean {
+        if (lifecycleOwner !== owner) {
+            return false
+        }
+        removeLifecycleObserver()
+        return true
+    }
+
+    private fun removeLifecycleObserver() {
+        val boundOwner = lifecycleOwner
+        val observer = lifecycleObserver
+        lifecycleObserver = null
+        lifecycleOwner = null
+        if (boundOwner != null && observer != null) {
+            try {
+                boundOwner.lifecycle.removeObserver(observer)
+            } catch (_: Exception) {
+            }
+        }
     }
 
     fun bindVideo(layout: VLCVideoLayout) {
-        if (videoLayout === layout && initialized) {
+        if (disposed) {
+            return
+        }
+        val existingPlayer = mediaPlayer
+        if (videoLayout === layout && existingPlayer != null) {
             return
         }
         videoLayout = layout
-        if (initialized) {
-            if (::mediaPlayer.isInitialized) {
-                attachVideoLayout(layout, detachFirst = true)
-            }
+        if (existingPlayer != null) {
+            attachVideoLayout(existingPlayer, layout, detachFirst = true)
             return
         }
-        initialized = true
 
         LibVLC.loadLibraries()
         val libVlcOptions = arrayListOf<String>().apply {
             if (EnableVlcNativeVerbose) add("-vv")
         }
-        libVLC = LibVLC(layout.context, libVlcOptions)
-        mediaPlayer = MediaPlayer(libVLC)
-        debugLog(DebugEvent, "PlayerCreated nativeVerbose=$EnableVlcNativeVerbose audioTimeStretch=default")
-        mediaPlayer.setEventListener { event ->
+        val newLibVLC = LibVLC(layout.context, libVlcOptions)
+        val newPlayer = try {
+            MediaPlayer(newLibVLC)
+        } catch (error: Throwable) {
+            runCatching { newLibVLC.release() }
+            throw error
+        }
+        val generation = ++playerGeneration
+        libVLC = newLibVLC
+        mediaPlayer = newPlayer
+        debugLog(
+            DebugEvent,
+            "PlayerCreated generation=$generation nativeVerbose=$EnableVlcNativeVerbose " +
+                "speedProbe=$EnableSpeedChangeProbe audioTimeStretch=default"
+        )
+        newPlayer.setEventListener { event ->
+            if (!isCurrentPlayer(newPlayer, generation)) {
+                return@setEventListener
+            }
             when (event.type) {
                 MediaPlayer.Event.Opening -> {
+                    synchronized(speedLock) { speedApplyGate.onOpening() }
                     _state.value = _state.value.copy(isBuffering = true)
                 }
                 MediaPlayer.Event.Buffering -> {
+                    if (event.buffering < 100f) {
+                        synchronized(speedLock) { speedApplyGate.onBuffering() }
+                    } else {
+                        synchronized(speedLock) { speedApplyGate.onBufferingCompleted() }
+                    }
                     _state.value = _state.value.copy(isBuffering = event.buffering < 100f)
                     if (isSpeedProbeActive()) {
                         debugLog(
                             DebugEvent,
                             "Buffering afterSpeedSwitch seq=$activeSpeedChangeSeq wallElapsedMs=${speedProbeElapsedMs()} " +
-                                "cache=${event.buffering} ${playerSnapshot()}"
+                                "cache=${event.buffering} ${playerSnapshot(newPlayer)}"
                         )
                     }
                 }
                 MediaPlayer.Event.Playing -> {
-                    var videoCodec = ""
-                    var audioCodec = ""
-                    var videoWidth = 0
-                    var videoHeight = 0
-                    var videoBr: Long = 0L
-                    var audioBr: Long = 0L
-
-                    val trackCount = mediaPlayer.media?.trackCount ?: 0
-                    for (i in 0 until trackCount) {
-                        val track = mediaPlayer.media?.getTrack(i) ?: continue
-                        when (track.type) {
-                            IMedia.Track.Type.Video -> {
-                                val vTrack = track as IMedia.VideoTrack
-                                videoWidth = vTrack.width
-                                videoHeight = vTrack.height
-                                videoBr = vTrack.bitrate.toLong().takeIf { it > 0 } ?: 0L
-                                videoCodec = vTrack.codec?.uppercase() ?: ""
-                            }
-                            IMedia.Track.Type.Audio -> {
-                                val aTrack = track as IMedia.AudioTrack
-                                audioBr = aTrack.bitrate.toLong().takeIf { it > 0 } ?: 0L
-                                audioCodec = aTrack.codec?.uppercase() ?: ""
-                            }
-                        }
-                    }
+                    val tracks = readTrackSnapshot(newPlayer)
                     debugLog(
                         DebugEvent,
-                        "Playing tracks=$trackCount video=${videoCodec.ifEmpty { "unknown" }} ${videoWidth}x$videoHeight " +
-                            "audio=${audioCodec.ifEmpty { "unknown" }} audioBr=$audioBr ${playerSnapshot()}"
+                        "Playing tracks=${tracks.trackCount} video=${tracks.videoCodec.ifEmpty { "unknown" }} " +
+                            "${tracks.videoWidth}x${tracks.videoHeight} audio=${tracks.audioCodec.ifEmpty { "unknown" }} " +
+                            "audioBr=${tracks.audioBitrate} generation=$generation"
                     )
-                    
+
                     _state.value = _state.value.copy(
-                        isPlaying = true, 
+                        isPlaying = true,
                         isBuffering = false,
-                        videoCodec = videoCodec,
-                        videoWidth = videoWidth,
-                        videoHeight = videoHeight,
-                        videoBitrate = videoBr,
-                        audioCodec = audioCodec,
-                        audioBitrate = audioBr
+                        videoCodec = tracks.videoCodec,
+                        videoWidth = tracks.videoWidth,
+                        videoHeight = tracks.videoHeight,
+                        videoBitrate = tracks.videoBitrate,
+                        audioCodec = tracks.audioCodec,
+                        audioBitrate = tracks.audioBitrate
                     )
-                    applyPlaybackSpeed()
-                    if (pendingSeekMs > 0) {
-                        mediaPlayer.setTime(pendingSeekMs)
-                        pendingSeekMs = 0L
+                    val speedTicket = synchronized(speedLock) { speedApplyGate.onPlaying() }
+                    speedTicket?.let { ticket ->
+                        applyPlaybackSpeed(
+                            player = newPlayer,
+                            ticket = ticket,
+                            speedProbeSeq = activeSpeedChangeSeq.takeIf { isSpeedProbeActive() }
+                        )
                     }
-                    if (pendingPauseAfterStart) {
+                    if (pendingSeekMs > 0) {
+                        val seekResult = runCatching { newPlayer.setTime(pendingSeekMs) }.getOrNull()
+                        if (seekResult != null && seekResult >= 0L) {
+                            pendingSeekMs = 0L
+                        }
+                    }
+                    if (pendingPauseAfterStart || !playWhenReady) {
                         pendingPauseAfterStart = false
-                        mediaPlayer.pause()
+                        newPlayer.pause()
                     }
                 }
                 MediaPlayer.Event.Paused -> {
+                    synchronized(speedLock) { speedApplyGate.onPaused() }
                     _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
                 }
                 MediaPlayer.Event.Stopped -> {
+                    synchronized(speedLock) { speedApplyGate.onInactive() }
                     _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
                 }
                 MediaPlayer.Event.EndReached -> {
-                    val duration = getDurationForCompletion()
+                    synchronized(speedLock) { speedApplyGate.onInactive() }
+                    val duration = getDurationForCompletion(newPlayer)
                     _state.value = _state.value.copy(
-                        isPlaying = false, 
+                        isPlaying = false,
                         isBuffering = false,
                         currentPosition = duration
                     )
                     lastSavedPositionMs = duration * 1000L
                 }
                 MediaPlayer.Event.EncounteredError -> {
-                    debugLog(DebugEvent, "EncounteredError ${playerSnapshot()}")
+                    synchronized(speedLock) { speedApplyGate.onInactive() }
+                    debugLog(DebugEvent, "EncounteredError ${playerSnapshot(newPlayer)}")
                     _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
                     onError(BoloPlayerError.UnknownError("VLC 播放错误"))
                 }
                 MediaPlayer.Event.TimeChanged -> {
                     val tc = event.timeChanged
                     val stateBefore = _state.value
-                    val statsSnapshot = vlcStatsSnapshot()
-                    // 使用 inputBitrate 作为实时传输速度 (bps，所以可能需要乘 8，如果它是 bytes/sec，需要转换，但先直接返回长整型)
-                    val speed = statsSnapshot?.inputBitrate?.toLong()?.let { if (it > 0L) it * 8 else 0L } ?: 0L
+                    val speed = readTransferSpeedBps(newPlayer)
                     val reportedPositionSec = (tc / 1000).toInt()
                     _state.value = stateBefore.copy(
                         currentPosition = reportedPositionSec,
                         transferSpeed = speed
                     )
                     if (isSpeedProbeActive()) {
+                        val statsSnapshot = vlcStatsSnapshot(newPlayer)
                         debugLog(
                             DebugTime,
                             "TimeChanged afterSpeedSwitch seq=$activeSpeedChangeSeq wallElapsedMs=${speedProbeElapsedMs()} eventTimeMs=$tc " +
                                 "reportedPositionSec=$reportedPositionSec transferSpeed=$speed ${statsLog(statsSnapshot)} " +
-                                "${speedProbeStatsDeltaLog(statsSnapshot)} ${playerSnapshot()}"
+                                "${speedProbeStatsDeltaLog(statsSnapshot)} ${playerSnapshot(newPlayer)}"
                         )
                     }
-                    // 不更新 lastSavedPositionMs —— 它只在 onStop 时通过 getTime() 更新
-                    // 否则 VLC 从 0 开始播放会覆盖正确的保存位置
+                    // 不更新 lastSavedPositionMs，避免 VLC 从 0 开始播放时覆盖正确的恢复位置。
                 }
                 MediaPlayer.Event.PositionChanged -> {
                     if (isSpeedProbeActive()) {
                         debugLog(
                             DebugTime,
                             "PositionChanged afterSpeedSwitch seq=$activeSpeedChangeSeq wallElapsedMs=${speedProbeElapsedMs()} " +
-                                "position=${event.positionChanged} ${playerSnapshot()}"
+                                "position=${event.positionChanged} ${playerSnapshot(newPlayer)}"
                         )
                     }
                 }
@@ -283,21 +410,21 @@ actual class BoloPlayerController actual constructor(
                         debugLog(
                             DebugEvent,
                             "Vout afterSpeedSwitch seq=$activeSpeedChangeSeq wallElapsedMs=${speedProbeElapsedMs()} " +
-                                "count=${event.voutCount} ${playerSnapshot()}"
+                                "count=${event.voutCount} ${playerSnapshot(newPlayer)}"
                         )
                     }
                 }
                 MediaPlayer.Event.ESAdded ->
-                    logEsChangeDuringSpeedProbe("ESAdded", event)
+                    logEsChangeDuringSpeedProbe("ESAdded", event, newPlayer)
                 MediaPlayer.Event.ESDeleted ->
-                    logEsChangeDuringSpeedProbe("ESDeleted", event)
+                    logEsChangeDuringSpeedProbe("ESDeleted", event, newPlayer)
                 MediaPlayer.Event.ESSelected ->
-                    logEsChangeDuringSpeedProbe("ESSelected", event)
+                    logEsChangeDuringSpeedProbe("ESSelected", event, newPlayer)
             }
         }
         // 在 Compose 中包裹原生视频组件时，必须使用 TextureView 而不是 SurfaceView。
         // SurfaceView 由于其独立的 Window 层级，经常会导致在 Compose 测量和渲染时出现尺寸不同步、四边黑边等异常情况。
-        attachVideoLayout(layout, detachFirst = false)
+        attachVideoLayout(newPlayer, layout, detachFirst = false)
 
         val mpd = lastMpd
         if (mpd != null) {
@@ -318,22 +445,25 @@ actual class BoloPlayerController actual constructor(
             return
         }
         videoLayout = null
-        if (initialized && ::mediaPlayer.isInitialized) {
-            try { mediaPlayer.detachViews() } catch (_: Exception) {}
+        mediaPlayer?.let { player ->
+            try { player.detachViews() } catch (_: Exception) {}
         }
     }
 
-    private fun attachVideoLayout(layout: VLCVideoLayout, detachFirst: Boolean) {
+    private fun attachVideoLayout(player: MediaPlayer, layout: VLCVideoLayout, detachFirst: Boolean) {
         if (detachFirst) {
-            try { mediaPlayer.detachViews() } catch (_: Exception) {}
+            try { player.detachViews() } catch (_: Exception) {}
         }
-        mediaPlayer.attachViews(layout, null, true, true)
+        player.attachViews(layout, null, true, true)
         try {
-            mediaPlayer.scale = 0f
+            player.scale = 0f
         } catch (_: Exception) {}
     }
 
     internal actual fun load(mpd: BoloDashMpd, startPosition: Int) {
+        if (disposed) {
+            return
+        }
         lastMpd = mpd
         pendingLoadStartPositionSec = startPosition.takeIf { it > 0 } ?: 0
         hasPendingLoadRequest = true
@@ -342,7 +472,7 @@ actual class BoloPlayerController actual constructor(
             "LoadRequested mode=mpd startPositionSec=$startPosition hasAudio=${mpd.hasAudio} " +
                 "durationSec=${mpd.durationSec} video=${mpd.videoSummary} audio=${mpd.audioSummary ?: "none"}"
         )
-        if (::libVLC.isInitialized) {
+        if (libVLC != null && mediaPlayer != null) {
             val pendingStartPosition = pendingLoadStartPositionSec
             pendingLoadStartPositionSec = 0
             hasPendingLoadRequest = false
@@ -364,6 +494,13 @@ actual class BoloPlayerController actual constructor(
         startPosition: Int = 0,
         restorePosition: Boolean = true
     ) {
+        val vlc = libVLC
+        val player = mediaPlayer
+        if (disposed || vlc == null || player == null) {
+            pendingLoadStartPositionSec = startPosition.takeIf { it > 0 } ?: 0
+            hasPendingLoadRequest = true
+            return
+        }
         val startPositionMs = startPosition.takeIf { it > 0 }?.let { it * 1000L } ?: 0L
         val savedPosition = when {
             startPositionMs > 0 -> startPositionMs
@@ -393,19 +530,30 @@ actual class BoloPlayerController actual constructor(
             return
         }
 
-        val media = Media(libVLC, mediaUri)
-
-        videoPlayHeaders.forEach { (key, value) ->
-            when (key.lowercase()) {
-                "referer" -> media.addOption(":http-referrer=$value")
-                "user-agent" -> media.addOption(":http-user-agent=$value")
+        val media = Media(vlc, mediaUri)
+        try {
+            videoPlayHeaders.forEach { (key, value) ->
+                when (key.lowercase()) {
+                    "referer" -> media.addOption(":http-referrer=$value")
+                    "user-agent" -> media.addOption(":http-user-agent=$value")
+                }
             }
+
+            val requestedSpeed = synchronized(speedLock) { playbackSpeed }
+            debugLog(DebugMpd, "MediaPrepared mode=localMpd uri=$mediaUri requestedSpeed=${requestedSpeed.title}")
+
+            if (mediaPlayer !== player) {
+                return
+            }
+            player.media = media
+            synchronized(speedLock) { speedApplyGate.onMediaChanged() }
+            if (!restorePosition) {
+                lastSavedPositionMs = savedPosition
+                _state.value = _state.value.copy(currentPosition = (savedPosition / 1000L).toInt())
+            }
+        } finally {
+            media.release()
         }
-
-        debugLog(DebugMpd, "MediaPrepared mode=localMpd uri=$mediaUri requestedSpeed=${playbackSpeed.title}")
-
-        mediaPlayer.media = media
-        applyPlaybackSpeed()
 
         pendingSeekMs = 0L
         if (savedPosition > 0) {
@@ -413,12 +561,13 @@ actual class BoloPlayerController actual constructor(
             _state.value = _state.value.copy(currentPosition = (savedPosition / 1000).toInt())
         }
 
-        val shouldPlay = autoPlay || (restorePosition && wasPlayingBeforeBackground)
+        val shouldPlay = playWhenReady
         val shouldPauseAfterSeek = !shouldPlay && savedPosition > 0
 
         if (shouldPlay || shouldPauseAfterSeek) {
             pendingPauseAfterStart = shouldPauseAfterSeek
-            play()
+            player.play()
+            _state.value = _state.value.copy(isPlaying = shouldPlay)
             // seek 延迟到 Playing 事件执行 —— VLC 此时才完成媒体初始化
             // 若用户在上一个周期离开太快导致 seek 未执行，
             // lastSavedPositionMs 保持不变（不被 TimeChanged 覆盖），
@@ -427,27 +576,44 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun play() {
-        mediaPlayer.play()
-        _state.value = _state.value.copy(isPlaying = true)
+        if (disposed) {
+            return
+        }
+        playWhenReady = true
+        pendingPauseAfterStart = false
+        mediaPlayer?.let { player ->
+            runCatching { player.play() }
+        }
+        _state.value = _state.value.copy(isPlaying = mediaPlayer != null)
     }
 
     actual fun pause() {
-        mediaPlayer.pause()
+        if (disposed) {
+            return
+        }
+        playWhenReady = false
+        pendingPauseAfterStart = true
+        mediaPlayer?.let { player ->
+            runCatching { player.pause() }
+        }
         _state.value = _state.value.copy(isPlaying = false)
     }
 
     actual fun seekTo(position: Int) {
-        if (!isSeekPositionValid(position)) {
+        if (disposed || !isSeekPositionValid(position)) {
             return
         }
         val targetPosition = position
-        val currentState = mediaPlayer.playerState
+        val requestedTime = targetPosition * 1000L
+        lastSavedPositionMs = requestedTime
+        pendingSeekMs = requestedTime
+        _state.value = _state.value.copy(currentPosition = targetPosition)
+        val player = mediaPlayer ?: return
+        val currentState = runCatching { player.playerState }.getOrNull() ?: return
         // libVLC states: 5 = Stopped, 6 = Ended
         if (currentState == 5 || currentState == 6) {
             val mpd = lastMpd
             if (mpd != null) {
-                lastSavedPositionMs = targetPosition * 1000L
-                _state.value = _state.value.copy(currentPosition = targetPosition)
                 loadInternal(
                     mpd = mpd,
                     startPosition = targetPosition,
@@ -455,61 +621,119 @@ actual class BoloPlayerController actual constructor(
                 )
             }
         } else {
-            val requestedTime = targetPosition * 1000L
-            mediaPlayer.setTime(requestedTime)
-            _state.value = _state.value.copy(currentPosition = targetPosition)
+            val seekResult = runCatching { player.setTime(requestedTime) }.getOrNull()
+            if (seekResult != null && seekResult >= 0L) {
+                pendingSeekMs = 0L
+            }
         }
     }
 
     actual fun setVolumeGain(gain: Int) {
-        mediaPlayer.setVolume(gain.coerceIn(0, 200))
+        if (disposed) {
+            return
+        }
+        mediaPlayer?.let { player ->
+            runCatching { player.setVolume(gain.coerceIn(0, 200)) }
+        }
     }
 
     actual fun setPlaybackSpeed(speed: BoloPlayerSpeed) {
-        val previousSpeed = playbackSpeed
+        if (disposed) {
+            return
+        }
+        val previousSpeed = synchronized(speedLock) { playbackSpeed }
         val seq = ++speedChangeSeq
         activeSpeedChangeSeq = seq
-        speedProbeStartWallTimeMs = System.currentTimeMillis()
-        speedProbeUntilWallTimeMs = speedProbeStartWallTimeMs + SpeedProbeWindowMs
-        val statsBefore = vlcStatsSnapshot()
-        lastSpeedProbeStats = statsBefore
-        debugLog(
-            DebugSpeed,
-            "SpeedChange begin seq=$seq previous=${previousSpeed.title} previousRate=${previousSpeed.rateNumber} " +
-                "selected=${speed.title} selectedRate=${speed.rateNumber} ${statsLog(statsBefore)} before=${playerSnapshot()}"
-        )
-        playbackSpeed = speed
-        applyPlaybackSpeed(seq)
-        val statsAfter = vlcStatsSnapshot()
-        debugLog(
-            DebugSpeed,
-            "SpeedChange end seq=$seq selected=${speed.title} stored=${playbackSpeed.title} " +
-                "${statsLog(statsAfter)} ${statsAfter?.deltaLogString(statsBefore) ?: "statsDelta=null"} after=${playerSnapshot()}"
-        )
+        val player = mediaPlayer
+        val statsBefore = if (EnableSpeedChangeProbe && player != null) {
+            speedProbeStartWallTimeMs = System.currentTimeMillis()
+            speedProbeUntilWallTimeMs = speedProbeStartWallTimeMs + SpeedProbeWindowMs
+            vlcStatsSnapshot(player).also { lastSpeedProbeStats = it }
+        } else {
+            null
+        }
+        if (EnableSpeedChangeProbe) {
+            debugLog(
+                DebugSpeed,
+                "SpeedChange begin seq=$seq previous=${previousSpeed.title} previousRate=${previousSpeed.rateNumber} " +
+                    "selected=${speed.title} selectedRate=${speed.rateNumber} ${statsLog(statsBefore)} " +
+                    "before=${playerSnapshot(player)}"
+            )
+        }
+        val applyTicket = synchronized(speedLock) {
+            playbackSpeed = speed
+            _state.value = _state.value.copy(playbackSpeed = speed)
+            speedApplyGate.onSpeedRequested()
+        }
+        if (applyTicket != null && player != null) {
+            applyPlaybackSpeed(
+                player = player,
+                ticket = applyTicket,
+                speedProbeSeq = seq.takeIf { EnableSpeedChangeProbe }
+            )
+        }
+        if (EnableSpeedChangeProbe) {
+            val statsAfter = player?.let(::vlcStatsSnapshot)
+            debugLog(
+                DebugSpeed,
+                "SpeedChange end seq=$seq selected=${speed.title} " +
+                    "stored=${synchronized(speedLock) { playbackSpeed }.title} " +
+                    "${statsLog(statsAfter)} ${statsAfter?.deltaLogString(statsBefore) ?: "statsDelta=null"} " +
+                    "after=${playerSnapshot(player)}"
+            )
+        }
     }
 
     actual fun release() {
-        if (!initialized) {
+        if (disposed) {
             return
         }
-        if (::mediaPlayer.isInitialized) {
-            try { mediaPlayer.detachViews() } catch (_: Exception) {}
-            try { mediaPlayer.release() } catch (_: Exception) {}
+        val player = mediaPlayer
+        val vlc = libVLC
+        if (player == null && vlc == null) {
+            return
         }
-        if (::libVLC.isInitialized) {
-            try { libVLC.release() } catch (_: Exception) {}
+        if (player != null) {
+            savePosition(player)
+        }
+        mediaPlayer = null
+        libVLC = null
+        playerGeneration += 1
+        synchronized(speedLock) { speedApplyGate.onInactive() }
+        pendingPauseAfterStart = false
+        _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
+        if (player != null) {
+            try { player.setEventListener(null) } catch (_: Exception) {}
+            try { player.detachViews() } catch (_: Exception) {}
+            try { player.release() } catch (_: Exception) {}
+        }
+        if (vlc != null) {
+            try { vlc.release() } catch (_: Exception) {}
         }
         runCatching { lastMpdFile?.delete() }
         lastMpdFile = null
-        videoLayout = null
-        initialized = false
     }
 
-    private fun getDurationForCompletion(): Int {
+    actual fun dispose() {
+        if (disposed) return
+
+        release()
+        disposed = true
+        removeLifecycleObserver()
+        videoLayout = null
+        lastMpd = null
+        runCatching { lastMpdFile?.delete() }
+        lastMpdFile = null
+        hasPendingLoadRequest = false
+        pendingLoadStartPositionSec = 0
+        pendingSeekMs = 0L
+    }
+
+    private fun getDurationForCompletion(player: MediaPlayer? = mediaPlayer): Int {
         val stateDuration = _state.value.duration
         if (stateDuration > 0) return stateDuration
         return try {
-            if (::mediaPlayer.isInitialized) (mediaPlayer.getLength() / 1000).toInt().coerceAtLeast(0) else 0
+            player?.let { (it.getLength() / 1000).toInt().coerceAtLeast(0) } ?: 0
         } catch (_: Exception) {
             0
         }
@@ -535,71 +759,172 @@ actual class BoloPlayerController actual constructor(
         return Uri.fromFile(mpdFile)
     }
 
-    private fun applyPlaybackSpeed(speedProbeSeq: Long? = null) {
-        if (::mediaPlayer.isInitialized) {
+    private fun isCurrentPlayer(player: MediaPlayer, generation: Long): Boolean =
+        !disposed && mediaPlayer === player && playerGeneration == generation
+
+    private fun savePosition(player: MediaPlayer) {
+        val displayPositionMs = _state.value.currentPosition * 1000L
+        val nativePositionMs = runCatching { player.getTime() }.getOrNull()
+        lastSavedPositionMs = when {
+            nativePositionMs == null -> displayPositionMs
+            displayPositionMs == 0L && nativePositionMs > 0L -> nativePositionMs
+            nativePositionMs in displayPositionMs..(displayPositionMs + 1000L) -> nativePositionMs
+            nativePositionMs > 0L -> displayPositionMs
+            displayPositionMs > 0L -> displayPositionMs
+            else -> lastSavedPositionMs
+        }
+        _state.value = _state.value.copy(currentPosition = (lastSavedPositionMs / 1000L).toInt())
+    }
+
+    private fun readTrackSnapshot(player: MediaPlayer): TrackSnapshot {
+        val media = runCatching { player.media }.getOrNull() ?: return TrackSnapshot()
+        return try {
+            val trackCount = runCatching { media.trackCount }.getOrDefault(0)
+            var videoCodec = ""
+            var audioCodec = ""
+            var videoWidth = 0
+            var videoHeight = 0
+            var videoBitrate = 0L
+            var audioBitrate = 0L
+            for (index in 0 until trackCount) {
+                val track = runCatching { media.getTrack(index) }.getOrNull() ?: continue
+                when (track.type) {
+                    IMedia.Track.Type.Video -> {
+                        val videoTrack = track as IMedia.VideoTrack
+                        videoWidth = videoTrack.width
+                        videoHeight = videoTrack.height
+                        videoBitrate = videoTrack.bitrate.toLong().takeIf { it > 0L } ?: 0L
+                        videoCodec = videoTrack.codec?.uppercase() ?: ""
+                    }
+                    IMedia.Track.Type.Audio -> {
+                        val audioTrack = track as IMedia.AudioTrack
+                        audioBitrate = audioTrack.bitrate.toLong().takeIf { it > 0L } ?: 0L
+                        audioCodec = audioTrack.codec?.uppercase() ?: ""
+                    }
+                }
+            }
+            TrackSnapshot(
+                trackCount = trackCount,
+                videoCodec = videoCodec,
+                videoWidth = videoWidth,
+                videoHeight = videoHeight,
+                videoBitrate = videoBitrate,
+                audioCodec = audioCodec,
+                audioBitrate = audioBitrate
+            )
+        } finally {
+            runCatching { media.release() }
+        }
+    }
+
+    private fun readTransferSpeedBps(player: MediaPlayer): Long {
+        val media = runCatching { player.media }.getOrNull() ?: return 0L
+        return try {
+            val inputBitrate = runCatching { media.stats.inputBitrate }.getOrNull() ?: return 0L
+            inputBitrate.toLong().takeIf { it > 0L }?.times(8L) ?: 0L
+        } finally {
+            runCatching { media.release() }
+        }
+    }
+
+    private fun applyPlaybackSpeed(
+        player: MediaPlayer,
+        ticket: SpeedApplyGate.ApplyTicket,
+        speedProbeSeq: Long? = null
+    ) {
+        val applyGeneration = playerGeneration
+        val applyRequestSeq = ticket.requestRevision
+        synchronized(speedLock) {
+            if (disposed || mediaPlayer !== player || !speedApplyGate.isCurrent(ticket)) {
+                return
+            }
+            val requestedSpeed = playbackSpeed
             try {
-                val requestedSpeed = playbackSpeed
-                val statsBefore = vlcStatsSnapshot()
+                val statsBefore = speedProbeSeq?.let { vlcStatsSnapshot(player) }
                 if (speedProbeSeq != null) {
                     debugLog(
                         DebugSpeed,
                         "applyPlaybackSpeed before seq=$speedProbeSeq requested=${requestedSpeed.title} " +
-                            "requestedRate=${requestedSpeed.rateNumber} ${statsLog(statsBefore)} ${playerSnapshot()}"
+                            "requestedRate=${requestedSpeed.rateNumber} ${statsLog(statsBefore)} ${playerSnapshot(player)}"
                     )
                 }
-                mediaPlayer.setRate(requestedSpeed.rateNumber)
-                val nativeRate = mediaPlayer.getRate()
-                playbackSpeed = BoloPlayerSpeed.fromRateNumber(nativeRate)
-                val statsAfter = vlcStatsSnapshot()
+                player.setRate(requestedSpeed.rateNumber)
+                val nativeRate = player.getRate()
+                if (
+                    disposed ||
+                    mediaPlayer !== player ||
+                    !speedApplyGate.isCurrent(ticket)
+                ) {
+                    return
+                }
+                val storedSpeed = BoloPlayerSpeed.fromRateNumber(nativeRate)
+                playbackSpeed = storedSpeed
+                _state.value = _state.value.copy(playbackSpeed = storedSpeed)
+                debugLog(
+                    DebugSpeed,
+                    "RateApplied generation=$applyGeneration requestSeq=$applyRequestSeq " +
+                        "requested=${requestedSpeed.title} nativeRate=$nativeRate stored=${storedSpeed.title}"
+                )
+                val statsAfter = speedProbeSeq?.let { vlcStatsSnapshot(player) }
                 if (speedProbeSeq != null) {
                     debugLog(
                         DebugSpeed,
-                        "applyPlaybackSpeed after seq=$speedProbeSeq nativeRate=$nativeRate stored=${playbackSpeed.title} " +
-                            "${statsLog(statsAfter)} ${statsAfter?.deltaLogString(statsBefore) ?: "statsDelta=null"} ${playerSnapshot()}"
+                        "applyPlaybackSpeed after seq=$speedProbeSeq nativeRate=$nativeRate stored=${storedSpeed.title} " +
+                            "${statsLog(statsAfter)} ${statsAfter?.deltaLogString(statsBefore) ?: "statsDelta=null"} " +
+                            playerSnapshot(player)
                     )
                 }
             } catch (e: Exception) {
-                debugLog(DebugSpeed, "applyPlaybackSpeed failed seq=${speedProbeSeq ?: "none"} error=${e.message} ${playerSnapshot()}")
+                debugLog(
+                    DebugSpeed,
+                    "RateApplyFailed generation=$applyGeneration requestSeq=$applyRequestSeq error=${e.message}"
+                )
+                if (speedApplyGate.isCurrent(ticket)) {
+                    _state.value = _state.value.copy(playbackSpeed = playbackSpeed)
+                }
             }
         }
-        _state.value = _state.value.copy(playbackSpeed = playbackSpeed)
     }
 
     private fun isSpeedProbeActive(): Boolean =
-        System.currentTimeMillis() <= speedProbeUntilWallTimeMs
+        EnableSpeedChangeProbe && System.currentTimeMillis() <= speedProbeUntilWallTimeMs
 
     private fun speedProbeElapsedMs(): Long =
         System.currentTimeMillis() - speedProbeStartWallTimeMs
 
-    private fun logEsChangeDuringSpeedProbe(name: String, event: MediaPlayer.Event) {
+    private fun logEsChangeDuringSpeedProbe(name: String, event: MediaPlayer.Event, player: MediaPlayer) {
         if (!isSpeedProbeActive()) return
         debugLog(
             DebugAudio,
             "$name afterSpeedSwitch seq=$activeSpeedChangeSeq wallElapsedMs=${speedProbeElapsedMs()} " +
-                "type=${event.esChangedType} id=${event.esChangedID} ${playerSnapshot()}"
+                "type=${event.esChangedType} id=${event.esChangedID} ${playerSnapshot(player)}"
         )
     }
 
-    private fun vlcStatsSnapshot(): VlcStatsSnapshot? {
-        if (!::mediaPlayer.isInitialized) return null
-        val stats = runCatching { mediaPlayer.media?.stats }.getOrNull() ?: return null
-        return VlcStatsSnapshot(
-            readBytes = stats.readBytes,
-            inputBitrate = stats.inputBitrate,
-            demuxReadBytes = stats.demuxReadBytes,
-            demuxBitrate = stats.demuxBitrate,
-            demuxCorrupted = stats.demuxCorrupted,
-            demuxDiscontinuity = stats.demuxDiscontinuity,
-            decodedVideo = stats.decodedVideo,
-            decodedAudio = stats.decodedAudio,
-            displayedPictures = stats.displayedPictures,
-            lostPictures = stats.lostPictures,
-            playedAbuffers = stats.playedAbuffers,
-            lostAbuffers = stats.lostAbuffers,
-            sentPackets = stats.sentPackets,
-            sentBytes = stats.sentBytes,
-            sendBitrate = stats.sendBitrate
-        )
+    private fun vlcStatsSnapshot(player: MediaPlayer): VlcStatsSnapshot? {
+        val media = runCatching { player.media }.getOrNull() ?: return null
+        return try {
+            val stats = runCatching { media.stats }.getOrNull() ?: return null
+            VlcStatsSnapshot(
+                readBytes = stats.readBytes,
+                inputBitrate = stats.inputBitrate,
+                demuxReadBytes = stats.demuxReadBytes,
+                demuxBitrate = stats.demuxBitrate,
+                demuxCorrupted = stats.demuxCorrupted,
+                demuxDiscontinuity = stats.demuxDiscontinuity,
+                decodedVideo = stats.decodedVideo,
+                decodedAudio = stats.decodedAudio,
+                displayedPictures = stats.displayedPictures,
+                lostPictures = stats.lostPictures,
+                playedAbuffers = stats.playedAbuffers,
+                lostAbuffers = stats.lostAbuffers,
+                sentPackets = stats.sentPackets,
+                sentBytes = stats.sentBytes,
+                sendBitrate = stats.sendBitrate
+            )
+        } finally {
+            runCatching { media.release() }
+        }
     }
 
     private fun statsLog(stats: VlcStatsSnapshot?): String =
@@ -619,21 +944,21 @@ actual class BoloPlayerController actual constructor(
         Log.d(DebugTag, "$prefix $message")
     }
 
-    private fun playerSnapshot(): String {
-        if (!::mediaPlayer.isInitialized) {
-            return "mediaPlayer=notInitialized"
+    private fun playerSnapshot(player: MediaPlayer? = mediaPlayer): String {
+        if (player == null) {
+            return "mediaPlayer=notAvailable"
         }
-        val nativeTime = runCatching { mediaPlayer.getTime() }.getOrNull()
-        val nativeLength = runCatching { mediaPlayer.getLength() }.getOrNull()
-        val nativePosition = runCatching { mediaPlayer.position }.getOrNull()
-        val nativeRate = runCatching { mediaPlayer.getRate() }.getOrNull()
-        val nativeState = runCatching { mediaPlayer.playerState }.getOrNull()
-        val volume = runCatching { mediaPlayer.getVolume() }.getOrNull()
-        val audioTrack = runCatching { mediaPlayer.getAudioTrack() }.getOrNull()
-        val audioTrackCount = runCatching { mediaPlayer.getAudioTracksCount() }.getOrNull()
-        val audioDelayUs = runCatching { mediaPlayer.getAudioDelay() }.getOrNull()
-        val videoTrack = runCatching { mediaPlayer.getVideoTrack() }.getOrNull()
-        val videoTrackCount = runCatching { mediaPlayer.getVideoTracksCount() }.getOrNull()
+        val nativeTime = runCatching { player.getTime() }.getOrNull()
+        val nativeLength = runCatching { player.getLength() }.getOrNull()
+        val nativePosition = runCatching { player.position }.getOrNull()
+        val nativeRate = runCatching { player.getRate() }.getOrNull()
+        val nativeState = runCatching { player.playerState }.getOrNull()
+        val volume = runCatching { player.getVolume() }.getOrNull()
+        val audioTrack = runCatching { player.getAudioTrack() }.getOrNull()
+        val audioTrackCount = runCatching { player.getAudioTracksCount() }.getOrNull()
+        val audioDelayUs = runCatching { player.getAudioDelay() }.getOrNull()
+        val videoTrack = runCatching { player.getVideoTrack() }.getOrNull()
+        val videoTrackCount = runCatching { player.getVideoTracksCount() }.getOrNull()
         val state = _state.value
         return "nativeState=$nativeState nativeTimeMs=$nativeTime nativeLengthMs=$nativeLength nativePosition=$nativePosition " +
             "nativeRate=$nativeRate volume=$volume audioTrack=$audioTrack/$audioTrackCount audioDelayUs=$audioDelayUs " +

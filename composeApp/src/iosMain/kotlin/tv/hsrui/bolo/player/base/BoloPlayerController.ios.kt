@@ -34,19 +34,93 @@ actual class BoloPlayerController actual constructor(
     private val autoPlay: Boolean,
     private val onError: (BoloPlayerError) -> Unit
 ) {
+    private enum class MediaLifecycle {
+        Empty,
+        Loading,
+        Loaded,
+        Released,
+        Disposed
+    }
+
+    private class PlaybackSpeedApplyGate {
+        private enum class Phase {
+            Inactive,
+            Loading,
+            Buffering,
+            Playing,
+            Paused
+        }
+
+        private var phase = Phase.Inactive
+        private var mediaGeneration = 0L
+        private var requestRevision = 0L
+        private var appliedGeneration = -1L
+        private var appliedRevision = -1L
+
+        fun onMediaChanged() {
+            mediaGeneration += 1
+            phase = Phase.Loading
+        }
+
+        fun onOpening() {
+            phase = Phase.Loading
+        }
+
+        fun onBuffering() {
+            phase = Phase.Buffering
+        }
+
+        fun onPlaying(): Boolean {
+            phase = Phase.Playing
+            return consumeIfNeeded()
+        }
+
+        fun onPaused() {
+            phase = Phase.Paused
+        }
+
+        fun onInactive() {
+            phase = Phase.Inactive
+        }
+
+        fun onSpeedRequested(): Boolean {
+            requestRevision += 1
+            return when (phase) {
+                Phase.Playing, Phase.Paused -> consumeIfNeeded()
+                Phase.Inactive, Phase.Loading, Phase.Buffering -> false
+            }
+        }
+
+        private fun consumeIfNeeded(): Boolean {
+            if (
+                appliedGeneration == mediaGeneration &&
+                appliedRevision == requestRevision
+            ) {
+                return false
+            }
+            appliedGeneration = mediaGeneration
+            appliedRevision = requestRevision
+            return true
+        }
+    }
+
     private val _state = MutableStateFlow(BoloPlayerState())
     actual val state: StateFlow<BoloPlayerState> = _state.asStateFlow()
 
     internal val mediaPlayer = VLCMediaPlayer()
     private var wasPlayingBeforeBackground = false
-    private var hasReachedPlaying = false
-    private var initialized = false
+    private var isInForeground = true
+    private var mediaLifecycle = MediaLifecycle.Empty
+    private var mediaGeneration = 0L
+    private val speedApplyGate = PlaybackSpeedApplyGate()
 
-    // NSNotification observer tokens，用于注销通知
-    private val observers = mutableListOf<Any>()
+    // 应用生命周期通知常驻到 dispose；播放器通知按 media generation 重建。
+    private val applicationObservers = mutableListOf<Any>()
+    private val playerObservers = mutableListOf<Any>()
 
     // ── 位置恢复 ──
     private var lastSavedPositionMs = 0L
+    private var hasReceivedTimeForCurrentMedia = false
 
     // ── 重建所需数据 ──
     private var lastMpd: BoloDashMpd? = null
@@ -63,26 +137,20 @@ actual class BoloPlayerController actual constructor(
             setActive(true, null)
         }
 
-        observers += NSNotificationCenter.defaultCenter.addObserverForName(
-            VLCMediaPlayerStateChanged, null, NSOperationQueue.mainQueue
-        ) { _ -> onStateChanged() }
-
-        observers += NSNotificationCenter.defaultCenter.addObserverForName(
-            VLCMediaPlayerTimeChanged, null, NSOperationQueue.mainQueue
-        ) { _ -> updateTimeAndDuration() }
-
         // 后台 → 保存 + 释放
-        observers += NSNotificationCenter.defaultCenter.addObserverForName(
+        applicationObservers += NSNotificationCenter.defaultCenter.addObserverForName(
             UIApplicationDidEnterBackgroundNotification, null,
             NSOperationQueue.mainQueue
         ) { _ ->
+            isInForeground = false
             release()
         }
         // 前台 → 重建
-        observers += NSNotificationCenter.defaultCenter.addObserverForName(
+        applicationObservers += NSNotificationCenter.defaultCenter.addObserverForName(
             UIApplicationWillEnterForegroundNotification, null,
             NSOperationQueue.mainQueue
         ) { _ ->
+            isInForeground = true
             restoreFromSavedState()
         }
     }
@@ -92,29 +160,29 @@ actual class BoloPlayerController actual constructor(
      * 类似 Android 的 bindVideo()。
      */
     fun bindDrawable(view: UIView) {
+        if (mediaLifecycle == MediaLifecycle.Disposed) return
+
         mediaPlayer.drawable = view
-        if (!initialized || mediaPlayer.media == null) {
-            // VLC 已释放（release() 清空了 media），需要重建
-            val mpd = lastMpd
-            if (mpd != null) {
-                initialized = true
-                hasReachedPlaying = false
-                loadInternal(mpd, restorePosition = true)
-            } else {
-                initialized = true
-            }
+        if (isInForeground) {
+            restoreFromSavedState()
         }
     }
 
-    private fun onStateChanged() {
-        when (mediaPlayer.state) {
-            VLCMediaPlayerState.VLCMediaPlayerStateOpening ->
-                if (!hasReachedPlaying)
-                    _state.value = _state.value.copy(isBuffering = true)
-            VLCMediaPlayerState.VLCMediaPlayerStateBuffering ->
-                if (!hasReachedPlaying)
-                    _state.value = _state.value.copy(isBuffering = true)
+    private fun onStateChanged(player: VLCMediaPlayer, generation: Long) {
+        if (!isCurrentPlayerGeneration(player, generation)) return
+
+        when (player.state) {
+            VLCMediaPlayerState.VLCMediaPlayerStateOpening -> {
+                mediaLifecycle = MediaLifecycle.Loading
+                speedApplyGate.onOpening()
+                _state.value = _state.value.copy(isBuffering = true)
+            }
+            VLCMediaPlayerState.VLCMediaPlayerStateBuffering -> {
+                speedApplyGate.onBuffering()
+                _state.value = _state.value.copy(isBuffering = true)
+            }
             VLCMediaPlayerState.VLCMediaPlayerStatePlaying -> {
+                mediaLifecycle = MediaLifecycle.Loaded
                 var videoCodec = ""
                 var audioCodec = ""
                 var videoWidth = 0
@@ -122,7 +190,7 @@ actual class BoloPlayerController actual constructor(
                 var videoBr: Long = 0L
                 var audioBr: Long = 0L
                 
-                val tracks = mediaPlayer.media?.tracksInformation as? List<Map<Any?, Any?>>
+                val tracks = player.media?.tracksInformation as? List<Map<Any?, Any?>>
                 tracks?.forEach { track ->
                     val type = track["type"] as? String
                     if (type == "video") {
@@ -156,30 +224,39 @@ actual class BoloPlayerController actual constructor(
                     audioCodec = audioCodec,
                     audioBitrate = audioBr
                 )
-                applyPlaybackSpeed()
+                if (speedApplyGate.onPlaying()) {
+                    applyPlaybackSpeed(player, generation)
+                }
                 if (pendingSeekMs > 0) {
                     val ms = pendingSeekMs
                     pendingSeekMs = 0L
-                    val mediaLength = mediaPlayer.media?.length?.value?.longValue ?: 0L
+                    val mediaLength = player.media?.length?.value?.longValue ?: 0L
                     if (mediaLength > 0 && ms > 1000 && ms < mediaLength) {
                         val ratio = ms.toFloat() / mediaLength.toFloat()
-                        mediaPlayer.position = ratio
+                        player.position = ratio
                         _state.value = _state.value.copy(currentPosition = (ms / 1000).toInt())
                     }
                 }
                 if (pendingPauseAfterSeek) {
                     pendingPauseAfterSeek = false
-                    mediaPlayer.pause()
+                    player.pause()
                     _state.value = _state.value.copy(isPlaying = false)
                 }
-                hasReachedPlaying = true
             }
-            VLCMediaPlayerState.VLCMediaPlayerStatePaused ->
+            VLCMediaPlayerState.VLCMediaPlayerStatePaused -> {
+                mediaLifecycle = MediaLifecycle.Loaded
+                speedApplyGate.onPaused()
                 _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
-            VLCMediaPlayerState.VLCMediaPlayerStateStopped ->
+            }
+            VLCMediaPlayerState.VLCMediaPlayerStateStopped -> {
+                mediaLifecycle = MediaLifecycle.Loaded
+                speedApplyGate.onInactive()
                 _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
+            }
             VLCMediaPlayerState.VLCMediaPlayerStateEnded -> {
-                val duration = getDurationForCompletion()
+                mediaLifecycle = MediaLifecycle.Loaded
+                speedApplyGate.onInactive()
+                val duration = getDurationForCompletion(player)
                 _state.value = _state.value.copy(
                     isPlaying = false,
                     isBuffering = false,
@@ -188,6 +265,8 @@ actual class BoloPlayerController actual constructor(
                 lastSavedPositionMs = duration * 1000L
             }
             VLCMediaPlayerState.VLCMediaPlayerStateError -> {
+                mediaLifecycle = MediaLifecycle.Loaded
+                speedApplyGate.onInactive()
                 _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
                 onError(BoloPlayerError.UnknownError("VLC 播放错误"))
             }
@@ -195,15 +274,18 @@ actual class BoloPlayerController actual constructor(
         }
     }
 
-    private fun updateTimeAndDuration() {
-        val posMs = mediaPlayer.time.value?.longValue ?: return
+    private fun updateTimeAndDuration(player: VLCMediaPlayer, generation: Long) {
+        if (!isCurrentPlayerGeneration(player, generation)) return
+
+        val posMs = player.time.value?.longValue ?: return
+        hasReceivedTimeForCurrentMedia = true
         
         _state.value = _state.value.copy(
             currentPosition = (posMs / 1000).toInt(),
             transferSpeed = 0L
         )
         // VLCKit 的 remainingTime 通常为负值（表示剩余时间），无效时返回 0
-        val remaining = mediaPlayer.remainingTime?.value?.longValue ?: return
+        val remaining = player.remainingTime?.value?.longValue ?: return
         if (remaining < 0) {
             val durMs = posMs - remaining  // 减去负数 = 加上绝对值
             _state.value = _state.value.copy(duration = (durMs / 1000).toInt())
@@ -211,32 +293,67 @@ actual class BoloPlayerController actual constructor(
     }
 
     private fun savePositionFromCurrent() {
-        val displayPos = _state.value.currentPosition * 1000L
-        val timeVal = mediaPlayer.time.value
-        val posMs = timeVal?.longValue
-        if (posMs == null) {
+        if (pendingSeekMs > 0L) {
+            lastSavedPositionMs = pendingSeekMs
             return
         }
-        when {
-            displayPos == 0L && posMs > 0 -> lastSavedPositionMs = posMs
-            posMs >= displayPos && posMs <= displayPos + 1000 -> lastSavedPositionMs = posMs
-            posMs > 0 -> lastSavedPositionMs = displayPos
+        val displayPos = _state.value.currentPosition * 1000L
+        if (!hasReceivedTimeForCurrentMedia) {
+            if (displayPos > 0L) {
+                lastSavedPositionMs = displayPos
+            }
+            return
+        }
+        val posMs = mediaPlayer.time.value?.longValue
+        if (posMs == null) {
+            if (displayPos > 0L) {
+                lastSavedPositionMs = displayPos
+            }
+            return
+        }
+        lastSavedPositionMs = when {
+            displayPos == 0L && posMs > 0 -> posMs
+            posMs >= displayPos && posMs <= displayPos + 1000 -> posMs
+            posMs > 0 && displayPos > 0L -> displayPos
+            posMs > 0 -> posMs
+            displayPos > 0L -> displayPos
+            else -> lastSavedPositionMs
         }
     }
 
     private fun restoreFromSavedState() {
+        if (!isInForeground) return
+        if (
+            mediaLifecycle != MediaLifecycle.Empty &&
+            mediaLifecycle != MediaLifecycle.Released
+        ) {
+            return
+        }
         val mpd = lastMpd
         if (mpd == null) {
             return
         }
-        hasReachedPlaying = false
         loadInternal(mpd, restorePosition = true)
     }
 
     internal actual fun load(mpd: BoloDashMpd, startPosition: Int) {
+        if (mediaLifecycle == MediaLifecycle.Disposed) return
+
+        val normalizedStartPosition = startPosition.coerceAtLeast(0)
         lastMpd = mpd
-        initialized = true
-        hasReachedPlaying = false
+        lastSavedPositionMs = normalizedStartPosition.toLong() * 1000L
+        wasPlayingBeforeBackground = false
+        hasReceivedTimeForCurrentMedia = false
+        _state.value = _state.value.copy(currentPosition = normalizedStartPosition)
+        if (!isInForeground) {
+            mediaLifecycle = MediaLifecycle.Released
+            _state.value = _state.value.copy(
+                isPlaying = false,
+                isBuffering = false,
+                currentPosition = normalizedStartPosition
+            )
+            return
+        }
         loadInternal(
             mpd = mpd,
             restorePosition = false,
@@ -253,12 +370,28 @@ actual class BoloPlayerController actual constructor(
         restorePosition: Boolean,
         startPosition: Int = 0
     ) {
+        if (mediaLifecycle == MediaLifecycle.Disposed) return
+
+        mediaGeneration += 1
+        val generation = mediaGeneration
+        mediaLifecycle = MediaLifecycle.Loading
+        hasReceivedTimeForCurrentMedia = false
+        removePlayerObservers()
+        speedApplyGate.onInactive()
+        val player = mediaPlayer
+        player.stop()
+        player.media = null
+        _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
+
         val nsUrl = writeMpdFile(mpd)
         if (nsUrl == null) {
+            mediaLifecycle = MediaLifecycle.Released
+            _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
             onError(BoloPlayerError.UnknownError("DASH MPD 文件写入失败"))
             return
         }
 
+        installPlayerObservers(player, generation)
         val media = VLCMedia(uRL = nsUrl)
         val options = mutableMapOf<Any?, Any?>()
         videoPlayHeaders.forEach { (key, value) ->
@@ -269,8 +402,9 @@ actual class BoloPlayerController actual constructor(
             }
         }
         media.addOptions(options)
-        mediaPlayer.media = media
-        applyPlaybackSpeed()
+        speedApplyGate.onMediaChanged()
+        player.media = media
+        mediaLifecycle = MediaLifecycle.Loaded
 
         // 延迟 seek：此时 media.length 尚未就绪（为 0），必须在 Playing 事件中执行
         pendingSeekMs = 0L
@@ -291,21 +425,45 @@ actual class BoloPlayerController actual constructor(
 
         if (shouldPlay || shouldPauseAfterSeek) {
             pendingPauseAfterSeek = shouldPauseAfterSeek
-            play()
+            mediaLifecycle = MediaLifecycle.Loading
+            player.play()
+            _state.value = _state.value.copy(isPlaying = true)
         }
     }
 
     actual fun play() {
+        if (
+            mediaLifecycle == MediaLifecycle.Empty ||
+            mediaLifecycle == MediaLifecycle.Released ||
+            mediaLifecycle == MediaLifecycle.Disposed
+        ) {
+            return
+        }
+        mediaLifecycle = MediaLifecycle.Loading
         mediaPlayer.play()
         _state.value = _state.value.copy(isPlaying = true)
     }
 
     actual fun pause() {
+        if (
+            mediaLifecycle == MediaLifecycle.Empty ||
+            mediaLifecycle == MediaLifecycle.Released ||
+            mediaLifecycle == MediaLifecycle.Disposed
+        ) {
+            return
+        }
         mediaPlayer.pause()
         _state.value = _state.value.copy(isPlaying = false)
     }
 
     actual fun seekTo(position: Int) {
+        if (
+            mediaLifecycle == MediaLifecycle.Empty ||
+            mediaLifecycle == MediaLifecycle.Released ||
+            mediaLifecycle == MediaLifecycle.Disposed
+        ) {
+            return
+        }
         if (!isSeekPositionValid(position)) {
             return
         }
@@ -317,21 +475,59 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun setVolumeGain(gain: Int) {
+        if (mediaLifecycle == MediaLifecycle.Disposed) return
+
         val vlcVolume = gain.coerceIn(0, 200)
         mediaPlayer.audio?.volume = vlcVolume
     }
 
     actual fun setPlaybackSpeed(speed: BoloPlayerSpeed) {
+        if (mediaLifecycle == MediaLifecycle.Disposed) return
+
         playbackSpeed = speed
-        applyPlaybackSpeed()
+        if (speedApplyGate.onSpeedRequested()) {
+            applyPlaybackSpeed(mediaPlayer, mediaGeneration)
+        } else {
+            // 延迟到下一次 Playing 提交 native rate；UI 仍沿用现有的选中值展示语义。
+            _state.value = _state.value.copy(playbackSpeed = playbackSpeed)
+        }
     }
 
     actual fun release() {
-        wasPlayingBeforeBackground = _state.value.isPlaying
+        if (
+            mediaLifecycle == MediaLifecycle.Released ||
+            mediaLifecycle == MediaLifecycle.Disposed
+        ) {
+            return
+        }
+
+        wasPlayingBeforeBackground = _state.value.isPlaying && !pendingPauseAfterSeek
         savePositionFromCurrent()
+        mediaLifecycle = MediaLifecycle.Released
+        mediaGeneration += 1
+        hasReceivedTimeForCurrentMedia = false
+        removePlayerObservers()
+        speedApplyGate.onInactive()
         mediaPlayer.stop()
         mediaPlayer.media = null
-        initialized = false
+        pendingSeekMs = 0L
+        pendingPauseAfterSeek = false
+        _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
+    }
+
+    actual fun dispose() {
+        if (mediaLifecycle == MediaLifecycle.Disposed) return
+
+        release()
+        mediaLifecycle = MediaLifecycle.Disposed
+        mediaGeneration += 1
+        mediaPlayer.drawable = null
+        removePlayerObservers()
+        removeApplicationObservers()
+        removeMpdFile()
+        lastMpd = null
+        pendingSeekMs = 0L
+        pendingPauseAfterSeek = false
     }
 
     private fun writeMpdFile(mpd: BoloDashMpd): NSURL? {
@@ -358,12 +554,43 @@ actual class BoloPlayerController actual constructor(
         return NSURL.fileURLWithPath(path)
     }
 
-    /** 注销所有 NSNotification 监听器，应在 Composable dispose 时调用 */
-    fun removeObservers() {
+    private fun installPlayerObservers(player: VLCMediaPlayer, generation: Long) {
+        playerObservers += NSNotificationCenter.defaultCenter.addObserverForName(
+            VLCMediaPlayerStateChanged, player, NSOperationQueue.mainQueue
+        ) { _ ->
+            if (isCurrentPlayerGeneration(player, generation)) {
+                onStateChanged(player, generation)
+            }
+        }
+        playerObservers += NSNotificationCenter.defaultCenter.addObserverForName(
+            VLCMediaPlayerTimeChanged, player, NSOperationQueue.mainQueue
+        ) { _ ->
+            if (isCurrentPlayerGeneration(player, generation)) {
+                updateTimeAndDuration(player, generation)
+            }
+        }
+    }
+
+    private fun isCurrentPlayerGeneration(player: VLCMediaPlayer, generation: Long): Boolean {
+        return mediaLifecycle != MediaLifecycle.Released &&
+            mediaLifecycle != MediaLifecycle.Disposed &&
+            player === mediaPlayer &&
+            generation == mediaGeneration
+    }
+
+    private fun removePlayerObservers() {
+        playerObservers.forEach { NSNotificationCenter.defaultCenter.removeObserver(it) }
+        playerObservers.clear()
+    }
+
+    private fun removeApplicationObservers() {
+        applicationObservers.forEach { NSNotificationCenter.defaultCenter.removeObserver(it) }
+        applicationObservers.clear()
+    }
+
+    private fun removeMpdFile() {
         lastMpdFilePath?.let { NSFileManager.defaultManager.removeItemAtPath(it, null) }
         lastMpdFilePath = null
-        observers.forEach { NSNotificationCenter.defaultCenter.removeObserver(it) }
-        observers.clear()
     }
 
     private fun intToFourCC(codec: Int): String {
@@ -375,10 +602,10 @@ actual class BoloPlayerController actual constructor(
         ).concatToString().uppercase()
     }
 
-    private fun getDurationForCompletion(): Int {
+    private fun getDurationForCompletion(player: VLCMediaPlayer): Int {
         val stateDuration = _state.value.duration
         if (stateDuration > 0) return stateDuration
-        return ((mediaPlayer.media?.length?.value?.longValue ?: 0L) / 1000).toInt().coerceAtLeast(0)
+        return ((player.media?.length?.value?.longValue ?: 0L) / 1000).toInt().coerceAtLeast(0)
     }
 
     private fun isSeekPositionValid(position: Int): Boolean {
@@ -386,10 +613,12 @@ actual class BoloPlayerController actual constructor(
         return position >= 0 && (duration <= 0 || position <= duration)
     }
 
-    private fun applyPlaybackSpeed() {
+    private fun applyPlaybackSpeed(player: VLCMediaPlayer, generation: Long) {
+        if (!isCurrentPlayerGeneration(player, generation)) return
+
         try {
-            mediaPlayer.rate = playbackSpeed.rateNumber
-            playbackSpeed = BoloPlayerSpeed.fromRateNumber(mediaPlayer.rate)
+            player.rate = playbackSpeed.rateNumber
+            playbackSpeed = BoloPlayerSpeed.fromRateNumber(player.rate)
         } catch (_: Exception) {}
         _state.value = _state.value.copy(playbackSpeed = playbackSpeed)
     }

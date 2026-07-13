@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
@@ -14,12 +15,15 @@ actual fun BoloVideoPlayer(
     controller: BoloPlayerController,
     modifier: Modifier
 ) {
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val boundController = remember { arrayOfNulls<BoloPlayerController>(1) }
 
-    DisposableEffect(controller) {
-        controller.bindLifecycle(lifecycle)
+    DisposableEffect(controller, lifecycleOwner) {
+        controller.bindLifecycle(lifecycleOwner)
         onDispose {
-            controller.release()
+            if (controller.unbindLifecycle(lifecycleOwner)) {
+                controller.release()
+            }
         }
     }
 
@@ -31,12 +35,22 @@ actual fun BoloVideoPlayer(
                         android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                         android.view.ViewGroup.LayoutParams.MATCH_PARENT
                     )
+                    boundController[0] = controller
+                    controller.bindVideo(layout)
+                }
+            },
+            update = { layout ->
+                val previousController = boundController[0]
+                if (previousController !== controller) {
+                    previousController?.unbindVideo(layout)
+                    boundController[0] = controller
                     controller.bindVideo(layout)
                 }
             },
             modifier = Modifier.fillMaxSize(),
             onRelease = { layout ->
-                controller.unbindVideo(layout)
+                boundController[0]?.unbindVideo(layout)
+                boundController[0] = null
             }
         )
     }

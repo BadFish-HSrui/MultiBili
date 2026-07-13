@@ -73,9 +73,12 @@ expect class BoloPlayerController(
      */
     fun setPlaybackSpeed(speed: BoloPlayerSpeed)
 
-    /**
-     * 释放底层播放器资源。
-     * 必须在 DisposableEffect 的 onDispose 中调用，防止内存泄漏。
-     */
+    /** 临时释放底层播放器资源，保留恢复播放所需状态。 */
     fun release()
+
+    /**
+     * 永久释放控制器持有的全部资源。
+     * 该方法是幂等的，调用后不可再使用该控制器进行播放。
+     */
+    fun dispose()
 }
