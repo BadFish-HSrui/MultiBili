@@ -83,4 +83,8 @@ class VideoPlayerViewModel(var avid: Long, var cid: Long) : ViewModel() {
         }
     }
 
+    override fun onCleared() {
+        controller.dispose()
+        super.onCleared()
+    }
 }
