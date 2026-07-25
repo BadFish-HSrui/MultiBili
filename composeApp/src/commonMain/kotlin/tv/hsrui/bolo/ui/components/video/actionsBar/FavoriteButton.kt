@@ -22,7 +22,7 @@ import tv.hsrui.network.utils.formatCountToString
 @Composable
 fun FavoriteButton(
     videoInfo: VideoInfoData,
-    isFavoured: Boolean,
+    isFavorite: Boolean,
     canClick: Boolean,
     reloadState: suspend () -> Unit,
     modifier: Modifier = Modifier
@@ -38,7 +38,7 @@ fun FavoriteButton(
                 Icon(
                     painter = painterResource(Res.drawable.favorite_icon),
                     contentDescription = "点赞",
-                    tint = if (isFavoured) BiliColor.ThemeColor else Color.Gray,
+                    tint = if (isFavorite) BiliColor.ThemeColor else Color.Gray,
                     modifier = Modifier.size(24.dp)
                 )
                 Text(

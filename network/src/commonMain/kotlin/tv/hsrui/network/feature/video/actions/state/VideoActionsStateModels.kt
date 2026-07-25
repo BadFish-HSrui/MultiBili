@@ -2,12 +2,11 @@ package tv.hsrui.network.feature.video.actions.state
 
 import kotlinx.serialization.Serializable
 
-@Serializable
 data class VideoActionsStateResponse(
     val message: String = "",
     val isLiked: Boolean = false,
     val coinedCount: Int = 0,
-    val isFavoured: Boolean = false
+    val isFavorite: Boolean = false
 ) {
     val isSuccess get() = (message.isEmpty())
     val isCoined get() = (coinedCount != 0)

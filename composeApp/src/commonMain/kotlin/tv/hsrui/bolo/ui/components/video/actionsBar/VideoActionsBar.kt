@@ -74,7 +74,7 @@ fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
         )
         FavoriteButton(
             videoInfo = videoInfo,
-            isFavoured = actionsState.isFavoured,
+            isFavorite = actionsState.isFavorite,
             canClick = isLogin,
             reloadState = reloadState
         )
