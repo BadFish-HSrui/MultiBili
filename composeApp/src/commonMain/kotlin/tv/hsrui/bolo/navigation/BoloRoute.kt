@@ -5,7 +5,7 @@ import tv.hsrui.bolo.model.Vid
 
 @Serializable
 sealed interface BoloRoute {
-    @Serializable data object Test : BoloRoute
+    @Serializable data object Debug : BoloRoute
 
     @Serializable data object Main : BoloRoute
 

@@ -23,7 +23,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import kotlinx.serialization.json.Json
-import tv.hsrui.bolo.debug.previewJson.replyResponseJsonExample
+import tv.hsrui.bolo.debug.previewData.replyResponseJsonExample
 import tv.hsrui.bolo.ui.components.reply.actionsBar.ReplyActionsBar
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.theme.BiliColor.getLevelColor
