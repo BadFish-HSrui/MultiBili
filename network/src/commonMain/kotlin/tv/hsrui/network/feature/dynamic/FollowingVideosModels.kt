@@ -1,8 +1,8 @@
 package tv.hsrui.network.feature.dynamic
 
+import tv.hsrui.network.model.Owner
 import tv.hsrui.network.model.ValidVideosData
 import tv.hsrui.network.model.VideoCard
-import tv.hsrui.network.model.VideoCard.Owner
 import tv.hsrui.network.model.VideoCard.Stat
 import tv.hsrui.network.model.VideosResult
 import tv.hsrui.network.utils.toCountIntOrNull

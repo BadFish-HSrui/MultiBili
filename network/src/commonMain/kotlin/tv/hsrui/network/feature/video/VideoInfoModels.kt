@@ -2,6 +2,7 @@ package tv.hsrui.network.feature.video
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import tv.hsrui.network.model.Owner
 import tv.hsrui.network.utils.formatToDateTime
 import tv.hsrui.network.utils.toHttpsUrl
 
@@ -92,13 +93,6 @@ data class VideoInfoData(
     )
 
     @Serializable
-    data class Owner(
-        val mid: Long = 0,
-        val name: String = "",
-        val face: String = ""
-    )
-
-    @Serializable
     data class Stat(
         val view: Int = -1,
         val danmaku: Int = -1,
@@ -145,7 +139,7 @@ val VideoInfoResponseExample = VideoInfoResponse(
         rights = VideoInfoData.Rights(
             isCooperation = 0
         ),
-        _owner = VideoInfoData.Owner(
+        _owner = Owner(
             mid = 1060544882,
             name = "东洋雪莲",
             face = "https://i2.hdslb.com/bfs/face/4cbf2f66d23a324ecca8d3c07adbcafecfef829b.jpg"

@@ -32,5 +32,6 @@ sealed interface BoloRoute {
     @Serializable
     sealed interface View : BoloRoute {
         @Serializable data class Video(val vid: Vid) : View
+        @Serializable data class FavoriteFolder(val mediaId: Long) : View
     }
 }

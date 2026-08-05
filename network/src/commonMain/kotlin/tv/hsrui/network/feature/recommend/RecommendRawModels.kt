@@ -2,6 +2,7 @@ package tv.hsrui.network.feature.recommend
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import tv.hsrui.network.model.Owner
 import tv.hsrui.network.model.VideoCard
 import tv.hsrui.network.model.VideoCard.Stat
 
@@ -60,7 +61,7 @@ fun RawRecommendItem.toVideoCard(): VideoCard {
             danmaku = stat.danmaku,
             reply = stat.reply
         ),
-        _owner = VideoCard.Owner(
+        _owner = Owner(
             name = owner.name,
             face = owner.face
         )

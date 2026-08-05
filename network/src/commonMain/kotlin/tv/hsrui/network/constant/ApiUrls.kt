@@ -32,6 +32,12 @@ object ApiUrls {
         const val DELETE_ALL = "x/v2/history/toview/clear" //清空稍后再看
     }
 
+    object Favorite {
+        const val CREATED_FOLDERS = "x/v3/fav/folder/created/list-all" //创建的收藏夹列表
+        const val FOLDER_INFO = "x/v3/fav/folder/info" //收藏夹元数据
+        const val FOLDER_CONTENT = "x/v3/fav/resource/list" //收藏夹内容
+    }
+
     object Reply {
         const val LIST = "x/v2/reply/wbi/main" //评论列表
         const val SUB_LIST = "x/v2/reply/reply" //子评论列表

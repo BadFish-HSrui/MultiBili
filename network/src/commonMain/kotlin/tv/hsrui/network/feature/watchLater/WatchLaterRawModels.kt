@@ -3,7 +3,7 @@ package tv.hsrui.network.feature.watchLater
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import tv.hsrui.network.feature.history.HistoryVideoCard
-import tv.hsrui.network.model.VideoCard
+import tv.hsrui.network.model.Owner
 import tv.hsrui.network.utils.toHttpsUrl
 
 @Serializable
@@ -26,7 +26,7 @@ data class WatchLaterRawResponse(
         @SerialName("bvid") val bvid: String = "",
         @SerialName("title") val title: String = "",
         @SerialName("pic") private val _cover: String = "",
-        @SerialName("owner") private val _owner: VideoCard.Owner = VideoCard.Owner(),
+        @SerialName("owner") private val _owner: Owner = Owner(),
         @SerialName("add_at") val addTime: Long = 0,
         @SerialName("progress") val watchProgress: Int = 0,
         @SerialName("duration") val duration: Int = 0,

@@ -44,12 +44,6 @@ data class VideoCard(
         val reply: Int = -1
     )
 
-    @Serializable
-    data class Owner(
-        val mid: Long = 0,
-        val name: String = "",
-        val face: String = ""
-    )
 }
 
 val VideoCardExample = VideoCard(
@@ -60,7 +54,7 @@ val VideoCardExample = VideoCard(
     publishDate = 1759762729,
     _stat = VideoCard.Stat(view = 1919810, like = 114514, danmaku = 512),
     duration = 10000,
-    _owner = VideoCard.Owner(
+    _owner = Owner(
         name = "东洋雪莲",
         face = "https://i2.hdslb.com/bfs/face/4cbf2f66d23a324ecca8d3c07adbcafecfef829b.jpg"
     )

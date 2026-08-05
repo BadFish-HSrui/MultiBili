@@ -28,7 +28,9 @@ abstract class VideosViewModel : ViewModel() {
             try {
                 val result = fetchVideos()
                 if (result.isSuccess) {
-                    _uiState.value = VideosUiState.Success(result.validData.videosList)
+                    _uiState.value = VideosUiState.Success(
+                        result.validData.videosList.distinctBy { it.avid }
+                    )
                     canLoadMore = result.validData.canLoadMore
                 } else {
                     _uiState.value = VideosUiState.Error("[加载错误]: " + result.message)
