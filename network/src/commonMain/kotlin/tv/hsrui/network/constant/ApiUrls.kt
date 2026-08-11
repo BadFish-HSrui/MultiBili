@@ -36,6 +36,7 @@ object ApiUrls {
         const val CREATED_FOLDERS = "x/v3/fav/folder/created/list-all" //创建的收藏夹列表
         const val FOLDER_INFO = "x/v3/fav/folder/info" //收藏夹元数据
         const val FOLDER_CONTENT = "x/v3/fav/resource/list" //收藏夹内容
+        const val REMOVE_RESOURCE = "x/v3/fav/resource/batch-del" //移除收藏夹内容
     }
 
     object Reply {

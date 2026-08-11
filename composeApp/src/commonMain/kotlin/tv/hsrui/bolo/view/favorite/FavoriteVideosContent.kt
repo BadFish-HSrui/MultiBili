@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
 import tv.hsrui.bolo.utils.OnGridBottomReached
+import tv.hsrui.network.feature.favorite.FavoriteVideoCard
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -22,7 +23,8 @@ fun FavoriteVideosContent(
     isLoading: Boolean,
     onLoadMore: () -> Unit,
     onRefresh: () -> Unit,
-    modifier: Modifier = Modifier
+    onRemove: suspend (FavoriteVideoCard) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val gridState = rememberLazyGridState()
 
@@ -72,7 +74,10 @@ fun FavoriteVideosContent(
                         keySelector = { it.avid },
                         gridState = gridState
                     ) { video ->
-                        ShowFavoriteVideoCard(videoInfo = video)
+                        ShowFavoriteVideoCard(
+                            videoInfo = video,
+                            onRemove = { onRemove(video) }
+                        )
                     }
                 }
             }

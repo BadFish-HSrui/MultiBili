@@ -2,6 +2,7 @@ package tv.hsrui.network.feature.video.actions.state
 
 import kotlinx.serialization.Serializable
 
+@Serializable
 data class VideoActionsStateResponse(
     val message: String = "",
     val isLiked: Boolean = false,

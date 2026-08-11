@@ -47,6 +47,14 @@ data class FavoriteFolderContentResponse(
 }
 
 @Serializable
+data class ModifyFavoriteResponse(
+    private val code: Int = -1,
+    val message: String = "",
+) {
+    val isSuccess: Boolean get() = (code == 0)
+}
+
+@Serializable
 data class FavoriteFolderInfoData(
     val id: Long = 0,
     val fid: Long = 0,

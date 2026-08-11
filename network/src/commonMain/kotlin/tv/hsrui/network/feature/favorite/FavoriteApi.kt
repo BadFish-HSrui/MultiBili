@@ -1,8 +1,12 @@
 package tv.hsrui.network.feature.favorite
 
 import io.ktor.client.call.body
+import io.ktor.client.request.forms.FormDataContent
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.Parameters
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -71,7 +75,7 @@ suspend fun fetchFavoriteFolderInfo(mediaId: Long): FavoriteFolderInfoResponse {
 suspend fun fetchFavoriteFolderContent(
     mediaId: Long,
     pageNumber: Int = 1,
-    pageSize: Int = 20
+    pageSize: Int = 20,
 ): FavoriteFolderContentResponse {
     val response = ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.Favorite.FOLDER_CONTENT) {
         parameter("media_id", mediaId)
@@ -80,6 +84,25 @@ suspend fun fetchFavoriteFolderContent(
         parameter("order", "mtime")
         parameter("type", 0)
         parameter("platform", "web")
+    }
+
+    return response.body()
+}
+
+suspend fun removeFavoriteVideo(mediaId: Long, avid: Long): ModifyFavoriteResponse {
+    val loginStorage: LoginStorage = getKoin().get()
+
+    val response = ApiClient.httpClient.post(ApiUrls.BASE + ApiUrls.Favorite.REMOVE_RESOURCE) {
+        setBody(
+            FormDataContent(
+                Parameters.build {
+                    append("resources", "$avid:2")
+                    append("media_id", mediaId.toString())
+                    append("platform", "web")
+                    append("csrf", loginStorage.cookies.csrf)
+                }
+            )
+        )
     }
 
     return response.body()

@@ -132,4 +132,11 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
             }
         }
     }
+
+    fun removeItem(id: Long) {
+        val currentState = _uiState.value as? FavoriteVideosUiState.Success ?: return
+        _uiState.value = currentState.copy(
+            videos = currentState.videos.filter { it.avid != id }
+        )
+    }
 }
