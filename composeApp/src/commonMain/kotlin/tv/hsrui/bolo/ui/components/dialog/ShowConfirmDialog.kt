@@ -22,35 +22,22 @@ import tv.hsrui.bolo.ui.theme.BoloShapes
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShowConfirmDialog(
-    title: @Composable () -> Unit,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
-    icon: @Composable (() -> Unit)? = null,
-    text: String = "",
+    content: @Composable () -> Unit,
 ) {
     BasicAlertDialog(
-        onDismissRequest = onCancel
+        onDismissRequest = onCancel,
     ) {
         Surface(
             modifier = Modifier.wrapContentSize(),
-            shape = BoloShapes.InfoCard.Default
+            shape = BoloShapes.InfoCard.Default,
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 20.dp).padding(top = 20.dp, bottom = 8.dp)
+                modifier = Modifier.padding(horizontal = 20.dp).padding(top = 20.dp, bottom = 8.dp),
             ) {
-                if (icon != null) icon()
-
-                title()
-
-                if (text.isNotEmpty()){
-                    Text(
-                        text = text,
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F)
-                    )
-                }
+                content()
 
                 Row {
                     OutlinedButton(onClick = onCancel) {
@@ -62,6 +49,33 @@ fun ShowConfirmDialog(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ShowConfirmDialog(
+    title: @Composable () -> Unit,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+    icon: @Composable (() -> Unit)? = null,
+    text: String = "",
+) {
+    ShowConfirmDialog(
+        onCancel = onCancel,
+        onConfirm = onConfirm,
+    ) {
+        if (icon != null) icon()
+
+        title()
+
+        if (text.isNotEmpty()) {
+            Text(
+                text = text,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
+            )
         }
     }
 }
