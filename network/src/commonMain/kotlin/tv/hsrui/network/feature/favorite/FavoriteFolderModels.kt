@@ -62,11 +62,13 @@ data class FavoriteFolderInfoData(
     @SerialName("attr") private val attributeBits: Int = 0,
     val title: String = "",
     @SerialName("cover") private val _cover: String = "",
+    @SerialName("fav_state") private val favoriteStateCode: Int = 0,
     @SerialName("media_count") val mediaCount: Int = 0
 ) {
     val coverUrl get() = _cover.toHttpsUrl()
     val isPrivate: Boolean get() = (attributeBits and 1) != 0
     val isDefault: Boolean get() = (attributeBits and 2) == 0
+    val containsTargetVideo: Boolean get() = favoriteStateCode == 1
 }
 
 @Serializable

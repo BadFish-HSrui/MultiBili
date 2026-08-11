@@ -19,7 +19,7 @@ import tv.hsrui.network.client.ApiClient
 import tv.hsrui.network.constant.ApiUrls
 import tv.hsrui.network.login.storage.LoginStorage
 
-suspend fun fetchCreatedFavoriteFolders(): FavoriteFolderListResponse {
+suspend fun fetchMyFavoriteFolders(targetAvid: Long? = null): FavoriteFolderListResponse {
     val loginStorage: LoginStorage = getKoin().get()
     if (!loginStorage.isLoggedIn) {
         return FavoriteFolderListResponse(message = "账号未登录")
@@ -27,9 +27,13 @@ suspend fun fetchCreatedFavoriteFolders(): FavoriteFolderListResponse {
 
     val response = ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.Favorite.CREATED_FOLDERS) {
         parameter("up_mid", loginStorage.cookies.dedeUserID)
+        if (targetAvid != null) {
+            parameter("type", 2)
+            parameter("rid", targetAvid)
+        }
     }
     val folderListResponse: FavoriteFolderListResponse = response.body()
-    if (!folderListResponse.isSuccess) {
+    if (!folderListResponse.isSuccess || targetAvid != null) {
         return folderListResponse
     }
 
@@ -98,6 +102,35 @@ suspend fun removeFavoriteVideo(mediaId: Long, avid: Long): ModifyFavoriteRespon
                 Parameters.build {
                     append("resources", "$avid:2")
                     append("media_id", mediaId.toString())
+                    append("platform", "web")
+                    append("csrf", loginStorage.cookies.csrf)
+                }
+            )
+        )
+    }
+
+    return response.body()
+}
+
+suspend fun modifyVideoFavoriteFolders(
+    avid: Long,
+    addMediaIds: Collection<Long>,
+    removeMediaIds: Collection<Long>,
+): ModifyFavoriteResponse {
+    val loginStorage: LoginStorage = getKoin().get()
+
+    val response = ApiClient.httpClient.post(ApiUrls.BASE + ApiUrls.Favorite.MODIFY_RESOURCE) {
+        setBody(
+            FormDataContent(
+                Parameters.build {
+                    append("rid", avid.toString())
+                    append("type", "2")
+                    if (addMediaIds.isNotEmpty()) {
+                        append("add_media_ids", addMediaIds.joinToString(","))
+                    }
+                    if (removeMediaIds.isNotEmpty()) {
+                        append("del_media_ids", removeMediaIds.joinToString(","))
+                    }
                     append("platform", "web")
                     append("csrf", loginStorage.cookies.csrf)
                 }

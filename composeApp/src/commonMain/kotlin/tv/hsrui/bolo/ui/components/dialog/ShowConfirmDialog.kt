@@ -24,10 +24,14 @@ import tv.hsrui.bolo.ui.theme.BoloShapes
 fun ShowConfirmDialog(
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
+    cancelEnabled: Boolean = true,
+    confirmEnabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     BasicAlertDialog(
-        onDismissRequest = onCancel,
+        onDismissRequest = {
+            if (cancelEnabled) onCancel()
+        },
     ) {
         Surface(
             modifier = Modifier.wrapContentSize(),
@@ -40,11 +44,17 @@ fun ShowConfirmDialog(
                 content()
 
                 Row {
-                    OutlinedButton(onClick = onCancel) {
+                    OutlinedButton(
+                        onClick = onCancel,
+                        enabled = cancelEnabled,
+                    ) {
                         Text("取消")
                     }
                     Spacer(Modifier.padding(horizontal = 4.dp))
-                    OutlinedButton(onClick = onConfirm) {
+                    OutlinedButton(
+                        onClick = onConfirm,
+                        enabled = confirmEnabled,
+                    ) {
                         Text("确认")
                     }
                 }

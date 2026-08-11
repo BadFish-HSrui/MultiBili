@@ -7,7 +7,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import tv.hsrui.network.feature.favorite.fetchCreatedFavoriteFolders
+import tv.hsrui.network.feature.favorite.fetchMyFavoriteFolders
 
 class FavoriteFoldersViewModel : ViewModel() {
     private val _uiState = MutableStateFlow<FavoriteFoldersUiState>(FavoriteFoldersUiState.Loading)
@@ -23,7 +23,7 @@ class FavoriteFoldersViewModel : ViewModel() {
         refreshJob = viewModelScope.launch {
             _uiState.value = FavoriteFoldersUiState.Loading
             try {
-                val result = fetchCreatedFavoriteFolders()
+                val result = fetchMyFavoriteFolders()
                 _uiState.value = if (result.isSuccess) {
                     FavoriteFoldersUiState.Success(result.folders)
                 } else {
