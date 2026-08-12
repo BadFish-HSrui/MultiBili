@@ -1,10 +1,13 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import tv.hsrui.bolo.buildlogic.ResolvedVersionMetadata
 
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
 }
+
+val appVersionMetadata = rootProject.extra["appVersionMetadata"] as ResolvedVersionMetadata
 
 kotlin {
     compilerOptions {
@@ -22,8 +25,8 @@ android {
         applicationId = "tv.hsrui.bolo"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = libs.versions.appVersion.get()
+        versionCode = appVersionMetadata.buildNumber
+        versionName = appVersionMetadata.appDisplayVersion
     }
     packaging {
         resources {

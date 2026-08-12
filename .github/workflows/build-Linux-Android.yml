@@ -1,36 +1,85 @@
-name: 构建Linux和Android版本
+name: 构建 Linux 和 Android 版本
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      clean-cache:
-        description: '清理Gradle缓存'
-        required: false
+      clean_cache:
+        required: true
         type: boolean
-        default: false
+      source_sha:
+        required: true
+        type: string
+      app_version_core:
+        required: true
+        type: string
+      app_release_channel:
+        required: true
+        type: string
+      app_prerelease_number:
+        required: false
+        type: string
+        default: ''
+      app_release_version:
+        required: true
+        type: string
+      app_display_version:
+        required: true
+        type: string
+      app_build_number:
+        required: true
+        type: string
+      app_commit_sha:
+        required: true
+        type: string
+      app_commit_sha7:
+        required: true
+        type: string
+      app_commit_sha12:
+        required: true
+        type: string
+      app_artifact_version:
+        required: true
+        type: string
+      app_git_dirty:
+        required: true
+        type: string
+      app_build_origin:
+        required: true
+        type: string
+      app_official_build:
+        required: true
+        type: string
+      metadata_artifact_name:
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ORG_GRADLE_PROJECT_appBuildNumber: ${{ inputs.app_build_number }}
+      ORG_GRADLE_PROJECT_appCommitSha: ${{ inputs.app_commit_sha }}
+      ORG_GRADLE_PROJECT_appGitDirty: ${{ inputs.app_git_dirty }}
+      ORG_GRADLE_PROJECT_appBuildOrigin: ${{ inputs.app_build_origin }}
+      ORG_GRADLE_PROJECT_appOfficialBuild: ${{ inputs.app_official_build }}
     steps:
-      - name: 检出代码
+      - name: 检出精确源码
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
-#      - name: 获取compileSdk
-#        id: android-versions
-#        run: |
-#          TOML_FILE="gradle/libs.versions.toml"
-#          COMPILE_SDK=$(grep -E '^\s*android-compileSdk\s*=' "$TOML_FILE" | sed -E 's/.*=\s*"([^"]+)".*/\1/')
-#          echo "compile-sdk=$COMPILE_SDK" >> $GITHUB_OUTPUT
-#          echo "compileSdk = $COMPILE_SDK"
-
-      - name: 配置JDK
+      - name: 配置 JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: zulu
           java-version: '17'
 
-      - name: 安装安卓SDK
+      - name: 安装 Android SDK
         uses: android-actions/setup-android@v4
 
       - name: 配置缓存
@@ -44,53 +93,266 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: 清理构建缓存（可选）
-        if: ${{ github.event.inputs.clean-cache == 'true' }}
+        if: ${{ inputs.clean_cache }}
         run: ./gradlew clean
 
-      - name: 安装rpm
+      - name: 复核源码与版本元数据
+        shell: bash
+        env:
+          EXPECTED_APP_VERSION_CORE: ${{ inputs.app_version_core }}
+          EXPECTED_APP_RELEASE_CHANNEL: ${{ inputs.app_release_channel }}
+          EXPECTED_APP_PRERELEASE_NUMBER: ${{ inputs.app_prerelease_number }}
+          EXPECTED_APP_RELEASE_VERSION: ${{ inputs.app_release_version }}
+          EXPECTED_APP_DISPLAY_VERSION: ${{ inputs.app_display_version }}
+          EXPECTED_APP_BUILD_NUMBER: ${{ inputs.app_build_number }}
+          EXPECTED_APP_COMMIT_SHA: ${{ inputs.app_commit_sha }}
+          EXPECTED_APP_COMMIT_SHA7: ${{ inputs.app_commit_sha7 }}
+          EXPECTED_APP_COMMIT_SHA12: ${{ inputs.app_commit_sha12 }}
+          EXPECTED_APP_ARTIFACT_VERSION: ${{ inputs.app_artifact_version }}
+          EXPECTED_APP_GIT_DIRTY: ${{ inputs.app_git_dirty }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$EXPECTED_APP_COMMIT_SHA" || "$actual_sha" != "${{ inputs.source_sha }}" ]]; then
+            echo "检出提交与统一元数据不一致" >&2
+            exit 1
+          fi
+          if [[ "$(git rev-list --count HEAD)" != "$EXPECTED_APP_BUILD_NUMBER" ]]; then
+            echo "完整历史计算出的构建号与统一元数据不一致" >&2
+            exit 1
+          fi
+
+          metadata="$(./gradlew -q printAppVersionMetadata)"
+          verify_metadata() {
+            local key="$1"
+            local expected="$2"
+            local count
+            local actual
+            count="$(printf '%s\n' "$metadata" | awk -v key="$key" 'index($0, key "=") == 1 { count++ } END { print count + 0 }')"
+            if [[ "$count" != '1' ]]; then
+              echo "版本元数据字段 $key 缺失或重复" >&2
+              exit 1
+            fi
+            actual="$(printf '%s\n' "$metadata" | awk -v key="$key" 'index($0, key "=") == 1 { print substr($0, length(key) + 2) }')"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "版本元数据字段 $key 不一致：expected=$expected actual=$actual" >&2
+              exit 1
+            fi
+          }
+
+          verify_metadata APP_VERSION_CORE "$EXPECTED_APP_VERSION_CORE"
+          verify_metadata APP_RELEASE_CHANNEL "$EXPECTED_APP_RELEASE_CHANNEL"
+          verify_metadata APP_PRERELEASE_NUMBER "$EXPECTED_APP_PRERELEASE_NUMBER"
+          verify_metadata APP_RELEASE_VERSION "$EXPECTED_APP_RELEASE_VERSION"
+          verify_metadata APP_DISPLAY_VERSION "$EXPECTED_APP_DISPLAY_VERSION"
+          verify_metadata APP_BUILD_NUMBER "$EXPECTED_APP_BUILD_NUMBER"
+          verify_metadata APP_COMMIT_SHA "$EXPECTED_APP_COMMIT_SHA"
+          verify_metadata APP_COMMIT_SHA7 "$EXPECTED_APP_COMMIT_SHA7"
+          verify_metadata APP_COMMIT_SHA12 "$EXPECTED_APP_COMMIT_SHA12"
+          verify_metadata APP_ARTIFACT_VERSION "$EXPECTED_APP_ARTIFACT_VERSION"
+          verify_metadata APP_GIT_DIRTY "$EXPECTED_APP_GIT_DIRTY"
+
+      - name: 安装 RPM 打包工具
         run: sudo apt-get update && sudo apt-get install -y rpm
 
-      - name: 编译
+      - name: 编译 Linux 和 Android 产物
         run: |
-          chmod +x ./gradlew
+          set -euo pipefail
           ./gradlew \
             :composeApp:packageDeb \
             :composeApp:packageRpm \
             :androidApp:assembleRelease
 
+      - name: 确认构建未修改受控文件
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: 下载统一构建元数据
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.metadata_artifact_name }}
+          path: .release-metadata
+
+      - name: 收集并校验构建产物
+        id: collect
+        shell: bash
+        env:
+          ARTIFACT_VERSION: ${{ inputs.app_artifact_version }}
+          VERSION_CORE: ${{ inputs.app_version_core }}
+          DISPLAY_VERSION: ${{ inputs.app_display_version }}
+          BUILD_NUMBER: ${{ inputs.app_build_number }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          deb_files=(composeApp/build/compose/binaries/main/deb/*.deb)
+          rpm_files=(composeApp/build/compose/binaries/main/rpm/*.rpm)
+          apk_files=(androidApp/build/outputs/apk/release/*.apk)
+          if [[ "${#deb_files[@]}" -ne 1 || "${#rpm_files[@]}" -ne 1 || "${#apk_files[@]}" -ne 1 ]]; then
+            echo "期望恰好一个 DEB、RPM 和 APK，实际为 ${#deb_files[@]}/${#rpm_files[@]}/${#apk_files[@]}" >&2
+            exit 1
+          fi
+          if [[ ! -f .release-metadata/build-metadata.json ]]; then
+            echo '缺少统一 build-metadata.json' >&2
+            exit 1
+          fi
+
+          case "$(uname -m)" in
+            x86_64|amd64)
+              desktop_arch='x64'
+              ;;
+            arm64|aarch64)
+              desktop_arch='arm64'
+              ;;
+            *)
+              echo "不支持的 Linux runner 架构：$(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+          echo "desktop_arch=$desktop_arch" >> "$GITHUB_OUTPUT"
+
+          deb_version="$(dpkg-deb --field "${deb_files[0]}" Version)"
+          rpm_version="$(rpm -qp --queryformat '%{VERSION}' "${rpm_files[0]}")"
+          rpm_release="$(rpm -qp --queryformat '%{RELEASE}' "${rpm_files[0]}")"
+          if [[ "$deb_version" != "${VERSION_CORE}-${BUILD_NUMBER}" ]]; then
+            echo "DEB Version 不一致：expected=${VERSION_CORE}-${BUILD_NUMBER} actual=$deb_version" >&2
+            exit 1
+          fi
+          if [[ "$rpm_version" != "$VERSION_CORE" || "$rpm_release" != "$BUILD_NUMBER" ]]; then
+            echo "RPM Version/Release 不一致：expected=$VERSION_CORE/$BUILD_NUMBER actual=$rpm_version/$rpm_release" >&2
+            exit 1
+          fi
+
+          if command -v apkanalyzer >/dev/null 2>&1; then
+            apkanalyzer_bin="$(command -v apkanalyzer)"
+          else
+            apkanalyzer_candidates=("${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"/cmdline-tools/*/bin/apkanalyzer)
+            if [[ "${#apkanalyzer_candidates[@]}" -eq 0 ]]; then
+              echo '找不到 apkanalyzer，无法反查 APK 原生版本' >&2
+              exit 1
+            fi
+            apkanalyzer_bin="${apkanalyzer_candidates[$((${#apkanalyzer_candidates[@]} - 1))]}"
+          fi
+          apk_version_name="$("$apkanalyzer_bin" manifest version-name "${apk_files[0]}")"
+          apk_version_code="$("$apkanalyzer_bin" manifest version-code "${apk_files[0]}")"
+          if [[ "$apk_version_name" != "$DISPLAY_VERSION" || "$apk_version_code" != "$BUILD_NUMBER" ]]; then
+            echo "APK versionName/versionCode 不一致：expected=$DISPLAY_VERSION/$BUILD_NUMBER actual=$apk_version_name/$apk_version_code" >&2
+            exit 1
+          fi
+
+          mkdir -p staging/linux staging/android
+          deb_target="staging/linux/multi-bili-linux-${ARTIFACT_VERSION}-${desktop_arch}.deb"
+          rpm_target="staging/linux/multi-bili-linux-${ARTIFACT_VERSION}-${desktop_arch}.rpm"
+          apk_target="staging/android/multi-bili-android-${ARTIFACT_VERSION}-universal.apk"
+          cp "${deb_files[0]}" "$deb_target"
+          cp "${rpm_files[0]}" "$rpm_target"
+          cp "${apk_files[0]}" "$apk_target"
+          cp .release-metadata/build-metadata.json staging/linux/
+          cp .release-metadata/build-metadata.json staging/android/
+
+          write_native_version_metadata() {
+            local file="$1"
+            local native_version="$2"
+            local native_build_version="$3"
+            local native_version_fields="$4"
+            jq -n \
+              --arg fileName "$(basename "$file")" \
+              --arg nativeVersion "$native_version" \
+              --arg nativeBuildVersion "$native_build_version" \
+              --argjson nativeVersionFields "$native_version_fields" \
+              '{fileName: $fileName, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+              > "$file.native-version.json"
+          }
+          deb_fields="$(jq -n --arg Version "$deb_version" '{Version: $Version}')"
+          rpm_fields="$(jq -n --arg Version "$rpm_version" --arg Release "$rpm_release" '{Version: $Version, Release: $Release}')"
+          apk_fields="$(jq -n --arg versionName "$apk_version_name" --arg versionCode "$apk_version_code" '{versionName: $versionName, versionCode: $versionCode}')"
+          write_native_version_metadata "$deb_target" "$deb_version" "$BUILD_NUMBER" "$deb_fields"
+          write_native_version_metadata "$rpm_target" "${rpm_version}-${rpm_release}" "$rpm_release" "$rpm_fields"
+          write_native_version_metadata "$apk_target" "$apk_version_name" "$apk_version_code" "$apk_fields"
+
+          for file in staging/linux/*.deb staging/linux/*.rpm staging/android/*.apk; do
+            directory="$(dirname "$file")"
+            filename="$(basename "$file")"
+            (cd "$directory" && sha256sum "$filename" > "$filename.sha256")
+          done
+
+          write_group_build_metadata() {
+            local output="$1"
+            local platform="$2"
+            local arch="$3"
+            shift 3
+            local expected_count="$#"
+            local group_ndjson
+            local group_json
+            group_ndjson="$(mktemp)"
+            group_json="$(mktemp)"
+            : > "$group_ndjson"
+            for file in "$@"; do
+              local filename
+              local hash
+              local size_bytes
+              local native_version
+              local native_build_version
+              local native_version_fields
+              filename="$(basename "$file")"
+              hash="$(sha256sum "$file" | awk '{ print $1 }')"
+              size_bytes="$(stat --printf='%s' "$file")"
+              native_version="$(jq -r '.nativeVersion' "$file.native-version.json")"
+              native_build_version="$(jq -r '.nativeBuildVersion' "$file.native-version.json")"
+              native_version_fields="$(jq -c '.nativeVersionFields' "$file.native-version.json")"
+              jq -n \
+                --arg platform "$platform" \
+                --arg arch "$arch" \
+                --arg fileName "$filename" \
+                --argjson sizeBytes "$size_bytes" \
+                --arg sha256 "$hash" \
+                --arg signingStatus 'unsigned' \
+                --arg nativeVersion "$native_version" \
+                --arg nativeBuildVersion "$native_build_version" \
+                --argjson nativeVersionFields "$native_version_fields" \
+                '{platform: $platform, arch: $arch, fileName: $fileName, sizeBytes: $sizeBytes, sha256: $sha256, signingStatus: $signingStatus, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+                >> "$group_ndjson"
+            done
+            jq -s '.' "$group_ndjson" > "$group_json"
+            jq --slurpfile artifacts "$group_json" '. + {artifacts: $artifacts[0]}' \
+              .release-metadata/build-metadata.json > "$output"
+            jq -e \
+              --argjson expectedCount "$expected_count" \
+              --arg platform "$platform" \
+              --arg arch "$arch" '
+              (.artifacts | type == "array" and length == $expectedCount) and
+              all(.artifacts[];
+                .platform == $platform and
+                .arch == $arch and
+                (.fileName | type == "string" and length > 0) and
+                (.sizeBytes | type == "number" and . > 0) and
+                (.sha256 | test("^[0-9a-f]{64}$")) and
+                .signingStatus == "unsigned" and
+                (.nativeVersion | type == "string" and length > 0) and
+                (.nativeBuildVersion | type == "string" and length > 0) and
+                (.nativeVersionFields | type == "object" and length > 0)
+              )
+            ' "$output" > /dev/null
+          }
+          write_group_build_metadata staging/linux/build-metadata.json linux "$desktop_arch" "$deb_target" "$rpm_target"
+          write_group_build_metadata staging/android/build-metadata.json android universal "$apk_target"
+
+      - name: 上传 Linux 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-bili-linux-${{ inputs.app_artifact_version }}-${{ steps.collect.outputs.desktop_arch }}
+          path: staging/linux/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: 上传 Android 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-bili-android-${{ inputs.app_artifact_version }}-universal
+          path: staging/android/
+          if-no-files-found: error
+          retention-days: 7
+
       - name: 停止 Gradle Daemon
         if: always()
         run: ./gradlew --stop
-
-      - name: 收集构建产物
-        run: |
-          mkdir -p staging/linux-deb staging/linux-rpm staging/android
-
-          if [ -d "composeApp/build/compose/binaries/main/deb" ]; then
-            cp composeApp/build/compose/binaries/main/deb/*.deb staging/linux-deb/ 2>/dev/null || true
-          fi
-
-          if [ -d "composeApp/build/compose/binaries/main/rpm" ]; then
-            cp composeApp/build/compose/binaries/main/rpm/*.rpm staging/linux-rpm/ 2>/dev/null || true
-          fi
-
-          if [ -d "androidApp/build/outputs/apk/release" ]; then
-            cp androidApp/build/outputs/apk/release/*.apk staging/android/ 2>/dev/null || true
-          fi
-
-      - name: 上传Linux构建产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: KMP-Build-Linux
-          path: |
-            staging/linux-deb/*.deb
-            staging/linux-rpm/*.rpm
-          retention-days: 7
-
-      - name: 上传Android构建产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: KMP-Build-Android
-          path: |
-            staging/android/*.apk
-          retention-days: 7

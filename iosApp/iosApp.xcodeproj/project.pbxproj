@@ -101,6 +101,7 @@
 			buildConfigurationList = C41C09742865EF1D5BDDA31D /* Build configuration list for PBXNativeTarget "iosApp" */;
 			buildPhases = (
 				5E3165FA01A12D2EE561883E /* [CP] Check Pods Manifest.lock */,
+				A1B2C3D4E5F60718293A4B5C /* Verify generated version metadata */,
 				B25F0AB2715274CBAD5F6E05 /* Sources */,
 				76E613361B5B25E403A82FCA /* Frameworks */,
 				9085D3860C70E480D374E003 /* Resources */,
@@ -184,6 +185,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		A1B2C3D4E5F60718293A4B5C /* Verify generated version metadata */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../.git/HEAD",
+				"$(SRCROOT)/Configuration/GeneratedVersion.xcconfig",
+			);
+			name = "Verify generated version metadata";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nREPO_ROOT=\"${SRCROOT}/..\"\nGENERATED_VERSION=\"${SRCROOT}/Configuration/GeneratedVersion.xcconfig\"\n\nif [ ! -f \"${GENERATED_VERSION}\" ]; then\n    echo \"error: Missing GeneratedVersion.xcconfig. Run ./gradlew writeIosVersionXcconfig from the repository root.\" >&2\n    exit 1\nfi\n\nif [ \"$(git -C \"${REPO_ROOT}\" rev-parse --is-shallow-repository)\" = \"true\" ]; then\n    echo \"error: iOS version metadata requires a complete Git history.\" >&2\n    exit 1\nfi\n\nEXPECTED_BUILD_NUMBER=$(git -C \"${REPO_ROOT}\" rev-list --count HEAD)\nEXPECTED_COMMIT_SHA=$(git -C \"${REPO_ROOT}\" rev-parse HEAD)\nCONFIG_BUILD_NUMBER=$(sed -n 's/^[[:space:]]*APP_BUILD_NUMBER[[:space:]]*=[[:space:]]*//p' \"${GENERATED_VERSION}\" | tr -d '[:space:]')\nCONFIG_COMMIT_SHA=$(sed -n 's/^[[:space:]]*APP_COMMIT_SHA[[:space:]]*=[[:space:]]*//p' \"${GENERATED_VERSION}\" | tr -d '[:space:]')\n\nif [ \"${CONFIG_BUILD_NUMBER}\" != \"${EXPECTED_BUILD_NUMBER}\" ] || [ \"${CONFIG_COMMIT_SHA}\" != \"${EXPECTED_COMMIT_SHA}\" ]; then\n    echo \"error: Generated iOS version metadata is stale. Run ./gradlew writeIosVersionXcconfig from the repository root.\" >&2\n    exit 1\nfi\n";
 			showEnvVarsInLog = 0;
 		};
 		DBBD61CC8B7A8C66A62CAE55 /* [CP] Copy Pods Resources */ = {

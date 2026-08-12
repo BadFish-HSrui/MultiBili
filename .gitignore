@@ -24,6 +24,7 @@ node_modules/
 iosApp/Pods/
 iosApp/iosApp.xcworkspace/
 composeApp/composeApp.podspec
+iosApp/Configuration/GeneratedVersion.xcconfig
 
 # Local debug content
 /composeApp/src/commonMain/kotlin/tv/hsrui/bolo/debug/debugContent/

@@ -1,25 +1,82 @@
 name: 构建 macOS 和 iOS 版本
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      clean-cache:
-        description: '清理 Gradle 缓存'
-        required: false
+      clean_cache:
+        required: true
         type: boolean
-        default: false
+      source_sha:
+        required: true
+        type: string
+      app_version_core:
+        required: true
+        type: string
+      app_release_channel:
+        required: true
+        type: string
+      app_prerelease_number:
+        required: false
+        type: string
+        default: ''
+      app_release_version:
+        required: true
+        type: string
+      app_display_version:
+        required: true
+        type: string
+      app_build_number:
+        required: true
+        type: string
+      app_commit_sha:
+        required: true
+        type: string
+      app_commit_sha7:
+        required: true
+        type: string
+      app_commit_sha12:
+        required: true
+        type: string
+      app_artifact_version:
+        required: true
+        type: string
+      app_git_dirty:
+        required: true
+        type: string
+      app_build_origin:
+        required: true
+        type: string
+      app_official_build:
+        required: true
+        type: string
+      metadata_artifact_name:
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: macos-latest
+    env:
+      ORG_GRADLE_PROJECT_appBuildNumber: ${{ inputs.app_build_number }}
+      ORG_GRADLE_PROJECT_appCommitSha: ${{ inputs.app_commit_sha }}
+      ORG_GRADLE_PROJECT_appGitDirty: ${{ inputs.app_git_dirty }}
+      ORG_GRADLE_PROJECT_appBuildOrigin: ${{ inputs.app_build_origin }}
+      ORG_GRADLE_PROJECT_appOfficialBuild: ${{ inputs.app_official_build }}
     steps:
-      - name: 检出代码
+      - name: 检出精确源码
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: 配置 JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: zulu
           java-version: '17'
 
       - name: 切换 Xcode 26.3
@@ -37,19 +94,76 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: 清理构建缓存（可选）
-        if: ${{ github.event.inputs.clean-cache == 'true' }}
+        if: ${{ inputs.clean_cache }}
         run: ./gradlew clean
 
-      - name: 编译
+      - name: 复核源码与版本元数据
+        shell: bash
+        env:
+          EXPECTED_APP_VERSION_CORE: ${{ inputs.app_version_core }}
+          EXPECTED_APP_RELEASE_CHANNEL: ${{ inputs.app_release_channel }}
+          EXPECTED_APP_PRERELEASE_NUMBER: ${{ inputs.app_prerelease_number }}
+          EXPECTED_APP_RELEASE_VERSION: ${{ inputs.app_release_version }}
+          EXPECTED_APP_DISPLAY_VERSION: ${{ inputs.app_display_version }}
+          EXPECTED_APP_BUILD_NUMBER: ${{ inputs.app_build_number }}
+          EXPECTED_APP_COMMIT_SHA: ${{ inputs.app_commit_sha }}
+          EXPECTED_APP_COMMIT_SHA7: ${{ inputs.app_commit_sha7 }}
+          EXPECTED_APP_COMMIT_SHA12: ${{ inputs.app_commit_sha12 }}
+          EXPECTED_APP_ARTIFACT_VERSION: ${{ inputs.app_artifact_version }}
+          EXPECTED_APP_GIT_DIRTY: ${{ inputs.app_git_dirty }}
         run: |
-          chmod +x ./gradlew
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$EXPECTED_APP_COMMIT_SHA" || "$actual_sha" != "${{ inputs.source_sha }}" ]]; then
+            echo "检出提交与统一元数据不一致" >&2
+            exit 1
+          fi
+          if [[ "$(git rev-list --count HEAD)" != "$EXPECTED_APP_BUILD_NUMBER" ]]; then
+            echo "完整历史计算出的构建号与统一元数据不一致" >&2
+            exit 1
+          fi
+
+          metadata="$(./gradlew -q printAppVersionMetadata)"
+          verify_metadata() {
+            local key="$1"
+            local expected="$2"
+            local count
+            local actual
+            count="$(printf '%s\n' "$metadata" | awk -v key="$key" 'index($0, key "=") == 1 { count++ } END { print count + 0 }')"
+            if [[ "$count" != '1' ]]; then
+              echo "版本元数据字段 $key 缺失或重复" >&2
+              exit 1
+            fi
+            actual="$(printf '%s\n' "$metadata" | awk -v key="$key" 'index($0, key "=") == 1 { print substr($0, length(key) + 2) }')"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "版本元数据字段 $key 不一致：expected=$expected actual=$actual" >&2
+              exit 1
+            fi
+          }
+
+          verify_metadata APP_VERSION_CORE "$EXPECTED_APP_VERSION_CORE"
+          verify_metadata APP_RELEASE_CHANNEL "$EXPECTED_APP_RELEASE_CHANNEL"
+          verify_metadata APP_PRERELEASE_NUMBER "$EXPECTED_APP_PRERELEASE_NUMBER"
+          verify_metadata APP_RELEASE_VERSION "$EXPECTED_APP_RELEASE_VERSION"
+          verify_metadata APP_DISPLAY_VERSION "$EXPECTED_APP_DISPLAY_VERSION"
+          verify_metadata APP_BUILD_NUMBER "$EXPECTED_APP_BUILD_NUMBER"
+          verify_metadata APP_COMMIT_SHA "$EXPECTED_APP_COMMIT_SHA"
+          verify_metadata APP_COMMIT_SHA7 "$EXPECTED_APP_COMMIT_SHA7"
+          verify_metadata APP_COMMIT_SHA12 "$EXPECTED_APP_COMMIT_SHA12"
+          verify_metadata APP_ARTIFACT_VERSION "$EXPECTED_APP_ARTIFACT_VERSION"
+          verify_metadata APP_GIT_DIRTY "$EXPECTED_APP_GIT_DIRTY"
+
+      - name: 编译 macOS 与 CocoaPods 产物
+        run: |
+          set -euo pipefail
           ./gradlew \
             :composeApp:packageDmg \
             :composeApp:podInstall
 
       - name: 编译无签名 iOS App
+        working-directory: iosApp
         run: |
-          cd iosApp
+          set -euo pipefail
           xcodebuild build \
             -workspace iosApp.xcworkspace \
             -scheme iosApp \
@@ -61,37 +175,204 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-      - name: 打包为无签名 IPA
+      - name: 下载统一构建元数据
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.metadata_artifact_name }}
+          path: .release-metadata
+
+      - name: 收集并校验构建产物
+        id: collect
+        shell: bash
+        env:
+          ARTIFACT_VERSION: ${{ inputs.app_artifact_version }}
+          VERSION_CORE: ${{ inputs.app_version_core }}
+          BUILD_NUMBER: ${{ inputs.app_build_number }}
         run: |
-          mkdir -p staging/ios
-          APP_PATH=$(find iosApp/build/Build/Products/Release-iphoneos -name "*.app" -type d | head -1)
-          mkdir -p Payload
-          cp -r "$APP_PATH" Payload/
-          zip -r staging/ios/iosApp-unsigned.ipa Payload
-          rm -rf Payload
-
-      - name: 停止 Gradle Daemon
-        if: always()
-        run: ./gradlew --stop
-
-      - name: 收集构建产物
-        run: |
-          mkdir -p staging/macos staging/ios
-
-          if [ -d "composeApp/build/compose/binaries/main/dmg" ]; then
-            cp composeApp/build/compose/binaries/main/dmg/*.dmg staging/macos/
+          set -euo pipefail
+          shopt -s nullglob
+          dmg_files=(composeApp/build/compose/binaries/main/dmg/*.dmg)
+          app_files=(iosApp/build/Build/Products/Release-iphoneos/*.app)
+          if [[ "${#dmg_files[@]}" -ne 1 || "${#app_files[@]}" -ne 1 ]]; then
+            echo "期望恰好一个 DMG 和 iOS App，实际为 ${#dmg_files[@]}/${#app_files[@]}" >&2
+            exit 1
           fi
+          if [[ ! -f .release-metadata/build-metadata.json ]]; then
+            echo '缺少统一 build-metadata.json' >&2
+            exit 1
+          fi
+
+          case "$(uname -m)" in
+            x86_64|amd64)
+              desktop_arch='x64'
+              ;;
+            arm64|aarch64)
+              desktop_arch='arm64'
+              ;;
+            *)
+              echo "不支持的 macOS runner 架构：$(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+          echo "desktop_arch=$desktop_arch" >> "$GITHUB_OUTPUT"
+
+          mkdir -p staging/macos staging/ios
+          dmg_target="staging/macos/multi-bili-macos-${ARTIFACT_VERSION}-${desktop_arch}.dmg"
+          ipa_target="staging/ios/multi-bili-ios-${ARTIFACT_VERSION}-arm64.ipa"
+          cp "${dmg_files[0]}" "$dmg_target"
+          cp .release-metadata/build-metadata.json staging/macos/
+
+          ipa_root="$(mktemp -d)"
+          mkdir -p "$ipa_root/Payload"
+          cp -R "${app_files[0]}" "$ipa_root/Payload/"
+          (cd "$ipa_root" && ditto -c -k --sequesterRsrc --keepParent Payload "$GITHUB_WORKSPACE/$ipa_target")
+          cp .release-metadata/build-metadata.json staging/ios/
+
+          dmg_mount="$(mktemp -d)"
+          dmg_attached='false'
+          cleanup_dmg() {
+            if [[ "$dmg_attached" == 'true' ]]; then
+              hdiutil detach -quiet "$dmg_mount"
+            fi
+          }
+          trap cleanup_dmg EXIT
+          hdiutil attach -quiet -readonly -nobrowse -mountpoint "$dmg_mount" "$dmg_target"
+          dmg_attached='true'
+          dmg_apps=("$dmg_mount"/*.app)
+          if [[ "${#dmg_apps[@]}" -ne 1 || ! -f "${dmg_apps[0]}/Contents/Info.plist" ]]; then
+            echo "DMG 中期望恰好一个带 Info.plist 的 App，实际为 ${#dmg_apps[@]}" >&2
+            exit 1
+          fi
+          dmg_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${dmg_apps[0]}/Contents/Info.plist")"
+          dmg_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${dmg_apps[0]}/Contents/Info.plist")"
+          hdiutil detach -quiet "$dmg_mount"
+          dmg_attached='false'
+          trap - EXIT
+
+          ipa_inspect="$(mktemp -d)"
+          ditto -x -k "$ipa_target" "$ipa_inspect"
+          ipa_apps=("$ipa_inspect"/Payload/*.app)
+          if [[ "${#ipa_apps[@]}" -ne 1 || ! -f "${ipa_apps[0]}/Info.plist" ]]; then
+            echo "IPA 中期望恰好一个带 Info.plist 的 App，实际为 ${#ipa_apps[@]}" >&2
+            exit 1
+          fi
+          ios_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${ipa_apps[0]}/Info.plist")"
+          ios_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${ipa_apps[0]}/Info.plist")"
+          if [[ "$dmg_version" != "$VERSION_CORE" || "$dmg_build" != "$BUILD_NUMBER" ]]; then
+            echo "DMG 内 App 的 CFBundleShortVersionString/CFBundleVersion 不一致：expected=$VERSION_CORE/$BUILD_NUMBER actual=$dmg_version/$dmg_build" >&2
+            exit 1
+          fi
+          if [[ "$ios_version" != "$VERSION_CORE" || "$ios_build" != "$BUILD_NUMBER" ]]; then
+            echo "IPA 内 App 的 CFBundleShortVersionString/CFBundleVersion 不一致：expected=$VERSION_CORE/$BUILD_NUMBER actual=$ios_version/$ios_build" >&2
+            exit 1
+          fi
+
+          write_native_version_metadata() {
+            local file="$1"
+            local native_version="$2"
+            local native_build_version="$3"
+            local native_version_fields="$4"
+            jq -n \
+              --arg fileName "$(basename "$file")" \
+              --arg nativeVersion "$native_version" \
+              --arg nativeBuildVersion "$native_build_version" \
+              --argjson nativeVersionFields "$native_version_fields" \
+              '{fileName: $fileName, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+              > "$file.native-version.json"
+          }
+          dmg_fields="$(jq -n --arg CFBundleShortVersionString "$dmg_version" --arg CFBundleVersion "$dmg_build" '{CFBundleShortVersionString: $CFBundleShortVersionString, CFBundleVersion: $CFBundleVersion}')"
+          ipa_fields="$(jq -n --arg CFBundleShortVersionString "$ios_version" --arg CFBundleVersion "$ios_build" '{CFBundleShortVersionString: $CFBundleShortVersionString, CFBundleVersion: $CFBundleVersion}')"
+          write_native_version_metadata "$dmg_target" "$dmg_version" "$dmg_build" "$dmg_fields"
+          write_native_version_metadata "$ipa_target" "$ios_version" "$ios_build" "$ipa_fields"
+
+          for file in staging/macos/*.dmg staging/ios/*.ipa; do
+            directory="$(dirname "$file")"
+            filename="$(basename "$file")"
+            (cd "$directory" && shasum -a 256 "$filename" > "$filename.sha256")
+          done
+
+          write_group_build_metadata() {
+            local output="$1"
+            local platform="$2"
+            local arch="$3"
+            shift 3
+            local expected_count="$#"
+            local group_ndjson
+            local group_json
+            group_ndjson="$(mktemp)"
+            group_json="$(mktemp)"
+            : > "$group_ndjson"
+            for file in "$@"; do
+              local filename
+              local hash
+              local size_bytes
+              local native_version
+              local native_build_version
+              local native_version_fields
+              filename="$(basename "$file")"
+              hash="$(shasum -a 256 "$file" | awk '{ print $1 }')"
+              size_bytes="$(stat -f '%z' "$file")"
+              native_version="$(jq -r '.nativeVersion' "$file.native-version.json")"
+              native_build_version="$(jq -r '.nativeBuildVersion' "$file.native-version.json")"
+              native_version_fields="$(jq -c '.nativeVersionFields' "$file.native-version.json")"
+              jq -n \
+                --arg platform "$platform" \
+                --arg arch "$arch" \
+                --arg fileName "$filename" \
+                --argjson sizeBytes "$size_bytes" \
+                --arg sha256 "$hash" \
+                --arg signingStatus 'unsigned' \
+                --arg nativeVersion "$native_version" \
+                --arg nativeBuildVersion "$native_build_version" \
+                --argjson nativeVersionFields "$native_version_fields" \
+                '{platform: $platform, arch: $arch, fileName: $fileName, sizeBytes: $sizeBytes, sha256: $sha256, signingStatus: $signingStatus, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+                >> "$group_ndjson"
+            done
+            jq -s '.' "$group_ndjson" > "$group_json"
+            jq --slurpfile artifacts "$group_json" '. + {artifacts: $artifacts[0]}' \
+              .release-metadata/build-metadata.json > "$output"
+            jq -e \
+              --argjson expectedCount "$expected_count" \
+              --arg platform "$platform" \
+              --arg arch "$arch" '
+              (.artifacts | type == "array" and length == $expectedCount) and
+              all(.artifacts[];
+                .platform == $platform and
+                .arch == $arch and
+                (.fileName | type == "string" and length > 0) and
+                (.sizeBytes | type == "number" and . > 0) and
+                (.sha256 | test("^[0-9a-f]{64}$")) and
+                .signingStatus == "unsigned" and
+                (.nativeVersion | type == "string" and length > 0) and
+                (.nativeBuildVersion | type == "string" and length > 0) and
+                (.nativeVersionFields | type == "object" and length > 0)
+              )
+            ' "$output" > /dev/null
+          }
+          write_group_build_metadata staging/macos/build-metadata.json macos "$desktop_arch" "$dmg_target"
+          write_group_build_metadata staging/ios/build-metadata.json ios arm64 "$ipa_target"
+
+      - name: 确认构建未修改受控文件
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
 
       - name: 上传 macOS 构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: KMP-Build-macOS
-          path: staging/macos/*.dmg
+          name: multi-bili-macos-${{ inputs.app_artifact_version }}-${{ steps.collect.outputs.desktop_arch }}
+          path: staging/macos/
+          if-no-files-found: error
           retention-days: 7
 
       - name: 上传 iOS 构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: KMP-Build-iOS
-          path: staging/ios/*.ipa
+          name: multi-bili-ios-${{ inputs.app_artifact_version }}-arm64
+          path: staging/ios/
+          if-no-files-found: error
           retention-days: 7
+
+      - name: 停止 Gradle Daemon
+        if: always()
+        run: ./gradlew --stop

@@ -1,6 +1,9 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.BOOLEAN
+import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.INT
 import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING
+import tv.hsrui.bolo.buildlogic.ResolvedVersionMetadata
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -12,6 +15,13 @@ plugins {
     // CocoaPods 插件 — 自动管理 iOS 依赖（VLCKit）并生成 cinterop
     kotlin("native.cocoapods")
 }
+
+val appVersionMetadata = rootProject.extra["appVersionMetadata"] as ResolvedVersionMetadata
+val appBuildOrigin = rootProject.extra["appBuildOrigin"] as String
+val appOfficialBuild = rootProject.extra["appOfficialBuild"] as Boolean
+val (appVersionMajor, appVersionMinor) = appVersionMetadata.coreVersion.split('.')
+val windowsPackageVersion =
+    "$appVersionMajor.$appVersionMinor.${appVersionMetadata.buildNumber}"
 
 kotlin {
     android {
@@ -39,7 +49,7 @@ kotlin {
     }
 
     cocoapods {
-        version = "1.0"
+        version = appVersionMetadata.releaseVersion
         summary = "Bolo Compose App"
         homepage = "https://hsrui.tv/bolo"
         ios.deploymentTarget = "16.0"
@@ -116,11 +126,22 @@ compose.desktop {
                 TargetFormat.Exe
             )
             packageName = "Multi Bili"
-            packageVersion = libs.versions.appVersion.get()
 
-            macOS { iconFile.set(project.file("src/jvmMain/icons/mac_icon.icns")) }
-            linux { iconFile.set(project.file("src/jvmMain/icons/linux_icon.png")) }
-            windows { iconFile.set(project.file("src/jvmMain/icons/windows_icon.ico")) }
+            macOS {
+                packageVersion = appVersionMetadata.coreVersion
+                packageBuildVersion = appVersionMetadata.buildNumber.toString()
+                iconFile.set(project.file("src/jvmMain/icons/mac_icon.icns"))
+            }
+            linux {
+                packageVersion = appVersionMetadata.coreVersion
+                appRelease = appVersionMetadata.buildNumber.toString()
+                iconFile.set(project.file("src/jvmMain/icons/linux_icon.png"))
+            }
+            windows {
+                packageVersion = windowsPackageVersion
+                upgradeUuid = "CF9BD107-DCB2-5E72-9378-280860754B39"
+                iconFile.set(project.file("src/jvmMain/icons/windows_icon.ico"))
+            }
         }
 
     }
@@ -131,6 +152,18 @@ buildkonfig {
     exposeObjectWithName = "BuildInfo"
 
     defaultConfigs {
-        buildConfigField(STRING, "appVersion", libs.versions.appVersion.get())
+        buildConfigField(STRING, "appVersionCore", appVersionMetadata.coreVersion)
+        buildConfigField(STRING, "appReleaseChannel", appVersionMetadata.releaseChannel.name.lowercase())
+        buildConfigField(INT, "appPrereleaseNumber", appVersionMetadata.prereleaseNumber.toString())
+        buildConfigField(STRING, "appReleaseVersion", appVersionMetadata.releaseVersion)
+        buildConfigField(STRING, "appDisplayVersion", appVersionMetadata.appDisplayVersion)
+        buildConfigField(INT, "appBuildNumber", appVersionMetadata.buildNumber.toString())
+        buildConfigField(STRING, "gitCommitSha", appVersionMetadata.commitSha)
+        buildConfigField(STRING, "gitCommitSha7", appVersionMetadata.commitSha7)
+        buildConfigField(STRING, "gitCommitSha12", appVersionMetadata.commitSha12)
+        buildConfigField(BOOLEAN, "isGitDirty", appVersionMetadata.isDirty.toString())
+        buildConfigField(STRING, "buildOrigin", appBuildOrigin)
+        buildConfigField(BOOLEAN, "isOfficialBuild", appOfficialBuild.toString())
+        buildConfigField(STRING, "artifactVersion", appVersionMetadata.artifactVersion)
     }
 }

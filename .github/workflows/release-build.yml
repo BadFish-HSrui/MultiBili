@@ -1,0 +1,468 @@
+name: 构建全平台发布产物
+
+on:
+  workflow_dispatch:
+    inputs:
+      clean_cache:
+        description: 清理各平台 Gradle 构建缓存
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      app_version_core: ${{ steps.metadata.outputs.app_version_core }}
+      app_release_channel: ${{ steps.metadata.outputs.app_release_channel }}
+      app_prerelease_number: ${{ steps.metadata.outputs.app_prerelease_number }}
+      app_release_version: ${{ steps.metadata.outputs.app_release_version }}
+      app_display_version: ${{ steps.metadata.outputs.app_display_version }}
+      app_build_number: ${{ steps.metadata.outputs.app_build_number }}
+      app_commit_sha: ${{ steps.metadata.outputs.app_commit_sha }}
+      app_commit_sha7: ${{ steps.metadata.outputs.app_commit_sha7 }}
+      app_commit_sha12: ${{ steps.metadata.outputs.app_commit_sha12 }}
+      app_artifact_version: ${{ steps.metadata.outputs.app_artifact_version }}
+      app_git_dirty: ${{ steps.metadata.outputs.app_git_dirty }}
+      app_build_origin: ${{ steps.source.outputs.app_build_origin }}
+      app_official_build: ${{ steps.source.outputs.app_official_build }}
+      metadata_artifact_name: ${{ steps.artifact-name.outputs.metadata_artifact_name }}
+    steps:
+      - name: 检出触发提交的完整历史
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: 锁定源码与构建来源
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          if [[ "$source_sha" != "$GITHUB_SHA" ]]; then
+            echo "触发提交与检出提交不一致：$GITHUB_SHA / $source_sha" >&2
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+            echo '统一元数据必须从干净检出计算' >&2
+            git status --short >&2
+            exit 1
+          fi
+          build_origin='ci'
+          if [[ "$GITHUB_EVENT_NAME" == 'push' && "$GITHUB_REF_TYPE" == 'tag' ]]; then
+            official_build='true'
+          else
+            official_build='false'
+          fi
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "app_build_origin=$build_origin" >> "$GITHUB_OUTPUT"
+          echo "app_official_build=$official_build" >> "$GITHUB_OUTPUT"
+          echo "ORG_GRADLE_PROJECT_appCommitSha=$source_sha" >> "$GITHUB_ENV"
+          echo 'ORG_GRADLE_PROJECT_appGitDirty=false' >> "$GITHUB_ENV"
+          echo "ORG_GRADLE_PROJECT_appBuildOrigin=$build_origin" >> "$GITHUB_ENV"
+          echo "ORG_GRADLE_PROJECT_appOfficialBuild=$official_build" >> "$GITHUB_ENV"
+
+      - name: 配置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: 计算并校验统一版本元数据
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          metadata="$(./gradlew -q printAppVersionMetadata)"
+          printf '%s\n' "$metadata"
+
+          required_keys=(
+            APP_VERSION_CORE
+            APP_RELEASE_CHANNEL
+            APP_PRERELEASE_NUMBER
+            APP_RELEASE_VERSION
+            APP_DISPLAY_VERSION
+            APP_BUILD_NUMBER
+            APP_COMMIT_SHA
+            APP_COMMIT_SHA7
+            APP_COMMIT_SHA12
+            APP_ARTIFACT_VERSION
+            APP_GIT_DIRTY
+          )
+          declare -A values
+          for key in "${required_keys[@]}"; do
+            count="$(printf '%s\n' "$metadata" | awk -v key="$key" 'index($0, key "=") == 1 { count++ } END { print count + 0 }')"
+            if [[ "$count" != '1' ]]; then
+              echo "版本元数据字段 $key 缺失或重复" >&2
+              exit 1
+            fi
+            value="$(printf '%s\n' "$metadata" | awk -v key="$key" 'index($0, key "=") == 1 { print substr($0, length(key) + 2) }')"
+            values[$key]="$value"
+            output_name="$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')"
+            printf '%s=%s\n' "$output_name" "$value" >> "$GITHUB_OUTPUT"
+          done
+
+          expected_sha="$(git rev-parse HEAD)"
+          expected_build_number="$(git rev-list --count HEAD)"
+          if [[ "${values[APP_COMMIT_SHA]}" != "$expected_sha" ]]; then
+            echo '元数据提交 SHA 与检出提交不一致' >&2
+            exit 1
+          fi
+          if [[ "${values[APP_BUILD_NUMBER]}" != "$expected_build_number" ]]; then
+            echo '元数据构建号不是完整历史 commit count' >&2
+            exit 1
+          fi
+          if [[ "${values[APP_GIT_DIRTY]}" != 'false' ]]; then
+            echo '正式构建不允许 dirty 源码' >&2
+            exit 1
+          fi
+          if [[ ! "${values[APP_ARTIFACT_VERSION]}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo 'APP_ARTIFACT_VERSION 不是安全的文件名片段' >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == 'push' && "$GITHUB_REF_TYPE" == 'tag' && "$GITHUB_REF_NAME" != "v${values[APP_RELEASE_VERSION]}" ]]; then
+            echo "标签必须精确等于 v${values[APP_RELEASE_VERSION]}，实际为 $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+      - name: 写入统一构建元数据
+        run: |
+          set -euo pipefail
+          ./gradlew -q writeBuildMetadata
+          test -s build/version/build-metadata.json
+
+      - name: 准备元数据 artifact 名称
+        id: artifact-name
+        env:
+          ARTIFACT_VERSION: ${{ steps.metadata.outputs.app_artifact_version }}
+        run: echo "metadata_artifact_name=multi-bili-${ARTIFACT_VERSION}-metadata" >> "$GITHUB_OUTPUT"
+
+      - name: 上传统一构建元数据
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact-name.outputs.metadata_artifact_name }}
+          path: build/version/build-metadata.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: 停止 Gradle Daemon
+        if: always()
+        run: ./gradlew --stop
+
+  linux_android:
+    needs: metadata
+    uses: ./.github/workflows/build-Linux-Android.yml
+    with:
+      clean_cache: ${{ inputs.clean_cache || false }}
+      source_sha: ${{ needs.metadata.outputs.source_sha }}
+      app_version_core: ${{ needs.metadata.outputs.app_version_core }}
+      app_release_channel: ${{ needs.metadata.outputs.app_release_channel }}
+      app_prerelease_number: ${{ needs.metadata.outputs.app_prerelease_number }}
+      app_release_version: ${{ needs.metadata.outputs.app_release_version }}
+      app_display_version: ${{ needs.metadata.outputs.app_display_version }}
+      app_build_number: ${{ needs.metadata.outputs.app_build_number }}
+      app_commit_sha: ${{ needs.metadata.outputs.app_commit_sha }}
+      app_commit_sha7: ${{ needs.metadata.outputs.app_commit_sha7 }}
+      app_commit_sha12: ${{ needs.metadata.outputs.app_commit_sha12 }}
+      app_artifact_version: ${{ needs.metadata.outputs.app_artifact_version }}
+      app_git_dirty: ${{ needs.metadata.outputs.app_git_dirty }}
+      app_build_origin: ${{ needs.metadata.outputs.app_build_origin }}
+      app_official_build: ${{ needs.metadata.outputs.app_official_build }}
+      metadata_artifact_name: ${{ needs.metadata.outputs.metadata_artifact_name }}
+
+  macos_ios:
+    needs: metadata
+    uses: ./.github/workflows/build-MacOS-iOS.yml
+    with:
+      clean_cache: ${{ inputs.clean_cache || false }}
+      source_sha: ${{ needs.metadata.outputs.source_sha }}
+      app_version_core: ${{ needs.metadata.outputs.app_version_core }}
+      app_release_channel: ${{ needs.metadata.outputs.app_release_channel }}
+      app_prerelease_number: ${{ needs.metadata.outputs.app_prerelease_number }}
+      app_release_version: ${{ needs.metadata.outputs.app_release_version }}
+      app_display_version: ${{ needs.metadata.outputs.app_display_version }}
+      app_build_number: ${{ needs.metadata.outputs.app_build_number }}
+      app_commit_sha: ${{ needs.metadata.outputs.app_commit_sha }}
+      app_commit_sha7: ${{ needs.metadata.outputs.app_commit_sha7 }}
+      app_commit_sha12: ${{ needs.metadata.outputs.app_commit_sha12 }}
+      app_artifact_version: ${{ needs.metadata.outputs.app_artifact_version }}
+      app_git_dirty: ${{ needs.metadata.outputs.app_git_dirty }}
+      app_build_origin: ${{ needs.metadata.outputs.app_build_origin }}
+      app_official_build: ${{ needs.metadata.outputs.app_official_build }}
+      metadata_artifact_name: ${{ needs.metadata.outputs.metadata_artifact_name }}
+
+  windows:
+    needs: metadata
+    uses: ./.github/workflows/build-Windows.yml
+    with:
+      clean_cache: ${{ inputs.clean_cache || false }}
+      source_sha: ${{ needs.metadata.outputs.source_sha }}
+      app_version_core: ${{ needs.metadata.outputs.app_version_core }}
+      app_release_channel: ${{ needs.metadata.outputs.app_release_channel }}
+      app_prerelease_number: ${{ needs.metadata.outputs.app_prerelease_number }}
+      app_release_version: ${{ needs.metadata.outputs.app_release_version }}
+      app_display_version: ${{ needs.metadata.outputs.app_display_version }}
+      app_build_number: ${{ needs.metadata.outputs.app_build_number }}
+      app_commit_sha: ${{ needs.metadata.outputs.app_commit_sha }}
+      app_commit_sha7: ${{ needs.metadata.outputs.app_commit_sha7 }}
+      app_commit_sha12: ${{ needs.metadata.outputs.app_commit_sha12 }}
+      app_artifact_version: ${{ needs.metadata.outputs.app_artifact_version }}
+      app_git_dirty: ${{ needs.metadata.outputs.app_git_dirty }}
+      app_build_origin: ${{ needs.metadata.outputs.app_build_origin }}
+      app_official_build: ${{ needs.metadata.outputs.app_official_build }}
+      metadata_artifact_name: ${{ needs.metadata.outputs.metadata_artifact_name }}
+
+  checksums:
+    needs:
+      - metadata
+      - linux_android
+      - macos_ios
+      - windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载全部平台构建产物
+        uses: actions/download-artifact@v4
+        with:
+          pattern: multi-bili-*-${{ needs.metadata.outputs.app_artifact_version }}-*
+          path: collected
+
+      - name: 下载中央构建元数据
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.metadata.outputs.metadata_artifact_name }}
+          path: collected/${{ needs.metadata.outputs.metadata_artifact_name }}
+
+      - name: 校验并汇总 SHA-256
+        id: checksum
+        shell: bash
+        env:
+          ARTIFACT_VERSION: ${{ needs.metadata.outputs.app_artifact_version }}
+          METADATA_ARTIFACT_NAME: ${{ needs.metadata.outputs.metadata_artifact_name }}
+        run: |
+          set -euo pipefail
+          mapfile -d '' binary_files < <(find collected -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.apk' -o -name '*.dmg' -o -name '*.ipa' -o -name '*.msi' -o -name '*.exe' \) -print0 | sort -z)
+          mapfile -d '' sidecar_files < <(find collected -type f -name '*.sha256' -print0 | sort -z)
+          mapfile -d '' native_version_files < <(find collected -type f -name '*.native-version.json' -print0 | sort -z)
+          if [[ "${#binary_files[@]}" -ne 7 || "${#sidecar_files[@]}" -ne 7 || "${#native_version_files[@]}" -ne 7 ]]; then
+            echo "期望七个二进制产物、七个校验文件及七个原生版本文件，实际为 ${#binary_files[@]}/${#sidecar_files[@]}/${#native_version_files[@]}" >&2
+            exit 1
+          fi
+          for extension in deb rpm apk dmg ipa msi exe; do
+            extension_count=0
+            for file in "${binary_files[@]}"; do
+              if [[ "$file" == *."$extension" ]]; then
+                extension_count=$((extension_count + 1))
+              fi
+            done
+            if [[ "$extension_count" -ne 1 ]]; then
+              echo "期望恰好一个 .$extension 产物，实际为 $extension_count" >&2
+              exit 1
+            fi
+          done
+          for sidecar in "${sidecar_files[@]}"; do
+            (cd "$(dirname "$sidecar")" && sha256sum --check "$(basename "$sidecar")")
+          done
+
+          mkdir -p summary
+          metadata_path="collected/${METADATA_ARTIFACT_NAME}/build-metadata.json"
+          if [[ ! -s "$metadata_path" ]]; then
+            echo '缺少中央 build-metadata.json' >&2
+            exit 1
+          fi
+          mapfile -d '' group_metadata_files < <(
+            find collected -type f -name 'build-metadata.json' ! -path "$metadata_path" -print0 | sort -z
+          )
+          if [[ "${#group_metadata_files[@]}" -ne 5 ]]; then
+            echo "期望 Linux、Android、macOS、iOS、Windows 五份上传组 metadata，实际为 ${#group_metadata_files[@]}" >&2
+            exit 1
+          fi
+          for group_metadata_path in "${group_metadata_files[@]}"; do
+            group_directory="$(dirname "$group_metadata_path")"
+            mapfile -d '' group_binary_files < <(
+              find "$group_directory" -maxdepth 1 -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.apk' -o -name '*.dmg' -o -name '*.ipa' -o -name '*.msi' -o -name '*.exe' \) -print0 | sort -z
+            )
+            if [[ "${#group_binary_files[@]}" -lt 1 ]]; then
+              echo "上传组 metadata 没有对应二进制：$group_metadata_path" >&2
+              exit 1
+            fi
+            expected_group_names="$(
+              printf '%s\n' "${group_binary_files[@]##*/}" | jq -R . | jq -s 'sort'
+            )"
+            if ! jq -e \
+              --slurpfile central "$metadata_path" \
+              --argjson expectedNames "$expected_group_names" '
+                (del(.artifacts) == ($central[0] | del(.artifacts))) and
+                (.artifacts | type == "array") and
+                (([.artifacts[].fileName] | sort) == $expectedNames) and
+                (([.artifacts[].fileName] | length) == ([.artifacts[].fileName] | unique | length))
+              ' "$group_metadata_path" > /dev/null; then
+              echo "上传组 build-metadata.json 与中央元数据或本组二进制集合不一致：$group_metadata_path" >&2
+              exit 1
+            fi
+          done
+          : > summary/SHA256SUMS
+          artifacts_ndjson="$RUNNER_TEMP/multi-bili-artifacts.ndjson"
+          artifacts_json="$RUNNER_TEMP/multi-bili-artifacts.json"
+          : > "$artifacts_ndjson"
+          declare -A seen_names
+          for file in "${binary_files[@]}"; do
+            filename="$(basename "$file")"
+            if [[ "$filename" != multi-bili-*-${ARTIFACT_VERSION}-* ]]; then
+              echo "产物文件名未使用统一 APP_ARTIFACT_VERSION：$filename" >&2
+              exit 1
+            fi
+            if [[ -n "${seen_names[$filename]:-}" ]]; then
+              echo "产物文件名重复：$filename" >&2
+              exit 1
+            fi
+            seen_names[$filename]=1
+            hash="$(sha256sum "$file" | awk '{ print $1 }')"
+            size_bytes="$(stat --printf='%s' "$file")"
+            printf '%s  %s\n' "$hash" "$filename" >> summary/SHA256SUMS
+            sidecar_path="$file.sha256"
+            if [[ ! -s "$sidecar_path" ]]; then
+              echo "缺少产物 SHA-256 sidecar：$filename" >&2
+              exit 1
+            fi
+            native_version_path="$file.native-version.json"
+            if [[ ! -s "$native_version_path" ]]; then
+              echo "缺少产物原生版本元数据：$filename" >&2
+              exit 1
+            fi
+            if ! jq -e --arg fileName "$filename" '
+              .fileName == $fileName and
+              (.nativeVersion | type == "string" and length > 0) and
+              (.nativeBuildVersion | type == "string" and length > 0) and
+              (.nativeVersionFields | type == "object" and length > 0)
+            ' "$native_version_path" > /dev/null; then
+              echo "产物原生版本元数据无效：$filename" >&2
+              exit 1
+            fi
+            native_version="$(jq -r '.nativeVersion' "$native_version_path")"
+            native_build_version="$(jq -r '.nativeBuildVersion' "$native_version_path")"
+            native_version_fields="$(jq -c '.nativeVersionFields' "$native_version_path")"
+            case "$filename" in
+              "multi-bili-linux-${ARTIFACT_VERSION}-x64.deb"|"multi-bili-linux-${ARTIFACT_VERSION}-x64.rpm")
+                platform='linux'
+                arch='x64'
+                ;;
+              "multi-bili-linux-${ARTIFACT_VERSION}-arm64.deb"|"multi-bili-linux-${ARTIFACT_VERSION}-arm64.rpm")
+                platform='linux'
+                arch='arm64'
+                ;;
+              "multi-bili-android-${ARTIFACT_VERSION}-universal.apk")
+                platform='android'
+                arch='universal'
+                ;;
+              "multi-bili-macos-${ARTIFACT_VERSION}-x64.dmg")
+                platform='macos'
+                arch='x64'
+                ;;
+              "multi-bili-macos-${ARTIFACT_VERSION}-arm64.dmg")
+                platform='macos'
+                arch='arm64'
+                ;;
+              "multi-bili-ios-${ARTIFACT_VERSION}-arm64.ipa")
+                platform='ios'
+                arch='arm64'
+                ;;
+              "multi-bili-windows-${ARTIFACT_VERSION}-x64.msi"|"multi-bili-windows-${ARTIFACT_VERSION}-x64.exe")
+                platform='windows'
+                arch='x64'
+                ;;
+              "multi-bili-windows-${ARTIFACT_VERSION}-arm64.msi"|"multi-bili-windows-${ARTIFACT_VERSION}-arm64.exe")
+                platform='windows'
+                arch='arm64'
+                ;;
+              *)
+                echo "无法识别产物平台：$filename" >&2
+                exit 1
+                ;;
+            esac
+            group_metadata_path="$(dirname "$file")/build-metadata.json"
+            if [[ ! -s "$group_metadata_path" ]] || ! jq -e \
+              --arg platform "$platform" \
+              --arg arch "$arch" \
+              --arg fileName "$filename" \
+              --argjson sizeBytes "$size_bytes" \
+              --arg sha256 "$hash" \
+              --arg nativeVersion "$native_version" \
+              --arg nativeBuildVersion "$native_build_version" \
+              --argjson nativeVersionFields "$native_version_fields" '
+                any(.artifacts[];
+                  .platform == $platform and
+                  .arch == $arch and
+                  .fileName == $fileName and
+                  .sizeBytes == $sizeBytes and
+                  .sha256 == $sha256 and
+                  .signingStatus == "unsigned" and
+                  .nativeVersion == $nativeVersion and
+                  .nativeBuildVersion == $nativeBuildVersion and
+                  .nativeVersionFields == $nativeVersionFields
+                )
+              ' "$group_metadata_path" > /dev/null; then
+              echo "上传组 build-metadata.json 未准确记录产物：$filename" >&2
+              exit 1
+            fi
+            jq -n \
+              --arg platform "$platform" \
+              --arg arch "$arch" \
+              --arg fileName "$filename" \
+              --argjson sizeBytes "$size_bytes" \
+              --arg sha256 "$hash" \
+              --arg signingStatus 'unsigned' \
+              --arg nativeVersion "$native_version" \
+              --arg nativeBuildVersion "$native_build_version" \
+              --argjson nativeVersionFields "$native_version_fields" \
+              '{platform: $platform, arch: $arch, fileName: $fileName, sizeBytes: $sizeBytes, sha256: $sha256, signingStatus: $signingStatus, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+              >> "$artifacts_ndjson"
+          done
+          jq -s '.' "$artifacts_ndjson" > "$artifacts_json"
+          jq --slurpfile artifacts "$artifacts_json" '. + {artifacts: $artifacts[0]}' \
+            "$metadata_path" > summary/build-metadata.json
+          jq -e '
+            (.artifacts | length == 7) and
+            all(.artifacts[];
+              (.platform | type == "string" and length > 0) and
+              (.arch | type == "string" and length > 0) and
+              (.fileName | type == "string" and length > 0) and
+              (.sizeBytes | type == "number" and . > 0) and
+              (.sha256 | test("^[0-9a-f]{64}$")) and
+              .signingStatus == "unsigned" and
+              (.nativeVersion | type == "string" and length > 0) and
+              (.nativeBuildVersion | type == "string" and length > 0) and
+              (.nativeVersionFields | type == "object" and length > 0)
+            )
+          ' summary/build-metadata.json > /dev/null
+
+          {
+            echo "## 全平台构建完成"
+            echo
+            echo "- Release version: \`${{ needs.metadata.outputs.app_release_version }}\`"
+            echo "- Build number: \`${{ needs.metadata.outputs.app_build_number }}\`"
+            echo "- Commit: \`${{ needs.metadata.outputs.app_commit_sha }}\`"
+            echo "- Artifact version: \`${ARTIFACT_VERSION}\`"
+            echo
+            echo '七个二进制产物均已通过各自 SHA-256 sidecar 复核；完整列表保存在 `SHA256SUMS` artifact。'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 上传构建元数据与校验和汇总
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-bili-${{ needs.metadata.outputs.app_artifact_version }}-checksums
+          path: summary/
+          if-no-files-found: error
+          retention-days: 7

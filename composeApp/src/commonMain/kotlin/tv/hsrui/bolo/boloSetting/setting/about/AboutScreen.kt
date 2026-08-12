@@ -58,7 +58,7 @@ fun AboutScreen(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.displayMedium,
                 modifier = Modifier.padding(top = 8.dp)
             )
-            Text("tv.hsrui.bolo / ${BuildInfo.appVersion}")
+            Text("tv.hsrui.bolo / ${BuildInfo.appDisplayVersion}")
 
             Surface(
                 onClick = { scope.launch { openUrl(githubRepoUrlString) } },

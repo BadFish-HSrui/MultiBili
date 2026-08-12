@@ -1,25 +1,82 @@
-name: 构建Windows版本
+name: 构建 Windows 版本
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      clean-cache:
-        description: '清理Gradle缓存'
-        required: false
+      clean_cache:
+        required: true
         type: boolean
-        default: false
+      source_sha:
+        required: true
+        type: string
+      app_version_core:
+        required: true
+        type: string
+      app_release_channel:
+        required: true
+        type: string
+      app_prerelease_number:
+        required: false
+        type: string
+        default: ''
+      app_release_version:
+        required: true
+        type: string
+      app_display_version:
+        required: true
+        type: string
+      app_build_number:
+        required: true
+        type: string
+      app_commit_sha:
+        required: true
+        type: string
+      app_commit_sha7:
+        required: true
+        type: string
+      app_commit_sha12:
+        required: true
+        type: string
+      app_artifact_version:
+        required: true
+        type: string
+      app_git_dirty:
+        required: true
+        type: string
+      app_build_origin:
+        required: true
+        type: string
+      app_official_build:
+        required: true
+        type: string
+      metadata_artifact_name:
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      ORG_GRADLE_PROJECT_appBuildNumber: ${{ inputs.app_build_number }}
+      ORG_GRADLE_PROJECT_appCommitSha: ${{ inputs.app_commit_sha }}
+      ORG_GRADLE_PROJECT_appGitDirty: ${{ inputs.app_git_dirty }}
+      ORG_GRADLE_PROJECT_appBuildOrigin: ${{ inputs.app_build_origin }}
+      ORG_GRADLE_PROJECT_appOfficialBuild: ${{ inputs.app_official_build }}
     steps:
-      - name: 检出代码
+      - name: 检出精确源码
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: 配置 JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: zulu
           java-version: '17'
 
       - name: 配置缓存
@@ -33,34 +90,244 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: 清理构建缓存（可选）
-        if: ${{ github.event.inputs.clean-cache == 'true' }}
-        run: ./gradlew clean
+        if: ${{ inputs.clean_cache }}
+        run: .\gradlew.bat clean
 
-      - name: 编译Windows安装包
-        run: ./gradlew :composeApp:packageMsi :composeApp:packageExe
-
-      - name: 停止 Gradle Daemon
-        if: always()
-        run: ./gradlew --stop
-
-      - name: 收集构建产物
-        shell: powershell
+      - name: 复核源码与版本元数据
+        shell: pwsh
+        env:
+          EXPECTED_APP_VERSION_CORE: ${{ inputs.app_version_core }}
+          EXPECTED_APP_RELEASE_CHANNEL: ${{ inputs.app_release_channel }}
+          EXPECTED_APP_PRERELEASE_NUMBER: ${{ inputs.app_prerelease_number }}
+          EXPECTED_APP_RELEASE_VERSION: ${{ inputs.app_release_version }}
+          EXPECTED_APP_DISPLAY_VERSION: ${{ inputs.app_display_version }}
+          EXPECTED_APP_BUILD_NUMBER: ${{ inputs.app_build_number }}
+          EXPECTED_APP_COMMIT_SHA: ${{ inputs.app_commit_sha }}
+          EXPECTED_APP_COMMIT_SHA7: ${{ inputs.app_commit_sha7 }}
+          EXPECTED_APP_COMMIT_SHA12: ${{ inputs.app_commit_sha12 }}
+          EXPECTED_APP_ARTIFACT_VERSION: ${{ inputs.app_artifact_version }}
+          EXPECTED_APP_GIT_DIRTY: ${{ inputs.app_git_dirty }}
         run: |
-          New-Item -ItemType Directory -Force -Path staging/windows-msi, staging/windows-exe
-
-          if (Test-Path "composeApp/build/compose/binaries/main/msi") {
-            Copy-Item composeApp/build/compose/binaries/main/msi/*.msi staging/windows-msi/
+          $ErrorActionPreference = 'Stop'
+          $actualSha = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actualSha -ne $env:EXPECTED_APP_COMMIT_SHA -or $actualSha -ne '${{ inputs.source_sha }}') {
+            throw '检出提交与统一元数据不一致'
+          }
+          $commitCount = (git rev-list --count HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $commitCount -ne $env:EXPECTED_APP_BUILD_NUMBER) {
+            throw '完整历史计算出的构建号与统一元数据不一致'
           }
 
-          if (Test-Path "composeApp/build/compose/binaries/main/exe") {
-            Copy-Item composeApp/build/compose/binaries/main/exe/*.exe staging/windows-exe/
+          $metadataLines = @(& .\gradlew.bat -q printAppVersionMetadata)
+          if ($LASTEXITCODE -ne 0) {
+            throw '读取版本元数据失败'
+          }
+          $metadata = @{}
+          foreach ($line in $metadataLines) {
+            if ($line -match '^([A-Z0-9_]+)=(.*)$') {
+              if ($metadata.ContainsKey($Matches[1])) {
+                throw "版本元数据字段 $($Matches[1]) 重复"
+              }
+              $metadata[$Matches[1]] = $Matches[2]
+            }
+          }
+          function Assert-Metadata([string]$Key, [string]$Expected) {
+            if (-not $metadata.ContainsKey($Key)) {
+              throw "版本元数据字段 $Key 缺失"
+            }
+            if ($metadata[$Key] -cne $Expected) {
+              throw "版本元数据字段 $Key 不一致：expected=$Expected actual=$($metadata[$Key])"
+            }
+          }
+
+          Assert-Metadata APP_VERSION_CORE $env:EXPECTED_APP_VERSION_CORE
+          Assert-Metadata APP_RELEASE_CHANNEL $env:EXPECTED_APP_RELEASE_CHANNEL
+          Assert-Metadata APP_PRERELEASE_NUMBER $env:EXPECTED_APP_PRERELEASE_NUMBER
+          Assert-Metadata APP_RELEASE_VERSION $env:EXPECTED_APP_RELEASE_VERSION
+          Assert-Metadata APP_DISPLAY_VERSION $env:EXPECTED_APP_DISPLAY_VERSION
+          Assert-Metadata APP_BUILD_NUMBER $env:EXPECTED_APP_BUILD_NUMBER
+          Assert-Metadata APP_COMMIT_SHA $env:EXPECTED_APP_COMMIT_SHA
+          Assert-Metadata APP_COMMIT_SHA7 $env:EXPECTED_APP_COMMIT_SHA7
+          Assert-Metadata APP_COMMIT_SHA12 $env:EXPECTED_APP_COMMIT_SHA12
+          Assert-Metadata APP_ARTIFACT_VERSION $env:EXPECTED_APP_ARTIFACT_VERSION
+          Assert-Metadata APP_GIT_DIRTY $env:EXPECTED_APP_GIT_DIRTY
+
+      - name: 编译 Windows 安装包
+        run: .\gradlew.bat :composeApp:packageMsi :composeApp:packageExe
+
+      - name: 确认构建未修改受控文件
+        shell: pwsh
+        run: |
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { throw '构建修改了受控文件' }
+          git diff --cached --exit-code
+          if ($LASTEXITCODE -ne 0) { throw '构建修改了暂存文件' }
+
+      - name: 下载统一构建元数据
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.metadata_artifact_name }}
+          path: .release-metadata
+
+      - name: 收集并校验构建产物
+        id: collect
+        shell: pwsh
+        env:
+          ARTIFACT_VERSION: ${{ inputs.app_artifact_version }}
+          VERSION_CORE: ${{ inputs.app_version_core }}
+          BUILD_NUMBER: ${{ inputs.app_build_number }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $msiFiles = @(Get-ChildItem 'composeApp/build/compose/binaries/main/msi' -Filter '*.msi' -File)
+          $exeFiles = @(Get-ChildItem 'composeApp/build/compose/binaries/main/exe' -Filter '*.exe' -File)
+          if ($msiFiles.Count -ne 1 -or $exeFiles.Count -ne 1) {
+            throw "期望恰好一个 MSI 和 EXE，实际为 $($msiFiles.Count)/$($exeFiles.Count)"
+          }
+          if (-not (Test-Path '.release-metadata/build-metadata.json' -PathType Leaf)) {
+            throw '缺少统一 build-metadata.json'
+          }
+
+          $desktopArch = switch ($env:PROCESSOR_ARCHITECTURE) {
+            'AMD64' { 'x64' }
+            'ARM64' { 'arm64' }
+            default { throw "不支持的 Windows runner 架构：$env:PROCESSOR_ARCHITECTURE" }
+          }
+          "desktop_arch=$desktopArch" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+          New-Item -ItemType Directory -Force -Path 'staging/windows' | Out-Null
+          $msiTarget = "staging/windows/multi-bili-windows-$env:ARTIFACT_VERSION-$desktopArch.msi"
+          $exeTarget = "staging/windows/multi-bili-windows-$env:ARTIFACT_VERSION-$desktopArch.exe"
+          Copy-Item $msiFiles[0].FullName $msiTarget
+          Copy-Item $exeFiles[0].FullName $exeTarget
+          Copy-Item '.release-metadata/build-metadata.json' 'staging/windows/build-metadata.json'
+
+          $coreParts = $env:VERSION_CORE.Split('.')
+          if ($coreParts.Count -ne 3) {
+            throw "无效的 APP_VERSION_CORE：$env:VERSION_CORE"
+          }
+          $expectedWindowsVersion = "$($coreParts[0]).$($coreParts[1]).$env:BUILD_NUMBER"
+
+          $windowsInstaller = New-Object -ComObject WindowsInstaller.Installer
+          $database = $windowsInstaller.OpenDatabase((Resolve-Path $msiTarget).Path, 0)
+          $view = $database.OpenView("SELECT ``Value`` FROM ``Property`` WHERE ``Property`` = 'ProductVersion'")
+          $view.Execute()
+          $record = $view.Fetch()
+          if ($null -eq $record) {
+            throw 'MSI Property 表缺少 ProductVersion'
+          }
+          $msiProductVersion = $record.StringData(1)
+          $view.Close()
+          if ($msiProductVersion -cne $expectedWindowsVersion) {
+            throw "MSI ProductVersion 不一致：expected=$expectedWindowsVersion actual=$msiProductVersion"
+          }
+
+          $exeProductVersion = (Get-Item $exeTarget).VersionInfo.ProductVersion
+          if ([string]::IsNullOrWhiteSpace($exeProductVersion)) {
+            throw 'EXE VersionInfo 缺少 ProductVersion'
+          }
+          try {
+            $parsedExeProductVersion = [System.Version]::Parse($exeProductVersion.Trim())
+          } catch {
+            throw "EXE ProductVersion 不是数值版本：$exeProductVersion"
+          }
+          if (
+            $parsedExeProductVersion.Major -ne [int]$coreParts[0] -or
+            $parsedExeProductVersion.Minor -ne [int]$coreParts[1] -or
+            $parsedExeProductVersion.Build -ne [int]$env:BUILD_NUMBER -or
+            $parsedExeProductVersion.Revision -notin @(-1, 0)
+          ) {
+            throw "EXE ProductVersion 不一致：expected=$expectedWindowsVersion[.0] actual=$exeProductVersion"
+          }
+
+          foreach ($file in @(Get-Item $msiTarget, $exeTarget)) {
+            $signatureStatus = (Get-AuthenticodeSignature $file.FullName).Status.ToString()
+            if ($signatureStatus -cne 'NotSigned') {
+              throw "产物应为未签名，但 $($file.Name) Authenticode 状态为 $signatureStatus"
+            }
+          }
+
+          function Write-NativeVersionMetadata(
+            [System.IO.FileInfo]$File,
+            [string]$NativeVersion,
+            [string]$NativeBuildVersion,
+            [hashtable]$NativeVersionFields
+          ) {
+            $metadata = [ordered]@{
+              fileName = $File.Name
+              nativeVersion = $NativeVersion
+              nativeBuildVersion = $NativeBuildVersion
+              nativeVersionFields = $NativeVersionFields
+            } | ConvertTo-Json -Depth 5
+            [System.IO.File]::WriteAllText(
+              "$($File.FullName).native-version.json",
+              "$metadata`n",
+              [System.Text.UTF8Encoding]::new($false)
+            )
+          }
+          Write-NativeVersionMetadata (Get-Item $msiTarget) $msiProductVersion $env:BUILD_NUMBER @{ ProductVersion = $msiProductVersion }
+          Write-NativeVersionMetadata (Get-Item $exeTarget) $exeProductVersion $env:BUILD_NUMBER @{ ProductVersion = $exeProductVersion }
+
+          foreach ($file in @(Get-Item $msiTarget, $exeTarget)) {
+            $hash = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash.ToLowerInvariant()
+            [System.IO.File]::WriteAllText(
+              "$($file.FullName).sha256",
+              "$hash  $($file.Name)`n",
+              [System.Text.UTF8Encoding]::new($false)
+            )
+          }
+
+          $artifactMetadata = @(
+            foreach ($file in @(Get-Item $msiTarget, $exeTarget)) {
+              $nativeMetadata = Get-Content -Raw "$($file.FullName).native-version.json" | ConvertFrom-Json
+              [ordered]@{
+                platform = 'windows'
+                arch = $desktopArch
+                fileName = $file.Name
+                sizeBytes = $file.Length
+                sha256 = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash.ToLowerInvariant()
+                signingStatus = 'unsigned'
+                nativeVersion = $nativeMetadata.nativeVersion
+                nativeBuildVersion = $nativeMetadata.nativeBuildVersion
+                nativeVersionFields = $nativeMetadata.nativeVersionFields
+              }
+            }
+          )
+          $groupMetadata = Get-Content -Raw '.release-metadata/build-metadata.json' | ConvertFrom-Json -AsHashtable
+          $groupMetadata['artifacts'] = $artifactMetadata
+          $groupMetadataJson = $groupMetadata | ConvertTo-Json -Depth 10
+          [System.IO.File]::WriteAllText(
+            (Resolve-Path 'staging/windows').Path + '\build-metadata.json',
+            "$groupMetadataJson`n",
+            [System.Text.UTF8Encoding]::new($false)
+          )
+          $writtenGroupMetadata = Get-Content -Raw 'staging/windows/build-metadata.json' | ConvertFrom-Json
+          if (@($writtenGroupMetadata.artifacts).Count -ne 2) {
+            throw 'Windows build-metadata.json 必须恰好记录 MSI 和 EXE 两个产物'
+          }
+          foreach ($artifact in @($writtenGroupMetadata.artifacts)) {
+            if (
+              $artifact.platform -cne 'windows' -or
+              $artifact.arch -cne $desktopArch -or
+              [string]::IsNullOrWhiteSpace($artifact.fileName) -or
+              [long]$artifact.sizeBytes -le 0 -or
+              $artifact.sha256 -notmatch '^[0-9a-f]{64}$' -or
+              $artifact.signingStatus -cne 'unsigned' -or
+              [string]::IsNullOrWhiteSpace($artifact.nativeVersion) -or
+              [string]::IsNullOrWhiteSpace($artifact.nativeBuildVersion) -or
+              $null -eq $artifact.nativeVersionFields
+            ) {
+              throw "Windows build-metadata.json 产物记录无效：$($artifact.fileName)"
+            }
           }
 
       - name: 上传 Windows 构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: KMP-Build-Windows
-          path: |
-            staging/windows-msi/*.msi
-            staging/windows-exe/*.exe
+          name: multi-bili-windows-${{ inputs.app_artifact_version }}-${{ steps.collect.outputs.desktop_arch }}
+          path: staging/windows/
+          if-no-files-found: error
           retention-days: 7
+
+      - name: 停止 Gradle Daemon
+        if: always()
+        run: .\gradlew.bat --stop
