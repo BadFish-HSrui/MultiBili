@@ -6,6 +6,7 @@ sealed class FavoriteVideosUiState {
     data object Loading : FavoriteVideosUiState()
     data class Success(
         val folderTitle: String,
+        val isDefault: Boolean,
         val videos: List<FavoriteVideoCard>
     ) : FavoriteVideosUiState()
 

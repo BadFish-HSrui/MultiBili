@@ -36,4 +36,11 @@ class FavoriteFoldersViewModel : ViewModel() {
             }
         }
     }
+
+    fun removeItem(id: Long) {
+        val currentState = _uiState.value as? FavoriteFoldersUiState.Success ?: return
+        _uiState.value = currentState.copy(
+            folders = currentState.folders.filter { it.id != id },
+        )
+    }
 }

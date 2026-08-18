@@ -41,6 +41,7 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
             try {
                 var nextPageNumber = 1
                 var folderTitle = ""
+                var isDefault = true
                 val videos = mutableListOf<FavoriteVideoCard>()
 
                 do {
@@ -57,6 +58,7 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                     if (folderTitle.isEmpty()) {
                         folderTitle = result.folderInfo?.title.orEmpty()
                     }
+                    result.folderInfo?.let { isDefault = it.isDefault }
                     videos += result.videos
                     pageNumber = nextPageNumber
                     canLoadMore = result.hasMore
@@ -66,6 +68,7 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                 if (version != requestVersion) return@launch
                 _uiState.value = FavoriteVideosUiState.Success(
                     folderTitle = folderTitle,
+                    isDefault = isDefault,
                     videos = videos.distinctBy { it.avid }
                 )
             } catch (e: CancellationException) {
@@ -92,6 +95,7 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
             try {
                 var nextPageNumber = pageNumber + 1
                 var folderTitle = currentState.folderTitle
+                var isDefault = currentState.isDefault
                 val videos = mutableListOf<FavoriteVideoCard>()
 
                 do {
@@ -108,6 +112,7 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                     if (folderTitle.isEmpty()) {
                         folderTitle = result.folderInfo?.title.orEmpty()
                     }
+                    result.folderInfo?.let { isDefault = it.isDefault }
                     videos += result.videos
                     pageNumber = nextPageNumber
                     canLoadMore = result.hasMore
@@ -117,6 +122,7 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                 if (version != requestVersion) return@launch
                 _uiState.value = FavoriteVideosUiState.Success(
                     folderTitle = folderTitle,
+                    isDefault = isDefault,
                     videos = (currentState.videos + videos).distinctBy { it.avid }
                 )
             } catch (e: CancellationException) {

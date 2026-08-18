@@ -3,8 +3,12 @@ package tv.hsrui.bolo.view.favorite
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButtonMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -26,6 +30,7 @@ fun FavoriteVideosContent(
     isLoading: Boolean,
     onLoadMore: () -> Unit,
     onRefresh: () -> Unit,
+    onDeleteFolder: () -> Unit,
     onRemove: suspend (FavoriteVideoCard) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -94,7 +99,20 @@ fun FavoriteVideosContent(
                         },
                         onRefresh = onRefresh,
                         modifier = Modifier.align(Alignment.BottomEnd),
-                    )
+                    ) {
+                        if (!uiState.isDefault) {
+                            FloatingActionButtonMenuItem(
+                                onClick = onDeleteFolder,
+                                text = { Text("删除收藏") },
+                                icon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.DeleteForever,
+                                        contentDescription = null,
+                                    )
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -10,30 +10,40 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.navigation.openFavoriteFolder
+import tv.hsrui.bolo.ui.components.dialog.ShowDeleteFavoriteFolderDialog
 import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.network.feature.favorite.FavoriteFolderInfoData
 
 @Composable
 internal fun FavoriteFolderCard(
     folder: FavoriteFolderInfoData,
-    modifier: Modifier = Modifier
+    onDeleted: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Card(
         onClick = { openFavoriteFolder(folder.id) },
@@ -64,40 +74,78 @@ internal fun FavoriteFolderCard(
                     modifier = Modifier.fillMaxSize()
                 )
             }
-            Column(
+            Box(
                 modifier = Modifier
                     .weight(1F)
                     .fillMaxHeight()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.Center
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    if (folder.isPrivate) {
-                        Icon(
-                            imageVector = Icons.Rounded.Lock,
-                            contentDescription = "私密收藏夹",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (folder.isPrivate) {
+                            Icon(
+                                imageVector = Icons.Rounded.Lock,
+                                contentDescription = "私密收藏夹",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Text(
+                            text = folder.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1F)
                         )
                     }
                     Text(
-                        text = folder.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1F)
+                        text = "${folder.mediaCount} 个内容",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        modifier = Modifier.padding(end = 24.dp),
                     )
                 }
-                Text(
-                    text = "${folder.mediaCount} 个内容",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1
-                )
+
+                if (folder.id > 0 && !folder.isDefault) {
+                    var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
+
+                    IconButton(
+                        onClick = { showDeleteDialog = true },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .offset(x = (-4).dp, y = (-4).dp)
+                            .size(24.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.DeleteForever,
+                            contentDescription = "删除收藏夹",
+                            modifier = Modifier
+                                .size(20.dp)
+                                .alpha(0.5F),
+                        )
+                    }
+
+                    if (showDeleteDialog) {
+                        ShowDeleteFavoriteFolderDialog(
+                            mediaId = folder.id,
+                            folderTitle = folder.title,
+                            onCancel = { showDeleteDialog = false },
+                            onDeleted = {
+                                showDeleteDialog = false
+                                onDeleted()
+                            },
+                        )
+                    }
+                }
             }
         }
     }

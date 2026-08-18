@@ -31,6 +31,7 @@ import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
 fun FavoriteFoldersContent(
     uiState: FavoriteFoldersUiState,
     onRefresh: () -> Unit,
+    onFolderDeleted: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val favoriteFoldersGridState = rememberLazyGridState()
@@ -78,7 +79,10 @@ fun FavoriteFoldersContent(
                             keySelector = { it.id },
                             gridState = favoriteFoldersGridState
                         ) { folder ->
-                            FavoriteFolderCard(folder = folder)
+                            FavoriteFolderCard(
+                                folder = folder,
+                                onDeleted = { onFolderDeleted(folder.id) },
+                            )
                         }
                     }
 

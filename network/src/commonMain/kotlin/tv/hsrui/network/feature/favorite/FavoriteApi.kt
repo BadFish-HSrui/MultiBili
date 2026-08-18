@@ -94,6 +94,23 @@ suspend fun createFavoriteFolder(title: String, isPrivate: Boolean): FavoriteFol
     return response.body()
 }
 
+suspend fun deleteFavoriteFolder(mediaId: Long): ModifyFavoriteResponse {
+    val loginStorage: LoginStorage = getKoin().get()
+
+    val response = ApiClient.httpClient.post(ApiUrls.BASE + ApiUrls.Favorite.DELETE_FOLDER) {
+        setBody(
+            FormDataContent(
+                Parameters.build {
+                    append("media_ids", mediaId.toString())
+                    append("csrf", loginStorage.cookies.csrf)
+                }
+            )
+        )
+    }
+
+    return response.body()
+}
+
 suspend fun fetchFavoriteFolderContent(
     mediaId: Long,
     pageNumber: Int = 1,
