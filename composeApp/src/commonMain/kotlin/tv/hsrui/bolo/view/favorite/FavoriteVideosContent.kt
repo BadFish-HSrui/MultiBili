@@ -9,9 +9,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.launch
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
+import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
 import tv.hsrui.bolo.utils.OnGridBottomReached
 import tv.hsrui.network.feature.favorite.FavoriteVideoCard
@@ -27,6 +30,7 @@ fun FavoriteVideosContent(
     modifier: Modifier = Modifier,
 ) {
     val gridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
 
     PullToRefreshBox(
         isRefreshing = false,
@@ -51,34 +55,46 @@ fun FavoriteVideosContent(
             }
 
             is FavoriteVideosUiState.Success -> {
-                if (uiState.videos.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "暂无收藏视频",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyLarge
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (uiState.videos.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "暂无收藏视频",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    } else {
+                        gridState.OnGridBottomReached(
+                            buffer = 8,
+                            isLoading = isLoading,
+                            onLoadMore = onLoadMore
                         )
-                    }
-                } else {
-                    gridState.OnGridBottomReached(
-                        buffer = 8,
-                        isLoading = isLoading,
-                        onLoadMore = onLoadMore
-                    )
 
-                    ShowHorizontalCardGrid(
-                        cards = uiState.videos,
-                        keySelector = { it.avid },
-                        gridState = gridState
-                    ) { video ->
-                        ShowFavoriteVideoCard(
-                            videoInfo = video,
-                            onRemove = { onRemove(video) }
-                        )
+                        ShowHorizontalCardGrid(
+                            cards = uiState.videos,
+                            keySelector = { it.avid },
+                            gridState = gridState
+                        ) { video ->
+                            ShowFavoriteVideoCard(
+                                videoInfo = video,
+                                onRemove = { onRemove(video) }
+                            )
+                        }
                     }
+
+                    ShowGridFABMenu(
+                        onBackToTop = {
+                            if (uiState.videos.isNotEmpty()) {
+                                scope.launch { gridState.animateScrollToItem(0) }
+                            }
+                        },
+                        onRefresh = onRefresh,
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                    )
                 }
             }
         }
