@@ -13,6 +13,7 @@ import tv.hsrui.bolo.debug.DebugScreen
 import tv.hsrui.bolo.login.LoginScreen
 import tv.hsrui.bolo.login.LoginWebView
 import tv.hsrui.bolo.main.MainScreen
+import tv.hsrui.bolo.search.SearchInputScreen
 import tv.hsrui.bolo.view.favorite.FavoriteVideosScreen
 import tv.hsrui.bolo.view.video.VideoScreen
 
@@ -22,6 +23,10 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
     when (route) {
         is BoloRoute.Debug -> NavEntry(key = route) { DebugScreen() }
         is BoloRoute.Main -> NavEntry(key = route) { MainScreen() }
+
+        is BoloRoute.Search -> when (route) {
+            is BoloRoute.Search.Input -> NavEntry(key = route) { SearchInputScreen() }
+        }
 
         is BoloRoute.Login.Screen -> NavEntry(key = route) { LoginScreen() }
         is BoloRoute.Login.Webview -> NavEntry(key = route) { LoginWebView() }

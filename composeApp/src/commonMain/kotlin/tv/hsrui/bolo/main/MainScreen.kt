@@ -10,18 +10,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,7 +28,6 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -45,32 +40,29 @@ import tv.hsrui.bolo.utils.calculateWithoutBottom
 import tv.hsrui.bolo.main.region.RegionsScreen
 import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
+import tv.hsrui.bolo.search.ShowSearchButton
+import tv.hsrui.bolo.search.ShowSearchPlaceholder
 import tv.hsrui.bolo.utils.isCompact
 import tv.hsrui.network.feature.account.myinfo.MyAccountInfoManager
 import tv.hsrui.network.login.storage.LoginStorage
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(modifier: Modifier = Modifier) {
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.HOME) }
     val onClick: (MainTab) -> Unit = { selectedTab = it }
     val saveableStateHolder = rememberSaveableStateHolder()
     val isVerticalLayout = isCompact()
-
-    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+    val navigator: Navigator = koinInject()
+    val onSearchClick = { navigator.navigateTo(BoloRoute.Search.Input) }
 
     saveableStateHolder.SaveableStateProvider(key = selectedTab) {
         Scaffold(
-            modifier = if (isVerticalLayout) modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else modifier,
+            modifier = modifier,
             topBar = {
                 if (isVerticalLayout) {
-                    TopAppBar(
-                        title = { LoginOrAvatarImage(Modifier.size(42.dp)) },
-                        scrollBehavior = scrollBehavior,
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            scrolledContainerColor = MaterialTheme.colorScheme.surface
-                        )
+                    ShowSearchPlaceholder(
+                        onClick = onSearchClick,
+                        navigationIcon = { LoginOrAvatarImage(Modifier.size(42.dp)) }
                     )
                 }
             },
@@ -105,6 +97,10 @@ fun MainScreen(modifier: Modifier = Modifier) {
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             LoginOrAvatarImage(modifier = Modifier.size(48.dp))
+                            ShowSearchButton(
+                                onClick = onSearchClick,
+                                modifier = Modifier.size(48.dp)
+                            )
                             Spacer(Modifier.weight(0.8F))
                             MainTab.entries.forEach { tab ->
                                 NavigationRailItem(
