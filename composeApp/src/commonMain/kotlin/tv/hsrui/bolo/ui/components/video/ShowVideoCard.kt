@@ -195,24 +195,26 @@ fun ShowVideoCard(
                     }
 
                     Row(modifier = Modifier.align(Alignment.BottomStart)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .padding(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.ThumbUp,
-                                contentDescription = "点赞量",
-                                modifier = Modifier.size(10.dp)
-                            )
-                            Text(
-                                buildString {
-                                    append(videoInfo.likeCount.formatCountToString())
-                                    if (videoInfo.viewCount != 0) {
-                                        append(" ${videoInfo.likeCount * 1000 / videoInfo.viewCount / 10.0F}%")
-                                    }
-                                },
-                            )
+                        if (videoInfo.likeCount >= 0) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .padding(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ThumbUp,
+                                    contentDescription = "点赞量",
+                                    modifier = Modifier.size(10.dp)
+                                )
+                                Text(
+                                    buildString {
+                                        append(videoInfo.likeCount.formatCountToString())
+                                        if (videoInfo.viewCount != 0) {
+                                            append(" ${videoInfo.likeCount * 1000 / videoInfo.viewCount / 10.0F}%")
+                                        }
+                                    },
+                                )
+                            }
                         }
                         if (videoInfo.replyCount != -1) {
                             Row(

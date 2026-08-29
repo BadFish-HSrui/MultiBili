@@ -1,14 +1,10 @@
 package tv.hsrui.bolo.search
 
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -16,82 +12,62 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBarDefaults
-import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.lifecycle.viewmodel.compose.viewModel
 import org.koin.compose.koinInject
-import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
+import tv.hsrui.bolo.ui.common.videosPage.VideosGridPage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SearchInputScreen(modifier: Modifier = Modifier) {
-    val textFieldState = rememberTextFieldState()
+fun SearchResultsScreen(
+    keyword: String,
+    modifier: Modifier = Modifier,
+    viewModel: SearchVideosViewModel = viewModel(key = "search_$keyword") {
+        SearchVideosViewModel(keyword)
+    }
+) {
+    val uiState by viewModel.uiState.collectAsState()
     val navigator: Navigator = koinInject()
-    val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
+    val textFieldState = rememberTextFieldState(initialText = keyword)
     val searchBarContainerColor = SearchBarDefaults.colors().containerColor
     val inputFieldColors = SearchBarDefaults.inputFieldColors(
         focusedContainerColor = searchBarContainerColor,
         unfocusedContainerColor = searchBarContainerColor,
         disabledContainerColor = searchBarContainerColor
     )
-    val submitSearch = {
-        val keyword = textFieldState.text.toString().trim()
-        if (keyword.isNotEmpty()) {
-            navigator.navigateTo(BoloRoute.Search.Results(keyword))
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-        keyboardController?.show()
-    }
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
 
     Scaffold(
-        modifier = modifier,
+        modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
                 title = {
                     SearchBarDefaults.InputField(
                         state = textFieldState,
-                        onSearch = { submitSearch() },
-                        expanded = true,
-                        onExpandedChange = {},
-                        textStyle = MaterialTheme.typography.bodyLarge,
-                        placeholder = {
-                            Text(
-                                text = "搜索",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
+                        onSearch = {},
+                        expanded = false,
+                        onExpandedChange = { expanded ->
+                            if (expanded) navigator.goBack()
                         },
+                        readOnly = true,
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Rounded.Search,
                                 contentDescription = null
                             )
                         },
-                        trailingIcon = {
-                            if (textFieldState.text.isNotEmpty()) {
-                                IconButton(onClick = textFieldState::clearText) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Close,
-                                        contentDescription = "清除搜索内容"
-                                    )
-                                }
-                            }
-                        },
                         colors = inputFieldColors,
                         modifier = Modifier
                             .fillMaxWidth()
                             .searchInputFieldHeight(SearchBarDefaults.inputFieldShape)
-                            .focusRequester(focusRequester)
                     )
                 },
                 navigationIcon = {
@@ -101,14 +77,16 @@ fun SearchInputScreen(modifier: Modifier = Modifier) {
                             contentDescription = "返回"
                         )
                     }
-                }
+                },
+                scrollBehavior = scrollBehavior
             )
         }
     ) { innerPadding ->
-        Spacer(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
+        VideosGridPage(
+            uiState = uiState,
+            viewModel = viewModel,
+            modifier = Modifier.padding(innerPadding),
+            emptyMessage = "未找到相关视频"
         )
     }
 }

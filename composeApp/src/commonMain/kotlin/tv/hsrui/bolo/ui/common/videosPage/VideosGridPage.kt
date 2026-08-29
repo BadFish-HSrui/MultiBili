@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -23,7 +24,8 @@ import tv.hsrui.bolo.utils.OnGridBottomReached
 fun VideosGridPage(
     uiState: VideosUiState,
     viewModel: VideosViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    emptyMessage: String? = null
 ) {
     val videoGridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
@@ -61,24 +63,31 @@ fun VideosGridPage(
                 Box(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    ShowVerticalCardGrid(
-                        cards = uiState.videos,
-                        keySelector = { it.avid },
-                        gridState = videoGridState,
-                        modifier = Modifier.fillMaxSize()
-                    ) { video ->
-                        ShowVideoCard(
-                            videoInfo = video,
+                    if (uiState.videos.isEmpty() && emptyMessage != null) {
+                        Text(
+                            text = emptyMessage,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    } else {
+                        ShowVerticalCardGrid(
+                            cards = uiState.videos,
+                            keySelector = { it.avid },
+                            gridState = videoGridState,
                             modifier = Modifier.fillMaxSize()
-                        ) { onDismiss ->
-                            WatchLaterMenuItem(avid = video.avid, onDismiss = onDismiss)
+                        ) { video ->
+                            ShowVideoCard(
+                                videoInfo = video,
+                                modifier = Modifier.fillMaxSize()
+                            ) { onDismiss ->
+                                WatchLaterMenuItem(avid = video.avid, onDismiss = onDismiss)
+                            }
                         }
+                        ShowGridFABMenu(
+                            onBackToTop = { scope.launch { videoGridState.animateScrollToItem(0) } },
+                            onRefresh = { viewModel.refreshVideos() },
+                            modifier = Modifier.align(Alignment.BottomEnd),
+                        )
                     }
-                    ShowGridFABMenu(
-                        onBackToTop = { scope.launch { videoGridState.animateScrollToItem(0) } },
-                        onRefresh = { viewModel.refreshVideos() },
-                        modifier = Modifier.align(Alignment.BottomEnd),
-                    )
                 }
             }
 

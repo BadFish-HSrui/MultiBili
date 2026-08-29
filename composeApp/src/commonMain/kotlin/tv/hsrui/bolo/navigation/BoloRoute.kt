@@ -12,6 +12,7 @@ sealed interface BoloRoute {
     @Serializable
     sealed interface Search : BoloRoute {
         @Serializable data object Input : Search
+        @Serializable data class Results(val keyword: String) : Search
     }
 
     @Serializable
