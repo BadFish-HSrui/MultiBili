@@ -9,6 +9,18 @@ class LoginStorage(private val loginKSafe: KSafe) {
     var cookies by loginKSafe(Cookies())
 
     val isLoggedIn: Boolean get() = (cookies.sessData.isNotEmpty())
+    val hasCookies: Boolean
+        get() = cookies.run {
+            dedeUserIDCkMd5.isNotEmpty() ||
+                dedeUserID != 0L ||
+                sessData.isNotEmpty() ||
+                biliJct.isNotEmpty() ||
+                bNut != 0L ||
+                sid.isNotEmpty() ||
+                buvidFp.isNotEmpty() ||
+                buvid3.isNotEmpty() ||
+                buvid4.isNotEmpty()
+        }
 
     fun saveCookie(cookieMap: Map<String, String>) {
         cookies = Cookies(
@@ -24,17 +36,23 @@ class LoginStorage(private val loginKSafe: KSafe) {
         )
     }
 
-    fun getCookiesString(): String = buildString {
-        append("SESSDATA=${cookies.sessData}; ")
-        append("bili_jct=${cookies.biliJct}; ")
-        append("DedeUserID=${cookies.dedeUserID}; ")
-        append("DedeUserID__ckMd5=${cookies.dedeUserIDCkMd5}; ")
-        append("b_nut=${cookies.bNut}; ")
-        append("sid=${cookies.sid}; ")
-        append("buvid3=${cookies.buvid3}; ")
-        append("buvid4=${cookies.buvid4}; ")
-        append("buvid_fp=${cookies.buvidFp}")
+    fun saveBuvid3(buvid3: String) {
+        cookies = cookies.copy(buvid3 = buvid3)
     }
+
+    fun getCookiesString(): String = buildList {
+        cookies.run {
+            if (sessData.isNotEmpty()) add("SESSDATA=$sessData")
+            if (biliJct.isNotEmpty()) add("bili_jct=$biliJct")
+            if (dedeUserID != 0L) add("DedeUserID=$dedeUserID")
+            if (dedeUserIDCkMd5.isNotEmpty()) add("DedeUserID__ckMd5=$dedeUserIDCkMd5")
+            if (bNut != 0L) add("b_nut=$bNut")
+            if (sid.isNotEmpty()) add("sid=$sid")
+            if (buvid3.isNotEmpty()) add("buvid3=$buvid3")
+            if (buvid4.isNotEmpty()) add("buvid4=$buvid4")
+            if (buvidFp.isNotEmpty()) add("buvid_fp=$buvidFp")
+        }
+    }.joinToString("; ")
 }
 
 fun isLoggedIn(): Boolean = KoinPlatformTools.defaultContext().get().get<LoginStorage>().isLoggedIn
