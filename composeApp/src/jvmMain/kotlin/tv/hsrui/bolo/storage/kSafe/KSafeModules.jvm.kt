@@ -16,4 +16,9 @@ actual val KSafeModule: Module = module {
             fileName = "wbi"
         )
     }
+    single(named("appData")) {
+        KSafe(
+            fileName = "app_data"
+        )
+    }
 }

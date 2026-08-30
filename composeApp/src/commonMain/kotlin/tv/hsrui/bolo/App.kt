@@ -25,6 +25,7 @@ import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.navigation.NavigatorModule
 import tv.hsrui.bolo.navigation.navigationEntry
+import tv.hsrui.bolo.storage.appData.AppDataStorageModule
 import tv.hsrui.bolo.storage.kSafe.KSafeModule
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarModule
@@ -38,6 +39,7 @@ fun koinConfig(): KoinConfiguration {
     return koinConfiguration {
         modules(
             KSafeModule,
+            AppDataStorageModule,
             LoginStorageModule,
             MyAccountInfoModule,
             NavigatorModule,

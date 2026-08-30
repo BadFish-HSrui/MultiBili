@@ -19,4 +19,10 @@ actual val KSafeModule: Module = module {
             fileName = "wbi"
         )
     }
+    single(named("appData")) {
+        KSafe(
+            context = androidApplication(),
+            fileName = "app_data"
+        )
+    }
 }
