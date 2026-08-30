@@ -97,6 +97,7 @@ fun MainScreen(modifier: Modifier = Modifier) {
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             LoginOrAvatarImage(modifier = Modifier.size(48.dp))
+                            Spacer(Modifier.size(8.dp))
                             ShowSearchButton(
                                 onClick = onSearchClick,
                                 modifier = Modifier.size(48.dp)

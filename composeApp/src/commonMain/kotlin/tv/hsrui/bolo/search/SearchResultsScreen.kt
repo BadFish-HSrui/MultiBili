@@ -15,6 +15,7 @@ import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -22,6 +23,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.navigation.Navigator
+import tv.hsrui.bolo.storage.appData.AppDataStorage
 import tv.hsrui.bolo.ui.common.videosPage.VideosGridPage
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -35,6 +37,7 @@ fun SearchResultsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val navigator: Navigator = koinInject()
+    val appDataStorage: AppDataStorage = koinInject()
     val textFieldState = rememberTextFieldState(initialText = keyword)
     val searchBarContainerColor = SearchBarDefaults.colors().containerColor
     val inputFieldColors = SearchBarDefaults.inputFieldColors(
@@ -43,6 +46,10 @@ fun SearchResultsScreen(
         disabledContainerColor = searchBarContainerColor
     )
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+
+    LaunchedEffect(keyword) {
+        appDataStorage.searchHistory.add(keyword)
+    }
 
     Scaffold(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
