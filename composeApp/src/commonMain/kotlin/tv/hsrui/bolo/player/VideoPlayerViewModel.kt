@@ -32,6 +32,7 @@ class VideoPlayerViewModel(var avid: Long, var cid: Long) : ViewModel() {
             is BoloPlayerError.NetworkError -> println("网络错误: ${e.message}")
             is BoloPlayerError.DecoderError -> println("解码: ${e.message}")
             is BoloPlayerError.FormatNotSupported -> println("格式不支持: ${e.message}")
+            is BoloPlayerError.SeekError -> println("跳转失败: ${e.message}")
             is BoloPlayerError.UnknownError -> println("未知错误: ${e.message}")
         }
     })
@@ -43,7 +44,7 @@ class VideoPlayerViewModel(var avid: Long, var cid: Long) : ViewModel() {
         }
     }
 
-    private fun playVideo(startPosition: Int = 0) {
+    private fun playVideo(startPositionMs: Long = 0L) {
         val currentState = uiState.value
         if (currentState !is VideoPlayerUiState.Success) return
 
@@ -55,12 +56,12 @@ class VideoPlayerViewModel(var avid: Long, var cid: Long) : ViewModel() {
         audioQuality = audio?.let { it.quality as AudioQuality }
         _currentVideoQuality.value = videoQuality
 
-        controller.load(video = video, audio = audio, startPosition = startPosition)
+        controller.load(video = video, audio = audio, startPositionMs = startPositionMs)
     }
 
     fun switchQuality(newVideoQuality: VideoQuality) {
         videoQuality = newVideoQuality
-        playVideo(controller.state.value.currentPosition)
+        playVideo(controller.state.value.displayPositionMs)
     }
 
     suspend fun fetchPlayInfo(): VideoSource {

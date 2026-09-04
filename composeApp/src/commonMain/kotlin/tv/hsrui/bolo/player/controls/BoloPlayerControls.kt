@@ -59,7 +59,7 @@ import tv.hsrui.bolo.player.base.BoloPlayerSpeed
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.video.VideoInfoData
-import tv.hsrui.network.utils.formatToDuration
+import kotlin.math.roundToLong
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,7 +74,7 @@ fun BoloPlayerControls(
     val playState by viewModel.controller.state.collectAsState()
     val playerUiState by viewModel.uiState.collectAsState()
     val currentVideoQuality by viewModel.currentVideoQuality.collectAsState()
-    var sliderPosition by remember { mutableStateOf<Float?>(null) }
+    var sliderPreviewFraction by remember { mutableStateOf<Float?>(null) }
     var controlsVisible by remember { mutableStateOf(true) }
     val videoQualities = (playerUiState as? VideoPlayerUiState.Success)
         ?.videoSource
@@ -155,7 +155,7 @@ fun BoloPlayerControls(
                         )
                     }
 
-                    if (navigator.currentDepth > 1) {
+                    if (!isFullscreen && navigator.currentDepth > 1) {
                         IconButton(
                             onClick = { navigator.goHome() },
                             modifier = Modifier.size(40.dp)
@@ -195,16 +195,34 @@ fun BoloPlayerControls(
                         thumbColor = BiliColor.ThemeColor,
                         inactiveTrackColor = Color.White.copy(alpha = 0.3f)
                     )
+                    val durationMs = playState.durationMs
+                    val sliderValue = sliderPreviewFraction ?: if (durationMs > 0L) {
+                        (playState.displayPositionMs.toDouble() / durationMs.toDouble())
+                            .coerceIn(0.0, 1.0)
+                            .toFloat()
+                    } else {
+                        0f
+                    }
+                    val previewPositionMs = sliderPreviewFraction?.let { fraction ->
+                        (fraction.toDouble() * durationMs.toDouble())
+                            .roundToLong()
+                            .coerceIn(0L, durationMs.coerceAtLeast(0L))
+                    }
 
                     // 下方播放进度条
                     Slider(
-                        value = sliderPosition ?: playState.currentPosition.toFloat(),
-                        valueRange = 0f..playState.duration.toFloat(),
-                        onValueChange = { sliderPosition = it },
+                        value = sliderValue,
+                        valueRange = 0f..1f,
+                        enabled = durationMs > 0L && playState.isSeekable,
+                        onValueChange = { sliderPreviewFraction = it },
                         onValueChangeFinished = {
-                            sliderPosition?.let { targetPosition ->
-                                viewModel.controller.seekTo(targetPosition.toInt())
-                                sliderPosition = null
+                            sliderPreviewFraction?.let { fraction ->
+                                val targetPositionMs =
+                                    (fraction.toDouble() * durationMs.toDouble())
+                                        .roundToLong()
+                                        .coerceIn(0L, durationMs)
+                                viewModel.controller.seekToMs(targetPositionMs)
+                                sliderPreviewFraction = null
                             }
                         },
                         colors = sliderColors,
@@ -248,7 +266,8 @@ fun BoloPlayerControls(
 
                         // 时间显示
                         Text(
-                            text = "${playState.currentPosition.formatToDuration()} / ${playState.duration.formatToDuration()}",
+                            text = "${(previewPositionMs ?: playState.displayPositionMs).formatPlayerDuration()} / " +
+                                playState.durationMs.formatPlayerDuration(),
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White
                         )
@@ -282,6 +301,22 @@ fun BoloPlayerControls(
                 }
             }
         }
+    }
+}
+
+private fun Long.formatPlayerDuration(): String {
+    val totalSeconds = coerceAtLeast(0L) / 1_000L
+    val hours = totalSeconds / 3_600L
+    val minutes = totalSeconds % 3_600L / 60L
+    val seconds = totalSeconds % 60L
+    return buildString {
+        if (hours > 0L) {
+            append(hours.toString().padStart(2, '0'))
+            append(':')
+        }
+        append(minutes.toString().padStart(2, '0'))
+        append(':')
+        append(seconds.toString().padStart(2, '0'))
     }
 }
 

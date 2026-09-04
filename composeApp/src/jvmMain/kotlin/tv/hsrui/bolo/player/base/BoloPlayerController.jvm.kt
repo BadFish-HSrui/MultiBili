@@ -198,9 +198,11 @@ actual class BoloPlayerController actual constructor(
     actual val state: StateFlow<BoloPlayerState> = _state.asStateFlow()
 
     private val lock = Any()
+    private val seekLock = Any()
     private val controllerJob = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.IO + controllerJob)
     private val speedApplyState = SpeedApplyState()
+    private val seekCoordinator = BoloPlayerSeekCoordinator()
 
     private var lifecycleState = LifecycleState.Released
     private var playerGeneration = 0L
@@ -213,7 +215,6 @@ actual class BoloPlayerController actual constructor(
     private var startupPendingLoadGeneration = -1L
     private var startupAppliedLoadGeneration = -1L
     private var playIntentRevision = 0L
-    private var seekRevision = 0L
     private var pollingRevision = 0L
 
     internal var mediaPlayerComponent: CallbackMediaPlayerComponent? = null
@@ -221,11 +222,16 @@ actual class BoloPlayerController actual constructor(
     private var boundHost: JPanel? = null
     private var positionPollingJob: Job? = null
     private var pollTaskInFlight: PollToken? = null
+    private var seekTimeoutJob: Job? = null
+    private var debugNextNativeSubmissionFailure = false
+    private var debugNextTimeout = false
+    private var debugNextNotSeekable = false
+    private var debugNativeSubmissionFailureRevision: Long? = null
+    private var debugTimeoutRevision: Long? = null
 
     private var hasAcceptedInitialLoad = false
     private var lastSavedPositionMs = 0L
     private var playWhenReady = autoPlay
-    private var pendingSeekMs = 0L
 
     private var lastMpd: BoloDashMpd? = null
     private var lastMpdFile: File? = null
@@ -388,18 +394,39 @@ actual class BoloPlayerController actual constructor(
                         return@submitVerifiedEvent
                     }
                     val current = _state.value
-                    val duration = current.duration.takeIf { it > 0 }
-                        ?: current.currentPosition.coerceAtLeast(0)
+                    val endPositionMs = current.durationMs.takeIf { it > 0L }
+                        ?: current.currentPositionMs.coerceAtLeast(0L)
+                    val pendingTargetMs = synchronized(seekLock) {
+                        seekCoordinator.pendingPositionMs
+                    }
+                    val seekFailed = pendingTargetMs != null &&
+                        (current.durationMs <= 0L ||
+                            pendingTargetMs < (current.durationMs - BoloPlayerSeekCoordinator.ConfirmationToleranceMs)
+                                .coerceAtLeast(0L))
+                    if (pendingTargetMs != null) {
+                        synchronized(seekLock) {
+                            seekTimeoutJob?.cancel()
+                            seekTimeoutJob = null
+                            clearDebugSeekRevisionLocked(seekCoordinator.currentRevision)
+                            seekCoordinator.cancelCurrentSeek()
+                        }
+                    }
                     mediaReady = false
                     speedApplyState.onInactive()
-                    lastSavedPositionMs = duration * 1000L
+                    lastSavedPositionMs = endPositionMs
                     stopPositionPollingLocked()
                     updateStateIfCurrentLocked(token) {
                         it.copy(
                             isPlaying = false,
                             isBuffering = false,
-                            currentPosition = duration
+                            currentPositionMs = endPositionMs,
+                            pendingSeekPositionMs = null
                         )
+                    }
+                    if (seekFailed) {
+                        scope.launch {
+                            onError(BoloPlayerError.SeekError("媒体在跳转目标确认前结束播放"))
+                        }
                     }
                 }
             }
@@ -409,13 +436,20 @@ actual class BoloPlayerController actual constructor(
                     currentMediaTokenLocked(handle, mediaPlayer)
                 } ?: return
                 submitVerifiedEvent(handle, token) {
-                    if (newCache < 100f) {
+                    val shouldPublishBuffering = newCache < 100f && (
+                        mediaLoading ||
+                            !mediaReady ||
+                            _state.value.isPlaying ||
+                            playWhenReady ||
+                            currentSeekLocked() != null
+                        )
+                    if (shouldPublishBuffering) {
                         speedApplyState.onBuffering()
-                    } else {
+                    } else if (newCache >= 100f) {
                         speedApplyState.onBufferingCompleted()
                     }
                     updateStateIfCurrentLocked(token) {
-                        it.copy(isBuffering = newCache < 100f)
+                        it.copy(isBuffering = shouldPublishBuffering)
                     }
                 }
             }
@@ -429,8 +463,18 @@ actual class BoloPlayerController actual constructor(
                     mediaReady = false
                     speedApplyState.onInactive()
                     stopPositionPollingLocked()
+                    synchronized(seekLock) {
+                        seekTimeoutJob?.cancel()
+                        seekTimeoutJob = null
+                        seekCoordinator.cancelCurrentSeek()
+                        clearDebugSeekInjectionLocked(clearNext = false)
+                    }
                     updateStateIfCurrentLocked(token) {
-                        it.copy(isPlaying = false, isBuffering = false)
+                        it.copy(
+                            isPlaying = false,
+                            isBuffering = false,
+                            pendingSeekPositionMs = null
+                        )
                     }
                     scope.launch {
                         onError(BoloPlayerError.UnknownError("VLC 播放错误"))
@@ -438,19 +482,35 @@ actual class BoloPlayerController actual constructor(
                 }
             }
 
+            override fun timeChanged(mediaPlayer: MediaPlayer, newTime: Long) {
+                val token = synchronized(lock) {
+                    currentMediaTokenLocked(handle, mediaPlayer)
+                } ?: return
+                submitTimeObservation(handle, token, newTime)
+            }
+
+            override fun seekableChanged(mediaPlayer: MediaPlayer, newSeekable: Int) {
+                val token = synchronized(lock) {
+                    currentMediaTokenLocked(handle, mediaPlayer)
+                } ?: return
+                submitSeekableObservation(handle, token, newSeekable != 0)
+            }
+
             override fun lengthChanged(mediaPlayer: MediaPlayer, newLength: Long) {
                 val token = synchronized(lock) {
                     currentMediaTokenLocked(handle, mediaPlayer)
                 } ?: return
                 submitVerifiedEvent(handle, token) {
-                    updateStateIfCurrentLocked(token) {
-                        it.copy(duration = (newLength / 1000L).toInt().coerceAtLeast(0))
+                    if (newLength > 0L) {
+                        updateStateIfCurrentLocked(token) {
+                            it.copy(durationMs = newLength)
+                        }
                     }
                 }
             }
         }
 
-    internal actual fun load(mpd: BoloDashMpd, startPosition: Int) {
+    internal actual fun load(mpd: BoloDashMpd, startPositionMs: Long) {
         val shouldStart = synchronized(lock) {
             if (lifecycleState == LifecycleState.Disposed) return
             lastMpd = mpd
@@ -458,7 +518,7 @@ actual class BoloPlayerController actual constructor(
                 playWhenReady = autoPlay
                 hasAcceptedInitialLoad = true
             }
-            val normalizedStartMs = startPosition.coerceAtLeast(0) * 1000L
+            val normalizedStartMs = normalizePositionMs(startPositionMs, mpd.durationMs)
             // 显式新媒体必须从自己的起点建立恢复基线，不能继承上一媒体的位置。
             lastSavedPositionMs = normalizedStartMs
             scheduleLoadLocked(
@@ -478,16 +538,43 @@ actual class BoloPlayerController actual constructor(
         onError(error)
     }
 
+    internal actual fun injectSeekFailureForDebug(
+        nativeSubmissionFailure: Boolean,
+        timeout: Boolean,
+        notSeekable: Boolean
+    ) {
+        require(listOf(nativeSubmissionFailure, timeout, notSeekable).count { it } == 1) {
+            "必须且只能注入一种 seek 故障"
+        }
+        synchronized(seekLock) {
+            debugNextNativeSubmissionFailure = nativeSubmissionFailure
+            debugNextTimeout = timeout
+            debugNextNotSeekable = notSeekable
+        }
+    }
+
     private fun scheduleLoadLocked(mpd: BoloDashMpd, startPositionMs: Long) {
         val generation = ++loadGeneration
+        val normalizedStartMs = normalizePositionMs(startPositionMs, mpd.durationMs)
         activeMediaMrl = null
         mediaLoading = true
         mediaReady = false
         startupRevision += 1
         startupPendingLoadGeneration = -1L
         startupAppliedLoadGeneration = -1L
-        pendingSeekMs = startPositionMs.coerceAtLeast(0L)
-        seekRevision += 1
+        val pendingPositionMs = synchronized(seekLock) {
+            seekTimeoutJob?.cancel()
+            seekTimeoutJob = null
+            seekCoordinator.onMediaChanged()
+            clearDebugSeekInjectionLocked(clearNext = true)
+            if (normalizedStartMs > 0L) {
+                seekCoordinator.requestSeek(normalizedStartMs)
+                normalizedStartMs
+            } else {
+                null
+            }
+        }
+        lastSavedPositionMs = normalizedStartMs
         speedApplyState.onMediaChanged()
         stopPositionPollingLocked()
         pendingLoad = PendingLoad(mpd, generation)
@@ -495,8 +582,10 @@ actual class BoloPlayerController actual constructor(
             it.copy(
                 isPlaying = false,
                 isBuffering = true,
-                currentPosition = (pendingSeekMs / 1000L).toInt(),
-                duration = 0,
+                currentPositionMs = 0L,
+                durationMs = mpd.durationMs.coerceAtLeast(0L),
+                pendingSeekPositionMs = pendingPositionMs,
+                isSeekable = false,
                 videoCodec = "",
                 videoWidth = 0,
                 videoHeight = 0,
@@ -583,7 +672,19 @@ actual class BoloPlayerController actual constructor(
             mediaLoading = false
             mediaReady = false
             speedApplyState.onInactive()
-            _state.update { it.copy(isPlaying = false, isBuffering = false) }
+            synchronized(seekLock) {
+                seekTimeoutJob?.cancel()
+                seekTimeoutJob = null
+                seekCoordinator.cancelCurrentSeek()
+            }
+            _state.update {
+                it.copy(
+                    isPlaying = false,
+                    isBuffering = false,
+                    pendingSeekPositionMs = null,
+                    isSeekable = false
+                )
+            }
             true
         }
         if (shouldReport) onError(error)
@@ -598,7 +699,19 @@ actual class BoloPlayerController actual constructor(
             activeMediaMrl = null
             speedApplyState.onInactive()
             stopPositionPollingLocked()
-            _state.update { it.copy(isPlaying = false, isBuffering = false) }
+            synchronized(seekLock) {
+                seekTimeoutJob?.cancel()
+                seekTimeoutJob = null
+                seekCoordinator.cancelCurrentSeek()
+            }
+            _state.update {
+                it.copy(
+                    isPlaying = false,
+                    isBuffering = false,
+                    pendingSeekPositionMs = null,
+                    isSeekable = false
+                )
+            }
             Pair(true, lastMpdFile.also { lastMpdFile = null })
         } ?: return
         runCatching { outcome.second?.delete() }
@@ -647,8 +760,15 @@ actual class BoloPlayerController actual constructor(
                 if (!isValid() || !isCurrentStartup(startup)) return@submitPlayerTask
 
                 val nativeState = runCatching {
-                    player.media().info().mrl() to player.status().isPlaying
+                    Triple(
+                        player.media().info().mrl(),
+                        player.status().isPlaying,
+                        player.status().isSeekable
+                    )
                 }.getOrNull() ?: return@submitPlayerTask
+                val nativeLengthMs = runCatching { player.status().length() }
+                    .getOrNull()
+                    ?.takeIf { it > 0L }
                 if (!isValid() || !isCurrentStartup(startup)) return@submitPlayerTask
                 if (!mediaMrlMatches(startup.media.mrl, nativeState.first)) {
                     return@submitPlayerTask
@@ -660,13 +780,19 @@ actual class BoloPlayerController actual constructor(
                     mediaLoading = false
                     mediaReady = true
                     val isFirstPlaying = startupAppliedLoadGeneration != startup.media.loadGeneration
-                    val seek = if (isFirstPlaying) pendingSeekMs else 0L
-                    val seekRevisionAtStart = seekRevision
+                    val seek = currentSeekLocked()?.takeIf {
+                        synchronized(seekLock) { !seekCoordinator.isSubmitted }
+                    }
                     val speedTicket = speedApplyState.onPlaying()
                     updateStateIfCurrentLocked(startup.media) {
-                        it.copy(isPlaying = true, isBuffering = false)
+                        it.copy(
+                            isPlaying = true,
+                            isBuffering = false,
+                            isSeekable = nativeState.third,
+                            durationMs = nativeLengthMs ?: it.durationMs
+                        )
                     }
-                    Triple(isFirstPlaying, seek to seekRevisionAtStart, speedTicket)
+                    Triple(isFirstPlaying, seek, speedTicket)
                 } ?: return@submitPlayerTask
 
                 if (startupPlan.first && isValid() && isCurrentStartup(startup)) {
@@ -687,21 +813,6 @@ actual class BoloPlayerController actual constructor(
                     }
                 }
 
-                val seekMs = startupPlan.second.first
-                val startupSeekRevision = startupPlan.second.second
-                if (seekMs > 0L && shouldApplySeek(startup, startupSeekRevision, seekMs)) {
-                    runCatching { player.controls().setTime(seekMs) }
-                    synchronized(lock) {
-                        if (
-                            isCurrentStartupLocked(startup) &&
-                            seekRevision == startupSeekRevision &&
-                            pendingSeekMs == seekMs
-                        ) {
-                            pendingSeekMs = 0L
-                        }
-                    }
-                }
-
                 startupPlan.third?.let { ticket ->
                     applyPlaybackSpeedInPlayerQueue(handle, startup.media, ticket, player)
                 }
@@ -713,9 +824,31 @@ actual class BoloPlayerController actual constructor(
                     }
                 }
 
+                startupPlan.second?.let { seek ->
+                    if (nativeState.third) {
+                        submitSeek(
+                            handle = handle,
+                            media = startup.media,
+                            seekMediaGeneration = seek.first,
+                            revision = seek.second,
+                            targetMs = seek.third
+                        )
+                    } else {
+                        val nativePositionMs = runCatching { player.status().time() }.getOrNull()
+                        failSeekIfCurrent(
+                            handle = handle,
+                            media = startup.media,
+                            seekMediaGeneration = seek.first,
+                            revision = seek.second,
+                            nativePositionMs = nativePositionMs,
+                            message = "当前媒体不可跳转"
+                        )
+                    }
+                }
+
                 val pauseIntent = synchronized(lock) {
                     if (!isCurrentStartupLocked(startup)) return@synchronized null
-                    playIntentRevision to !playWhenReady
+                    playIntentRevision to (!playWhenReady && currentSeekLocked() == null)
                 }
                 if (pauseIntent?.second == true && shouldApplyPause(startup, pauseIntent.first)) {
                     runCatching { player.controls().setPause(true) }
@@ -825,37 +958,66 @@ actual class BoloPlayerController actual constructor(
         }
     }
 
-    actual fun seekTo(position: Int) {
-        if (!isSeekPositionValid(position)) return
-        val targetMs = position * 1000L
+    actual fun seekToMs(positionMs: Long) {
+        var immediateError: BoloPlayerError.SeekError? = null
+        var injectNotSeekable = false
         val command = synchronized(lock) {
             if (lifecycleState == LifecycleState.Disposed) return
+            val targetMs = normalizePositionMs(positionMs, _state.value.durationMs)
             lastSavedPositionMs = targetMs
-            pendingSeekMs = targetMs
-            val revision = ++seekRevision
-            _state.update { it.copy(currentPosition = position) }
+            val seek = synchronized(seekLock) {
+                seekTimeoutJob?.cancel()
+                seekTimeoutJob = null
+                val revision = seekCoordinator.requestSeek(targetMs)
+                debugNativeSubmissionFailureRevision =
+                    revision.takeIf { debugNextNativeSubmissionFailure }
+                debugTimeoutRevision = revision.takeIf { debugNextTimeout }
+                injectNotSeekable = debugNextNotSeekable
+                debugNextNativeSubmissionFailure = false
+                debugNextTimeout = false
+                debugNextNotSeekable = false
+                Triple(seekCoordinator.currentMediaGeneration, revision, targetMs)
+            }
+            _state.update { it.copy(pendingSeekPositionMs = targetMs) }
+
             val handle = currentHandleLocked()
             val token = handle?.let { currentMediaTokenLocked(it) }
-            if (!mediaReady) null else Triple(handle, token, revision)
-        } ?: return
-        val handle = command.first ?: return
-        val token = command.second ?: return
-        submitPlayerTask(handle, token) { player, isValid ->
-            val shouldSeek = synchronized(lock) {
-                isValid() && seekRevision == command.third && pendingSeekMs == targetMs
-            }
-            if (!shouldSeek) return@submitPlayerTask
-            runCatching { player.controls().setTime(targetMs) }
-            synchronized(lock) {
-                if (
-                    isCurrentMediaLocked(handle, token) &&
-                    seekRevision == command.third &&
-                    pendingSeekMs == targetMs
-                ) {
-                    pendingSeekMs = 0L
+            when {
+                injectNotSeekable -> {
+                    synchronized(seekLock) {
+                        seekCoordinator.cancelSeek(seek.second)
+                        clearDebugSeekRevisionLocked(seek.second)
+                    }
+                    _state.update { it.copy(pendingSeekPositionMs = null) }
+                    immediateError = BoloPlayerError.SeekError("调试注入：当前媒体不可跳转")
+                    null
                 }
+                !mediaReady || handle == null || token == null -> null
+                !_state.value.isSeekable -> {
+                    synchronized(seekLock) {
+                        seekCoordinator.cancelSeek(seek.second)
+                        clearDebugSeekRevisionLocked(seek.second)
+                    }
+                    _state.update { it.copy(pendingSeekPositionMs = null) }
+                    immediateError = BoloPlayerError.SeekError("当前媒体不可跳转")
+                    null
+                }
+                else -> Triple(handle, token, seek)
             }
         }
+
+        immediateError?.let {
+            onError(it)
+            return
+        }
+        command ?: return
+        submitSeek(
+            handle = command.first,
+            media = command.second,
+            seekMediaGeneration = command.third.first,
+            revision = command.third.second,
+            targetMs = command.third.third
+        )
     }
 
     actual fun setVolumeGain(gain: Int) {
@@ -901,10 +1063,7 @@ actual class BoloPlayerController actual constructor(
 
             val component = mediaPlayerComponent
             val host = boundHost
-            val displayPositionMs = _state.value.currentPosition.coerceAtLeast(0) * 1000L
-            if (displayPositionMs > 0L || lastSavedPositionMs == 0L) {
-                lastSavedPositionMs = displayPositionMs
-            }
+            lastSavedPositionMs = _state.value.displayPositionMs.coerceAtLeast(0L)
 
             mediaPlayerComponent = null
             playerGeneration += 1
@@ -917,14 +1076,26 @@ actual class BoloPlayerController actual constructor(
             startupAppliedLoadGeneration = -1L
             speedApplyState.onInactive()
             stopPositionPollingLocked()
-            pendingSeekMs = 0L
+            synchronized(seekLock) {
+                seekTimeoutJob?.cancel()
+                seekTimeoutJob = null
+                seekCoordinator.onMediaChanged()
+                clearDebugSeekInjectionLocked(clearNext = true)
+            }
             pendingLoad = null
             lifecycleState = if (finalRelease) LifecycleState.Disposed else LifecycleState.Released
             if (finalRelease) {
                 boundHost = null
                 lastMpd = null
             }
-            _state.update { it.copy(isPlaying = false, isBuffering = false) }
+            _state.update {
+                it.copy(
+                    isPlaying = false,
+                    isBuffering = false,
+                    pendingSeekPositionMs = null,
+                    isSeekable = false
+                )
+            }
             Triple(component, host, lastMpdFile.also { lastMpdFile = null })
         }
 
@@ -971,29 +1142,39 @@ actual class BoloPlayerController actual constructor(
                         val submitted = submitPlayerTask(handle, media) { player, isValid ->
                             try {
                                 if (!isValid() || !isCurrentPoll(handle, poll)) return@submitPlayerTask
-                                val seekRevisionBeforeSample = synchronized(lock) { seekRevision }
+                                val seekIdentityBeforeSample = synchronized(seekLock) {
+                                    seekCoordinator.currentMediaGeneration to seekCoordinator.currentRevision
+                                }
                                 val sample = runCatching {
+                                    val nativeMrl = player.media().info().mrl()
                                     val positionMs = player.status().time()
                                     val statistics = player.media().info().statistics()
                                     val transferSpeed = statistics?.inputBitrate()?.toLong()
                                         ?.let { if (it > 0L) it * 8L else 0L }
                                         ?: 0L
-                                    positionMs to transferSpeed
+                                    Triple(positionMs, transferSpeed, player.status().isPlaying) to nativeMrl
                                 }.getOrNull() ?: return@submitPlayerTask
+                                if (!mediaMrlMatches(media.mrl, sample.second)) return@submitPlayerTask
+                                var resolvedSeek = false
                                 synchronized(lock) {
-                                    if (
-                                        isCurrentPollLocked(handle, poll) &&
-                                        seekRevision == seekRevisionBeforeSample
-                                    ) {
-                                        lastSavedPositionMs = sample.first.coerceAtLeast(0L)
+                                    if (isCurrentPollLocked(handle, poll)) {
+                                        val sameSeek = synchronized(seekLock) {
+                                            seekCoordinator.currentMediaGeneration == seekIdentityBeforeSample.first &&
+                                                seekCoordinator.currentRevision == seekIdentityBeforeSample.second
+                                        }
+                                        if (sameSeek) {
+                                            resolvedSeek = acceptObservedPositionLocked(
+                                                media = media,
+                                                positionMs = sample.first.first,
+                                                isPlaying = sample.first.third
+                                            ).second
+                                        }
                                         updateStateIfCurrentLocked(media) {
-                                            it.copy(
-                                                currentPosition = (sample.first / 1000L).toInt().coerceAtLeast(0),
-                                                transferSpeed = sample.second
-                                            )
+                                            it.copy(transferSpeed = sample.first.second)
                                         }
                                     }
                                 }
+                                if (resolvedSeek) submitDeferredPauseIfNeeded(handle, media)
                             } finally {
                                 synchronized(lock) {
                                     if (pollTaskInFlight == poll) pollTaskInFlight = null
@@ -1019,9 +1200,449 @@ actual class BoloPlayerController actual constructor(
         pollTaskInFlight = null
     }
 
-    private fun isSeekPositionValid(position: Int): Boolean {
-        val duration = _state.value.duration
-        return position >= 0 && (duration <= 0 || position <= duration)
+    private fun currentSeekLocked(): Triple<Long, Long, Long>? = synchronized(seekLock) {
+        val targetMs = seekCoordinator.pendingPositionMs ?: return@synchronized null
+        Triple(
+            seekCoordinator.currentMediaGeneration,
+            seekCoordinator.currentRevision,
+            targetMs
+        )
+    }
+
+    /** 调用方持有 [lock]；返回“位置被接受 / 本次观测刚刚确认了 seek”。 */
+    private fun acceptObservedPositionLocked(
+        media: MediaToken,
+        positionMs: Long,
+        isPlaying: Boolean
+    ): Pair<Boolean, Boolean> {
+        if (positionMs < 0L) return false to false
+        var pendingTargetMs: Long? = null
+        val result = synchronized(seekLock) {
+            pendingTargetMs = seekCoordinator.pendingPositionMs
+            val hadPending = pendingTargetMs != null
+            val pendingRevision = if (hadPending) seekCoordinator.currentRevision else null
+            val forceTimeout = pendingRevision != null && debugTimeoutRevision == pendingRevision
+            val accepted = !forceTimeout && seekCoordinator.acceptObservedPosition(
+                    positionMs = positionMs,
+                    isPlaying = isPlaying,
+                    playbackRate = playbackSpeed.rateNumber
+                )
+            val resolvedSeek = accepted && hadPending
+            if (resolvedSeek) {
+                seekTimeoutJob?.cancel()
+                seekTimeoutJob = null
+                pendingRevision?.let(::clearDebugSeekRevisionLocked)
+            }
+            accepted to resolvedSeek
+        }
+        if (result.first) {
+            val durationMs = _state.value.durationMs
+            val completedAtEnd = result.second && pendingTargetMs != null && durationMs > 0L &&
+                pendingTargetMs >= (durationMs - BoloPlayerSeekCoordinator.ConfirmationToleranceMs)
+                    .coerceAtLeast(0L) &&
+                positionMs >= (durationMs - BoloPlayerSeekCoordinator.ConfirmationToleranceMs)
+                    .coerceAtLeast(0L)
+            val confirmedPositionMs = if (completedAtEnd) durationMs else positionMs
+            lastSavedPositionMs = confirmedPositionMs
+            if (completedAtEnd) {
+                mediaReady = false
+                speedApplyState.onInactive()
+                stopPositionPollingLocked()
+            }
+            updateStateIfCurrentLocked(media) {
+                it.copy(
+                    isPlaying = if (completedAtEnd) false else it.isPlaying,
+                    isBuffering = if (completedAtEnd || !isPlaying || !playWhenReady) {
+                        false
+                    } else {
+                        it.isBuffering
+                    },
+                    currentPositionMs = confirmedPositionMs,
+                    pendingSeekPositionMs = if (result.second) null else it.pendingSeekPositionMs
+                )
+            }
+        }
+        return result
+    }
+
+    private fun submitTimeObservation(
+        handle: PlayerHandle,
+        media: MediaToken,
+        positionMs: Long
+    ) {
+        submitPlayerTask(handle, media) { player, isValid ->
+            if (!isValid()) return@submitPlayerTask
+            val nativeState = runCatching {
+                player.media().info().mrl() to player.status().isPlaying
+            }.getOrNull() ?: return@submitPlayerTask
+            if (!isValid() || !mediaMrlMatches(media.mrl, nativeState.first)) {
+                return@submitPlayerTask
+            }
+            val resolvedSeek = synchronized(lock) {
+                if (
+                    !isCurrentMediaLocked(handle, media) ||
+                    !mediaReady ||
+                    startupAppliedLoadGeneration != media.loadGeneration
+                ) {
+                    return@synchronized false
+                }
+                acceptObservedPositionLocked(media, positionMs, nativeState.second).second
+            }
+            if (resolvedSeek) submitDeferredPauseIfNeeded(handle, media)
+        }
+    }
+
+    private fun submitSeekableObservation(
+        handle: PlayerHandle,
+        media: MediaToken,
+        isSeekable: Boolean
+    ) {
+        submitPlayerTask(handle, media) { player, isValid ->
+            if (!isValid()) return@submitPlayerTask
+            val nativeMrl = runCatching { player.media().info().mrl() }.getOrNull()
+                ?: return@submitPlayerTask
+            if (!isValid() || !mediaMrlMatches(media.mrl, nativeMrl)) return@submitPlayerTask
+            val nativePositionMs = if (isSeekable) {
+                null
+            } else {
+                runCatching { player.status().time() }.getOrNull()
+            }
+            var seekToSubmit: Triple<Long, Long, Long>? = null
+            var seekToFail: Triple<Long, Long, Long>? = null
+            synchronized(lock) {
+                if (!isCurrentMediaLocked(handle, media)) return@synchronized
+                updateStateIfCurrentLocked(media) { it.copy(isSeekable = isSeekable) }
+                val seek = currentSeekLocked()
+                if (seek != null && mediaReady) {
+                    if (isSeekable) {
+                        val alreadySubmitted = synchronized(seekLock) {
+                            seekCoordinator.isSubmitted
+                        }
+                        if (!alreadySubmitted) seekToSubmit = seek
+                    } else {
+                        seekToFail = seek
+                    }
+                }
+            }
+            seekToSubmit?.let { seek ->
+                submitSeek(handle, media, seek.first, seek.second, seek.third)
+            }
+            seekToFail?.let { seek ->
+                failSeekIfCurrent(
+                    handle = handle,
+                    media = media,
+                    seekMediaGeneration = seek.first,
+                    revision = seek.second,
+                    nativePositionMs = nativePositionMs,
+                    message = "当前媒体不可跳转"
+                )
+            }
+        }
+    }
+
+    private fun submitSeek(
+        handle: PlayerHandle,
+        media: MediaToken,
+        seekMediaGeneration: Long,
+        revision: Long,
+        targetMs: Long,
+        expectedSubmittedAttempts: Int = 0
+    ) {
+        val submitted = submitPlayerTask(handle, media) { player, isValid ->
+            val nativeMrl = runCatching { player.media().info().mrl() }.getOrNull()
+                ?: return@submitPlayerTask
+            if (!isValid() || !mediaMrlMatches(media.mrl, nativeMrl)) return@submitPlayerTask
+            var unavailable = false
+            var injectNativeSubmissionFailure = false
+            var injectTimeout = false
+            val shouldSubmit = synchronized(lock) {
+                if (!isValid() || !isCurrentMediaLocked(handle, media) || !mediaReady) {
+                    return@synchronized false
+                }
+                val current = synchronized(seekLock) {
+                    val isCurrent = seekCoordinator.isCurrent(seekMediaGeneration, revision) &&
+                        seekCoordinator.pendingPositionMs == targetMs &&
+                        seekCoordinator.submittedAttempt == expectedSubmittedAttempts
+                    if (isCurrent) {
+                        injectNativeSubmissionFailure =
+                            debugNativeSubmissionFailureRevision == revision
+                        injectTimeout = debugTimeoutRevision == revision
+                    }
+                    isCurrent
+                }
+                if (current && !_state.value.isSeekable) unavailable = true
+                current && !unavailable
+            }
+            if (unavailable) {
+                val nativePositionMs = runCatching { player.status().time() }.getOrNull()
+                failSeekIfCurrent(
+                    handle,
+                    media,
+                    seekMediaGeneration,
+                    revision,
+                    nativePositionMs,
+                    "当前媒体不可跳转"
+                )
+                return@submitPlayerTask
+            }
+            if (!shouldSubmit) return@submitPlayerTask
+
+            val nativeResult: Result<Unit> = when {
+                injectNativeSubmissionFailure -> Result.failure(
+                    IllegalStateException("调试注入：VLC 跳转命令提交异常")
+                )
+                injectTimeout -> Result.success(Unit)
+                else -> runCatching { player.controls().setTime(targetMs) }
+            }
+            if (nativeResult.isFailure) {
+                val nativePositionMs = runCatching { player.status().time() }.getOrNull()
+                failSeekIfCurrent(
+                    handle = handle,
+                    media = media,
+                    seekMediaGeneration = seekMediaGeneration,
+                    revision = revision,
+                    nativePositionMs = nativePositionMs,
+                    message = "VLC 跳转命令提交异常",
+                    cause = nativeResult.exceptionOrNull()
+                )
+                return@submitPlayerTask
+            }
+
+            val marked = synchronized(lock) {
+                if (!isValid() || !isCurrentMediaLocked(handle, media)) {
+                    return@synchronized false
+                }
+                synchronized(seekLock) {
+                    seekCoordinator.isCurrent(seekMediaGeneration, revision) &&
+                        seekCoordinator.pendingPositionMs == targetMs &&
+                        seekCoordinator.markSubmitted(revision)
+                }
+            }
+            if (marked) {
+                scheduleSeekTimeout(
+                    handle,
+                    media,
+                    seekMediaGeneration,
+                    revision,
+                    targetMs
+                )
+            }
+        }
+        if (!submitted) {
+            failSeekIfCurrent(
+                handle = handle,
+                media = media,
+                seekMediaGeneration = seekMediaGeneration,
+                revision = revision,
+                nativePositionMs = null,
+                message = "VLC 跳转任务提交失败"
+            )
+        }
+    }
+
+    private fun scheduleSeekTimeout(
+        handle: PlayerHandle,
+        media: MediaToken,
+        seekMediaGeneration: Long,
+        revision: Long,
+        targetMs: Long
+    ) {
+        synchronized(lock) {
+            if (!isCurrentMediaLocked(handle, media)) return
+            synchronized(seekLock) {
+                if (!seekCoordinator.isCurrent(seekMediaGeneration, revision)) return
+                seekTimeoutJob?.cancel()
+                seekTimeoutJob = scope.launch {
+                    delay(BoloPlayerSeekCoordinator.AttemptTimeoutMs)
+                    handleSeekTimeout(
+                        handle,
+                        media,
+                        seekMediaGeneration,
+                        revision,
+                        targetMs
+                    )
+                }
+            }
+        }
+    }
+
+    private fun handleSeekTimeout(
+        handle: PlayerHandle,
+        media: MediaToken,
+        seekMediaGeneration: Long,
+        revision: Long,
+        targetMs: Long
+    ) {
+        val submitted = submitPlayerTask(handle, media) { player, isValid ->
+            if (!isValid()) return@submitPlayerTask
+            val nativeState = runCatching {
+                Triple(
+                    player.media().info().mrl(),
+                    player.status().time(),
+                    player.status().isPlaying
+                )
+            }.getOrNull()
+            if (nativeState != null && !mediaMrlMatches(media.mrl, nativeState.first)) {
+                return@submitPlayerTask
+            }
+
+            var resolvedSeek = false
+            var shouldRetry = false
+            var shouldFail = false
+            var retryAfterAttempts = 0
+            synchronized(lock) {
+                if (!isCurrentMediaLocked(handle, media)) return@synchronized
+                val isCurrentSeek = synchronized(seekLock) {
+                    seekCoordinator.isCurrent(seekMediaGeneration, revision) &&
+                        seekCoordinator.pendingPositionMs == targetMs
+                }
+                if (!isCurrentSeek) return@synchronized
+
+                if (nativeState != null) {
+                    resolvedSeek = acceptObservedPositionLocked(
+                        media = media,
+                        positionMs = nativeState.second,
+                        isPlaying = nativeState.third
+                    ).second
+                }
+                if (!resolvedSeek) {
+                    shouldRetry = synchronized(seekLock) {
+                        retryAfterAttempts = seekCoordinator.submittedAttempt
+                        seekCoordinator.canRetry(revision)
+                    }
+                    shouldFail = !shouldRetry
+                }
+            }
+
+            when {
+                resolvedSeek -> submitDeferredPauseIfNeeded(handle, media)
+                shouldRetry -> submitSeek(
+                    handle,
+                    media,
+                    seekMediaGeneration,
+                    revision,
+                    targetMs,
+                    retryAfterAttempts
+                )
+                shouldFail -> failSeekIfCurrent(
+                    handle = handle,
+                    media = media,
+                    seekMediaGeneration = seekMediaGeneration,
+                    revision = revision,
+                    nativePositionMs = nativeState?.second,
+                    message = "VLC 跳转两次尝试均超时"
+                )
+            }
+        }
+        if (!submitted) {
+            failSeekIfCurrent(
+                handle = handle,
+                media = media,
+                seekMediaGeneration = seekMediaGeneration,
+                revision = revision,
+                nativePositionMs = null,
+                message = "VLC 跳转超时读回任务提交失败"
+            )
+        }
+    }
+
+    private fun failSeekIfCurrent(
+        handle: PlayerHandle,
+        media: MediaToken,
+        seekMediaGeneration: Long,
+        revision: Long,
+        nativePositionMs: Long?,
+        message: String,
+        cause: Throwable? = null
+    ) {
+        var shouldPause = false
+        val shouldReport = synchronized(lock) {
+            if (!isCurrentMediaLocked(handle, media)) return@synchronized false
+            val cancelled = synchronized(seekLock) {
+                if (!seekCoordinator.isCurrent(seekMediaGeneration, revision)) {
+                    false
+                } else {
+                    seekTimeoutJob?.cancel()
+                    seekTimeoutJob = null
+                    clearDebugSeekRevisionLocked(revision)
+                    seekCoordinator.cancelSeek(revision)
+                }
+            }
+            if (!cancelled) return@synchronized false
+
+            val actualPositionMs = nativePositionMs?.takeIf { it >= 0L }
+            if (actualPositionMs != null) lastSavedPositionMs = actualPositionMs
+            updateStateIfCurrentLocked(media) {
+                it.copy(
+                    currentPositionMs = actualPositionMs ?: it.currentPositionMs,
+                    pendingSeekPositionMs = null,
+                    isBuffering = if (!playWhenReady) false else it.isBuffering
+                )
+            }
+            shouldPause = mediaReady && !playWhenReady
+            true
+        }
+        if (!shouldReport) return
+        scope.launch { onError(BoloPlayerError.SeekError(message, cause)) }
+        if (shouldPause) submitDeferredPauseIfNeeded(handle, media)
+    }
+
+    private fun submitDeferredPauseIfNeeded(handle: PlayerHandle, media: MediaToken) {
+        val intentRevision = synchronized(lock) {
+            if (
+                !isCurrentMediaLocked(handle, media) ||
+                !mediaReady ||
+                playWhenReady ||
+                currentSeekLocked() != null
+            ) {
+                return@synchronized null
+            }
+            playIntentRevision
+        } ?: return
+        submitPlayerTask(handle, media) { player, isValid ->
+            val shouldPause = synchronized(lock) {
+                isValid() &&
+                    isCurrentMediaLocked(handle, media) &&
+                    playIntentRevision == intentRevision &&
+                    !playWhenReady &&
+                    currentSeekLocked() == null
+            }
+            if (!shouldPause) return@submitPlayerTask
+            runCatching { player.controls().setPause(true) }
+            synchronized(lock) {
+                if (
+                    isCurrentMediaLocked(handle, media) &&
+                    playIntentRevision == intentRevision &&
+                    !playWhenReady
+                ) {
+                    updateStateIfCurrentLocked(media) { it.copy(isPlaying = false) }
+                }
+            }
+        }
+    }
+
+    private fun normalizePositionMs(positionMs: Long, durationMs: Long): Long {
+        val nonNegative = positionMs.coerceAtLeast(0L)
+        return if (durationMs > 0L) nonNegative.coerceAtMost(durationMs) else nonNegative
+    }
+
+    private fun clearDebugSeekRevisionLocked(revision: Long) {
+        if (debugNativeSubmissionFailureRevision == revision) {
+            debugNativeSubmissionFailureRevision = null
+        }
+        if (debugTimeoutRevision == revision) {
+            debugTimeoutRevision = null
+        }
+    }
+
+    private fun clearDebugSeekInjectionLocked(clearNext: Boolean) {
+        debugNativeSubmissionFailureRevision = null
+        debugTimeoutRevision = null
+        if (clearNext) {
+            debugNextNativeSubmissionFailure = false
+            debugNextTimeout = false
+            debugNextNotSeekable = false
+        }
     }
 
     private fun submitPlaybackSpeed(
@@ -1066,11 +1687,6 @@ actual class BoloPlayerController actual constructor(
             _state.update { it.copy(playbackSpeed = playbackSpeed) }
         }
     }
-
-    private fun shouldApplySeek(startup: StartupToken, revision: Long, targetMs: Long): Boolean =
-        synchronized(lock) {
-            isCurrentStartupLocked(startup) && seekRevision == revision && pendingSeekMs == targetMs
-        }
 
     private fun shouldApplyPause(startup: StartupToken, revision: Long): Boolean =
         synchronized(lock) {

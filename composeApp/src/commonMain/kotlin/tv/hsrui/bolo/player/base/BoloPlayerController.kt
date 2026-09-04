@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * DisposableEffect(controller) { onDispose { controller.release() } }
  *
- * controller.load(video = videoDashObject, audio = audioDashObject, startPosition = 0)
+ * controller.load(video = videoDashObject, audio = audioDashObject, startPositionMs = 0L)
  *
  * BoloVideoPlayer(controller = controller, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))
  *
@@ -31,7 +31,7 @@ import kotlinx.coroutines.flow.StateFlow
  * ## 平台底层实现
  * | 平台    | 底层技术                              |
  * |---------|---------------------------------------|
- * | Android | VLC (LibVLC Android 3.7.4)            |
+ * | Android | VLC (LibVLC Android 3.7.5)            |
  * | iOS     | VLC (MobileVLCKit ~>3.7, CocoaPods)   |
  * | Desktop | VLC (vlcj 4.12.1)                     |
  */
@@ -42,11 +42,18 @@ expect class BoloPlayerController(
     /** 当前播放器状态（StateFlow，可在 Composable 中 collectAsState） */
     val state: StateFlow<BoloPlayerState>
 
-    /** 加载已在 commonMain 合成好的 DASH MPD。业务层应调用同包扩展函数 load(video, audio, startPosition)。 */
-    internal fun load(mpd: BoloDashMpd, startPosition: Int = 0)
+    /** 加载已在 commonMain 合成好的 DASH MPD。业务层应调用同包扩展函数 load(video, audio, startPositionMs)。 */
+    internal fun load(mpd: BoloDashMpd, startPositionMs: Long = 0L)
 
     /** commonMain 扩展函数在 MPD 合成失败时通过平台控制器上报错误。 */
     internal fun reportLoadError(error: BoloPlayerError)
+
+    /** 仅供被 git 忽略的 PlaybackSeekDebugContent 注入下一次 seek 的失败分支。 */
+    internal fun injectSeekFailureForDebug(
+        nativeSubmissionFailure: Boolean,
+        timeout: Boolean,
+        notSeekable: Boolean
+    )
 
     /** 开始/恢复播放 */
     fun play()
@@ -56,9 +63,9 @@ expect class BoloPlayerController(
 
     /**
      * 跳转到指定位置
-     * @param position 目标位置（秒）
+     * @param positionMs 目标位置（毫秒）
      */
-    fun seekTo(position: Int)
+    fun seekToMs(positionMs: Long)
 
     /**
      * 调整音量增益。

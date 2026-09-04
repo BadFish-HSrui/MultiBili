@@ -18,6 +18,10 @@ sealed class BoloPlayerError(
     class DecoderError(message: String, cause: Throwable? = null)
         : BoloPlayerError(message, cause)
 
+    /** 跳转失败；不会终止当前媒体播放 */
+    class SeekError(message: String, cause: Throwable? = null)
+        : BoloPlayerError(message, cause)
+
     /** 其他未知错误 */
     class UnknownError(message: String, cause: Throwable? = null)
         : BoloPlayerError(message, cause)

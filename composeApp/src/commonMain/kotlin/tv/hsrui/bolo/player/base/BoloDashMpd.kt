@@ -5,7 +5,7 @@ import tv.hsrui.network.feature.player.BiliDashObject
 internal data class BoloDashMpd(
     val xml: String,
     val hasAudio: Boolean,
-    val durationSec: Long,
+    val durationMs: Long,
     val videoSummary: String,
     val audioSummary: String?
 )
@@ -13,7 +13,7 @@ internal data class BoloDashMpd(
 fun BoloPlayerController.load(
     video: BiliDashObject,
     audio: BiliDashObject? = null,
-    startPosition: Int = 0
+    startPositionMs: Long = 0L
 ) {
     val mpd = try {
         buildBoloDashMpd(video, audio)
@@ -24,7 +24,7 @@ fun BoloPlayerController.load(
         reportLoadError(BoloPlayerError.UnknownError("DASH MPD 构建失败: ${e.message}", e))
         return
     }
-    load(mpd, startPosition)
+    load(mpd, startPositionMs)
 }
 
 internal fun buildBoloDashMpd(video: BiliDashObject, audio: BiliDashObject?): BoloDashMpd {
@@ -35,8 +35,8 @@ internal fun buildBoloDashMpd(video: BiliDashObject, audio: BiliDashObject?): Bo
             append(buildAdaptationSet(audio, "audio", 2))
         }
     }
-    val durationSec = maxOf(video.duration, audio?.duration ?: 0L).coerceAtLeast(0L)
-    val durationAttribute = mpdDurationAttribute(durationSec)
+    val durationMs = secondsToMilliseconds(maxOf(video.duration, audio?.duration ?: 0L))
+    val durationAttribute = mpdDurationAttribute(durationMs)
     val xml = buildString {
         appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
         appendLine(
@@ -50,7 +50,7 @@ internal fun buildBoloDashMpd(video: BiliDashObject, audio: BiliDashObject?): Bo
     return BoloDashMpd(
         xml = xml,
         hasAudio = audio != null,
-        durationSec = durationSec,
+        durationMs = durationMs,
         videoSummary = video.mpdSourceSummary("video"),
         audioSummary = audio?.mpdSourceSummary("audio")
     )
@@ -93,8 +93,23 @@ private fun buildAdaptationSet(dash: BiliDashObject, contentType: String, id: In
     """.trimIndent().prependIndent("    ")
 }
 
-private fun mpdDurationAttribute(durationSec: Long): String =
-    if (durationSec > 0L) " mediaPresentationDuration=\"PT${durationSec}S\"" else ""
+private fun secondsToMilliseconds(seconds: Long): Long =
+    seconds.coerceAtLeast(0L).let {
+        if (it > Long.MAX_VALUE / 1_000L) Long.MAX_VALUE else it * 1_000L
+    }
+
+private fun mpdDurationAttribute(durationMs: Long): String {
+    if (durationMs <= 0L) return ""
+
+    val wholeSeconds = durationMs / 1_000L
+    val remainderMs = durationMs % 1_000L
+    val durationValue = if (remainderMs == 0L) {
+        wholeSeconds.toString()
+    } else {
+        "$wholeSeconds.${remainderMs.toString().padStart(3, '0').trimEnd('0')}"
+    }
+    return " mediaPresentationDuration=\"PT${durationValue}S\""
+}
 
 private fun BiliDashObject.mpdSourceSummary(contentType: String): String {
     val segmentBase = segmentBase
