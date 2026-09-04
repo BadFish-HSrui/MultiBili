@@ -1,5 +1,6 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.targets.native.tasks.PodBuildTask
 import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.BOOLEAN
 import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.INT
 import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING
@@ -19,6 +20,7 @@ plugins {
 val appVersionMetadata = rootProject.extra["appVersionMetadata"] as ResolvedVersionMetadata
 val appBuildOrigin = rootProject.extra["appBuildOrigin"] as String
 val appOfficialBuild = rootProject.extra["appOfficialBuild"] as Boolean
+val iosDeploymentTarget = "16.0"
 val (appVersionMajor, appVersionMinor) = appVersionMetadata.coreVersion.split('.')
 val windowsPackageVersion =
     "$appVersionMajor.$appVersionMinor.${appVersionMetadata.buildNumber}"
@@ -52,7 +54,7 @@ kotlin {
         version = appVersionMetadata.releaseVersion
         summary = "Bolo Compose App"
         homepage = "https://hsrui.tv/bolo"
-        ios.deploymentTarget = "16.0"
+        ios.deploymentTarget = iosDeploymentTarget
         podfile = project.file("../iosApp/Podfile")
 
         pod("MobileVLCKit") {
@@ -107,6 +109,10 @@ kotlin {
             implementation(libs.vlcj)
         }
     }
+}
+
+tasks.withType<PodBuildTask>().configureEach {
+    xcodeBuildSettings.put("IPHONEOS_DEPLOYMENT_TARGET", iosDeploymentTarget)
 }
 
 dependencies {
