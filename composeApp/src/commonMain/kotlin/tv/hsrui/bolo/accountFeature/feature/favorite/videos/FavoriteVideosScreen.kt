@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.view.favorite
+package tv.hsrui.bolo.accountFeature.feature.favorite.videos
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold

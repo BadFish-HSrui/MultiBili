@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.view.favorite
+package tv.hsrui.bolo.accountFeature.feature.favorite.videos
 
 import tv.hsrui.network.feature.favorite.FavoriteVideoCard
 

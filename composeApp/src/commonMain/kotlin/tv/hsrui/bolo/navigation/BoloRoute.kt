@@ -27,6 +27,7 @@ sealed interface BoloRoute {
         @Serializable data object History : AccountFeature
         @Serializable data object WatchLater : AccountFeature
         @Serializable data object Favorite : AccountFeature
+        @Serializable data class FavoriteFolder(val mediaId: Long) : AccountFeature
     }
 
     @Serializable
@@ -38,6 +39,5 @@ sealed interface BoloRoute {
     @Serializable
     sealed interface View : BoloRoute {
         @Serializable data class Video(val vid: Vid) : View
-        @Serializable data class FavoriteFolder(val mediaId: Long) : View
     }
 }
