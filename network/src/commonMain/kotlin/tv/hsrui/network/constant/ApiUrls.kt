@@ -56,5 +56,9 @@ object ApiUrls {
         const val VIDEO = "x/player/wbi/playurl" //视频播放信息
     }
 
+    object Danmaku {
+        const val SEGMENT = "x/v2/dm/wbi/web/seg.so" //分段弹幕
+    }
+
     const val WBI = "x/web-interface/nav" //用于获取WbiKey，实际上是导航栏接口
 }
