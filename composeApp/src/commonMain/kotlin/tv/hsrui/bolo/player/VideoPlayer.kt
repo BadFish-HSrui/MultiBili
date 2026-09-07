@@ -8,6 +8,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import tv.hsrui.bolo.player.base.BoloVideoPlayer
 import tv.hsrui.bolo.player.controls.BoloPlayerControls
+import tv.hsrui.bolo.player.danmaku.BoloDanmakuLayer
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.network.feature.video.VideoInfoData
 
@@ -41,6 +42,7 @@ fun VideoPlayer(
         is VideoPlayerUiState.Success -> {
             Box(modifier.fillMaxSize()) {
                 BoloVideoPlayer(controller = viewModel.controller)
+                BoloDanmakuLayer(controller = viewModel.danmakuController)
                 BoloPlayerControls(
                     videoInfo = videoInfo,
                     viewModel = viewModel,

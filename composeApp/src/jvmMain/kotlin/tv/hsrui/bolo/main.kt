@@ -8,20 +8,23 @@ import multibili.composeapp.generated.resources.jvm_icon
 import org.jetbrains.compose.resources.painterResource
 import tv.hsrui.bolo.player.DesktopPlayerFullscreenWindow
 
-fun main() = application {
-    Window(
-        onCloseRequest = ::exitApplication,
-        title = "Multi Bili",
-        icon = painterResource(Res.drawable.jvm_icon)
-    ) {
-        DisposableEffect(window) {
-            DesktopPlayerFullscreenWindow.window = window
-            onDispose {
-                if (DesktopPlayerFullscreenWindow.window === window) {
-                    DesktopPlayerFullscreenWindow.window = null
+fun main() {
+    System.setProperty("compose.interop.blending", "true")
+    application {
+        Window(
+            onCloseRequest = ::exitApplication,
+            title = "Multi Bili",
+            icon = painterResource(Res.drawable.jvm_icon)
+        ) {
+            DisposableEffect(window) {
+                DesktopPlayerFullscreenWindow.window = window
+                onDispose {
+                    if (DesktopPlayerFullscreenWindow.window === window) {
+                        DesktopPlayerFullscreenWindow.window = null
+                    }
                 }
             }
+            App()
         }
-        App()
     }
 }
