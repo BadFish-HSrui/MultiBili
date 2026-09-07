@@ -221,7 +221,7 @@ fun BoloPlayerControls(
                                     (fraction.toDouble() * durationMs.toDouble())
                                         .roundToLong()
                                         .coerceIn(0L, durationMs)
-                                viewModel.controller.seekToMs(targetPositionMs)
+                                viewModel.seekToMs(targetPositionMs)
                                 sliderPreviewFraction = null
                             }
                         },
