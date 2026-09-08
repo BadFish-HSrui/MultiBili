@@ -21,6 +21,7 @@ import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
 import org.koin.dsl.KoinConfiguration
 import org.koin.dsl.koinConfiguration
+import tv.hsrui.bolo.boloSetting.BoloSettingsModule
 import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.navigation.NavigatorModule
@@ -39,6 +40,7 @@ fun koinConfig(): KoinConfiguration {
     return koinConfiguration {
         modules(
             KSafeModule,
+            BoloSettingsModule,
             AppDataStorageModule,
             LoginStorageModule,
             MyAccountInfoModule,
