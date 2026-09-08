@@ -2,6 +2,7 @@ package tv.hsrui.bolo.boloSetting
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import eu.anifantakis.lib.ksafe.KSafePlain
 
@@ -26,6 +27,19 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             val speed = normalizeDanmakuSpeed(value)
             storedDanmakuSpeed = speed
             currentDanmakuSpeed = speed
+        }
+
+    private var storedDanmakuExtraLineSpacingEnabled by settingsKSafe(
+        false,
+        key = "danmaku_extra_line_spacing_enabled",
+    )
+    private var currentDanmakuExtraLineSpacingEnabled by mutableStateOf(storedDanmakuExtraLineSpacingEnabled)
+
+    var danmakuExtraLineSpacingEnabled: Boolean
+        get() = currentDanmakuExtraLineSpacingEnabled
+        set(value) {
+            storedDanmakuExtraLineSpacingEnabled = value
+            currentDanmakuExtraLineSpacingEnabled = value
         }
 
     private fun normalizeDanmakuSpeed(value: Float): Float =

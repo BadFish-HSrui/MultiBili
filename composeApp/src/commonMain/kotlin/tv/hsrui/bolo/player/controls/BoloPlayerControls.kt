@@ -322,6 +322,8 @@ fun BoloPlayerControls(
                 onDanmakuScaleChange = { settings.danmakuScale = it },
                 danmakuSpeed = settings.danmakuSpeed,
                 onDanmakuSpeedChange = { settings.danmakuSpeed = it },
+                danmakuExtraLineSpacingEnabled = settings.danmakuExtraLineSpacingEnabled,
+                onDanmakuExtraLineSpacingEnabledChange = { settings.danmakuExtraLineSpacingEnabled = it },
                 onDismissRequest = {
                     settingsOpen = false
                     controlsVisible = true

@@ -42,6 +42,7 @@ fun BoloDanmakuLayer(
     val settings: BoloSettings = koinInject()
     val danmakuScale = settings.danmakuScale
     val danmakuSpeed = settings.danmakuSpeed
+    val danmakuExtraLineSpacingEnabled = settings.danmakuExtraLineSpacingEnabled
     val fontFamily = MaterialTheme.typography.bodyLarge.fontFamily
     val measurer = rememberTextMeasurer(cacheSize = 512)
     val density = LocalDensity.current
@@ -86,7 +87,7 @@ fun BoloDanmakuLayer(
         controller.engine.resize(
             width = size.width,
             height = size.height,
-            verticalGap = padding * 2,
+            verticalGap = if (danmakuExtraLineSpacingEnabled) padding * 2 else 0f,
             horizontalGap = padding * 2,
         )
         fun layout(item: BoloDanmakuItem): TextLayoutResult = layouts.getOrPut(item) {
