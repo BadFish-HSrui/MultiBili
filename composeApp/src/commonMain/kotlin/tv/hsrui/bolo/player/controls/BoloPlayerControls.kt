@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -52,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.VideoPlayerViewModel
@@ -71,11 +73,13 @@ fun BoloPlayerControls(
     modifier: Modifier = Modifier
 ) {
     val navigator: Navigator = koinInject()
+    val settings: BoloSettings = koinInject()
     val playState by viewModel.controller.state.collectAsState()
     val playerUiState by viewModel.uiState.collectAsState()
     val currentVideoQuality by viewModel.currentVideoQuality.collectAsState()
     var sliderPreviewFraction by remember { mutableStateOf<Float?>(null) }
     var controlsVisible by remember { mutableStateOf(true) }
+    var settingsOpen by remember(isFullscreen) { mutableStateOf(false) }
     val videoQualities = (playerUiState as? VideoPlayerUiState.Success)
         ?.videoSource
         ?.videoQualities
@@ -85,6 +89,7 @@ fun BoloPlayerControls(
         modifier = modifier
             .fillMaxSize()
             .clickable(
+                enabled = !settingsOpen,
                 interactionSource = null,
                 indication = null,
                 onClick = { controlsVisible = !controlsVisible }
@@ -179,6 +184,15 @@ fun BoloPlayerControls(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        IconButton(
+                            onClick = { settingsOpen = true },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Settings,
+                                contentDescription = "播放设置",
+                                tint = Color.White,
+                            )
+                        }
                     }
                 }
 
@@ -300,6 +314,17 @@ fun BoloPlayerControls(
                     }
                 }
             }
+        }
+        if (isFullscreen) {
+            BoloPlayerSettingsSheet(
+                isOpen = settingsOpen,
+                danmakuScale = settings.danmakuScale,
+                onDanmakuScaleChange = { settings.danmakuScale = it },
+                onDismissRequest = {
+                    settingsOpen = false
+                    controlsVisible = true
+                },
+            )
         }
     }
 }

@@ -77,7 +77,11 @@ internal class BoloDanmakuEngine {
     }
 
     /** 只接受内部动画时间，绝不依据媒体位置重建在屏条目。 */
-    fun frame(animationTimeMs: Long, measure: (BoloDanmakuItem) -> Pair<Float, Float>): List<Entry> {
+    fun frame(
+        animationTimeMs: Long,
+        fontScale: Float,
+        measure: (BoloDanmakuItem) -> Pair<Float, Float>,
+    ): List<Entry> {
         active.removeAll { it.expired(animationTimeMs) }
         if (width <= 0f || height <= 0f) return emptyList()
         if (layoutChanged) {
@@ -94,9 +98,13 @@ internal class BoloDanmakuEngine {
         }
         for (item in pending.values) {
             if (active.size >= 120 || active.any { it.item.id == item.id }) continue
-            val (textWidth, textHeight) = measure(item)
+            // 入场时固定显示字号；后续倍率变化不影响在屏条目，也不修改源数据。
+            val displayItem = item.copy(
+                fontSize = (item.fontSize.takeIf { it.isFinite() && it > 0f } ?: 25f) * fontScale,
+            )
+            val (textWidth, textHeight) = measure(displayItem)
             if (textWidth <= 0f || textHeight <= 0f || textHeight > height) continue
-            val entry = Entry(item, animationTimeMs, textWidth, textHeight, 0f)
+            val entry = Entry(displayItem, animationTimeMs, textWidth, textHeight, 0f)
             entry.y = findLane(entry, animationTimeMs) ?: continue
             active.add(entry)
         }

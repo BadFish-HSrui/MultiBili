@@ -2,6 +2,7 @@ package tv.hsrui.bolo.player.danmaku
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -30,19 +31,24 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.boloSetting.BoloSettings
 
 @Composable
 fun BoloDanmakuLayer(
     controller: BoloDanmakuController,
     modifier: Modifier = Modifier,
 ) {
+    val settings: BoloSettings = koinInject()
+    val danmakuScale = settings.danmakuScale
+    val fontFamily = MaterialTheme.typography.bodyLarge.fontFamily
     val measurer = rememberTextMeasurer(cacheSize = 512)
     val density = LocalDensity.current
     val direction = LocalLayoutDirection.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val owner = remember { Any() }
     val frame = remember(controller) { mutableLongStateOf(0L) }
-    val layouts = remember(controller, measurer, density, direction) {
+    val layouts = remember(controller, measurer, density, direction, fontFamily) {
         LinkedHashMap<BoloDanmakuItem, TextLayoutResult>()
     }
 
@@ -81,13 +87,16 @@ fun BoloDanmakuLayer(
             if (layouts.size >= 512) layouts.remove(layouts.keys.first())
             measurer.measure(
                 text = item.content,
-                style = TextStyle(fontSize = (item.fontSize.takeIf { it.isFinite() && it > 0f } ?: 25f).sp),
+                style = TextStyle(
+                    fontFamily = fontFamily,
+                    fontSize = (item.fontSize.takeIf { it.isFinite() && it > 0f } ?: 25f).sp,
+                ),
                 softWrap = false,
                 maxLines = 1,
             )
         }
         val animationTimeMs = controller.animationTimeMs()
-        val entries = controller.engine.frame(animationTimeMs) { item ->
+        val entries = controller.engine.frame(animationTimeMs, fontScale = danmakuScale) { item ->
             val result = layout(item)
             (result.size.width + padding * 2) to (result.size.height + padding * 2)
         }
