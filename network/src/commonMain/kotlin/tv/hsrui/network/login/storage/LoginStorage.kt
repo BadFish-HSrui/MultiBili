@@ -6,7 +6,7 @@ import org.koin.mp.KoinPlatformTools
 import tv.hsrui.network.model.Cookies
 
 class LoginStorage(private val loginKSafe: KSafe) {
-    var cookies by loginKSafe(Cookies())
+    var cookies by loginKSafe(Cookies(), key = "cookies")
 
     val isLoggedIn: Boolean get() = (cookies.sessData.isNotEmpty())
     val hasCookies: Boolean

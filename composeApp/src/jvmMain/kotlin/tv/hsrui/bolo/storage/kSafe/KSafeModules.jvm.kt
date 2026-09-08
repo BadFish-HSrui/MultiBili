@@ -25,8 +25,10 @@ actual val KSafeModule: Module = module {
         )
     }
     single(named("appData")) {
-        KSafe(
-            fileName = "app_data"
+        KSafePlain(
+            KSafe(
+                fileName = "app_data"
+            )
         )
     }
 }

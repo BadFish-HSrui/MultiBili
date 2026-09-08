@@ -9,8 +9,8 @@ import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
 
 class WbiManager(private val wbiStorage: KSafe) {
-    private var lastUpdateTime by wbiStorage(0L)
-    private var wbiKey by wbiStorage("")
+    private var lastUpdateTime by wbiStorage(0L, key = "last_update_time")
+    private var wbiKey by wbiStorage("", key = "wbi_key")
 
     suspend fun getWbiKey(): String {
         if (!isKeyTimeValid()) {

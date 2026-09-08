@@ -1,19 +1,18 @@
 package tv.hsrui.bolo.storage.appData
 
-import eu.anifantakis.lib.ksafe.KSafe
-import eu.anifantakis.lib.ksafe.invoke
+import eu.anifantakis.lib.ksafe.KSafePlain
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class AppDataStorage(appDataKSafe: KSafe) {
+class AppDataStorage(appDataKSafe: KSafePlain) {
     val searchHistory = SearchHistory(appDataKSafe)
 }
 
 class SearchHistory internal constructor(
-    private val appDataKSafe: KSafe,
+    private val appDataKSafe: KSafePlain,
 ) {
-    private var storedItems by appDataKSafe(emptyList<String>())
+    private var storedItems by appDataKSafe(emptyList<String>(), key = "search_history_list")
     private val _items = MutableStateFlow(storedItems)
 
     val items: StateFlow<List<String>> = _items.asStateFlow()

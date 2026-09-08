@@ -29,9 +29,11 @@ actual val KSafeModule: Module = module {
         )
     }
     single(named("appData")) {
-        KSafe(
-            context = androidApplication(),
-            fileName = "app_data"
+        KSafePlain(
+            KSafe(
+                context = androidApplication(),
+                fileName = "app_data"
+            )
         )
     }
 }
