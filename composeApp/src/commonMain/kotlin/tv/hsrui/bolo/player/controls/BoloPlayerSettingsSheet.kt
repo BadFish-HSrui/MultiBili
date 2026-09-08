@@ -70,6 +70,8 @@ fun BoloPlayerSettingsSheet(
     isOpen: Boolean,
     danmakuScale: Float,
     onDanmakuScaleChange: (Float) -> Unit,
+    danmakuSpeed: Float,
+    onDanmakuSpeedChange: (Float) -> Unit,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -77,26 +79,9 @@ fun BoloPlayerSettingsSheet(
     val layoutDirection = LocalLayoutDirection.current
     val onDismiss by rememberUpdatedState(onDismissRequest)
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
-    var previewPercent by remember { mutableStateOf<Int?>(null) }
-    val interactionSource = remember {
-        val source = MutableInteractionSource()
-        object : MutableInteractionSource by source {
-            // Slider 在拖动取消后也可能调用结束回调，先同步丢弃预览以免误保存。
-            override suspend fun emit(interaction: Interaction) {
-                if (interaction is DragInteraction.Cancel) previewPercent = null
-                source.emit(interaction)
-            }
-
-            override fun tryEmit(interaction: Interaction): Boolean {
-                if (interaction is DragInteraction.Cancel) previewPercent = null
-                return source.tryEmit(interaction)
-            }
-        }
-    }
     val scrimAlpha by animateFloatAsState(if (isOpen) 1f else 0f)
 
     LaunchedEffect(isOpen) {
-        previewPercent = null
         if (isOpen) drawerState.open() else drawerState.close()
     }
     LaunchedEffect(drawerState) {
@@ -137,81 +122,18 @@ fun BoloPlayerSettingsSheet(
                                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                val percent = previewPercent ?: (danmakuScale * 100f).roundToInt()
-                                // 两侧数值跨度不同，分段映射使 100% 对应轨道正中。
-                                val sliderPosition = if (percent <= 100) (percent - 100) / 50f
-                                else (percent - 100) / 100f
-                                fun commitPreview() {
-                                    if (isOpen) {
-                                        previewPercent?.let { onDanmakuScaleChange(it / 100f) }
-                                    }
-                                    previewPercent = null
-                                }
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("弹幕缩放", style = MaterialTheme.typography.bodyLarge)
-                                    Text("$percent%", style = MaterialTheme.typography.bodyMedium)
-                                }
-                                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
-                                    Slider(
-                                        value = sliderPosition,
-                                        onValueChange = { position ->
-                                            previewPercent = (100f + position * if (position <= 0f) 50f else 100f)
-                                                .roundToInt().coerceIn(50, 200)
-                                        },
-                                        onValueChangeFinished = ::commitPreview,
-                                        valueRange = -1f..1f,
-                                        enabled = isOpen,
-                                        interactionSource = interactionSource,
-                                        thumb = {
-                                            SliderDefaults.Thumb(
-                                                interactionSource = interactionSource,
-                                                enabled = isOpen,
-                                                thumbSize = DpSize(4.dp, 32.dp),
-                                            )
-                                        },
-                                        track = { sliderState ->
-                                            SliderDefaults.CenteredTrack(
-                                                sliderState = sliderState,
-                                                enabled = isOpen,
-                                                modifier = Modifier.height(12.dp),
-                                            )
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                            .height(32.dp)
-                                            .onPreviewKeyEvent { event ->
-                                                if (!isOpen) return@onPreviewKeyEvent false
-                                                val forward = if (layoutDirection == LayoutDirection.Ltr) 1 else -1
-                                                val target = when (event.key) {
-                                                    Key.DirectionRight -> percent + forward
-                                                    Key.DirectionLeft -> percent - forward
-                                                    Key.MoveHome -> 50
-                                                    Key.MoveEnd -> 200
-                                                    Key.PageUp -> percent + 10
-                                                    Key.PageDown -> percent - 10
-                                                    else -> return@onPreviewKeyEvent false
-                                                }
-                                                when (event.type) {
-                                                    KeyEventType.KeyDown -> previewPercent = target.coerceIn(50, 200)
-                                                    KeyEventType.KeyUp -> commitPreview()
-                                                    else -> return@onPreviewKeyEvent false
-                                                }
-                                                true
-                                            }
-                                            .semantics {
-                                                contentDescription = "弹幕缩放"
-                                                stateDescription = "$percent%"
-                                                progressBarRangeInfo = ProgressBarRangeInfo(percent.toFloat(), 50f..200f, 149)
-                                                setProgress { target ->
-                                                    if (!isOpen) return@setProgress false
-                                                    val next = target.roundToInt().coerceIn(50, 200)
-                                                    if (next == percent) return@setProgress false
-                                                    previewPercent = next
-                                                    commitPreview()
-                                                    true
-                                                }
-                                            },
-                                    )
-                                }
+                                DanmakuPercentageSlider(
+                                    label = "弹幕缩放",
+                                    value = danmakuScale,
+                                    isOpen = isOpen,
+                                    onValueChange = onDanmakuScaleChange,
+                                )
+                                DanmakuPercentageSlider(
+                                    label = "弹幕速度",
+                                    value = danmakuSpeed,
+                                    isOpen = isOpen,
+                                    onValueChange = onDanmakuSpeedChange,
+                                )
                             }
                         }
                     }
@@ -226,5 +148,108 @@ fun BoloPlayerSettingsSheet(
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun DanmakuPercentageSlider(
+    label: String,
+    value: Float,
+    isOpen: Boolean,
+    onValueChange: (Float) -> Unit,
+) {
+    val layoutDirection = LocalLayoutDirection.current
+    var previewPercent by remember { mutableStateOf<Int?>(null) }
+    val interactionSource = remember {
+        val source = MutableInteractionSource()
+        object : MutableInteractionSource by source {
+            // Slider 在拖动取消后也可能调用结束回调，先同步丢弃预览以免误保存。
+            override suspend fun emit(interaction: Interaction) {
+                if (interaction is DragInteraction.Cancel) previewPercent = null
+                source.emit(interaction)
+            }
+
+            override fun tryEmit(interaction: Interaction): Boolean {
+                if (interaction is DragInteraction.Cancel) previewPercent = null
+                return source.tryEmit(interaction)
+            }
+        }
+    }
+    LaunchedEffect(isOpen) { previewPercent = null }
+    val percent = previewPercent ?: (value * 100f).roundToInt()
+    // 两侧数值跨度不同，分段映射使 100% 对应轨道正中。
+    val sliderPosition = if (percent <= 100) (percent - 100) / 50f
+    else (percent - 100) / 100f
+    fun commitPreview() {
+        if (isOpen) {
+            previewPercent?.let { onValueChange(it / 100f) }
+        }
+        previewPercent = null
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+        Text("$percent%", style = MaterialTheme.typography.bodyMedium)
+    }
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
+        Slider(
+            value = sliderPosition,
+            onValueChange = { position ->
+                previewPercent = (100f + position * if (position <= 0f) 50f else 100f)
+                    .roundToInt().coerceIn(50, 200)
+            },
+            onValueChangeFinished = ::commitPreview,
+            valueRange = -1f..1f,
+            enabled = isOpen,
+            interactionSource = interactionSource,
+            thumb = {
+                SliderDefaults.Thumb(
+                    interactionSource = interactionSource,
+                    enabled = isOpen,
+                    thumbSize = DpSize(4.dp, 32.dp),
+                )
+            },
+            track = { sliderState ->
+                SliderDefaults.CenteredTrack(
+                    sliderState = sliderState,
+                    enabled = isOpen,
+                    modifier = Modifier.height(12.dp),
+                )
+            },
+            modifier = Modifier.fillMaxWidth()
+                .height(32.dp)
+                .onPreviewKeyEvent { event ->
+                    if (!isOpen) return@onPreviewKeyEvent false
+                    val forward = if (layoutDirection == LayoutDirection.Ltr) 1 else -1
+                    val target = when (event.key) {
+                        Key.DirectionRight -> percent + forward
+                        Key.DirectionLeft -> percent - forward
+                        Key.MoveHome -> 50
+                        Key.MoveEnd -> 200
+                        Key.PageUp -> percent + 10
+                        Key.PageDown -> percent - 10
+                        else -> return@onPreviewKeyEvent false
+                    }
+                    when (event.type) {
+                        KeyEventType.KeyDown -> previewPercent = target.coerceIn(50, 200)
+                        KeyEventType.KeyUp -> commitPreview()
+                        else -> return@onPreviewKeyEvent false
+                    }
+                    true
+                }
+                .semantics {
+                    contentDescription = label
+                    stateDescription = "$percent%"
+                    progressBarRangeInfo = ProgressBarRangeInfo(percent.toFloat(), 50f..200f, 149)
+                    setProgress { target ->
+                        if (!isOpen) return@setProgress false
+                        val next = target.roundToInt().coerceIn(50, 200)
+                        if (next == percent) return@setProgress false
+                        previewPercent = next
+                        commitPreview()
+                        true
+                    }
+                },
+        )
     }
 }

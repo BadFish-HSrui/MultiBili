@@ -320,6 +320,8 @@ fun BoloPlayerControls(
                 isOpen = settingsOpen,
                 danmakuScale = settings.danmakuScale,
                 onDanmakuScaleChange = { settings.danmakuScale = it },
+                danmakuSpeed = settings.danmakuSpeed,
+                onDanmakuSpeedChange = { settings.danmakuSpeed = it },
                 onDismissRequest = {
                     settingsOpen = false
                     controlsVisible = true
