@@ -83,7 +83,12 @@ fun BoloDanmakuLayer(
         frame.longValue
         if (controller.isDisposed || !controller.state.value.isVisible) return@Canvas
         val padding = 2f * density.density
-        controller.engine.resize(size.width, size.height, padding * 2)
+        controller.engine.resize(
+            width = size.width,
+            height = size.height,
+            verticalGap = padding * 2,
+            horizontalGap = padding * 2,
+        )
         fun layout(item: BoloDanmakuItem): TextLayoutResult = layouts.getOrPut(item) {
             if (layouts.size >= 512) layouts.remove(layouts.keys.first())
             measurer.measure(

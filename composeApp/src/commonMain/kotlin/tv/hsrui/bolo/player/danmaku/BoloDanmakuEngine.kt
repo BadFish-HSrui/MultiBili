@@ -54,7 +54,8 @@ internal class BoloDanmakuEngine {
     private var layoutChanged = true
     private var width = 0f
     private var height = 0f
-    private var gap = 0f
+    private var verticalGap = 0f
+    private var horizontalGap = 0f
     private var appliedSpeedFactor = 1f
 
     fun load(newItems: List<BoloDanmakuItem>) {
@@ -94,11 +95,15 @@ internal class BoloDanmakuEngine {
         layoutChanged = true
     }
 
-    fun resize(width: Float, height: Float, gap: Float) {
-        if (this.width == width && this.height == height && this.gap == gap) return
+    fun resize(width: Float, height: Float, verticalGap: Float, horizontalGap: Float) {
+        if (
+            this.width == width && this.height == height &&
+            this.verticalGap == verticalGap && this.horizontalGap == horizontalGap
+        ) return
         this.width = width
         this.height = height
-        this.gap = gap
+        this.verticalGap = verticalGap
+        this.horizontalGap = horizontalGap
         requestLayout()
     }
 
@@ -143,6 +148,7 @@ internal class BoloDanmakuEngine {
             val speed = baseSpeed(width, textWidth) * speedFactor
             if (item.mode == BoloDanmakuMode.Scroll && (!speed.isFinite() || speed <= 0f)) continue
             entry.updateMotion(animationTimeMs, width, speed)
+            // 单条无法入场不阻塞后续条目，较短弹幕仍可尝试利用剩余轨道。
             entry.y = findLane(entry, animationTimeMs) ?: continue
             active.add(entry)
         }
@@ -156,7 +162,11 @@ internal class BoloDanmakuEngine {
         val candidates = ArrayList<Float>(active.size + 1)
         candidates.add(if (bottom) height - candidate.height else 0f)
         for (other in active) {
-            candidates.add(if (bottom) other.y - gap - candidate.height else other.y + other.height + gap)
+            if ((candidate.item.mode == BoloDanmakuMode.Scroll) != (other.item.mode == BoloDanmakuMode.Scroll)) continue
+            candidates.add(
+                if (bottom) other.y - verticalGap - candidate.height
+                else other.y + other.height + verticalGap,
+            )
         }
         if (bottom) candidates.sortDescending() else candidates.sort()
         for (y in candidates) {
@@ -168,14 +178,19 @@ internal class BoloDanmakuEngine {
     }
 
     private fun overlaps(candidate: Entry, other: Entry, timeMs: Long): Boolean {
-        if (candidate.y >= other.y + other.height + gap || other.y >= candidate.y + candidate.height + gap) return false
+        // 滚动与固定弹幕独立排道，允许它们经过同一显示区域。
+        if ((candidate.item.mode == BoloDanmakuMode.Scroll) != (other.item.mode == BoloDanmakuMode.Scroll)) return false
+        if (
+            candidate.y >= other.y + other.height + verticalGap ||
+            other.y >= candidate.y + candidate.height + verticalGap
+        ) return false
         if (candidate.item.mode != BoloDanmakuMode.Scroll || other.item.mode != BoloDanmakuMode.Scroll) return true
         val remainingMs = min(
             candidate.remainingMs(timeMs),
             other.remainingMs(timeMs),
         )
         fun distance(t: Double) = candidate.xAt(t, width) - other.xAt(t, width) - other.width
-        return distance(timeMs.toDouble()) < gap || distance(timeMs + remainingMs) < gap
+        return distance(timeMs.toDouble()) < horizontalGap || distance(timeMs + remainingMs) < horizontalGap
     }
 
     private fun lowerBound(positionMs: Long): Int {
