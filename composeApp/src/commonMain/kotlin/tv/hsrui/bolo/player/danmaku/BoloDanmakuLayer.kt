@@ -41,6 +41,7 @@ fun BoloDanmakuLayer(
 ) {
     val settings: BoloSettings = koinInject()
     val danmakuScale = settings.danmakuScale
+    val danmakuSpeed = settings.danmakuSpeed
     val fontFamily = MaterialTheme.typography.bodyLarge.fontFamily
     val measurer = rememberTextMeasurer(cacheSize = 512)
     val density = LocalDensity.current
@@ -96,7 +97,14 @@ fun BoloDanmakuLayer(
             )
         }
         val animationTimeMs = controller.animationTimeMs()
-        val entries = controller.engine.frame(animationTimeMs, fontScale = danmakuScale) { item ->
+        val entries = controller.engine.frame(
+            animationTimeMs,
+            fontScale = danmakuScale,
+            speedFactor = danmakuSpeed,
+            baseSpeed = { viewportWidth, textWidth ->
+                calculateBiliDanmakuSpeed(viewportWidth / density.density, textWidth / density.density) * density.density
+            },
+        ) { item ->
             val result = layout(item)
             (result.size.width + padding * 2) to (result.size.height + padding * 2)
         }

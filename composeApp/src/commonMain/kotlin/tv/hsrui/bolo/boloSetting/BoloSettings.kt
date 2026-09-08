@@ -16,4 +16,18 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             storedDanmakuScale = scale
             currentDanmakuScale = scale
         }
+
+    private var storedDanmakuSpeed by settingsKSafe(1.0f, key = "danmaku_speed_factor")
+    private var currentDanmakuSpeed by mutableFloatStateOf(normalizeDanmakuSpeed(storedDanmakuSpeed))
+
+    var danmakuSpeed: Float
+        get() = currentDanmakuSpeed
+        set(value) {
+            val speed = normalizeDanmakuSpeed(value)
+            storedDanmakuSpeed = speed
+            currentDanmakuSpeed = speed
+        }
+
+    private fun normalizeDanmakuSpeed(value: Float): Float =
+        if (value.isNaN()) 1.0f else value.coerceIn(0.5f, 2.0f)
 }
