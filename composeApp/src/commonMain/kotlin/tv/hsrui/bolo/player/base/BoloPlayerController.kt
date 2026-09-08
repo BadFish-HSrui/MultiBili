@@ -21,7 +21,9 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * DisposableEffect(controller) { onDispose { controller.release() } }
  *
- * controller.load(video = videoDashObject, audio = audioDashObject, startPositionMs = 0L)
+ * LaunchedEffect(controller, videoDashObject, audioDashObject) {
+ *     controller.load(video = videoDashObject, audio = audioDashObject, startPositionMs = 0L)
+ * }
  *
  * BoloVideoPlayer(controller = controller, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))
  *

@@ -30,12 +30,14 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
     var avid: Long = avid
         set(value) {
             if (field == value) return
+            playbackLoadJob?.cancel()
             field = value
             resetDanmaku()
         }
     var cid: Long = cid
         set(value) {
             if (field == value) return
+            playbackLoadJob?.cancel()
             field = value
             resetDanmaku()
         }
@@ -63,6 +65,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
     var audioQuality: AudioQuality? = AudioQuality.best
 
     var isLoading: Boolean = false
+    private var playbackLoadJob: Job? = null
 
     val controller = BoloPlayerController(onError = { e ->
         when (e) {
@@ -99,7 +102,10 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         awaitingPlaybackReload = true
         danmakuController.pause()
         danmakuMedia = avid to cid
-        controller.load(video = video, audio = audio, startPositionMs = startPositionMs)
+        playbackLoadJob?.cancel()
+        playbackLoadJob = viewModelScope.launch {
+            controller.load(video = video, audio = audio, startPositionMs = startPositionMs)
+        }
     }
 
     fun switchQuality(newVideoQuality: VideoQuality) {

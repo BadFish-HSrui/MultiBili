@@ -326,9 +326,8 @@ actual class BoloPlayerController actual constructor(
                 MediaPlayer.Event.Buffering -> {
                     val shouldPublishBuffering = synchronized(seekLock) {
                         event.buffering < 100f && (
-                            !mediaReadyForSeek ||
+                            (!mediaReadyForSeek && _state.value.currentPositionMs < _state.value.durationMs) ||
                                 _state.value.isPlaying ||
-                                playWhenReady ||
                                 seekCoordinator.pendingPositionMs != null ||
                                 pendingPauseAfterStart
                             )
