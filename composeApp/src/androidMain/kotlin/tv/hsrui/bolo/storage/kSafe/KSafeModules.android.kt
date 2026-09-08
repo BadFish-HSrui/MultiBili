@@ -1,6 +1,7 @@
 package tv.hsrui.bolo.storage.kSafe
 
 import eu.anifantakis.lib.ksafe.KSafe
+import eu.anifantakis.lib.ksafe.KSafePlain
 import org.koin.android.ext.koin.androidApplication
 import org.koin.core.module.Module
 import org.koin.core.qualifier.named
@@ -17,6 +18,14 @@ actual val KSafeModule: Module = module {
         KSafe(
             context = androidApplication(),
             fileName = "wbi"
+        )
+    }
+    single(named("settings")) {
+        KSafePlain(
+            KSafe(
+                context = androidApplication(),
+                fileName = "settings"
+            )
         )
     }
     single(named("appData")) {
