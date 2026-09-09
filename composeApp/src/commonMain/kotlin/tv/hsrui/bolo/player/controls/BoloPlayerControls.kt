@@ -61,6 +61,7 @@ import tv.hsrui.bolo.player.base.BoloPlayerSpeed
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.video.VideoInfoData
+import tv.hsrui.network.feature.subtitle.SubtitleItem
 import kotlin.math.roundToLong
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -76,6 +77,7 @@ fun BoloPlayerControls(
     val settings: BoloSettings = koinInject()
     val playState by viewModel.controller.state.collectAsState()
     val playerUiState by viewModel.uiState.collectAsState()
+    val subtitleState by viewModel.subtitleController.state.collectAsState()
     val currentVideoQuality by viewModel.currentVideoQuality.collectAsState()
     var sliderPreviewFraction by remember { mutableStateOf<Float?>(null) }
     var controlsVisible by remember { mutableStateOf(true) }
@@ -288,17 +290,28 @@ fun BoloPlayerControls(
 
                         Spacer(Modifier.weight(1f))
 
-                        SpeedMenu(
-                            currentSpeed = playState.playbackSpeed,
-                            onSpeedSelected = viewModel.controller::setPlaybackSpeed
-                        )
+                        if (isFullscreen) {
+                            if (subtitleState.subtitles.isNotEmpty()) {
+                                SubtitleMenu(
+                                    subtitles = subtitleState.subtitles,
+                                    selectedSubtitle = subtitleState.selected,
+                                    onSubtitleSelected = viewModel.subtitleController::loadSubtitleContent,
+                                )
+                            }
 
-                        if (videoQualities.isNotEmpty()) {
-                            QualityMenu(
-                                qualities = videoQualities,
-                                currentQuality = currentVideoQuality,
-                                onQualitySelected = viewModel::switchQuality
+                            SpeedMenu(
+                                currentSpeed = playState.playbackSpeed,
+                                onSpeedSelected = viewModel.controller::setPlaybackSpeed
                             )
+
+                            if (videoQualities.isNotEmpty()) {
+                                QualityMenu(
+                                    qualities = videoQualities,
+                                    currentQuality = currentVideoQuality,
+                                    onQualitySelected = viewModel::switchQuality
+                                )
+                            }
+
                         }
 
                         IconButton(
@@ -444,6 +457,43 @@ private fun QualityMenu(
                             onQualitySelected(quality)
                         }
                     }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubtitleMenu(
+    subtitles: List<SubtitleItem>,
+    selectedSubtitle: SubtitleItem?,
+    onSubtitleSelected: (SubtitleItem?) -> Unit,
+) {
+    var expanded by remember(subtitles) { mutableStateOf(false) }
+    Box {
+        TextButton(
+            onClick = { expanded = true },
+            colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+        ) {
+            Text(
+                text = "字幕 - ${selectedSubtitle?.displayName ?: "关"}",
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            (listOf<SubtitleItem?>(null) + subtitles).forEach { subtitle ->
+                DropdownMenuItem(
+                    text = { Text(subtitle?.displayName ?: "关") },
+                    trailingIcon = {
+                        if (subtitle == selectedSubtitle) {
+                            Icon(Icons.Rounded.Check, contentDescription = "当前字幕")
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        onSubtitleSelected(subtitle)
+                    },
                 )
             }
         }
