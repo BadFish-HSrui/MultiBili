@@ -42,6 +42,8 @@ fun BoloDanmakuLayer(
     val settings: BoloSettings = koinInject()
     val danmakuScale = settings.danmakuScale
     val danmakuSpeed = settings.danmakuSpeed
+    val danmakuDisplayAreaRatio = settings.danmakuDisplayAreaRatio
+    val danmakuTopBottomScrollEnabled = settings.danmakuTopBottomScrollEnabled
     val danmakuFilterLevel = settings.danmakuFilterLevel
     val danmakuExtraLineSpacingEnabled = settings.danmakuExtraLineSpacingEnabled
     val fontFamily = MaterialTheme.typography.bodyLarge.fontFamily
@@ -90,6 +92,8 @@ fun BoloDanmakuLayer(
             height = size.height,
             verticalGap = if (danmakuExtraLineSpacingEnabled) padding * 2 else 0f,
             horizontalGap = padding * 2,
+            displayAreaRatio = danmakuDisplayAreaRatio,
+            topBottomScrollEnabled = danmakuTopBottomScrollEnabled,
         )
         fun layout(item: BoloDanmakuItem): TextLayoutResult = layouts.getOrPut(item) {
             if (layouts.size >= 512) layouts.remove(layouts.keys.first())

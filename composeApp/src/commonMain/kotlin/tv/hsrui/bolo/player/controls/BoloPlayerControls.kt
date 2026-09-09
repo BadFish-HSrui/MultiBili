@@ -324,6 +324,10 @@ fun BoloPlayerControls(
                 onDanmakuScaleChange = { settings.danmakuScale = it },
                 danmakuSpeed = settings.danmakuSpeed,
                 onDanmakuSpeedChange = { settings.danmakuSpeed = it },
+                danmakuDisplayAreaRatio = settings.danmakuDisplayAreaRatio,
+                onDanmakuDisplayAreaRatioChange = { settings.danmakuDisplayAreaRatio = it },
+                danmakuTopBottomScrollEnabled = settings.danmakuTopBottomScrollEnabled,
+                onDanmakuTopBottomScrollEnabledChange = { settings.danmakuTopBottomScrollEnabled = it },
                 danmakuExtraLineSpacingEnabled = settings.danmakuExtraLineSpacingEnabled,
                 onDanmakuExtraLineSpacingEnabledChange = { settings.danmakuExtraLineSpacingEnabled = it },
                 onDismissRequest = {

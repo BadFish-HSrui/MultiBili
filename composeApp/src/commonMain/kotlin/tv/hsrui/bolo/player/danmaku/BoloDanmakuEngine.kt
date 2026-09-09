@@ -54,6 +54,8 @@ internal class BoloDanmakuEngine {
     private var layoutChanged = true
     private var width = 0f
     private var height = 0f
+    private var displayAreaRatio = 1f
+    private var topBottomScrollEnabled = false
     private var verticalGap = 0f
     private var horizontalGap = 0f
     private var appliedSpeedFactor = 1f
@@ -95,13 +97,23 @@ internal class BoloDanmakuEngine {
         layoutChanged = true
     }
 
-    fun resize(width: Float, height: Float, verticalGap: Float, horizontalGap: Float) {
+    fun resize(
+        width: Float,
+        height: Float,
+        verticalGap: Float,
+        horizontalGap: Float,
+        displayAreaRatio: Float,
+        topBottomScrollEnabled: Boolean,
+    ) {
         if (
             this.width == width && this.height == height &&
-            this.verticalGap == verticalGap && this.horizontalGap == horizontalGap
+            this.verticalGap == verticalGap && this.horizontalGap == horizontalGap &&
+            this.displayAreaRatio == displayAreaRatio && this.topBottomScrollEnabled == topBottomScrollEnabled
         ) return
         this.width = width
         this.height = height
+        this.displayAreaRatio = displayAreaRatio
+        this.topBottomScrollEnabled = topBottomScrollEnabled
         this.verticalGap = verticalGap
         this.horizontalGap = horizontalGap
         requestLayout()
@@ -161,6 +173,20 @@ internal class BoloDanmakuEngine {
     private fun findLane(candidate: Entry, timeMs: Long): Float? {
         if (candidate.width <= 0f || candidate.height <= 0f || candidate.height > height) return null
         val bottom = candidate.item.mode == BoloDanmakuMode.Bottom
+        val areaHeight = height * if (candidate.item.mode == BoloDanmakuMode.Scroll) {
+            displayAreaRatio
+        } else min(displayAreaRatio, 0.5f)
+        val firstLane = findLaneInArea(candidate, timeMs, areaHeight, bottom)
+        if (firstLane != null) return firstLane
+        if (candidate.item.mode == BoloDanmakuMode.Scroll && topBottomScrollEnabled && displayAreaRatio < 0.5f) {
+            return findLaneInArea(candidate, timeMs, areaHeight, bottom = true)
+        }
+        return null
+    }
+
+    private fun findLaneInArea(candidate: Entry, timeMs: Long, areaHeight: Float, bottom: Boolean): Float? {
+        val minY = if (bottom) height - areaHeight else 0f
+        val maxY = if (bottom) height else areaHeight
         val candidates = ArrayList<Float>(active.size + 1)
         candidates.add(if (bottom) height - candidate.height else 0f)
         for (other in active) {
@@ -172,7 +198,7 @@ internal class BoloDanmakuEngine {
         }
         if (bottom) candidates.sortDescending() else candidates.sort()
         for (y in candidates) {
-            if (y < 0f || y + candidate.height > height) continue
+            if (y < minY || y + candidate.height > maxY) continue
             candidate.y = y
             if (active.none { overlaps(candidate, it, timeMs) }) return y
         }

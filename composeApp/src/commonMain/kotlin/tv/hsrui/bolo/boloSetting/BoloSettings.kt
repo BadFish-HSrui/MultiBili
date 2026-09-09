@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import eu.anifantakis.lib.ksafe.KSafePlain
+import kotlin.math.roundToInt
 
 class BoloSettings(settingsKSafe: KSafePlain) {
     private var storedDanmakuFilterLevel by settingsKSafe(0, key = "danmaku_filter_level")
@@ -40,6 +41,35 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             val speed = normalizeDanmakuSpeed(value)
             storedDanmakuSpeed = speed
             currentDanmakuSpeed = speed
+        }
+
+    private var storedDanmakuDisplayAreaRatio by settingsKSafe(1.0f, key = "danmaku_display_area_ratio")
+    private var currentDanmakuDisplayAreaRatio by mutableFloatStateOf(
+        normalizeDanmakuDisplayAreaRatio(storedDanmakuDisplayAreaRatio),
+    )
+
+    var danmakuDisplayAreaRatio: Float
+        get() = currentDanmakuDisplayAreaRatio
+        set(value) {
+            val ratio = normalizeDanmakuDisplayAreaRatio(value)
+            storedDanmakuDisplayAreaRatio = ratio
+            currentDanmakuDisplayAreaRatio = ratio
+        }
+
+    private fun normalizeDanmakuDisplayAreaRatio(value: Float): Float =
+        if (!value.isFinite()) 1.0f else (value.coerceIn(0.2f, 1.0f) * 20f).roundToInt() / 20f
+
+    private var storedDanmakuTopBottomScrollEnabled by settingsKSafe(
+        false,
+        key = "danmaku_top_bottom_scroll_enabled",
+    )
+    private var currentDanmakuTopBottomScrollEnabled by mutableStateOf(storedDanmakuTopBottomScrollEnabled)
+
+    var danmakuTopBottomScrollEnabled: Boolean
+        get() = currentDanmakuTopBottomScrollEnabled
+        set(value) {
+            storedDanmakuTopBottomScrollEnabled = value
+            currentDanmakuTopBottomScrollEnabled = value
         }
 
     private var storedDanmakuExtraLineSpacingEnabled by settingsKSafe(
