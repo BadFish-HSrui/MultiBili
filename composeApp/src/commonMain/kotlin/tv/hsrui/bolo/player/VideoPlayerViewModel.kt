@@ -18,6 +18,7 @@ import tv.hsrui.bolo.player.base.load
 import tv.hsrui.bolo.player.danmaku.BoloDanmakuController
 import tv.hsrui.bolo.player.danmaku.BoloDanmakuItem
 import tv.hsrui.bolo.player.danmaku.BoloDanmakuMode
+import tv.hsrui.bolo.player.subtitle.BoloSubtitleController
 import tv.hsrui.network.feature.danmaku.DanmakuMode
 import tv.hsrui.network.feature.danmaku.fetchDanmakuSegment
 import tv.hsrui.network.feature.player.VideoSource
@@ -42,6 +43,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
             resetDanmaku()
         }
 
+    val subtitleController = BoloSubtitleController(viewModelScope)
     val danmakuController = BoloDanmakuController()
     private val danmakuSegments = mutableMapOf<Long, List<BoloDanmakuItem>>()
     private val danmakuRequests = mutableMapOf<Long, Job>()
@@ -79,7 +81,12 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            controller.state.collect { playback -> synchronizeDanmaku(playback) }
+            controller.state.collect { playback ->
+                synchronizeDanmaku(playback)
+                if (danmakuMedia == (avid to cid) && !awaitingPlaybackReload) {
+                    subtitleController.synchronize(playback.displayPositionMs)
+                }
+            }
         }
         viewModelScope.launch {
             loadVideo()
@@ -102,6 +109,8 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         awaitingPlaybackReload = true
         danmakuController.pause()
         danmakuMedia = avid to cid
+        subtitleController.loadSubtitleList(avid, cid)
+        subtitleController.synchronize(startPositionMs)
         playbackLoadJob?.cancel()
         playbackLoadJob = viewModelScope.launch {
             controller.load(video = video, audio = audio, startPositionMs = startPositionMs)
@@ -144,9 +153,11 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         danmakuController.seekToMs(positionMs)
         awaitingDanmakuSeek = true
         pendingDanmakuSeek = positionMs
+        subtitleController.synchronize(positionMs)
         controller.seekToMs(positionMs)
         // 原生层可能同步拒绝 Seek，仍需以实际位置恢复调度。
         synchronizeDanmaku(controller.state.value)
+        subtitleController.synchronize(controller.state.value.displayPositionMs)
     }
 
     private fun synchronizeDanmaku(playback: BoloPlayerState) {
@@ -263,6 +274,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
     }
 
     private fun resetDanmaku() {
+        subtitleController.clear()
         danmakuGeneration += 1
         danmakuRequests.values.toList().forEach { it.cancel() }
         danmakuRequests.clear()
@@ -279,6 +291,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
     }
 
     override fun onCleared() {
+        subtitleController.clear()
         danmakuGeneration += 1
         danmakuRequests.values.toList().forEach { it.cancel() }
         danmakuRequests.clear()
