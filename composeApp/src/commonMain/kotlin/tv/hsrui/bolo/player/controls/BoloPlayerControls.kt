@@ -343,6 +343,21 @@ fun BoloPlayerControls(
                 onDanmakuTopBottomScrollEnabledChange = { settings.danmakuTopBottomScrollEnabled = it },
                 danmakuExtraLineSpacingEnabled = settings.danmakuExtraLineSpacingEnabled,
                 onDanmakuExtraLineSpacingEnabledChange = { settings.danmakuExtraLineSpacingEnabled = it },
+                subtitleAlwaysOn = settings.subtitleAlwaysOn,
+                onSubtitleAlwaysOnChange = { settings.subtitleAlwaysOn = it },
+                subtitleAutoChineseOnly = settings.subtitleAutoChineseOnly,
+                onSubtitleAutoChineseOnlyChange = { settings.subtitleAutoChineseOnly = it },
+                subtitleAutoExcludeAi = settings.subtitleAutoExcludeAi,
+                onSubtitleAutoExcludeAiChange = { settings.subtitleAutoExcludeAi = it },
+                subtitleScale = settings.subtitleScale,
+                onSubtitleScaleChange = { settings.subtitleScale = it },
+                onSubtitleScalePreview = settings::previewSubtitleScale,
+                subtitleHeightRatio = settings.subtitleHeightRatio,
+                onSubtitleHeightRatioChange = { settings.subtitleHeightRatio = it },
+                onSubtitleHeightRatioPreview = settings::previewSubtitleHeightRatio,
+                subtitleBackgroundAlpha = settings.subtitleBackgroundAlpha,
+                onSubtitleBackgroundAlphaChange = { settings.subtitleBackgroundAlpha = it },
+                onSubtitleBackgroundAlphaPreview = settings::previewSubtitleBackgroundAlpha,
                 onDismissRequest = {
                     settingsOpen = false
                     controlsVisible = true
