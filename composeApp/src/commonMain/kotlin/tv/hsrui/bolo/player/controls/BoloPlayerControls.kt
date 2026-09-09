@@ -318,6 +318,8 @@ fun BoloPlayerControls(
         if (isFullscreen) {
             BoloPlayerSettingsSheet(
                 isOpen = settingsOpen,
+                danmakuFilterLevel = settings.danmakuFilterLevel,
+                onDanmakuFilterLevelChange = { settings.danmakuFilterLevel = it },
                 danmakuScale = settings.danmakuScale,
                 onDanmakuScaleChange = { settings.danmakuScale = it },
                 danmakuSpeed = settings.danmakuSpeed,

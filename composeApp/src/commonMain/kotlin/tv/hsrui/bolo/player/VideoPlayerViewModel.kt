@@ -236,6 +236,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
                             mode = mode,
                             fontSize = item.fontSize.takeIf { it > 0 }?.toFloat() ?: 25f,
                             colorRgb = item.colorRgb,
+                            weight = item.weight,
                         )
                     }
                     publishDanmakuSegments()

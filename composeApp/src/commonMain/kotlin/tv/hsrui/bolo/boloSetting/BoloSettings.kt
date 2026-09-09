@@ -2,11 +2,24 @@ package tv.hsrui.bolo.boloSetting
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import eu.anifantakis.lib.ksafe.KSafePlain
 
 class BoloSettings(settingsKSafe: KSafePlain) {
+    private var storedDanmakuFilterLevel by settingsKSafe(0, key = "danmaku_filter_level")
+    private var currentDanmakuFilterLevel by mutableIntStateOf(storedDanmakuFilterLevel.coerceIn(0, 10))
+
+    var danmakuFilterLevel: Int
+        get() = currentDanmakuFilterLevel
+        set(value) {
+            val level = value.coerceIn(0, 10)
+            if (level == currentDanmakuFilterLevel) return
+            storedDanmakuFilterLevel = level
+            currentDanmakuFilterLevel = level
+        }
+
     private var storedDanmakuScale by settingsKSafe(1.0f, key = "danmaku_scale_factor")
     private var currentDanmakuScale by mutableFloatStateOf(storedDanmakuScale)
 

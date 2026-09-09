@@ -22,6 +22,7 @@ data class DanmakuItem(
     @ProtoNumber(4) val fontSize: Int = 0,
     @ProtoNumber(5) val colorRgb: Long = 0,
     @ProtoNumber(7) val content: String = "",
+    @ProtoNumber(9) val weight: Int = 0,
 ) {
     val mode: DanmakuMode
         get() = when (modeCode) {

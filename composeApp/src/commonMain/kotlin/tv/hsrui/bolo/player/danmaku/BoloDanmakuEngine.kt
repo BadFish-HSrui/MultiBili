@@ -112,10 +112,11 @@ internal class BoloDanmakuEngine {
         animationTimeMs: Long,
         fontScale: Float,
         speedFactor: Float,
+        filterLevel: Int,
         baseSpeed: (Float, Float) -> Float,
         measure: (BoloDanmakuItem) -> Pair<Float, Float>,
     ): List<Entry> {
-        active.removeAll { it.expired(animationTimeMs) }
+        active.removeAll { it.expired(animationTimeMs) || it.item.weight < filterLevel }
         if (!width.isFinite() || !height.isFinite() || width <= 0f || height <= 0f) return emptyList()
         if (layoutChanged) {
             val survivors = active.toList()
@@ -137,6 +138,7 @@ internal class BoloDanmakuEngine {
         appliedSpeedFactor = speedFactor
         active.removeAll { it.expired(animationTimeMs) }
         for (item in pending.values) {
+            if (item.weight < filterLevel) continue
             if (active.size >= 120 || active.any { it.item.id == item.id }) continue
             // 入场时固定显示字号；后续倍率变化不影响在屏条目，也不修改源数据。
             val displayItem = item.copy(

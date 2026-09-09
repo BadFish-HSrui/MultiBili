@@ -77,6 +77,8 @@ import kotlin.math.roundToInt
 @Composable
 fun BoloPlayerSettingsSheet(
     isOpen: Boolean,
+    danmakuFilterLevel: Int,
+    onDanmakuFilterLevelChange: (Int) -> Unit,
     danmakuScale: Float,
     onDanmakuScaleChange: (Float) -> Unit,
     danmakuSpeed: Float,
@@ -133,6 +135,44 @@ fun BoloPlayerSettingsSheet(
                                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
+                                Card(Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(4.dp)) {
+                                        val levelText = if (danmakuFilterLevel == 0) "关闭" else danmakuFilterLevel.toString()
+                                        val interactionSource = remember { MutableInteractionSource() }
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("弹幕过滤", style = MaterialTheme.typography.bodyLarge)
+                                            Text(levelText, style = MaterialTheme.typography.bodyMedium)
+                                        }
+                                        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
+                                            Slider(
+                                                value = danmakuFilterLevel.toFloat(),
+                                                onValueChange = { onDanmakuFilterLevelChange(it.roundToInt().coerceIn(0, 10)) },
+                                                valueRange = 0f..10f,
+                                                steps = 9,
+                                                enabled = isOpen,
+                                                interactionSource = interactionSource,
+                                                thumb = {
+                                                    SliderDefaults.Thumb(
+                                                        interactionSource = interactionSource,
+                                                        enabled = isOpen,
+                                                        thumbSize = DpSize(4.dp, 24.dp),
+                                                    )
+                                                },
+                                                track = { sliderState ->
+                                                    SliderDefaults.Track(
+                                                        sliderState = sliderState,
+                                                        enabled = isOpen,
+                                                        modifier = Modifier.height(12.dp),
+                                                    )
+                                                },
+                                                modifier = Modifier.fillMaxWidth().height(32.dp).semantics {
+                                                    contentDescription = "弹幕过滤"
+                                                    stateDescription = levelText
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
                                 DanmakuPercentageSlider(
                                     label = "弹幕缩放",
                                     value = danmakuScale,

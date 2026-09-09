@@ -42,6 +42,7 @@ fun BoloDanmakuLayer(
     val settings: BoloSettings = koinInject()
     val danmakuScale = settings.danmakuScale
     val danmakuSpeed = settings.danmakuSpeed
+    val danmakuFilterLevel = settings.danmakuFilterLevel
     val danmakuExtraLineSpacingEnabled = settings.danmakuExtraLineSpacingEnabled
     val fontFamily = MaterialTheme.typography.bodyLarge.fontFamily
     val measurer = rememberTextMeasurer(cacheSize = 512)
@@ -107,6 +108,7 @@ fun BoloDanmakuLayer(
             animationTimeMs,
             fontScale = danmakuScale,
             speedFactor = danmakuSpeed,
+            filterLevel = danmakuFilterLevel,
             baseSpeed = { viewportWidth, textWidth ->
                 calculateBiliDanmakuSpeed(viewportWidth / density.density, textWidth / density.density) * density.density
             },
