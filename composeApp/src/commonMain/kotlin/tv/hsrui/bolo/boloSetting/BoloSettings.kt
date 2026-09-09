@@ -85,6 +85,102 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentDanmakuExtraLineSpacingEnabled = value
         }
 
+    private var storedSubtitleAlwaysOn by settingsKSafe(false, key = "subtitle_always_on")
+    private var currentSubtitleAlwaysOn by mutableStateOf(storedSubtitleAlwaysOn)
+
+    var subtitleAlwaysOn: Boolean
+        get() = currentSubtitleAlwaysOn
+        set(value) {
+            if (value == currentSubtitleAlwaysOn) return
+            storedSubtitleAlwaysOn = value
+            currentSubtitleAlwaysOn = value
+        }
+
+    private var storedSubtitleAutoChineseOnly by settingsKSafe(false, key = "subtitle_auto_chinese_only")
+    private var currentSubtitleAutoChineseOnly by mutableStateOf(storedSubtitleAutoChineseOnly)
+
+    var subtitleAutoChineseOnly: Boolean
+        get() = currentSubtitleAutoChineseOnly
+        set(value) {
+            if (value == currentSubtitleAutoChineseOnly) return
+            storedSubtitleAutoChineseOnly = value
+            currentSubtitleAutoChineseOnly = value
+        }
+
+    private var storedSubtitleAutoExcludeAi by settingsKSafe(false, key = "subtitle_auto_exclude_ai")
+    private var currentSubtitleAutoExcludeAi by mutableStateOf(storedSubtitleAutoExcludeAi)
+
+    var subtitleAutoExcludeAi: Boolean
+        get() = currentSubtitleAutoExcludeAi
+        set(value) {
+            if (value == currentSubtitleAutoExcludeAi) return
+            storedSubtitleAutoExcludeAi = value
+            currentSubtitleAutoExcludeAi = value
+        }
+
+    private var storedSubtitleScale by settingsKSafe(1.0f, key = "subtitle_scale_factor")
+    private var currentSubtitleScale by mutableFloatStateOf(
+        normalizeSubtitleValue(storedSubtitleScale, 1.0f, 0.5f, 2.0f),
+    )
+    private var previewSubtitleScale by mutableStateOf<Float?>(null)
+
+    var subtitleScale: Float
+        get() = currentSubtitleScale
+        set(value) {
+            val normalized = normalizeSubtitleValue(value, 1.0f, 0.5f, 2.0f)
+            storedSubtitleScale = normalized
+            currentSubtitleScale = normalized
+        }
+
+    val effectiveSubtitleScale: Float get() = previewSubtitleScale ?: currentSubtitleScale
+
+    fun previewSubtitleScale(value: Float?) {
+        previewSubtitleScale = value?.let { normalizeSubtitleValue(it, 1.0f, 0.5f, 2.0f) }
+    }
+
+    private var storedSubtitleHeightRatio by settingsKSafe(0.2f, key = "subtitle_height_ratio")
+    private var currentSubtitleHeightRatio by mutableFloatStateOf(
+        normalizeSubtitleValue(storedSubtitleHeightRatio, 0.2f, 0f, 1f),
+    )
+    private var previewSubtitleHeightRatio by mutableStateOf<Float?>(null)
+
+    var subtitleHeightRatio: Float
+        get() = currentSubtitleHeightRatio
+        set(value) {
+            val normalized = normalizeSubtitleValue(value, 0.2f, 0f, 1f)
+            storedSubtitleHeightRatio = normalized
+            currentSubtitleHeightRatio = normalized
+        }
+
+    val effectiveSubtitleHeightRatio: Float get() = previewSubtitleHeightRatio ?: currentSubtitleHeightRatio
+
+    fun previewSubtitleHeightRatio(value: Float?) {
+        previewSubtitleHeightRatio = value?.let { normalizeSubtitleValue(it, 0.2f, 0f, 1f) }
+    }
+
+    private var storedSubtitleBackgroundAlpha by settingsKSafe(0.7f, key = "subtitle_background_alpha")
+    private var currentSubtitleBackgroundAlpha by mutableFloatStateOf(
+        normalizeSubtitleValue(storedSubtitleBackgroundAlpha, 0.7f, 0f, 1f),
+    )
+    private var previewSubtitleBackgroundAlpha by mutableStateOf<Float?>(null)
+
+    var subtitleBackgroundAlpha: Float
+        get() = currentSubtitleBackgroundAlpha
+        set(value) {
+            val normalized = normalizeSubtitleValue(value, 0.7f, 0f, 1f)
+            storedSubtitleBackgroundAlpha = normalized
+            currentSubtitleBackgroundAlpha = normalized
+        }
+
+    val effectiveSubtitleBackgroundAlpha: Float get() = previewSubtitleBackgroundAlpha ?: currentSubtitleBackgroundAlpha
+
+    fun previewSubtitleBackgroundAlpha(value: Float?) {
+        previewSubtitleBackgroundAlpha = value?.let { normalizeSubtitleValue(it, 0.7f, 0f, 1f) }
+    }
+
+    private fun normalizeSubtitleValue(value: Float, default: Float, minimum: Float, maximum: Float): Float =
+        if (!value.isFinite()) default else (value.coerceIn(minimum, maximum) * 100f).roundToInt() / 100f
+
     private fun normalizeDanmakuSpeed(value: Float): Float =
         if (value.isNaN()) 1.0f else value.coerceIn(0.5f, 2.0f)
 }

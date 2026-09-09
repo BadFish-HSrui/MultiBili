@@ -36,6 +36,11 @@ data class SubtitleItem(
 ) {
     val url: String get() = rawUrl.toHttpsUrl()
     val isAiGenerated: Boolean get() = language.startsWith("ai-", ignoreCase = true)
+    val isChinese: Boolean
+        get() {
+            val code = language.lowercase().removePrefix("ai-").replace('_', '-')
+            return code == "zh" || code.startsWith("zh-")
+        }
     val displayName: String get() = languageName + if (isAiGenerated) "(AI)" else ""
 }
 

@@ -4,8 +4,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.base.BoloVideoPlayer
 import tv.hsrui.bolo.player.controls.BoloPlayerControls
 import tv.hsrui.bolo.player.danmaku.BoloDanmakuLayer
@@ -22,6 +25,18 @@ fun VideoPlayer(
     onFullscreenChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val settings: BoloSettings = koinInject()
+    LaunchedEffect(
+        viewModel.subtitleController,
+        settings.subtitleAlwaysOn,
+        settings.subtitleAutoChineseOnly,
+        settings.subtitleAutoExcludeAi,
+    ) {
+        // 先同步过滤条件，避免启用自动字幕时短暂选中不符合条件的轨道。
+        viewModel.subtitleController.autoChineseOnly = settings.subtitleAutoChineseOnly
+        viewModel.subtitleController.autoExcludeAi = settings.subtitleAutoExcludeAi
+        viewModel.subtitleController.alwaysOn = settings.subtitleAlwaysOn
+    }
 
     when (uiState) {
         is VideoPlayerUiState.Loading -> {

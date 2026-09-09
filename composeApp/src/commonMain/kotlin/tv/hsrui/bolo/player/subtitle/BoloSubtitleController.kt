@@ -29,6 +29,22 @@ class BoloSubtitleController(private val scope: CoroutineScope) {
     private var positionMs = 0L
     private val cache = mutableMapOf<SubtitleItem, List<SubtitleCue>>()
 
+    var autoChineseOnly: Boolean = false
+    var autoExcludeAi: Boolean = false
+    private val automaticSubtitle: SubtitleItem?
+        get() = _state.value.subtitles.firstOrNull {
+            (!autoChineseOnly || it.isChinese) && (!autoExcludeAi || !it.isAiGenerated)
+        }
+
+    var alwaysOn: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            if (value && _state.value.selected == null) {
+                automaticSubtitle?.let { loadSubtitleContent(it) }
+            }
+        }
+
     fun loadSubtitleList(avid: Long, cid: Long) {
         if (media == (avid to cid)) return
         clear()
@@ -41,6 +57,9 @@ class BoloSubtitleController(private val scope: CoroutineScope) {
                 if (generation != requestGeneration) return@launch
                 check(response.isSuccess) { response.message }
                 _state.value = BoloSubtitleState(subtitles = response.subtitles.filter { it.url.isNotBlank() })
+                if (alwaysOn) {
+                    automaticSubtitle?.let { loadSubtitleContent(it) }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
