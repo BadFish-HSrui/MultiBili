@@ -60,5 +60,9 @@ object ApiUrls {
         const val SEGMENT = "x/v2/dm/wbi/web/seg.so" //分段弹幕
     }
 
+    object Subtitle {
+        const val LIST = "x/player/wbi/v2" //字幕列表
+    }
+
     const val WBI = "x/web-interface/nav" //用于获取WbiKey，实际上是导航栏接口
 }
