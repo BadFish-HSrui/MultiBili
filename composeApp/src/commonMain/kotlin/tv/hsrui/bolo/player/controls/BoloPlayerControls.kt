@@ -3,9 +3,12 @@ package tv.hsrui.bolo.player.controls
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +24,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
+import androidx.compose.material.icons.rounded.Brightness6
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
@@ -28,6 +34,8 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,9 +52,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,6 +75,8 @@ import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.subtitle.SubtitleItem
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,30 +88,124 @@ fun BoloPlayerControls(
     onFullscreenChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val deviceControls = rememberPlayerDeviceControls()
     val navigator: Navigator = koinInject()
     val settings: BoloSettings = koinInject()
     val playState by viewModel.controller.state.collectAsState()
     val playerUiState by viewModel.uiState.collectAsState()
     val subtitleState by viewModel.subtitleController.state.collectAsState()
     val currentVideoQuality by viewModel.currentVideoQuality.collectAsState()
-    var sliderPreviewFraction by remember { mutableStateOf<Float?>(null) }
+    var sliderPreviewFraction by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen) {
+        mutableStateOf<Float?>(null)
+    }
     var controlsVisible by remember { mutableStateOf(true) }
     var settingsOpen by remember(isFullscreen) { mutableStateOf(false) }
+    val latestPlayState by rememberUpdatedState(playState)
+    var gesturePreviewMs by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+        mutableStateOf<Long?>(null)
+    }
+    var brightnessPreview by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+        mutableStateOf<Float?>(null)
+    }
+    var volumePreview by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+        mutableStateOf<Float?>(null)
+    }
+    val devicePreview = brightnessPreview ?: volumePreview
+    val durationMs = playState.durationMs
+    val previewPositionMs = gesturePreviewMs ?: sliderPreviewFraction?.let { fraction ->
+        (fraction.toDouble() * durationMs.toDouble())
+            .roundToLong()
+            .coerceIn(0L, durationMs.coerceAtLeast(0L))
+    }
+    val displayedPositionMs = previewPositionMs ?: playState.displayPositionMs
     val videoQualities = (playerUiState as? VideoPlayerUiState.Success)
         ?.videoSource
         ?.videoQualities
         .orEmpty()
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .clickable(
-                enabled = !settingsOpen,
-                interactionSource = null,
-                indication = null,
-                onClick = { controlsVisible = !controlsVisible }
-            )
-    ) {
+    Box(modifier = modifier.fillMaxSize()) {
+        // 背景独立命中：上层按钮、滑块与面板不会把事件传给手势层。
+        Box(
+            Modifier.fillMaxSize()
+                .pointerInput(viewModel, videoInfo, playerUiState, settingsOpen) {
+                    if (!settingsOpen) {
+                        detectTapGestures(
+                            onTap = { controlsVisible = !controlsVisible },
+                            onDoubleTap = {
+                                if (latestPlayState.isPlaying) viewModel.controller.pause()
+                                else viewModel.controller.play()
+                            },
+                        )
+                    }
+                }
+                .pointerInput(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen, deviceControls) {
+                    if (!isFullscreen || settingsOpen) return@pointerInput
+                    try {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val startPositionMs = latestPlayState.displayPositionMs
+                            val leftSide = down.position.x < size.width / 2f
+                            val startDeviceValue = if (deviceControls.supportsDeviceGestures) {
+                                if (leftSide) deviceControls.readBrightness() else deviceControls.readVolume()
+                            } else null
+                            var movement = Offset.Zero
+                            var horizontal: Boolean? = null
+                            var completed = false
+                            try {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (event.changes.any { it.id != down.id && it.pressed } || change.isConsumed) break
+                                    if (change.changedToUpIgnoreConsumed()) {
+                                        completed = true
+                                        if (horizontal != null) change.consume()
+                                        break
+                                    }
+                                    if (!change.pressed) break
+                                    movement += change.positionChange()
+                                    if (horizontal == null) {
+                                        if (movement.getDistance() <= viewConfiguration.touchSlop) continue
+                                        horizontal = abs(movement.x) >= abs(movement.y)
+                                        if (horizontal == true) {
+                                            if (!latestPlayState.isSeekable || latestPlayState.durationMs <= 0L) break
+                                        } else {
+                                            if (!deviceControls.supportsDeviceGestures || startDeviceValue == null) break
+                                        }
+                                    }
+                                    change.consume()
+                                    if (horizontal == true) {
+                                        if (!latestPlayState.isSeekable || latestPlayState.durationMs <= 0L) break
+                                        gesturePreviewMs = (startPositionMs +
+                                            (movement.x.toDouble() / size.width.coerceAtLeast(1) * 120_000.0).roundToLong())
+                                            .coerceIn(0L, latestPlayState.durationMs)
+                                    } else if (startDeviceValue != null) {
+                                        val value = (startDeviceValue - movement.y / size.height.coerceAtLeast(1))
+                                            .coerceIn(0f, 1f)
+                                        if (leftSide) {
+                                            deviceControls.setBrightness(value)
+                                            brightnessPreview = value
+                                        } else {
+                                            deviceControls.setVolume(value)
+                                            volumePreview = value
+                                        }
+                                    }
+                                }
+                                if (completed && horizontal == true && latestPlayState.isSeekable && latestPlayState.durationMs > 0L) {
+                                    gesturePreviewMs?.let { viewModel.seekToMs(it.coerceIn(0L, latestPlayState.durationMs)) }
+                                }
+                            } finally {
+                                gesturePreviewMs = null
+                                brightnessPreview = null
+                                volumePreview = null
+                            }
+                        }
+                    } finally {
+                        gesturePreviewMs = null
+                        brightnessPreview = null
+                        volumePreview = null
+                    }
+                }
+        )
         AnimatedVisibility(
             visible = controlsVisible,
             enter = fadeIn(),
@@ -211,18 +320,12 @@ fun BoloPlayerControls(
                         thumbColor = BiliColor.ThemeColor,
                         inactiveTrackColor = Color.White.copy(alpha = 0.3f)
                     )
-                    val durationMs = playState.durationMs
-                    val sliderValue = sliderPreviewFraction ?: if (durationMs > 0L) {
-                        (playState.displayPositionMs.toDouble() / durationMs.toDouble())
+                    val sliderValue = if (durationMs > 0L) {
+                        (displayedPositionMs.toDouble() / durationMs.toDouble())
                             .coerceIn(0.0, 1.0)
                             .toFloat()
                     } else {
                         0f
-                    }
-                    val previewPositionMs = sliderPreviewFraction?.let { fraction ->
-                        (fraction.toDouble() * durationMs.toDouble())
-                            .roundToLong()
-                            .coerceIn(0L, durationMs.coerceAtLeast(0L))
                     }
 
                     // 下方播放进度条
@@ -282,7 +385,7 @@ fun BoloPlayerControls(
 
                         // 时间显示
                         Text(
-                            text = "${(previewPositionMs ?: playState.displayPositionMs).formatPlayerDuration()} / " +
+                            text = "${displayedPositionMs.formatPlayerDuration()} / " +
                                 playState.durationMs.formatPlayerDuration(),
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White
@@ -325,6 +428,47 @@ fun BoloPlayerControls(
                             )
                         }
                     }
+                }
+            }
+        }
+        if (devicePreview != null || previewPositionMs != null) {
+            Card(
+                modifier = Modifier.align(Alignment.Center),
+                shape = RoundedCornerShape(4.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.Black.copy(alpha = 0.75f),
+                    contentColor = Color.White,
+                ),
+            ) {
+                if (devicePreview != null) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = when {
+                                brightnessPreview != null -> Icons.Rounded.Brightness6
+                                devicePreview <= 0f -> Icons.AutoMirrored.Rounded.VolumeOff
+                                else -> Icons.AutoMirrored.Rounded.VolumeUp
+                            },
+                            contentDescription = if (brightnessPreview != null) "亮度" else "音量",
+                            modifier = Modifier.size(16.dp),
+                            tint = Color.White,
+                        )
+                        Text(
+                            text = "${(devicePreview.coerceIn(0f, 1f) * 100).roundToInt()}%",
+                            modifier = Modifier.padding(start = 4.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color.White,
+                        )
+                    }
+                } else if (previewPositionMs != null) {
+                    Text(
+                        text = "${previewPositionMs.formatPlayerDuration()} / ${playState.durationMs.formatPlayerDuration()}",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White,
+                    )
                 }
             }
         }
