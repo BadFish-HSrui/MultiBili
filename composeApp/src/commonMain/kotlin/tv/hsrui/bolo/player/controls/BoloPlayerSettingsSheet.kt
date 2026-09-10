@@ -113,6 +113,10 @@ fun BoloPlayerSettingsSheet(
     onSideDoubleTapSeekEnabledChange: (Boolean) -> Unit,
     doubleTapSeekSeconds: Int,
     onDoubleTapSeekSecondsChange: (Int) -> Unit,
+    longPressSpeedGestureEnabled: Boolean,
+    onLongPressSpeedGestureEnabledChange: (Boolean) -> Unit,
+    longPressSpeed: Float,
+    onLongPressSpeedChange: (Float) -> Unit,
     danmakuFilterLevel: Int,
     onDanmakuFilterLevelChange: (Int) -> Unit,
     danmakuScale: Float,
@@ -420,6 +424,21 @@ fun BoloPlayerSettingsSheet(
                                                                 seconds = doubleTapSeekSeconds,
                                                                 enabled = isOpen,
                                                                 onValueChange = onDoubleTapSeekSecondsChange,
+                                                            )
+                                                        }
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        PlayerGestureSwitch(
+                                                            label = "启用长按倍速手势",
+                                                            checked = longPressSpeedGestureEnabled,
+                                                            enabled = isOpen,
+                                                            onCheckedChange = onLongPressSpeedGestureEnabledChange,
+                                                        )
+                                                        if (longPressSpeedGestureEnabled) {
+                                                            HorizontalDivider(thickness = 1.dp)
+                                                            PlayerLongPressSpeedSlider(
+                                                                speed = longPressSpeed,
+                                                                enabled = isOpen,
+                                                                onValueChange = onLongPressSpeedChange,
                                                             )
                                                         }
                                                     }
@@ -797,6 +816,127 @@ private fun PlayerSeekDurationSlider(
             )
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun PlayerLongPressSpeedSlider(
+    speed: Float,
+    enabled: Boolean,
+    onValueChange: (Float) -> Unit,
+) {
+    var previewSpeed by remember { mutableStateOf<Float?>(null) }
+    val active by rememberUpdatedState(enabled)
+    val onChange by rememberUpdatedState(onValueChange)
+    val interactionSource = remember { MutableInteractionSource() }
+    val thumbInteractionSource = remember(interactionSource) {
+        object : MutableInteractionSource by interactionSource {
+            override val interactions = interactionSource.interactions.filterNot { interaction ->
+                interaction is FocusInteraction.Focus || interaction is FocusInteraction.Unfocus
+            }
+        }
+    }
+    // 使用 Material 3 默认配色，档位仍由离散值和档位点明确表达。
+    val sliderColors = SliderDefaults.colors()
+    val stopIndicatorColor = MaterialTheme.colorScheme.onSurfaceVariant
+    DisposableEffect(enabled) {
+        previewSpeed = null
+        onDispose { previewSpeed = null }
+    }
+    val displayedSpeed = previewSpeed ?: speed
+    val displayedText = speedMultiplierText((displayedSpeed * 100f).roundToInt())
+    Column(Modifier.padding(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+                .alpha(if (enabled) 1f else 0.38f),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("长按快进速度", style = MaterialTheme.typography.bodyMedium)
+            Text(displayedText, style = MaterialTheme.typography.bodySmall)
+        }
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
+            Slider(
+                value = longPressSpeedSliderPosition(displayedSpeed),
+                onValueChange = { position -> previewSpeed = longPressSpeedFromSliderPosition(position) },
+                onValueChangeFinished = {
+                    if (active) previewSpeed?.let(onChange)
+                    previewSpeed = null
+                },
+                valueRange = 0f..(LongPressSpeedStepCount - 1).toFloat(),
+                steps = LongPressSpeedStepCount - 2,
+                enabled = enabled,
+                colors = sliderColors,
+                interactionSource = interactionSource,
+                thumb = {
+                    SliderDefaults.Thumb(
+                        interactionSource = thumbInteractionSource,
+                        colors = sliderColors,
+                        enabled = enabled,
+                        thumbSize = DpSize(4.dp, 24.dp),
+                    )
+                },
+                track = { sliderState ->
+                    SliderDefaults.Track(
+                        sliderState = sliderState,
+                        enabled = enabled,
+                        colors = sliderColors,
+                        modifier = Modifier.height(12.dp),
+                        drawTick = { offset, color ->
+                            drawCircle(
+                                color = color,
+                                radius = LongPressSpeedStopIndicatorRadius.toPx(),
+                                center = offset,
+                            )
+                        },
+                        drawStopIndicator = { offset ->
+                            drawCircle(
+                                color = stopIndicatorColor,
+                                radius = LongPressSpeedStopIndicatorRadius.toPx(),
+                                center = offset,
+                            )
+                        },
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().height(32.dp).semantics {
+                    contentDescription = "长按快进速度"
+                    stateDescription = displayedText
+                    progressBarRangeInfo = ProgressBarRangeInfo(
+                        longPressSpeedSliderPosition(displayedSpeed),
+                        longPressSpeedSliderPosition(LongPressSpeedPercentMinimum.toFloat())..
+                            longPressSpeedSliderPosition(LongPressSpeedPercentMaximum.toFloat()),
+                    )
+                },
+            )
+        }
+    }
+}
+
+private const val LongPressSpeedPercentMinimum = 125
+private const val LongPressSpeedPercentMaximum = 300
+private const val LongPressSpeedPercentStep = 25
+private const val LongPressSpeedPercentSpan = LongPressSpeedPercentMaximum - LongPressSpeedPercentMinimum
+private const val LongPressSpeedStepCount = LongPressSpeedPercentSpan / LongPressSpeedPercentStep + 1
+
+// M3 滑块档位点为直径 4dp 的圆点，这里按半径 2dp 绘制。
+private val LongPressSpeedStopIndicatorRadius = 2.dp
+
+// 长按倍速滑块按 0.25x 一档映射到整数档位，避免浮点误差影响档位对齐。
+private fun longPressSpeedSliderPosition(speed: Float): Float =
+    ((speed * 100f).roundToInt() - LongPressSpeedPercentMinimum) / LongPressSpeedPercentStep.toFloat()
+
+private fun longPressSpeedFromSliderPosition(position: Float): Float =
+    (LongPressSpeedPercentMinimum +
+        (position.roundToInt() * LongPressSpeedPercentStep).coerceIn(0, LongPressSpeedPercentSpan)) / 100f
+
+private fun longPressSpeedSliderPosition(percent: Int): Float =
+    (percent - LongPressSpeedPercentMinimum) / LongPressSpeedPercentStep.toFloat()
+
+// 支持 0.25x 精度，与滑块档位和控制器实际速率保持一致。
+internal fun speedMultiplierText(percent: Int): String {
+    val whole = percent / 100
+    val fraction = percent % 100
+    return if (fraction == 0) "${whole}x" else "$whole.${fraction.toString().padStart(2, '0')}x"
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

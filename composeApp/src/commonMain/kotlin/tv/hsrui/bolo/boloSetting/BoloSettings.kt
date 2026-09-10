@@ -121,6 +121,45 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentPlayerDoubleTapSeekSeconds = seconds
         }
 
+    private var storedPlayerLongPressSpeedGestureEnabled by settingsKSafe(
+        false,
+        key = "player_long_press_speed_gesture_enabled",
+    )
+    private var currentPlayerLongPressSpeedGestureEnabled by mutableStateOf(
+        storedPlayerLongPressSpeedGestureEnabled,
+    )
+
+    var playerLongPressSpeedGestureEnabled: Boolean
+        get() = currentPlayerLongPressSpeedGestureEnabled
+        set(value) {
+            if (value == currentPlayerLongPressSpeedGestureEnabled) return
+            storedPlayerLongPressSpeedGestureEnabled = value
+            currentPlayerLongPressSpeedGestureEnabled = value
+        }
+
+    private var storedPlayerLongPressSpeedPercent by settingsKSafe(
+        300,
+        key = "player_long_press_speed_percent",
+    )
+    private var currentPlayerLongPressSpeedPercent by mutableIntStateOf(
+        normalizePlayerLongPressSpeedPercent(storedPlayerLongPressSpeedPercent),
+    )
+
+    var playerLongPressSpeed: Float
+        get() = currentPlayerLongPressSpeedPercent / 100f
+        set(value) {
+            val percent = normalizePlayerLongPressSpeedPercent((value * 100f).roundToInt())
+            if (percent == currentPlayerLongPressSpeedPercent) return
+            storedPlayerLongPressSpeedPercent = percent
+            currentPlayerLongPressSpeedPercent = percent
+        }
+
+    private fun normalizePlayerLongPressSpeedPercent(value: Int): Int {
+        if (value <= 0) return 300
+        val stepsFromMinimum = ((value - 125) / 25f).roundToInt()
+        return (125 + stepsFromMinimum * 25).coerceIn(125, 300)
+    }
+
     private var storedDanmakuFilterLevel by settingsKSafe(0, key = "danmaku_filter_level")
     private var currentDanmakuFilterLevel by mutableIntStateOf(storedDanmakuFilterLevel.coerceIn(0, 10))
 

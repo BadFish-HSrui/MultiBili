@@ -5,7 +5,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.rounded.Brightness6
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.Home
@@ -48,6 +50,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,14 +60,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.VideoPlayerUiState
@@ -91,9 +97,12 @@ fun BoloPlayerControls(
     val deviceControls = rememberPlayerDeviceControls()
     val navigator: Navigator = koinInject()
     val settings: BoloSettings = koinInject()
+    val hapticFeedback = LocalHapticFeedback.current
     val seekGestureEnabled = settings.playerSeekGestureEnabled
     val brightnessGestureEnabled = settings.playerBrightnessGestureEnabled
     val volumeGestureEnabled = settings.playerVolumeGestureEnabled
+    val longPressSpeedGestureEnabled = settings.playerLongPressSpeedGestureEnabled
+    val longPressSpeed = settings.playerLongPressSpeed
     val playState by viewModel.controller.state.collectAsState()
     val playerUiState by viewModel.uiState.collectAsState()
     val subtitleState by viewModel.subtitleController.state.collectAsState()
@@ -112,6 +121,20 @@ fun BoloPlayerControls(
     }
     var volumePreview by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Float?>(null)
+    }
+    // 长按倍速期间的状态：临时倍速用于预览，原倍速用于松手恢复。
+    var gestureSpeedBoost by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+        mutableStateOf<BoloPlayerSpeed?>(null)
+    }
+    var gestureBaseSpeed by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+        mutableStateOf<BoloPlayerSpeed?>(null)
+    }
+    val restoreBaseSpeedOnDispose by rememberUpdatedState(gestureBaseSpeed)
+    DisposableEffect(viewModel) {
+        onDispose {
+            // 全屏切换或离开播放器时手势循环会被取消，兜底恢复长按前的倍速。
+            restoreBaseSpeedOnDispose?.let { viewModel.controller.setPlaybackSpeed(it) }
+        }
     }
     val devicePreview = brightnessPreview ?: volumePreview
     val durationMs = playState.durationMs
@@ -135,37 +158,80 @@ fun BoloPlayerControls(
                     videoInfo,
                     playerUiState,
                     settingsOpen,
+                    isFullscreen,
+                    longPressSpeedGestureEnabled,
+                    longPressSpeed,
                     settings.playerSideDoubleTapSeekEnabled,
                     settings.playerDoubleTapSeekSeconds,
                 ) {
-                    if (!settingsOpen) {
-                        detectTapGestures(
-                            onTap = { controlsVisible = !controlsVisible },
-                            onDoubleTap = { position ->
-                                val direction = when {
-                                    position.x < size.width / 3f -> -1
-                                    position.x >= size.width * 2f / 3f -> 1
-                                    else -> 0
-                                }
+                    if (settingsOpen) return@pointerInput
+                    // 说明面板或全屏切换会重启本手势循环，同一手势内的判定都在一个循环里完成。
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = true)
+                        // null 表示超时前已松手或手势被取消，继续按单双击语义判定。
+                        val longPress = awaitLongPressOrCancellation(down.id)
+                        if (longPress == null) {
+                            val secondDown = withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {
+                                awaitFirstDown(requireUnconsumed = true)
+                            }
+                            if (secondDown != null) {
                                 val playback = viewModel.controller.state.value
                                 if (
                                     settings.playerSideDoubleTapSeekEnabled &&
-                                    direction != 0 &&
                                     playback.isSeekable &&
                                     playback.durationMs > 0L
                                 ) {
-                                    val offsetMs = direction * settings.playerDoubleTapSeekSeconds * 1_000L
-                                    viewModel.seekToMs(
-                                        (playback.displayPositionMs + offsetMs)
-                                            .coerceIn(0L, playback.durationMs),
-                                        autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled,
-                                    )
-                                } else if (direction == 0 || !settings.playerSideDoubleTapSeekEnabled) {
-                                    if (playback.isPlaying) viewModel.pause()
-                                    else viewModel.play()
+                                    val direction = when {
+                                        down.position.x < size.width / 3f -> -1
+                                        down.position.x >= size.width * 2f / 3f -> 1
+                                        else -> 0
+                                    }
+                                    if (direction != 0) {
+                                        val offsetMs = direction * settings.playerDoubleTapSeekSeconds * 1_000L
+                                        viewModel.seekToMs(
+                                            (playback.displayPositionMs + offsetMs)
+                                                .coerceIn(0L, playback.durationMs),
+                                            autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled,
+                                        )
+                                    } else {
+                                        if (playback.isPlaying) viewModel.pause() else viewModel.play()
+                                    }
+                                } else {
+                                    if (playback.isPlaying) viewModel.pause() else viewModel.play()
                                 }
-                            },
-                        )
+                            } else {
+                                controlsVisible = !controlsVisible
+                            }
+                            return@awaitEachGesture
+                        }
+                        val playback = viewModel.controller.state.value
+                        if (
+                            controlsVisible ||
+                            !isFullscreen ||
+                            !longPressSpeedGestureEnabled ||
+                            !playback.isPlaying ||
+                            playback.isPlaybackSuspended
+                        ) {
+                            return@awaitEachGesture
+                        }
+                        var speedBoostApplied = false
+                        try {
+                            longPress.consume()
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                            gestureBaseSpeed = playback.playbackSpeed
+                            val boostSpeed = BoloPlayerSpeed.fromRateNumber(longPressSpeed)
+                            gestureSpeedBoost = boostSpeed
+                            speedBoostApplied = true
+                            viewModel.controller.setPlaybackSpeed(boostSpeed)
+                            // 等待松手；拖动或指针取消都会在这里结束并恢复原倍速。
+                            waitForUpOrCancellation()
+                        } finally {
+                            if (speedBoostApplied) {
+                                gestureBaseSpeed?.let { viewModel.controller.setPlaybackSpeed(it) }
+                            }
+                            gestureSpeedBoost = null
+                            gestureBaseSpeed = null
+                        }
                     }
                 }
                 .pointerInput(
@@ -459,7 +525,7 @@ fun BoloPlayerControls(
                             }
 
                             SpeedMenu(
-                                currentSpeed = playState.playbackSpeed,
+                                currentSpeed = gestureSpeedBoost ?: playState.playbackSpeed,
                                 onSpeedSelected = viewModel.controller::setPlaybackSpeed
                             )
 
@@ -487,7 +553,8 @@ fun BoloPlayerControls(
                 }
             }
         }
-        if (devicePreview != null || previewPositionMs != null) {
+        val gestureSpeedPreview = gestureSpeedBoost
+        if (devicePreview != null || previewPositionMs != null || gestureSpeedPreview != null) {
             Card(
                 modifier = Modifier.align(Alignment.Center),
                 shape = RoundedCornerShape(4.dp),
@@ -525,6 +592,24 @@ fun BoloPlayerControls(
                         style = MaterialTheme.typography.labelMedium,
                         color = Color.White,
                     )
+                } else if (gestureSpeedPreview != null) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.FastForward,
+                            contentDescription = "长按快进",
+                            modifier = Modifier.size(16.dp),
+                            tint = Color.White,
+                        )
+                        Text(
+                            text = speedMultiplierText((gestureSpeedPreview.rateNumber * 100f).roundToInt()),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color.White,
+                        )
+                    }
                 }
             }
         }
@@ -548,6 +633,10 @@ fun BoloPlayerControls(
                 onSideDoubleTapSeekEnabledChange = { settings.playerSideDoubleTapSeekEnabled = it },
                 doubleTapSeekSeconds = settings.playerDoubleTapSeekSeconds,
                 onDoubleTapSeekSecondsChange = { settings.playerDoubleTapSeekSeconds = it },
+                longPressSpeedGestureEnabled = longPressSpeedGestureEnabled,
+                onLongPressSpeedGestureEnabledChange = { settings.playerLongPressSpeedGestureEnabled = it },
+                longPressSpeed = longPressSpeed,
+                onLongPressSpeedChange = { settings.playerLongPressSpeed = it },
                 danmakuFilterLevel = settings.danmakuFilterLevel,
                 onDanmakuFilterLevelChange = { settings.danmakuFilterLevel = it },
                 danmakuScale = settings.danmakuScale,
