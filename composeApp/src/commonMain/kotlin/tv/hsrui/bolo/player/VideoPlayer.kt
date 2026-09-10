@@ -26,12 +26,15 @@ fun VideoPlayer(
     modifier: Modifier = Modifier
 ) {
     val settings: BoloSettings = koinInject()
+    LaunchedEffect(viewModel, settings.playerResumeAfterBackgroundEnabled) {
+        viewModel.controller.setResumeAfterBackgroundEnabled(settings.playerResumeAfterBackgroundEnabled)
+    }
     LaunchedEffect(viewModel, settings.playerAutoReplayEnabled) {
         if (settings.playerAutoReplayEnabled) {
             var wasPlaying = false
             viewModel.controller.state.collect { playback ->
-                val shouldReplay = wasPlaying && playback.isEnded
-                wasPlaying = playback.isPlaying
+                val shouldReplay = wasPlaying && playback.isEnded && !playback.isPlaybackSuspended
+                wasPlaying = playback.isPlaying && !playback.isPlaybackSuspended
                 if (shouldReplay) viewModel.play()
             }
         }

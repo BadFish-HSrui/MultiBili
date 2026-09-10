@@ -6,9 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -22,13 +19,10 @@ actual fun BoloVideoPlayer(
 ) {
     val state by controller.state.collectAsState()
 
-    // drawable 绑定标记：仅在 view 获得有效 frame 后绑定一次，避免零尺寸初始化
-    // 及重复绑定打断 VLC 渲染导致白屏。
-    var drawableBound by remember { mutableStateOf(false) }
+    // 控制器按 UIView 身份去重绑定，并在前台且窗口有效后恢复输出。
 
     DisposableEffect(controller) {
         onDispose {
-            drawableBound = false
             controller.release()
         }
     }
@@ -41,11 +35,11 @@ actual fun BoloVideoPlayer(
                 view
             },
             update = { view ->
-                if (!drawableBound && view.window != null) {
-                    drawableBound = true
+                if (view.window != null) {
                     controller.bindDrawable(view)
                 }
             },
+            onRelease = { view -> controller.unbindDrawable(view) },
             modifier = Modifier.fillMaxSize()
         )
     }

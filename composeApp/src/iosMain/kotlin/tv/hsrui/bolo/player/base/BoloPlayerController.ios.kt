@@ -1,5 +1,6 @@
 package tv.hsrui.bolo.player.base
 
+import kotlinx.cinterop.useContents
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import cocoapods.MobileVLCKit.VLCMedia
 import cocoapods.MobileVLCKit.VLCMediaPlayer
 import cocoapods.MobileVLCKit.VLCMediaPlayerState
@@ -28,10 +30,15 @@ import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
-import platform.UIKit.UIApplicationWillEnterForegroundNotification
+import platform.UIKit.UIApplicationDidBecomeActiveNotification
+import platform.UIKit.UIApplicationDidReceiveMemoryWarningNotification
+import platform.UIKit.UIApplication
+import platform.UIKit.UIApplicationState
 import platform.UIKit.UIView
 import cocoapods.MobileVLCKit.VLCMediaPlayerStateChanged
 import cocoapods.MobileVLCKit.VLCMediaPlayerTimeChanged
+import platform.posix.CLOCK_MONOTONIC_RAW
+import platform.posix.clock_gettime_nsec_np
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
@@ -116,7 +123,21 @@ actual class BoloPlayerController actual constructor(
     actual val state: StateFlow<BoloPlayerState> = _state.asStateFlow()
 
     internal val mediaPlayer = VLCMediaPlayer()
-    private var isInForeground = true
+    private var isInForeground = UIApplication.sharedApplication.applicationState == UIApplicationState.UIApplicationStateActive
+    private var resumeAfterBackgroundEnabled = false
+    private var backgroundStartedMs: Long? = null
+    private var backgroundPositionMs = 0L
+    private var backgroundEnded = false
+    private var resumeEligible = false
+    private var needsRestoreSeek = false
+    private var outputNeedsRefresh = false
+    private var restoringPlayback = false
+    private var recoveryFailed = false
+    private var lifecycleRevision = 0L
+    private var backgroundReleaseJob: Job? = null
+    private var recoveryJob: Job? = null
+    private var boundDrawable: UIView? = null
+    private var volumeGain = 100
     private var mediaLifecycle = MediaLifecycle.Empty
     private var mediaGeneration = 0L
     private val speedApplyGate = PlaybackSpeedApplyGate()
@@ -149,7 +170,7 @@ actual class BoloPlayerController actual constructor(
     init {
         AVAudioSession.sharedInstance().apply {
             setCategory(AVAudioSessionCategoryPlayback, AVAudioSessionModeMoviePlayback, 0u, null)
-            setActive(true, null)
+            // 音频会话仅在实际启动媒体时激活。
         }
 
         // 后台 → 保存 + 释放
@@ -157,16 +178,20 @@ actual class BoloPlayerController actual constructor(
             UIApplicationDidEnterBackgroundNotification, null,
             NSOperationQueue.mainQueue
         ) { _ ->
-            isInForeground = false
-            release()
+            suspendPlayback()
         }
         // 前台 → 重建
         applicationObservers += NSNotificationCenter.defaultCenter.addObserverForName(
-            UIApplicationWillEnterForegroundNotification, null,
+            UIApplicationDidBecomeActiveNotification, null,
             NSOperationQueue.mainQueue
         ) { _ ->
             isInForeground = true
-            restoreFromSavedState()
+            resumePlaybackIfReady()
+        }
+        applicationObservers += NSNotificationCenter.defaultCenter.addObserverForName(
+            UIApplicationDidReceiveMemoryWarningNotification, null, NSOperationQueue.mainQueue
+        ) { _ ->
+            if (!isInForeground) releaseResources()
         }
     }
 
@@ -176,15 +201,151 @@ actual class BoloPlayerController actual constructor(
      */
     fun bindDrawable(view: UIView) {
         if (mediaLifecycle == MediaLifecycle.Disposed) return
-
-        mediaPlayer.drawable = view
-        if (isInForeground) {
+        if (boundDrawable !== view) outputNeedsRefresh = true
+        boundDrawable = view
+        if (!isInForeground || view.window == null) return
+        if (mediaPlayer.drawable !== view) mediaPlayer.drawable = view
+        if (_state.value.isPlaybackSuspended) {
+            resumePlaybackIfReady()
+        } else if (mediaLifecycle != MediaLifecycle.Loading) {
             restoreFromSavedState()
+        }
+    }
+
+    fun unbindDrawable(view: UIView) {
+        if (boundDrawable !== view) return
+        boundDrawable = null
+        mediaPlayer.drawable = null
+        outputNeedsRefresh = true
+    }
+
+    actual fun setResumeAfterBackgroundEnabled(enabled: Boolean) {
+        resumeAfterBackgroundEnabled = enabled
+        if (!enabled) resumeEligible = false
+    }
+
+    /** 含息屏时间的单调时钟；`CLOCK_MONOTONIC_RAW` 对应 Darwin 的 mach_continuous_time。 */
+    private fun continuousTimeMs(): Long =
+        (clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW.toUInt()) / 1_000_000uL).toLong()
+
+    private fun suspendPlayback() {
+        if (!isInForeground || mediaLifecycle == MediaLifecycle.Disposed) return
+        val wasRestoring = restoringPlayback
+        isInForeground = false
+        lifecycleRevision += 1L
+        recoveryJob?.cancel()
+        restoringPlayback = false
+        backgroundReleaseJob?.cancel()
+        backgroundStartedMs = continuousTimeMs()
+        if (!wasRestoring) {
+            backgroundPositionMs = _state.value.displayPositionMs
+            backgroundEnded = _state.value.isEnded
+            resumeEligible = playWhenReady && !backgroundEnded
+        }
+        needsRestoreSeek = needsRestoreSeek || _state.value.isSeeking ||
+            mediaLifecycle != MediaLifecycle.Loaded || wasRestoring
+        playWhenReady = false
+        cancelCurrentSeek()
+        _state.value = _state.value.copy(
+            isPlaybackSuspended = true, isPlaying = false, isBuffering = false,
+            currentPositionMs = backgroundPositionMs, pendingSeekPositionMs = null,
+        )
+        mediaPlayer.pause()
+        mediaPlayer.drawable = null
+        outputNeedsRefresh = true
+        AVAudioSession.sharedInstance().setActive(false, null)
+        val revision = lifecycleRevision
+        backgroundReleaseJob = seekScope.launch {
+            delay(60_000L)
+            if (revision == lifecycleRevision && !isInForeground) releaseResources()
+        }
+    }
+
+    private fun displayedPictures(): Int? = mediaPlayer.media?.statistics?.useContents { displayedPictures }
+
+    private fun resumePlaybackIfReady() {
+        if (!isInForeground || mediaLifecycle == MediaLifecycle.Disposed ||
+            !_state.value.isPlaybackSuspended || restoringPlayback) return
+        val view = boundDrawable ?: return
+        if (view.window == null) return
+        backgroundReleaseJob?.cancel()
+        val startedMs = backgroundStartedMs
+        if (startedMs != null && continuousTimeMs() - startedMs >= 60_000L) releaseResources()
+        backgroundStartedMs = null
+        restoringPlayback = true
+        val revision = ++lifecycleRevision
+        recoveryJob = seekScope.launch {
+            try {
+                for (attempt in 0..1) {
+                    if (revision != lifecycleRevision || !isInForeground) return@launch
+                    val mpd = lastMpd
+                    if (mpd == null) {
+                        recoveryFailed = false
+                        _state.value = _state.value.copy(isPlaybackSuspended = false)
+                        return@launch
+                    }
+                    if (attempt > 0) {
+                        releaseResources()
+                        recoveryFailed = false
+                    }
+                    val recreate = mediaLifecycle == MediaLifecycle.Released || mediaPlayer.media == null || attempt > 0
+                    mediaPlayer.drawable = view
+                    val previousPictures = if (recreate) 0 else displayedPictures()
+                    val needsFrame = recreate || needsRestoreSeek || outputNeedsRefresh
+                    val targetMs = if (backgroundEnded) (backgroundPositionMs - 50L).coerceAtLeast(0L) else backgroundPositionMs
+                    mediaPlayer.audio?.volume = 0
+                    if (recreate) {
+                        recoveryFailed = false
+                        loadInternal(mpd, restorePosition = false, startPositionMs = targetMs)
+                    } else if (needsFrame) {
+                        seekToMs(targetMs)
+                    }
+                    val restored = withTimeoutOrNull(22_000L) {
+                        while (!recoveryFailed) {
+                            val playback = _state.value
+                            val frameReady = !needsFrame || (displayedPictures()?.let { it > (previousPictures ?: -1) } == true)
+                            val positionMatches = kotlin.math.abs(playback.currentPositionMs - backgroundPositionMs) <=
+                                BoloPlayerSeekCoordinator.ConfirmationToleranceMs
+                            if (!playback.isSeeking && !playback.isBuffering && playback.isSeekable && frameReady && positionMatches) break
+                            delay(50L)
+                        }
+                        !recoveryFailed
+                    } == true
+                    if (!restored) continue
+                    if (revision != lifecycleRevision || !isInForeground) return@launch
+                    mediaPlayer.pause()
+                    mediaPlayer.audio?.volume = volumeGain
+                    val shouldResume = resumeAfterBackgroundEnabled && resumeEligible && !backgroundEnded
+                    resumeEligible = false
+                    needsRestoreSeek = false
+                    outputNeedsRefresh = false
+                    _state.value = _state.value.copy(
+                        isPlaybackSuspended = false, isPlaying = false, isBuffering = false,
+                        currentPositionMs = if (backgroundEnded) _state.value.durationMs else _state.value.currentPositionMs,
+                    )
+                    restoringPlayback = false
+                    if (shouldResume) play() else AVAudioSession.sharedInstance().setActive(false, null)
+                    return@launch
+                }
+                if (revision == lifecycleRevision && isInForeground) {
+                    releaseResources()
+                    resumeEligible = false
+                    _state.value = _state.value.copy(isPlaybackSuspended = false, isPlaying = false, isBuffering = false)
+                    onError(BoloPlayerError.UnknownError("播放器恢复失败，请重新打开视频"))
+                }
+            } finally {
+                if (revision == lifecycleRevision) restoringPlayback = false
+            }
         }
     }
 
     private fun onStateChanged(player: VLCMediaPlayer, generation: Long) {
         if (!isCurrentPlayerGeneration(player, generation)) return
+        if (!isInForeground) {
+            if (player.state == VLCMediaPlayerState.VLCMediaPlayerStatePlaying) player.pause()
+            if (player.state == VLCMediaPlayerState.VLCMediaPlayerStateError) recoveryFailed = true
+            return
+        }
 
         when (player.state) {
             VLCMediaPlayerState.VLCMediaPlayerStateOpening -> {
@@ -236,7 +397,7 @@ actual class BoloPlayerController actual constructor(
                 }
                 
                 _state.value = _state.value.copy(
-                    isPlaying = true, 
+                    isPlaying = !_state.value.isPlaybackSuspended, 
                     isBuffering = false,
                     videoCodec = videoCodec,
                     videoWidth = videoWidth,
@@ -273,6 +434,7 @@ actual class BoloPlayerController actual constructor(
                 handleEndReached(player, generation)
             }
             VLCMediaPlayerState.VLCMediaPlayerStateError -> {
+                if (restoringPlayback) recoveryFailed = true
                 mediaLifecycle = MediaLifecycle.Loaded
                 speedApplyGate.onInactive()
                 cancelCurrentSeek()
@@ -325,6 +487,7 @@ actual class BoloPlayerController actual constructor(
 
     private fun restoreFromSavedState() {
         if (!isInForeground) return
+        if (restoringPlayback || _state.value.isPlaybackSuspended) return
         if (
             mediaLifecycle != MediaLifecycle.Empty &&
             mediaLifecycle != MediaLifecycle.Released
@@ -341,7 +504,16 @@ actual class BoloPlayerController actual constructor(
     internal actual fun load(mpd: BoloDashMpd, startPositionMs: Long) {
         if (mediaLifecycle == MediaLifecycle.Disposed) return
 
+        lifecycleRevision += 1L
+        recoveryJob?.cancel()
+        restoringPlayback = false
+        resumeEligible = false
+        backgroundEnded = false
         val normalizedStartPositionMs = normalizePositionMs(startPositionMs, mpd.durationMs)
+        if (_state.value.isPlaybackSuspended) {
+            backgroundPositionMs = normalizedStartPositionMs
+            needsRestoreSeek = true
+        }
         lastMpd = mpd
         lastSavedPositionMs = normalizedStartPositionMs
         if (!isInForeground) {
@@ -354,6 +526,7 @@ actual class BoloPlayerController actual constructor(
             val pendingPositionMs = createStartupSeek(normalizedStartPositionMs)
             mediaLifecycle = MediaLifecycle.Released
             _state.value = BoloPlayerState(
+                isPlaybackSuspended = true,
                 durationMs = mpd.durationMs,
                 pendingSeekPositionMs = pendingPositionMs,
                 playbackSpeed = playbackSpeed
@@ -425,6 +598,7 @@ actual class BoloPlayerController actual constructor(
         speedApplyGate.onMediaChanged()
         player.media = media
         mediaLifecycle = MediaLifecycle.Loaded
+        val suspended = _state.value.isPlaybackSuspended
 
         val requestedPositionMs = when {
             startPositionMs > 0L -> startPositionMs
@@ -434,20 +608,24 @@ actual class BoloPlayerController actual constructor(
         val seekPositionMs = normalizePositionMs(requestedPositionMs, mpd.durationMs)
         val pendingPositionMs = createStartupSeek(seekPositionMs)
         _state.value = BoloPlayerState(
+            isPlaybackSuspended = suspended,
             durationMs = mpd.durationMs,
             pendingSeekPositionMs = pendingPositionMs,
             playbackSpeed = playbackSpeed
         )
 
         // 非零起点必须先进入 Playing 完成 VLCKit 输入初始化；最终是否暂停由 playWhenReady 决定。
-        if (playWhenReady || pendingPositionMs != null) {
+        if (isInForeground && (playWhenReady || pendingPositionMs != null)) {
             mediaLifecycle = MediaLifecycle.Loading
+            AVAudioSession.sharedInstance().setActive(true, null)
+            player.audio?.volume = if (suspended) 0 else volumeGain
             player.play()
-            _state.value = _state.value.copy(isPlaying = true)
+            _state.value = _state.value.copy(isPlaying = !suspended)
         }
     }
 
     actual fun play() {
+        if (!isInForeground || _state.value.isPlaybackSuspended) return
         if (
             mediaLifecycle == MediaLifecycle.Empty ||
             mediaLifecycle == MediaLifecycle.Released ||
@@ -456,12 +634,15 @@ actual class BoloPlayerController actual constructor(
             return
         }
         playWhenReady = true
+        AVAudioSession.sharedInstance().setActive(true, null)
+        mediaPlayer.audio?.volume = volumeGain
         mediaLifecycle = MediaLifecycle.Loading
         mediaPlayer.play()
         _state.value = _state.value.copy(isPlaying = true)
     }
 
     actual fun pause() {
+        resumeEligible = false
         if (
             mediaLifecycle == MediaLifecycle.Empty ||
             mediaLifecycle == MediaLifecycle.Released ||
@@ -475,6 +656,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun seekToMs(positionMs: Long) {
+        if (!isInForeground || (_state.value.isPlaybackSuspended && !restoringPlayback)) return
         if (
             mediaLifecycle == MediaLifecycle.Empty ||
             mediaLifecycle == MediaLifecycle.Released ||
@@ -484,7 +666,7 @@ actual class BoloPlayerController actual constructor(
             return
         }
 
-        refreshFrameAfterSeek = !playWhenReady && (_state.value.isEnded || refreshFrameAfterSeek)
+        refreshFrameAfterSeek = !playWhenReady && (_state.value.isEnded || refreshFrameAfterSeek || restoringPlayback)
         updateNativeDuration(mediaPlayer)
         val targetPositionMs = normalizePositionMs(positionMs, _state.value.durationMs)
         var previousTimeoutJob: Job? = null
@@ -533,10 +715,11 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun setVolumeGain(gain: Int) {
+        volumeGain = gain.coerceIn(0, 200)
         if (mediaLifecycle == MediaLifecycle.Disposed) return
 
         val vlcVolume = gain.coerceIn(0, 200)
-        mediaPlayer.audio?.volume = vlcVolume
+        mediaPlayer.audio?.volume = if (_state.value.isPlaybackSuspended) 0 else vlcVolume
     }
 
     actual fun setPlaybackSpeed(speed: BoloPlayerSpeed) {
@@ -552,6 +735,19 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun release() {
+        lifecycleRevision += 1L
+        backgroundReleaseJob?.cancel()
+        recoveryJob?.cancel()
+        restoringPlayback = false
+        resumeEligible = false
+        backgroundStartedMs = null
+        releaseResources()
+        boundDrawable = null
+        mediaPlayer.drawable = null
+        _state.value = _state.value.copy(isPlaybackSuspended = false)
+    }
+
+    private fun releaseResources() {
         if (
             mediaLifecycle == MediaLifecycle.Released ||
             mediaLifecycle == MediaLifecycle.Disposed
@@ -559,7 +755,7 @@ actual class BoloPlayerController actual constructor(
             return
         }
 
-        savePositionFromCurrent()
+        if (_state.value.isPlaybackSuspended) lastSavedPositionMs = backgroundPositionMs else savePositionFromCurrent()
         mediaLifecycle = MediaLifecycle.Released
         mediaGeneration += 1
         removePlayerObservers()
@@ -567,6 +763,7 @@ actual class BoloPlayerController actual constructor(
         beginNewMediaGeneration()
         mediaPlayer.stop()
         mediaPlayer.media = null
+        AVAudioSession.sharedInstance().setActive(false, null)
         _state.value = _state.value.copy(
             isPlaying = false,
             isBuffering = false,
@@ -680,7 +877,8 @@ actual class BoloPlayerController actual constructor(
     }
 
     private fun createStartupSeek(positionMs: Long): Long? {
-        if (positionMs <= 0L) return null
+        if (positionMs <= 0L && !restoringPlayback) return null
+        if (restoringPlayback) refreshFrameAfterSeek = true
         return withSeekLock {
             seekCoordinator.requestSeek(positionMs)
             positionMs
@@ -909,7 +1107,7 @@ actual class BoloPlayerController actual constructor(
         expectedRevision: Long? = null,
         expectedSubmittedAttempt: Int? = null
     ): Boolean {
-        if (!isCurrentPlayerGeneration(player, generation) || positionMs < 0L || _state.value.isEnded) return false
+        if (!isInForeground || !isCurrentPlayerGeneration(player, generation) || positionMs < 0L || _state.value.isEnded) return false
 
         var hadPending = false
         var accepted = false

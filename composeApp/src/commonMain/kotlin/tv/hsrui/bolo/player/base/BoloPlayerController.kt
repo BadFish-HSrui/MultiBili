@@ -57,6 +57,9 @@ expect class BoloPlayerController(
         notSeekable: Boolean
     )
 
+    /** 仅允许切后台前具有播放意图的媒体在恢复完成后自动继续。 */
+    fun setResumeAfterBackgroundEnabled(enabled: Boolean)
+
     /** 开始/恢复播放 */
     fun play()
 

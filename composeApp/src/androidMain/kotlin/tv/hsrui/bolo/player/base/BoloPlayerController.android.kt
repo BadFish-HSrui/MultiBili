@@ -1,5 +1,9 @@
 package tv.hsrui.bolo.player.base
 
+import android.content.ComponentCallbacks2
+import android.content.Context
+import android.content.res.Configuration
+import android.os.SystemClock
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -14,9 +18,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.interfaces.IVLCVout
 import org.videolan.libvlc.interfaces.IMedia
 import org.videolan.libvlc.util.VLCVideoLayout
 import java.io.File
@@ -187,6 +193,29 @@ actual class BoloPlayerController actual constructor(
 
     private var lifecycleObserver: DefaultLifecycleObserver? = null
     private var lifecycleOwner: LifecycleOwner? = null
+    private var resumeAfterBackgroundEnabled = false
+    private var inBackground = false
+    private var backgroundStartedMs: Long? = null
+    private var backgroundPositionMs = 0L
+    private var backgroundEnded = false
+    private var resumeEligible = false
+    private var needsRestoreSeek = false
+    private var outputNeedsRefresh = false
+    private var surfacesReady = false
+    private var restoringPlayback = false
+    private var recoveryFailed = false
+    private var lifecycleRevision = 0L
+    private var backgroundReleaseJob: Job? = null
+    private var recoveryJob: Job? = null
+    private var callbacksContext: Context? = null
+    private var volumeGain = 100
+    private val memoryCallbacks = object : ComponentCallbacks2 {
+        override fun onConfigurationChanged(newConfig: Configuration) = Unit
+        override fun onLowMemory() { releaseBackgroundResources() }
+        override fun onTrimMemory(level: Int) {
+            if (level != ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) releaseBackgroundResources()
+        }
+    }
     private var playWhenReady = autoPlay
     private val speedLock = Any()
     private val speedApplyGate = SpeedApplyGate()
@@ -234,22 +263,134 @@ actual class BoloPlayerController actual constructor(
 
         val observer = object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
-                if (mediaPlayer == null) {
-                    val layout = videoLayout
-                    if (layout != null && layout.isAttachedToWindow) {
-                        bindVideo(layout)
-                    }
-                }
+                inBackground = false
+                resumePlaybackIfReady()
             }
             override fun onStop(owner: LifecycleOwner) {
-                val player = mediaPlayer
-                if (player != null) {
-                    release()
-                }
+                suspendPlayback()
             }
         }
         lifecycleObserver = observer
         owner.lifecycle.addObserver(observer)
+    }
+
+    actual fun setResumeAfterBackgroundEnabled(enabled: Boolean) {
+        resumeAfterBackgroundEnabled = enabled
+        if (!enabled) resumeEligible = false
+    }
+
+    private fun suspendPlayback() {
+        if (disposed || inBackground) return
+        val wasRestoring = restoringPlayback
+        inBackground = true
+        lifecycleRevision += 1L
+        recoveryJob?.cancel()
+        restoringPlayback = false
+        backgroundReleaseJob?.cancel()
+        backgroundStartedMs = SystemClock.elapsedRealtime()
+        if (!wasRestoring) {
+            backgroundPositionMs = _state.value.displayPositionMs
+            backgroundEnded = _state.value.isEnded
+            resumeEligible = playWhenReady && !backgroundEnded
+        }
+        needsRestoreSeek = needsRestoreSeek || _state.value.isSeeking || !mediaReadyForSeek || wasRestoring
+        playWhenReady = false
+        synchronized(seekLock) {
+            seekTimeoutJob?.cancel()
+            seekReadbackJob?.cancel()
+            seekCoordinator.cancelCurrentSeek()
+            clearDebugSeekInjectionLocked(clearNext = true)
+            pendingPauseAfterStart = false
+            _state.value = _state.value.copy(
+                isPlaybackSuspended = true, isPlaying = false, isBuffering = false,
+                currentPositionMs = backgroundPositionMs, pendingSeekPositionMs = null,
+            )
+        }
+        mediaPlayer?.let { player -> runCatching { player.pause() } }
+        val revision = lifecycleRevision
+        backgroundReleaseJob = seekScope.launch(Dispatchers.Main) {
+            delay(60_000L)
+            if (revision == lifecycleRevision && inBackground) releaseResources()
+        }
+    }
+
+    private fun releaseBackgroundResources() {
+        seekScope.launch(Dispatchers.Main) {
+            if (inBackground && !disposed) releaseResources()
+        }
+    }
+
+    private fun resumePlaybackIfReady() {
+        if (disposed || inBackground || !_state.value.isPlaybackSuspended || restoringPlayback) return
+        val layout = videoLayout ?: return
+        if (!layout.isAttachedToWindow) return
+        backgroundReleaseJob?.cancel()
+        val startedMs = backgroundStartedMs
+        if (startedMs != null && SystemClock.elapsedRealtime() - startedMs >= 60_000L) releaseResources()
+        backgroundStartedMs = null
+        restoringPlayback = true
+        val revision = ++lifecycleRevision
+        recoveryJob = seekScope.launch(Dispatchers.Main) {
+            try {
+                for (attempt in 0..1) {
+                    if (revision != lifecycleRevision || inBackground || disposed) return@launch
+                    recoveryFailed = false
+                    val recreate = mediaPlayer == null || attempt > 0
+                    if (attempt > 0) releaseResources()
+                    if (lastMpd == null) {
+                        _state.value = _state.value.copy(isPlaybackSuspended = false)
+                        return@launch
+                    }
+                    if (recreate) {
+                        lastSavedPositionMs = backgroundPositionMs
+                        bindVideo(layout)
+                    }
+                    val outputReady = withTimeoutOrNull(10_000L) {
+                        while (!surfacesReady && !recoveryFailed) delay(50L)
+                        !recoveryFailed
+                    } == true
+                    if (!outputReady) continue
+                    val player = mediaPlayer ?: continue
+                    player.setVolume(0)
+                    if (!recreate && (needsRestoreSeek || outputNeedsRefresh)) {
+                        seekToMs(backgroundPositionMs)
+                    }
+                    val restored = withTimeoutOrNull(22_000L) {
+                        while (!recoveryFailed) {
+                            val playback = _state.value
+                            val positionMatches = kotlin.math.abs(playback.currentPositionMs - backgroundPositionMs) <=
+                                BoloPlayerSeekCoordinator.ConfirmationToleranceMs
+                            if (mediaReadyForSeek && !playback.isSeeking && !playback.isBuffering && positionMatches) break
+                            delay(50L)
+                        }
+                        !recoveryFailed
+                    } == true
+                    if (!restored) continue
+                    if (revision != lifecycleRevision || inBackground || disposed) return@launch
+                    player.pause()
+                    player.setVolume(volumeGain)
+                    val shouldResume = resumeAfterBackgroundEnabled && resumeEligible && !backgroundEnded
+                    resumeEligible = false
+                    needsRestoreSeek = false
+                    outputNeedsRefresh = false
+                    _state.value = _state.value.copy(
+                        isPlaybackSuspended = false, isPlaying = false, isBuffering = false,
+                        currentPositionMs = if (backgroundEnded) _state.value.durationMs else _state.value.currentPositionMs,
+                    )
+                    restoringPlayback = false
+                    if (shouldResume) play()
+                    return@launch
+                }
+                if (revision == lifecycleRevision && !inBackground && !disposed) {
+                    releaseResources()
+                    resumeEligible = false
+                    _state.value = _state.value.copy(isPlaybackSuspended = false, isPlaying = false, isBuffering = false)
+                    onError(BoloPlayerError.UnknownError("播放器恢复失败，请重新打开视频"))
+                }
+            } finally {
+                if (revision == lifecycleRevision) restoringPlayback = false
+            }
+        }
     }
 
     fun unbindLifecycle(owner: LifecycleOwner): Boolean {
@@ -279,14 +420,21 @@ actual class BoloPlayerController actual constructor(
         }
         val existingPlayer = mediaPlayer
         if (videoLayout === layout && existingPlayer != null) {
+            resumePlaybackIfReady()
             return
         }
         videoLayout = layout
         if (existingPlayer != null) {
+            outputNeedsRefresh = true
             attachVideoLayout(existingPlayer, layout, detachFirst = true)
+            resumePlaybackIfReady()
             return
         }
 
+        if (inBackground) return
+        if (callbacksContext == null) {
+            callbacksContext = layout.context.applicationContext.also { it.registerComponentCallbacks(memoryCallbacks) }
+        }
         LibVLC.loadLibraries()
         val libVlcOptions = arrayListOf<String>().apply {
             if (EnableVlcNativeVerbose) add("-vv")
@@ -301,6 +449,19 @@ actual class BoloPlayerController actual constructor(
         val generation = ++playerGeneration
         libVLC = newLibVLC
         mediaPlayer = newPlayer
+        newPlayer.setVolume(if (_state.value.isPlaybackSuspended) 0 else volumeGain)
+        newPlayer.vlcVout.addCallback(object : IVLCVout.Callback {
+            override fun onSurfacesCreated(vlcVout: IVLCVout) {
+                if (!isCurrentPlayer(newPlayer, generation)) return
+                surfacesReady = true
+                seekScope.launch(Dispatchers.Main) { resumePlaybackIfReady() }
+            }
+            override fun onSurfacesDestroyed(vlcVout: IVLCVout) {
+                if (!isCurrentPlayer(newPlayer, generation)) return
+                surfacesReady = false
+                outputNeedsRefresh = true
+            }
+        })
         debugLog(
             DebugEvent,
             "PlayerCreated generation=$generation nativeVerbose=$EnableVlcNativeVerbose " +
@@ -314,6 +475,11 @@ actual class BoloPlayerController actual constructor(
                     seekCoordinator.currentMediaGeneration != eventMediaGeneration
                 }
             ) {
+                return@eventListener
+            }
+            if (inBackground) {
+                if (event.type == MediaPlayer.Event.Playing) runCatching { newPlayer.pause() }
+                if (event.type == MediaPlayer.Event.EncounteredError) recoveryFailed = true
                 return@eventListener
             }
             when (event.type) {
@@ -352,7 +518,7 @@ actual class BoloPlayerController actual constructor(
                     val publishPlaying = synchronized(seekLock) {
                         nativeIsPlaying = true
                         mediaReadyForSeek = true
-                        !pendingPauseAfterStart || playWhenReady
+                        (!pendingPauseAfterStart || playWhenReady) && !_state.value.isPlaybackSuspended
                     }
                     val tracks = readTrackSnapshot(newPlayer)
                     debugLog(
@@ -413,6 +579,7 @@ actual class BoloPlayerController actual constructor(
                     handleEndReached(newPlayer, generation)
                 }
                 MediaPlayer.Event.EncounteredError -> {
+                    if (restoringPlayback) recoveryFailed = true
                     synchronized(speedLock) { speedApplyGate.onInactive() }
                     debugLog(DebugEvent, "EncounteredError ${playerSnapshot(newPlayer)}")
                     synchronized(seekLock) {
@@ -510,6 +677,8 @@ actual class BoloPlayerController actual constructor(
             return
         }
         videoLayout = null
+        surfacesReady = false
+        outputNeedsRefresh = true
         mediaPlayer?.let { player ->
             try { player.detachViews() } catch (_: Exception) {}
         }
@@ -529,6 +698,16 @@ actual class BoloPlayerController actual constructor(
         if (disposed) {
             return
         }
+        lifecycleRevision += 1L
+        recoveryJob?.cancel()
+        restoringPlayback = false
+        resumeEligible = false
+        backgroundEnded = false
+        if (_state.value.isPlaybackSuspended) {
+            backgroundPositionMs = normalizePositionMs(startPositionMs, mpd.durationMs)
+            needsRestoreSeek = true
+            releaseResources()
+        }
         lastMpd = mpd
         pendingLoadStartPositionMs = normalizePositionMs(startPositionMs, mpd.durationMs)
         hasPendingLoadRequest = true
@@ -537,7 +716,7 @@ actual class BoloPlayerController actual constructor(
             "LoadRequested mode=mpd startPositionMs=$startPositionMs hasAudio=${mpd.hasAudio} " +
                 "durationMs=${mpd.durationMs} video=${mpd.videoSummary} audio=${mpd.audioSummary ?: "none"}"
         )
-        if (libVLC != null && mediaPlayer != null) {
+        if (!inBackground && libVLC != null && mediaPlayer != null) {
             val pendingStartPositionMs = pendingLoadStartPositionMs
             pendingLoadStartPositionMs = 0L
             hasPendingLoadRequest = false
@@ -638,8 +817,12 @@ actual class BoloPlayerController actual constructor(
                 nativeIsPlaying = false
                 pendingPauseAfterStart = false
                 lastSavedPositionMs = savedPositionMs
-                val pendingPositionMs = if (savedPositionMs > 0L) {
-                    seekCoordinator.requestSeek(savedPositionMs)
+                val pendingPositionMs = if (savedPositionMs > 0L || restoringPlayback) {
+                    val revision = seekCoordinator.requestSeek(savedPositionMs)
+                    if (restoringPlayback) {
+                        frameRefreshRevision = revision
+                        frameRefreshDisplayedPictures = 0
+                    }
                     savedPositionMs
                 } else {
                     null
@@ -661,7 +844,7 @@ actual class BoloPlayerController actual constructor(
         }
 
         val shouldPlay = playWhenReady
-        val shouldPauseAfterSeek = !shouldPlay && savedPositionMs > 0L
+        val shouldPauseAfterSeek = !shouldPlay && (savedPositionMs > 0L || restoringPlayback)
 
         if (shouldPlay || shouldPauseAfterSeek) {
             synchronized(seekLock) { pendingPauseAfterStart = shouldPauseAfterSeek }
@@ -672,6 +855,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun play() {
+        if (_state.value.isPlaybackSuspended || inBackground) return
         if (disposed) {
             return
         }
@@ -684,6 +868,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun pause() {
+        resumeEligible = false
         if (disposed) {
             return
         }
@@ -699,9 +884,10 @@ actual class BoloPlayerController actual constructor(
 
     actual fun seekToMs(positionMs: Long) {
         if (disposed) return
+        if (inBackground || (_state.value.isPlaybackSuspended && !restoringPlayback)) return
 
         val player = mediaPlayer
-        val refreshFrame = !playWhenReady && (_state.value.isEnded || frameRefreshRevision != null)
+        val refreshFrame = !playWhenReady && (_state.value.isEnded || frameRefreshRevision != null || restoringPlayback)
         val targetPositionMs = normalizePositionMs(positionMs, _state.value.durationMs)
         var revision = 0L
         var mediaGeneration = 0L
@@ -775,11 +961,12 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun setVolumeGain(gain: Int) {
+        volumeGain = gain.coerceIn(0, 200)
         if (disposed) {
             return
         }
         mediaPlayer?.let { player ->
-            runCatching { player.setVolume(gain.coerceIn(0, 200)) }
+            runCatching { player.setVolume(if (_state.value.isPlaybackSuspended) 0 else volumeGain) }
         }
     }
 
@@ -831,16 +1018,28 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun release() {
+        lifecycleRevision += 1L
+        backgroundReleaseJob?.cancel()
+        recoveryJob?.cancel()
+        restoringPlayback = false
+        resumeEligible = false
+        backgroundStartedMs = null
+        releaseResources()
+        _state.value = _state.value.copy(isPlaybackSuspended = false)
+    }
+
+    private fun releaseResources() {
         if (disposed) {
             return
         }
+        surfacesReady = false
         val player = mediaPlayer
         val vlc = libVLC
         if (player == null && vlc == null) {
             return
         }
         if (player != null) {
-            savePosition(player)
+            if (_state.value.isPlaybackSuspended) lastSavedPositionMs = backgroundPositionMs else savePosition(player)
         }
         synchronized(seekLock) {
             seekTimeoutJob?.cancel()
@@ -881,6 +1080,8 @@ actual class BoloPlayerController actual constructor(
         release()
         disposed = true
         removeLifecycleObserver()
+        callbacksContext?.unregisterComponentCallbacks(memoryCallbacks)
+        callbacksContext = null
         videoLayout = null
         lastMpd = null
         runCatching { lastMpdFile?.delete() }
@@ -1292,7 +1493,7 @@ actual class BoloPlayerController actual constructor(
             vlcStatsSnapshot(player)?.displayedPictures
         } else null
         synchronized(seekLock) {
-            if (!isCurrentPlayer(player, playerGeneration) || _state.value.isEnded) return false
+            if (!isCurrentPlayer(player, playerGeneration) || inBackground || _state.value.isEnded) return false
             if (
                 expectedMediaGeneration != null &&
                 expectedRevision != null &&

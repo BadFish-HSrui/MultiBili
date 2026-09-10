@@ -87,6 +87,11 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
     init {
         viewModelScope.launch {
             controller.state.collect { playback ->
+                if (playback.isPlaybackSuspended) {
+                    replayJob?.cancel()
+                    danmakuController.pause()
+                    return@collect
+                }
                 synchronizeDanmaku(playback)
                 if (danmakuMedia == (avid to cid) && !awaitingPlaybackReload) {
                     subtitleController.synchronize(playback.displayPositionMs)
@@ -155,6 +160,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
     }
 
     fun play() {
+        if (controller.state.value.isPlaybackSuspended) return
         if (!controller.state.value.isEnded) {
             if (replayJob?.isActive != true) controller.play()
             return
@@ -163,7 +169,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         seekToMs(0L)
         replayJob = viewModelScope.launch {
             // 先确认 EOF 暂停媒体已跳离结尾，再恢复播放，避免 VLC 直接结束输入。
-            val playback = controller.state.first { !it.isSeeking && !it.isBuffering }
+            val playback = controller.state.first { !it.isPlaybackSuspended && !it.isSeeking && !it.isBuffering }
             if (playback.currentPositionMs in 0L..BoloPlayerSeekCoordinator.ConfirmationToleranceMs) {
                 controller.play()
             }
@@ -177,6 +183,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
 
     fun seekToMs(positionMs: Long, autoPlayAfterSeek: Boolean = false) {
         val playbackBeforeSeek = controller.state.value
+        if (playbackBeforeSeek.isPlaybackSuspended) return
         val shouldResume = autoPlayAfterSeek && !playbackBeforeSeek.isPlaying
         val targetMs = if (playbackBeforeSeek.durationMs > 0L) {
             positionMs.coerceIn(0L, playbackBeforeSeek.durationMs)
@@ -195,7 +202,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         subtitleController.synchronize(controller.state.value.displayPositionMs)
         if (shouldResume) {
             replayJob = viewModelScope.launch {
-                val playback = controller.state.first { !it.isSeeking && !it.isBuffering }
+                val playback = controller.state.first { !it.isPlaybackSuspended && !it.isSeeking && !it.isBuffering }
                 val toleranceMs = BoloPlayerSeekCoordinator.ConfirmationToleranceMs
                 if (!playback.isEnded && playback.currentPositionMs in
                     (targetMs - toleranceMs).coerceAtLeast(0L)..(targetMs + toleranceMs)

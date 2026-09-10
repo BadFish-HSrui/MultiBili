@@ -926,6 +926,8 @@ actual class BoloPlayerController actual constructor(
         )
     }
 
+    actual fun setResumeAfterBackgroundEnabled(enabled: Boolean) = Unit
+
     actual fun play() {
         val command = synchronized(lock) {
             if (lifecycleState == LifecycleState.Disposed) return

@@ -4,6 +4,8 @@ package tv.hsrui.bolo.player.base
  * 播放器实时状态快照（通过[BoloPlayerController.state] StateFlow 订阅）
  */
 data class BoloPlayerState(
+    /** 后台暂停或恢复准备中，禁止普通播放请求启动媒体。 */
+    val isPlaybackSuspended: Boolean = false,
     /** 是否正在播放 */
     val isPlaying: Boolean = false,
     /** 是否正在缓冲 */

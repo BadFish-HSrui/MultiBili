@@ -87,6 +87,8 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.filterNot
+import tv.hsrui.bolo.PlatformType
+import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.ui.components.dialog.ShowInfoDialog
 import kotlin.math.roundToInt
 
@@ -95,6 +97,8 @@ import kotlin.math.roundToInt
 fun BoloPlayerSettingsSheet(
     isOpen: Boolean,
     supportsDeviceGestures: Boolean,
+    resumeAfterBackgroundEnabled: Boolean,
+    onResumeAfterBackgroundEnabledChange: (Boolean) -> Unit,
     autoPlayAfterSeekEnabled: Boolean,
     onAutoPlayAfterSeekEnabledChange: (Boolean) -> Unit,
     autoReplayEnabled: Boolean,
@@ -146,6 +150,7 @@ fun BoloPlayerSettingsSheet(
     val onDismiss by rememberUpdatedState(onDismissRequest)
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
     val scrimAlpha by animateFloatAsState(if (isOpen) 1f else 0f)
+    var showResumeAfterBackgroundInfo by remember(isOpen) { mutableStateOf(false) }
     var showAutoPlayAfterSeekInfo by remember(isOpen) { mutableStateOf(false) }
     var showFilterInfo by remember(isOpen) { mutableStateOf(false) }
     var showTopBottomScrollInfo by remember(isOpen) { mutableStateOf(false) }
@@ -168,11 +173,22 @@ fun BoloPlayerSettingsSheet(
     NavigationBackHandler(
         state = backState,
         isBackEnabled = (isOpen || !drawerState.isClosed) &&
-            !showFilterInfo && !showTopBottomScrollInfo && !showSubtitlePositionInfo && !showAutoPlayAfterSeekInfo,
+            !showFilterInfo && !showTopBottomScrollInfo && !showSubtitlePositionInfo && !showAutoPlayAfterSeekInfo && !showResumeAfterBackgroundInfo,
         onBackCompleted = onDismissRequest,
     )
 
     if (!isOpen && drawerState.isClosed && !drawerState.isAnimationRunning) return
+
+    if (isOpen && showResumeAfterBackgroundInfo) {
+        ShowInfoDialog(onConfirm = { showResumeAfterBackgroundInfo = false }) {
+            Text(
+                text = "当播放状态下切出应用，恢复后自动继续播放",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
+            )
+        }
+    }
 
     if (isOpen && showAutoPlayAfterSeekInfo) {
         ShowInfoDialog(onConfirm = { showAutoPlayAfterSeekInfo = false }) {
@@ -326,6 +342,46 @@ fun BoloPlayerSettingsSheet(
                                                                 enabled = isOpen,
                                                                 modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
                                                             )
+                                                        }
+                                                        if (getPlatform().type != PlatformType.Desktop) {
+                                                            HorizontalDivider(thickness = 1.dp)
+                                                            Row(
+                                                                Modifier.fillMaxWidth()
+                                                                    .toggleable(
+                                                                        value = resumeAfterBackgroundEnabled,
+                                                                        enabled = isOpen,
+                                                                        role = Role.Switch,
+                                                                        onValueChange = onResumeAfterBackgroundEnabledChange,
+                                                                    )
+                                                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                            ) {
+                                                                Row(
+                                                                    modifier = Modifier.weight(1f),
+                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                ) {
+                                                                    Text("恢复后继续播放", style = MaterialTheme.typography.bodyMedium)
+                                                                    IconButton(
+                                                                        onClick = { showResumeAfterBackgroundInfo = true },
+                                                                        enabled = isOpen,
+                                                                        modifier = Modifier.size(20.dp),
+                                                                    ) {
+                                                                        Icon(
+                                                                            imageVector = Icons.Outlined.Info,
+                                                                            contentDescription = "恢复后继续播放说明",
+                                                                            modifier = Modifier.size(16.dp),
+                                                                        )
+                                                                    }
+                                                                }
+                                                                Switch(
+                                                                    checked = resumeAfterBackgroundEnabled,
+                                                                    onCheckedChange = null,
+                                                                    enabled = isOpen,
+                                                                    modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }

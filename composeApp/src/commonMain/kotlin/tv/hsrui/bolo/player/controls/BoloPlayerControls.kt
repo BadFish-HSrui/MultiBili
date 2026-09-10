@@ -530,6 +530,8 @@ fun BoloPlayerControls(
         }
         if (isFullscreen) {
             BoloPlayerSettingsSheet(
+                resumeAfterBackgroundEnabled = settings.playerResumeAfterBackgroundEnabled,
+                onResumeAfterBackgroundEnabledChange = { settings.playerResumeAfterBackgroundEnabled = it },
                 autoPlayAfterSeekEnabled = settings.playerAutoPlayAfterSeekEnabled,
                 onAutoPlayAfterSeekEnabledChange = { settings.playerAutoPlayAfterSeekEnabled = it },
                 autoReplayEnabled = settings.playerAutoReplayEnabled,
