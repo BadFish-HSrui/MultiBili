@@ -9,6 +9,20 @@ import eu.anifantakis.lib.ksafe.KSafePlain
 import kotlin.math.roundToInt
 
 class BoloSettings(settingsKSafe: KSafePlain) {
+    private var storedPlayerAutoPlayAfterSeekEnabled by settingsKSafe(
+        false,
+        key = "player_auto_play_after_seek_enabled",
+    )
+    private var currentPlayerAutoPlayAfterSeekEnabled by mutableStateOf(storedPlayerAutoPlayAfterSeekEnabled)
+
+    var playerAutoPlayAfterSeekEnabled: Boolean
+        get() = currentPlayerAutoPlayAfterSeekEnabled
+        set(value) {
+            if (value == currentPlayerAutoPlayAfterSeekEnabled) return
+            storedPlayerAutoPlayAfterSeekEnabled = value
+            currentPlayerAutoPlayAfterSeekEnabled = value
+        }
+
     private var storedPlayerAutoReplayEnabled by settingsKSafe(false, key = "player_auto_replay_enabled")
     private var currentPlayerAutoReplayEnabled by mutableStateOf(storedPlayerAutoReplayEnabled)
 

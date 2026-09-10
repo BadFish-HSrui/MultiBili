@@ -95,6 +95,8 @@ import kotlin.math.roundToInt
 fun BoloPlayerSettingsSheet(
     isOpen: Boolean,
     supportsDeviceGestures: Boolean,
+    autoPlayAfterSeekEnabled: Boolean,
+    onAutoPlayAfterSeekEnabledChange: (Boolean) -> Unit,
     autoReplayEnabled: Boolean,
     onAutoReplayEnabledChange: (Boolean) -> Unit,
     seekGestureEnabled: Boolean,
@@ -144,6 +146,7 @@ fun BoloPlayerSettingsSheet(
     val onDismiss by rememberUpdatedState(onDismissRequest)
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
     val scrimAlpha by animateFloatAsState(if (isOpen) 1f else 0f)
+    var showAutoPlayAfterSeekInfo by remember(isOpen) { mutableStateOf(false) }
     var showFilterInfo by remember(isOpen) { mutableStateOf(false) }
     var showTopBottomScrollInfo by remember(isOpen) { mutableStateOf(false) }
     var showSubtitlePositionInfo by remember(isOpen) { mutableStateOf(false) }
@@ -165,11 +168,22 @@ fun BoloPlayerSettingsSheet(
     NavigationBackHandler(
         state = backState,
         isBackEnabled = (isOpen || !drawerState.isClosed) &&
-            !showFilterInfo && !showTopBottomScrollInfo && !showSubtitlePositionInfo,
+            !showFilterInfo && !showTopBottomScrollInfo && !showSubtitlePositionInfo && !showAutoPlayAfterSeekInfo,
         onBackCompleted = onDismissRequest,
     )
 
     if (!isOpen && drawerState.isClosed && !drawerState.isAnimationRunning) return
+
+    if (isOpen && showAutoPlayAfterSeekInfo) {
+        ShowInfoDialog(onConfirm = { showAutoPlayAfterSeekInfo = false }) {
+            Text(
+                text = "暂停时调整进度后，自动重新播放",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
+            )
+        }
+    }
 
     if (isOpen && showFilterInfo) {
         ShowInfoDialog(
@@ -251,28 +265,68 @@ fun BoloPlayerSettingsSheet(
                                         when (BoloPlayerSettingsTab.entries[page]) {
                                             BoloPlayerSettingsTab.Playback -> {
                                                 Card(Modifier.fillMaxWidth()) {
-                                                    Row(
-                                                        Modifier.fillMaxWidth()
-                                                            .toggleable(
-                                                                value = autoReplayEnabled,
-                                                                enabled = isOpen,
-                                                                role = Role.Switch,
-                                                                onValueChange = onAutoReplayEnabledChange,
+                                                    Column {
+                                                        Row(
+                                                            Modifier.fillMaxWidth()
+                                                                .toggleable(
+                                                                    value = autoReplayEnabled,
+                                                                    enabled = isOpen,
+                                                                    role = Role.Switch,
+                                                                    onValueChange = onAutoReplayEnabledChange,
+                                                                )
+                                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                        ) {
+                                                            Text(
+                                                                text = "自动重播",
+                                                                style = MaterialTheme.typography.bodyMedium,
+                                                                modifier = Modifier.weight(1f),
                                                             )
-                                                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                    ) {
-                                                        Text(
-                                                            text = "自动重播",
-                                                            style = MaterialTheme.typography.bodyMedium,
-                                                            modifier = Modifier.weight(1f),
-                                                        )
-                                                        Switch(
-                                                            checked = autoReplayEnabled,
-                                                            onCheckedChange = null,
-                                                            enabled = isOpen,
-                                                            modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
-                                                        )
+                                                            Switch(
+                                                                checked = autoReplayEnabled,
+                                                                onCheckedChange = null,
+                                                                enabled = isOpen,
+                                                                modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
+                                                            )
+                                                        }
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        Row(
+                                                            Modifier.fillMaxWidth()
+                                                                .toggleable(
+                                                                    value = autoPlayAfterSeekEnabled,
+                                                                    enabled = isOpen,
+                                                                    role = Role.Switch,
+                                                                    onValueChange = onAutoPlayAfterSeekEnabledChange,
+                                                                )
+                                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.weight(1f),
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                            ) {
+                                                                Text("跳转后自动播放", style = MaterialTheme.typography.bodyMedium)
+                                                                IconButton(
+                                                                    onClick = { showAutoPlayAfterSeekInfo = true },
+                                                                    enabled = isOpen,
+                                                                    modifier = Modifier.size(20.dp),
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Outlined.Info,
+                                                                        contentDescription = "跳转后自动播放说明",
+                                                                        modifier = Modifier.size(16.dp),
+                                                                    )
+                                                                }
+                                                            }
+                                                            Switch(
+                                                                checked = autoPlayAfterSeekEnabled,
+                                                                onCheckedChange = null,
+                                                                enabled = isOpen,
+                                                                modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
+                                                            )
+                                                        }
                                                     }
                                                 }
                                                 Card(Modifier.fillMaxWidth()) {

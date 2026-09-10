@@ -163,7 +163,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         seekToMs(0L)
         replayJob = viewModelScope.launch {
             // 先确认 EOF 暂停媒体已跳离结尾，再恢复播放，避免 VLC 直接结束输入。
-            val playback = controller.state.first { !it.isSeeking }
+            val playback = controller.state.first { !it.isSeeking && !it.isBuffering }
             if (playback.currentPositionMs in 0L..BoloPlayerSeekCoordinator.ConfirmationToleranceMs) {
                 controller.play()
             }
@@ -175,7 +175,14 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         controller.pause()
     }
 
-    fun seekToMs(positionMs: Long) {
+    fun seekToMs(positionMs: Long, autoPlayAfterSeek: Boolean = false) {
+        val playbackBeforeSeek = controller.state.value
+        val shouldResume = autoPlayAfterSeek && !playbackBeforeSeek.isPlaying
+        val targetMs = if (playbackBeforeSeek.durationMs > 0L) {
+            positionMs.coerceIn(0L, playbackBeforeSeek.durationMs)
+        } else {
+            positionMs.coerceAtLeast(0L)
+        }
         replayJob?.cancel()
         danmakuController.pause()
         danmakuController.seekToMs(positionMs)
@@ -186,6 +193,17 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         // 原生层可能同步拒绝 Seek，仍需以实际位置恢复调度。
         synchronizeDanmaku(controller.state.value)
         subtitleController.synchronize(controller.state.value.displayPositionMs)
+        if (shouldResume) {
+            replayJob = viewModelScope.launch {
+                val playback = controller.state.first { !it.isSeeking && !it.isBuffering }
+                val toleranceMs = BoloPlayerSeekCoordinator.ConfirmationToleranceMs
+                if (!playback.isEnded && playback.currentPositionMs in
+                    (targetMs - toleranceMs).coerceAtLeast(0L)..(targetMs + toleranceMs)
+                ) {
+                    controller.play()
+                }
+            }
+        }
     }
 
     private fun synchronizeDanmaku(playback: BoloPlayerState) {

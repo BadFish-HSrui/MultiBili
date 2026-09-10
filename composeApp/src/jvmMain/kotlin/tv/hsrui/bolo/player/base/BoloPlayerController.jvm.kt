@@ -233,6 +233,7 @@ actual class BoloPlayerController actual constructor(
     private var lastSavedPositionMs = 0L
     private var playWhenReady = autoPlay
 
+    private var frameRefreshRevision: Long? = null
     private var lastMpd: BoloDashMpd? = null
     private var lastMpdFile: File? = null
     private var pendingLoad: PendingLoad? = null
@@ -563,6 +564,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     private fun scheduleLoadLocked(mpd: BoloDashMpd, startPositionMs: Long) {
+        frameRefreshRevision = null
         val generation = ++loadGeneration
         val normalizedStartMs = normalizePositionMs(startPositionMs, mpd.durationMs)
         activeMediaMrl = null
@@ -972,12 +974,14 @@ actual class BoloPlayerController actual constructor(
         var injectNotSeekable = false
         val command = synchronized(lock) {
             if (lifecycleState == LifecycleState.Disposed) return
+            val refreshFrame = !playWhenReady && (_state.value.isEnded || frameRefreshRevision != null)
             val targetMs = normalizePositionMs(positionMs, _state.value.durationMs)
             lastSavedPositionMs = targetMs
             val seek = synchronized(seekLock) {
                 seekTimeoutJob?.cancel()
                 seekTimeoutJob = null
                 val revision = seekCoordinator.requestSeek(targetMs)
+                frameRefreshRevision = revision.takeIf { refreshFrame }
                 debugNativeSubmissionFailureRevision =
                     revision.takeIf { debugNextNativeSubmissionFailure }
                 debugTimeoutRevision = revision.takeIf { debugNextTimeout }
@@ -1396,7 +1400,11 @@ actual class BoloPlayerController actual constructor(
                     IllegalStateException("调试注入：VLC 跳转命令提交异常")
                 )
                 injectTimeout -> Result.success(Unit)
-                else -> runCatching { player.controls().setTime(targetMs) }
+                else -> runCatching {
+                    player.controls().setTime(targetMs)
+                    val refreshFrame = synchronized(lock) { !playWhenReady && frameRefreshRevision == revision }
+                    if (refreshFrame) player.controls().nextFrame()
+                }
             }
             if (nativeResult.isFailure) {
                 val nativePositionMs = runCatching { player.status().time() }.getOrNull()
@@ -1631,6 +1639,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     private fun clearDebugSeekRevisionLocked(revision: Long) {
+        if (frameRefreshRevision == revision) frameRefreshRevision = null
         if (debugNativeSubmissionFailureRevision == revision) {
             debugNativeSubmissionFailureRevision = null
         }

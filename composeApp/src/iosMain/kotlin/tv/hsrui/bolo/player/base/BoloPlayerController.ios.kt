@@ -141,6 +141,7 @@ actual class BoloPlayerController actual constructor(
     private var lastSavedPositionMs = 0L
 
     // ── 重建所需数据 ──
+    private var refreshFrameAfterSeek = false
     private var lastMpd: BoloDashMpd? = null
     private var lastMpdFilePath: String? = null
     private var playbackSpeed = BoloPlayerSpeed.default
@@ -483,6 +484,7 @@ actual class BoloPlayerController actual constructor(
             return
         }
 
+        refreshFrameAfterSeek = !playWhenReady && (_state.value.isEnded || refreshFrameAfterSeek)
         updateNativeDuration(mediaPlayer)
         val targetPositionMs = normalizePositionMs(positionMs, _state.value.durationMs)
         var previousTimeoutJob: Job? = null
@@ -663,6 +665,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     private fun beginNewMediaGeneration() {
+        refreshFrameAfterSeek = false
         val jobs = withSeekLock {
             val currentJobs = seekTimeoutJob to seekReadbackJob
             seekTimeoutJob = null
@@ -759,6 +762,8 @@ actual class BoloPlayerController actual constructor(
             }
             if (!injectTimeout) {
                 player.time = VLCTime.timeWithNumber(NSNumber(longLong = targetPositionMs))
+                // EOF 暂停的解码器需要推进一帧，单独更新时间不会刷新画面。
+                if (refreshFrameAfterSeek && !playWhenReady) player.gotoNextFrame()
             }
         } catch (error: Throwable) {
             failSeek(revision, "VLCKit 提交跳转失败", error)
@@ -932,6 +937,7 @@ actual class BoloPlayerController actual constructor(
                     playbackRate = _state.value.playbackSpeed.rateNumber
                 )
             if (hadPending && accepted) {
+                refreshFrameAfterSeek = false
                 timeoutJob = seekTimeoutJob
                 seekTimeoutJob = null
                 readbackJob = seekReadbackJob
@@ -1103,6 +1109,7 @@ actual class BoloPlayerController actual constructor(
         if (right > 0L && left > Long.MAX_VALUE - right) Long.MAX_VALUE else left + right
 
     private fun clearDebugSeekRevisionLocked(revision: Long) {
+        refreshFrameAfterSeek = false
         if (debugNativeSubmissionFailureRevision == revision) {
             debugNativeSubmissionFailureRevision = null
         }

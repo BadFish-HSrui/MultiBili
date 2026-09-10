@@ -158,6 +158,7 @@ fun BoloPlayerControls(
                                     viewModel.seekToMs(
                                         (playback.displayPositionMs + offsetMs)
                                             .coerceIn(0L, playback.durationMs),
+                                        autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled,
                                     )
                                 } else if (direction == 0 || !settings.playerSideDoubleTapSeekEnabled) {
                                     if (playback.isPlaying) viewModel.pause()
@@ -241,7 +242,12 @@ fun BoloPlayerControls(
                                     }
                                 }
                                 if (completed && horizontal == true && latestPlayState.isSeekable && latestPlayState.durationMs > 0L) {
-                                    gesturePreviewMs?.let { viewModel.seekToMs(it.coerceIn(0L, latestPlayState.durationMs)) }
+                                    gesturePreviewMs?.let {
+                                        viewModel.seekToMs(
+                                            it.coerceIn(0L, latestPlayState.durationMs),
+                                            autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled,
+                                        )
+                                    }
                                 }
                             } finally {
                                 gesturePreviewMs = null
@@ -390,7 +396,7 @@ fun BoloPlayerControls(
                                     (fraction.toDouble() * durationMs.toDouble())
                                         .roundToLong()
                                         .coerceIn(0L, durationMs)
-                                viewModel.seekToMs(targetPositionMs)
+                                viewModel.seekToMs(targetPositionMs, autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled)
                                 sliderPreviewFraction = null
                             }
                         },
@@ -524,6 +530,8 @@ fun BoloPlayerControls(
         }
         if (isFullscreen) {
             BoloPlayerSettingsSheet(
+                autoPlayAfterSeekEnabled = settings.playerAutoPlayAfterSeekEnabled,
+                onAutoPlayAfterSeekEnabledChange = { settings.playerAutoPlayAfterSeekEnabled = it },
                 autoReplayEnabled = settings.playerAutoReplayEnabled,
                 onAutoReplayEnabledChange = { settings.playerAutoReplayEnabled = it },
                 isOpen = settingsOpen,

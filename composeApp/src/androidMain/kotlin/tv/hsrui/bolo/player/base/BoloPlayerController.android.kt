@@ -207,6 +207,8 @@ actual class BoloPlayerController actual constructor(
     private var debugTimeoutRevision: Long? = null
 
     // 恢复后需要暂停（之前是暂停状态离开）
+    private var frameRefreshRevision: Long? = null
+    private var frameRefreshDisplayedPictures: Int? = null
     private var pendingPauseAfterStart = false
 
     // 保留 pending target 或最后一次已确认 native 时间，供底层播放器重建后恢复。
@@ -699,6 +701,7 @@ actual class BoloPlayerController actual constructor(
         if (disposed) return
 
         val player = mediaPlayer
+        val refreshFrame = !playWhenReady && (_state.value.isEnded || frameRefreshRevision != null)
         val targetPositionMs = normalizePositionMs(positionMs, _state.value.durationMs)
         var revision = 0L
         var mediaGeneration = 0L
@@ -712,6 +715,9 @@ actual class BoloPlayerController actual constructor(
             seekReadbackJob?.cancel()
             seekReadbackJob = null
             revision = seekCoordinator.requestSeek(targetPositionMs)
+            frameRefreshRevision = revision.takeIf { refreshFrame }
+            frameRefreshDisplayedPictures = null
+            if (refreshFrame) pendingPauseAfterStart = true
             mediaGeneration = seekCoordinator.currentMediaGeneration
             debugNativeSubmissionFailureRevision =
                 revision.takeIf { debugNextNativeSubmissionFailure }
@@ -1004,7 +1010,15 @@ actual class BoloPlayerController actual constructor(
                         IllegalStateException("调试注入：VLC 提交跳转失败")
                     )
                     injectTimeout -> Result.success(0L)
-                    else -> runCatching { player.setTime(submittedTargetMs, false) }
+                    else -> runCatching {
+                        val refreshFrame = synchronized(seekLock) { frameRefreshRevision == revision && !playWhenReady }
+                        if (refreshFrame) {
+                            frameRefreshDisplayedPictures = vlcStatsSnapshot(player)?.displayedPictures
+                        }
+                        val result = player.setTime(submittedTargetMs, false)
+                        if (result >= 0L && refreshFrame) player.play()
+                        result
+                    }
                 }
                 synchronized(seekLock) {
                     if (
@@ -1274,6 +1288,9 @@ actual class BoloPlayerController actual constructor(
         var shouldPause = false
         var completedAtEnd = false
         var acceptedObservation = false
+        val displayedPictures = if (synchronized(seekLock) { frameRefreshRevision != null }) {
+            vlcStatsSnapshot(player)?.displayedPictures
+        } else null
         synchronized(seekLock) {
             if (!isCurrentPlayer(player, playerGeneration) || _state.value.isEnded) return false
             if (
@@ -1288,6 +1305,12 @@ actual class BoloPlayerController actual constructor(
             val pendingTargetMs = seekCoordinator.pendingPositionMs
             val pendingRevision = pendingTargetMs?.let { seekCoordinator.currentRevision }
             val forceTimeout = pendingRevision != null && debugTimeoutRevision == pendingRevision
+            if (pendingRevision != null && frameRefreshRevision == pendingRevision && !playWhenReady) {
+                val previousPictures = frameRefreshDisplayedPictures
+                if (!nativeIsPlaying || (previousPictures != null &&
+                        (displayedPictures == null || displayedPictures <= previousPictures))) return false
+            }
+            val refreshingFrame = pendingRevision != null && frameRefreshRevision == pendingRevision && !playWhenReady
             val accepted = mediaReadyForSeek && !forceTimeout && seekCoordinator.acceptObservedPosition(
                 positionMs = positionMs,
                 isPlaying = nativeIsPlaying,
@@ -1313,7 +1336,9 @@ actual class BoloPlayerController actual constructor(
                 }
                 _state.value = _state.value.copy(
                     isPlaying = if (completedAtEnd) false else _state.value.isPlaying,
-                    isBuffering = if (completedAtEnd || !nativeIsPlaying || !playWhenReady) {
+                    isBuffering = if (refreshingFrame && !completedAtEnd) {
+                        true
+                    } else if (completedAtEnd || !nativeIsPlaying || !playWhenReady) {
                         false
                     } else {
                         _state.value.isBuffering
@@ -1457,6 +1482,10 @@ actual class BoloPlayerController actual constructor(
         }
 
     private fun clearDebugSeekRevisionLocked(revision: Long) {
+        if (frameRefreshRevision == revision) {
+            frameRefreshRevision = null
+            frameRefreshDisplayedPictures = null
+        }
         if (debugNativeSubmissionFailureRevision == revision) {
             debugNativeSubmissionFailureRevision = null
         }
@@ -1466,6 +1495,8 @@ actual class BoloPlayerController actual constructor(
     }
 
     private fun clearDebugSeekInjectionLocked(clearNext: Boolean) {
+        frameRefreshRevision = null
+        frameRefreshDisplayedPictures = null
         debugNativeSubmissionFailureRevision = null
         debugTimeoutRevision = null
         if (clearNext) {
