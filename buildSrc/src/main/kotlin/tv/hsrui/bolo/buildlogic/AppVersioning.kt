@@ -384,35 +384,6 @@ abstract class WriteBuildMetadataTask : AppVersionMetadataTask() {
     }
 }
 
-@CacheableTask
-abstract class WriteIosVersionXcconfigTask : AppVersionMetadataTask() {
-    @get:OutputFile
-    abstract val outputFile: RegularFileProperty
-
-    @TaskAction
-    fun write() {
-        val metadata = resolvedMetadata()
-        writeTextAtomically(
-            outputFile.get().asFile,
-            """
-            APP_VERSION_CORE = ${metadata.coreVersion}
-            APP_RELEASE_CHANNEL = ${metadata.releaseChannel.name.lowercase(Locale.ROOT)}
-            APP_PRERELEASE_NUMBER = ${metadata.prereleaseNumber}
-            APP_RELEASE_VERSION = ${metadata.releaseVersion}
-            APP_DISPLAY_VERSION = ${metadata.appDisplayVersion}
-            APP_BUILD_NUMBER = ${metadata.buildNumber}
-            APP_COMMIT_SHA = ${metadata.commitSha}
-            APP_COMMIT_SHA7 = ${metadata.commitSha7}
-            APP_COMMIT_SHA12 = ${metadata.commitSha12}
-            APP_ARTIFACT_VERSION = ${metadata.artifactVersion}
-            APP_GIT_DIRTY = ${metadata.isDirty}
-            APP_BUILD_ORIGIN = ${buildOrigin.get()}
-            APP_OFFICIAL_BUILD = ${officialBuild.get()}
-            """.trimIndent() + "\n",
-        )
-    }
-}
-
 @DisableCachingByDefault(because = "Console output should be produced whenever requested")
 abstract class PrintAppVersionMetadataTask : AppVersionMetadataTask() {
     @TaskAction

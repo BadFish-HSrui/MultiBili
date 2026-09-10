@@ -3,7 +3,6 @@ import tv.hsrui.bolo.buildlogic.GitMetadataValueSource
 import tv.hsrui.bolo.buildlogic.PrintAppVersionMetadataTask
 import tv.hsrui.bolo.buildlogic.VerifyAppVersionMetadataTask
 import tv.hsrui.bolo.buildlogic.WriteBuildMetadataTask
-import tv.hsrui.bolo.buildlogic.WriteIosVersionXcconfigTask
 import tv.hsrui.bolo.buildlogic.loadVersionConfig
 import tv.hsrui.bolo.buildlogic.resolveVersionMetadata
 
@@ -116,14 +115,6 @@ val writeBuildMetadata = tasks.register<WriteBuildMetadataTask>("writeBuildMetad
     outputFile.set(layout.buildDirectory.file("version/build-metadata.json"))
 }
 
-val writeIosVersionXcconfig = tasks.register<WriteIosVersionXcconfigTask>("writeIosVersionXcconfig") {
-    group = "versioning"
-    description = "Writes the generated Xcode version configuration."
-    dependsOn(verifyAppVersionMetadata)
-    configureVersionMetadataInputs()
-    outputFile.set(layout.projectDirectory.file("iosApp/Configuration/GeneratedVersion.xcconfig"))
-}
-
 tasks.register<PrintAppVersionMetadataTask>("printAppVersionMetadata") {
     group = "versioning"
     description = "Prints the resolved application version metadata."
@@ -139,8 +130,4 @@ allprojects {
     }.configureEach {
         dependsOn(rootProject.tasks.named("verifyAppVersionMetadata"))
     }
-}
-
-project(":composeApp").tasks.matching { it.name == "podInstall" }.configureEach {
-    dependsOn(rootProject.tasks.named("writeIosVersionXcconfig"))
 }

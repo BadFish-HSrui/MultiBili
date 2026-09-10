@@ -1,5 +1,5 @@
 #include "../../version.properties"
-#include "GeneratedVersion.xcconfig"
+#include? "GeneratedVersion.xcconfig"
 
 TEAM_ID=
 
