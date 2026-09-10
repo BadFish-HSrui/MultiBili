@@ -26,6 +26,7 @@ compose-multiplatform-lifecycle = "2.11.0"
 koin = "4.2.2"
 vlcj = "4.12.1"
 libvlc = "3.7.5"
+vlckit = "4.0.0a24"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }

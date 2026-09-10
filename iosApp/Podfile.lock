@@ -1,23 +1,23 @@
 PODS:
   - composeApp (1.0.0-alpha.1):
-    - MobileVLCKit (~> 3.7)
-  - MobileVLCKit (3.7.3)
+    - VLCKit (= 4.0.0a24)
+  - VLCKit (4.0.0a24)
 
 DEPENDENCIES:
   - composeApp (from `../composeApp`)
 
 SPEC REPOS:
   trunk:
-    - MobileVLCKit
+    - VLCKit
 
 EXTERNAL SOURCES:
   composeApp:
     :path: "../composeApp"
 
 SPEC CHECKSUMS:
-  composeApp: 7847c65e5721360f45b92c3c09038191104a192b
-  MobileVLCKit: 73d7ddb52238b6885b70b0f281cae75a0a6e3ac0
+  composeApp: 84eee1dc3abbf472c19adc220cec9637ca0c6272
+  VLCKit: c6a641a5f215403ae26d37680b963fbe76d66c65
 
-PODFILE CHECKSUM: aba630d0cbc5006700cae9e2c15f183cb8ec5c09
+PODFILE CHECKSUM: 6f827c170c62b08b649259eb9d2aa51ab5fabc0a
 
 COCOAPODS: 1.17.0

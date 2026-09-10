@@ -57,8 +57,8 @@ kotlin {
         ios.deploymentTarget = iosDeploymentTarget
         podfile = project.file("../iosApp/Podfile")
 
-        pod("MobileVLCKit") {
-            version = "~> 3.7"
+        pod("VLCKit") {
+            version = libs.versions.vlckit.get()
         }
 
         framework {

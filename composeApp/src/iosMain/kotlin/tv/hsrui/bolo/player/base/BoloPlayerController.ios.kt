@@ -2,9 +2,16 @@ package tv.hsrui.bolo.player.base
 
 import kotlinx.cinterop.useContents
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.ObjCObjectVar
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
@@ -13,15 +20,27 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import cocoapods.MobileVLCKit.VLCMedia
-import cocoapods.MobileVLCKit.VLCMediaPlayer
-import cocoapods.MobileVLCKit.VLCMediaPlayerState
-import cocoapods.MobileVLCKit.VLCTime
+import cocoapods.VLCKit.VLCLibrary
+import cocoapods.VLCKit.VLCMedia
+import cocoapods.VLCKit.VLCMediaPlayer
+import cocoapods.VLCKit.VLCMediaPlayerDelegateProtocol
+import cocoapods.VLCKit.VLCMediaPlayerState
+import cocoapods.VLCKit.VLCMediaTrack
+import cocoapods.VLCKit.VLCMediaTrackTypeAudio
+import cocoapods.VLCKit.VLCMediaTrackTypeVideo
+import cocoapods.VLCKit.VLCTime
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFAudio.AVAudioSessionModeMoviePlayback
+import platform.AVFAudio.currentRoute
+import platform.AVFAudio.outputLatency
+import platform.AVFAudio.outputVolume
+import platform.AVFAudio.sampleRate
+import platform.AVFAudio.IOBufferDuration
 import platform.AVFAudio.setActive
+import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSLock
 import platform.Foundation.NSNotificationCenter
@@ -35,8 +54,11 @@ import platform.UIKit.UIApplicationDidReceiveMemoryWarningNotification
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationState
 import platform.UIKit.UIView
-import cocoapods.MobileVLCKit.VLCMediaPlayerStateChanged
-import cocoapods.MobileVLCKit.VLCMediaPlayerTimeChanged
+import platform.UIKit.UIViewAutoresizingFlexibleHeight
+import platform.UIKit.UIViewAutoresizingFlexibleWidth
+import platform.darwin.NSObject
+import cocoapods.VLCKit.VLCMediaPlayerStateChangedNotification
+import cocoapods.VLCKit.VLCMediaPlayerTimeChangedNotification
 import platform.posix.CLOCK_MONOTONIC_RAW
 import platform.posix.clock_gettime_nsec_np
 import platform.posix.fclose
@@ -57,20 +79,23 @@ actual class BoloPlayerController actual constructor(
         Disposed
     }
 
+    /**
+     * 倍速提交门。
+     *
+     * VLC 4 移除了 Buffering 状态，缓冲进度改由 delegate 上报，且缓冲结束不会再产生一次
+     * Playing 状态变更。因此这里不能再用 buffering 回调锁定相位：那样会让之后所有倍速
+     * 请求都停在"延迟提交"分支，而没有任何补提交时机。门只区分媒体是否已挂载可写 rate。
+     */
     private class PlaybackSpeedApplyGate {
         private enum class Phase {
             Inactive,
             Loading,
-            Buffering,
-            Playing,
-            Paused
+            Ready
         }
 
         private var phase = Phase.Inactive
         private var mediaGeneration = 0L
-        private var requestRevision = 0L
-        private var appliedGeneration = -1L
-        private var appliedRevision = -1L
+        private var readyGeneration = -1L
 
         fun onMediaChanged() {
             mediaGeneration += 1
@@ -81,48 +106,32 @@ actual class BoloPlayerController actual constructor(
             phase = Phase.Loading
         }
 
-        fun onBuffering() {
-            phase = Phase.Buffering
-        }
-
-        fun onPlaying(): Boolean {
-            phase = Phase.Playing
-            return consumeIfNeeded()
-        }
-
-        fun onPaused() {
-            phase = Phase.Paused
+        /** 媒体输入已建立；返回 true 表示该媒体代次尚未下发过倍速，调用方必须补提交一次。 */
+        fun onMediaReady(): Boolean {
+            phase = Phase.Ready
+            if (readyGeneration == mediaGeneration) return false
+            readyGeneration = mediaGeneration
+            return true
         }
 
         fun onInactive() {
             phase = Phase.Inactive
+            readyGeneration = -1L
         }
 
-        fun onSpeedRequested(): Boolean {
-            requestRevision += 1
-            return when (phase) {
-                Phase.Playing, Phase.Paused -> consumeIfNeeded()
-                Phase.Inactive, Phase.Loading, Phase.Buffering -> false
-            }
-        }
-
-        private fun consumeIfNeeded(): Boolean {
-            if (
-                appliedGeneration == mediaGeneration &&
-                appliedRevision == requestRevision
-            ) {
-                return false
-            }
-            appliedGeneration = mediaGeneration
-            appliedRevision = requestRevision
-            return true
-        }
+        /** 媒体已就绪时允许直接写 native rate；否则由就绪分支补提交。 */
+        fun canApplyNow(): Boolean = phase == Phase.Ready
     }
+
+    /** 把 VLCKit 回调工作移出回调栈用的调度范围（短延迟后切回主线程）。 */
+    private val deferScope = CoroutineScope(Dispatchers.Default)
 
     private val _state = MutableStateFlow(BoloPlayerState())
     actual val state: StateFlow<BoloPlayerState> = _state.asStateFlow()
 
     internal val mediaPlayer = VLCMediaPlayer()
+    // VLCKit 4 移除了 Buffering 状态，缓冲进度只通过 delegate 上报，这里持有强引用避免 delegate 被释放。
+    private val playerDelegates = mutableListOf<NSObject>()
     private var isInForeground = UIApplication.sharedApplication.applicationState == UIApplicationState.UIApplicationStateActive
     private var resumeAfterBackgroundEnabled = false
     private var backgroundStartedMs: Long? = null
@@ -137,6 +146,8 @@ actual class BoloPlayerController actual constructor(
     private var backgroundReleaseJob: Job? = null
     private var recoveryJob: Job? = null
     private var boundDrawable: UIView? = null
+    private var seekFrameHolder: UIView? = null
+    private var seekFrameWatchJob: Job? = null
     private var volumeGain = 100
     private var mediaLifecycle = MediaLifecycle.Empty
     private var mediaGeneration = 0L
@@ -214,9 +225,58 @@ actual class BoloPlayerController actual constructor(
 
     fun unbindDrawable(view: UIView) {
         if (boundDrawable !== view) return
+        removeSeekFrameHolder()
         boundDrawable = null
         mediaPlayer.drawable = null
         outputNeedsRefresh = true
+    }
+
+    /**
+     * 跳转空档保留上一帧。
+     *
+     * libvlc 4 的精确跳转会重建解码器，video context 随之变化，`vout_ChangeSource()` 因此失败，
+     * 整个 video output 被销毁重建；Apple 平台默认的 `samplebufferdisplay` 使用全新的
+     * `AVSampleBufferDisplayLayer`，在首个 sample buffer 入队前没有任何内容，旧显示视图又已被移除，
+     * 于是跳转期间露出黑底。VLC 3 的 vout 不在跳转时重建，上一帧始终留在屏幕上，所以旧版不闪。
+     *
+     * 这里在提交跳转前把当前画面快照放到渲染视图下层：VLC 视图在场时被完全覆盖，
+     * VLC 视图被移除的空档由快照顶上，等新帧显示或超时后再移除，观感与旧版一致。
+     */
+    private fun holdLastFrameForSeek() {
+        val view = boundDrawable ?: return
+        if (view.window == null || _state.value.isPlaybackSuspended) return
+        removeSeekFrameHolder()
+        // 容器里已有 VLC 的渲染视图，才说明屏幕上有画面可保留；首次加载阶段不放快照。
+        if (view.subviews.isEmpty()) return
+        val snapshot = view.snapshotViewAfterScreenUpdates(false) ?: return
+        snapshot.setFrame(view.bounds)
+        snapshot.setAutoresizingMask(
+            UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
+        )
+        view.addSubview(snapshot)
+        view.sendSubviewToBack(snapshot)
+        seekFrameHolder = snapshot
+        val baselinePictures = displayedPictures()
+        seekFrameWatchJob = seekScope.launch {
+            val deadline = continuousTimeMs() + SeekFrameHoldTimeoutMs
+            while (continuousTimeMs() < deadline) {
+                delay(SeekFrameWatchIntervalMs)
+                val pictures = displayedPictures()
+                if (pictures != null && baselinePictures != null && pictures > baselinePictures) break
+            }
+            detachSeekFrameHolder()
+        }
+    }
+
+    private fun detachSeekFrameHolder() {
+        seekFrameHolder?.removeFromSuperview()
+        seekFrameHolder = null
+    }
+
+    private fun removeSeekFrameHolder() {
+        seekFrameWatchJob?.cancel()
+        seekFrameWatchJob = null
+        detachSeekFrameHolder()
     }
 
     actual fun setResumeAfterBackgroundEnabled(enabled: Boolean) {
@@ -261,7 +321,20 @@ actual class BoloPlayerController actual constructor(
         }
     }
 
-    private fun displayedPictures(): Int? = mediaPlayer.media?.statistics?.useContents { displayedPictures }
+    /** 高于该值的画面计数只可能来自未初始化内存，视为不可用。 */
+    private fun sanitizePictureCount(pictures: ULong): Int? =
+        pictures.takeIf { it <= MaxPlausibleDisplayedPictures }?.toInt()
+
+    /**
+     * 读取已显示画面计数。
+     *
+     * `-mediaPlayer.media.statistics` 在 `libvlc_media_get_stats` 失败时会直接拷贝未初始化的
+     * `libvlc_media_stats_t`，应用侧无法从返回值判断有效性，只能按量级过滤；越界一律当作未知。
+     * 该计数只允许作为"画面是否更新"的提示，不能作为恢复完成或 seek 的判定条件。
+     */
+    private fun displayedPictures(): Int? = mediaPlayer.media?.statistics?.useContents {
+        sanitizePictureCount(displayedPictures)
+    }
 
     private fun resumePlaybackIfReady() {
         if (!isInForeground || mediaLifecycle == MediaLifecycle.Disposed ||
@@ -290,24 +363,30 @@ actual class BoloPlayerController actual constructor(
                     }
                     val recreate = mediaLifecycle == MediaLifecycle.Released || mediaPlayer.media == null || attempt > 0
                     mediaPlayer.drawable = view
-                    val previousPictures = if (recreate) 0 else displayedPictures()
-                    val needsFrame = recreate || needsRestoreSeek || outputNeedsRefresh
+                    val previousPictures = if (recreate) null else displayedPictures()
                     val targetMs = if (backgroundEnded) (backgroundPositionMs - 50L).coerceAtLeast(0L) else backgroundPositionMs
                     mediaPlayer.audio?.volume = 0
                     if (recreate) {
                         recoveryFailed = false
                         loadInternal(mpd, restorePosition = false, startPositionMs = targetMs)
-                    } else if (needsFrame) {
-                        seekToMs(targetMs)
+                    } else {
+                        // 媒体仍在时只需要把画面拉回后台前位置；pending seek 由 seek 提交流程下发。
+                        seekToMsInternal(targetMs, holdFrame = false)
                     }
-                    val restored = withTimeoutOrNull(22_000L) {
+                    val restored = withTimeoutOrNull(RestoreTimeoutMs) {
                         while (!recoveryFailed) {
                             val playback = _state.value
-                            val frameReady = !needsFrame || (displayedPictures()?.let { it > (previousPictures ?: -1) } == true)
-                            val positionMatches = kotlin.math.abs(playback.currentPositionMs - backgroundPositionMs) <=
-                                BoloPlayerSeekCoordinator.ConfirmationToleranceMs
-                            if (!playback.isSeeking && !playback.isBuffering && playback.isSeekable && frameReady && positionMatches) break
-                            delay(50L)
+                            // 恢复完成以位置为准：VLC 4 的画面计数在暂停态不增长，
+                            // 且底层读取可能返回未初始化值，不能作为完成条件。
+                            val seekAccepted = isRestorePositionAccepted(
+                                positionMs = playback.currentPositionMs,
+                                targetMs = backgroundPositionMs,
+                                observingSeek = !recreate &&
+                                    withSeekLock { seekCoordinator.pendingPositionMs != null }
+                            )
+                            val reachable = _state.value.isSeekable || (seekabilityKnown && !_state.value.isSeekable)
+                            if (!playback.isBuffering && reachable && seekAccepted) break
+                            delay(RestorePollIntervalMs)
                         }
                         !recoveryFailed
                     } == true
@@ -315,6 +394,7 @@ actual class BoloPlayerController actual constructor(
                     if (revision != lifecycleRevision || !isInForeground) return@launch
                     mediaPlayer.pause()
                     mediaPlayer.audio?.volume = volumeGain
+                    applyPendingPlaybackSpeed(mediaPlayer, mediaGeneration)
                     val shouldResume = resumeAfterBackgroundEnabled && resumeEligible && !backgroundEnded
                     resumeEligible = false
                     needsRestoreSeek = false
@@ -325,6 +405,7 @@ actual class BoloPlayerController actual constructor(
                     )
                     restoringPlayback = false
                     if (shouldResume) play() else AVAudioSession.sharedInstance().setActive(false, null)
+                    observeRestoredFrame(previousPictures, revision)
                     return@launch
                 }
                 if (revision == lifecycleRevision && isInForeground) {
@@ -339,8 +420,57 @@ actual class BoloPlayerController actual constructor(
         }
     }
 
+    /**
+     * 恢复位置是否已被 native 接受。
+     *
+     * 有 pending seek 时只认 seek 确认：跳转目标可能远离当前帧，`displayPositionMs` 会被
+     * pending 目标污染，不能当成位置已回位。等待 seek 确认期间允许位置越过目标
+     * [MaxRestoreDriftMs]，但暂停态 seek 不前进，越界只可能来自错误回读。
+     */
+    private fun isRestorePositionAccepted(positionMs: Long, targetMs: Long, observingSeek: Boolean): Boolean {
+        if (observingSeek) {
+            val driftMs = positionMs - targetMs
+            return driftMs >= -BoloPlayerSeekCoordinator.ConfirmationToleranceMs &&
+                driftMs <= MaxRestoreDriftMs
+        }
+        return kotlin.math.abs(positionMs - targetMs) <= BoloPlayerSeekCoordinator.ConfirmationToleranceMs
+    }
+
+    /**
+     * 恢复完成后异步等待新画面呈现。
+     *
+     * 画面计数缺失时不做任何判断：恢复是否成立已由位置确认，画面呈现只是观感收尾。
+     */
+    private fun observeRestoredFrame(baselinePictures: Int?, revision: Long) {
+        if (baselinePictures == null) return
+        seekScope.launch {
+            val deadline = continuousTimeMs() + RestoreFrameObserveMs
+            while (continuousTimeMs() < deadline) {
+                delay(SeekFrameWatchIntervalMs)
+                if (revision != lifecycleRevision || !isInForeground) return@launch
+                val pictures = displayedPictures() ?: return@launch
+                if (pictures > baselinePictures) return@launch
+            }
+        }
+    }
+
+    /** VLCKit 4 的 Buffering 状态已移除，缓冲进度经 delegate 回调恢复原有发布与倍速 gate 语义。 */
+    private fun handleBufferingChanged(player: VLCMediaPlayer, progress: Float) {
+        if (player !== mediaPlayer || !isInForeground) return
+        if (mediaLifecycle == MediaLifecycle.Released || mediaLifecycle == MediaLifecycle.Disposed) return
+        // progress >= 1 是唯一可信的"缓冲完成"信号；其余进度值只在真正需要缓冲时发布。
+        val shouldPublishBuffering = mediaLifecycle == MediaLifecycle.Loading ||
+            _state.value.isPlaying ||
+            playWhenReady ||
+            withSeekLock { seekCoordinator.pendingPositionMs != null }
+        _state.value = _state.value.copy(
+            isBuffering = if (progress >= 1.0f) false else shouldPublishBuffering
+        )
+    }
+
     private fun onStateChanged(player: VLCMediaPlayer, generation: Long) {
         if (!isCurrentPlayerGeneration(player, generation)) return
+        logAudioPlayback("STATE")
         if (!isInForeground) {
             if (player.state == VLCMediaPlayerState.VLCMediaPlayerStatePlaying) player.pause()
             if (player.state == VLCMediaPlayerState.VLCMediaPlayerStateError) recoveryFailed = true
@@ -353,16 +483,6 @@ actual class BoloPlayerController actual constructor(
                 speedApplyGate.onOpening()
                 _state.value = _state.value.copy(isBuffering = true)
             }
-            VLCMediaPlayerState.VLCMediaPlayerStateBuffering -> {
-                val shouldPublishBuffering = mediaLifecycle == MediaLifecycle.Loading ||
-                    _state.value.isPlaying ||
-                    playWhenReady ||
-                    withSeekLock { seekCoordinator.pendingPositionMs != null }
-                if (shouldPublishBuffering) {
-                    speedApplyGate.onBuffering()
-                }
-                _state.value = _state.value.copy(isBuffering = shouldPublishBuffering)
-            }
             VLCMediaPlayerState.VLCMediaPlayerStatePlaying -> {
                 mediaLifecycle = MediaLifecycle.Loaded
                 var videoCodec = ""
@@ -372,27 +492,21 @@ actual class BoloPlayerController actual constructor(
                 var videoBr: Long = 0L
                 var audioBr: Long = 0L
                 
-                val tracks = player.media?.tracksInformation as? List<Map<Any?, Any?>>
+                // VLCKit 4 的 tracksInformation 由字典数组改为 VLCMediaTrack 对象数组。
+                val tracks = player.media?.tracksInformation as? List<VLCMediaTrack>
                 tracks?.forEach { track ->
-                    val type = track["type"] as? String
-                    if (type == "video") {
-                        val codecObj = track["codec"]
-                        if (codecObj is String) {
-                            videoCodec = codecObj.uppercase()
-                        } else if (codecObj is Number) {
-                            videoCodec = intToFourCC(codecObj.toInt())
+                    when (track.type) {
+                        VLCMediaTrackTypeVideo -> {
+                            videoCodec = track.codecName().uppercase()
+                            videoWidth = (track.video?.width ?: 0u).toInt()
+                            videoHeight = (track.video?.height ?: 0u).toInt()
+                            videoBr = track.bitrate.toLong().takeIf { it > 0L } ?: 0L
                         }
-                        videoWidth = (track["width"] as? Number)?.toInt() ?: 0
-                        videoHeight = (track["height"] as? Number)?.toInt() ?: 0
-                        videoBr = (track["bitrate"] as? Number)?.toLong()?.takeIf { it > 0L } ?: 0L
-                    } else if (type == "audio") {
-                        val codecObj = track["codec"]
-                        if (codecObj is String) {
-                            audioCodec = codecObj.uppercase()
-                        } else if (codecObj is Number) {
-                            audioCodec = intToFourCC(codecObj.toInt())
+                        VLCMediaTrackTypeAudio -> {
+                            audioCodec = track.codecName().uppercase()
+                            audioBr = track.bitrate.toLong().takeIf { it > 0L } ?: 0L
                         }
-                        audioBr = (track["bitrate"] as? Number)?.toLong()?.takeIf { it > 0L } ?: 0L
+                        else -> Unit
                     }
                 }
                 
@@ -406,9 +520,8 @@ actual class BoloPlayerController actual constructor(
                     audioCodec = audioCodec,
                     audioBitrate = audioBr
                 )
-                if (speedApplyGate.onPlaying()) {
-                    applyPlaybackSpeed(player, generation)
-                }
+                // 本函数已由 deferOffCallback 移出回调栈，此处可安全访问播放器。
+                applyPendingPlaybackSpeed(player, generation)
                 updateNativeDuration(player)
                 refreshSeekability(player, generation, confirmUnavailable = true)
                 submitPendingSeekIfReady(player, generation)
@@ -416,19 +529,16 @@ actual class BoloPlayerController actual constructor(
             }
             VLCMediaPlayerState.VLCMediaPlayerStatePaused -> {
                 mediaLifecycle = MediaLifecycle.Loaded
-                speedApplyGate.onPaused()
+                // 暂停态同样代表媒体输入已建立；启动 seek 完成后会在此补提交倍速。
+                applyPendingPlaybackSpeed(player, generation)
                 if (playWhenReady) {
                     handleEndReached(player, generation)
                 } else {
                     _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
                 }
             }
+            // VLCKit 4 不再提供 Ended 状态，播放结束由 Stopped 上报。
             VLCMediaPlayerState.VLCMediaPlayerStateStopped -> {
-                mediaLifecycle = MediaLifecycle.Loaded
-                speedApplyGate.onInactive()
-                _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
-            }
-            VLCMediaPlayerState.VLCMediaPlayerStateEnded -> {
                 mediaLifecycle = MediaLifecycle.Loaded
                 speedApplyGate.onInactive()
                 handleEndReached(player, generation)
@@ -452,6 +562,7 @@ actual class BoloPlayerController actual constructor(
     private fun updateTimeAndDuration(player: VLCMediaPlayer, generation: Long) {
         if (!isCurrentPlayerGeneration(player, generation)) return
 
+        logAudioPlayback("TIME")
         val posMs = player.time.value?.longValue ?: return
         if (posMs < 0L) return
 
@@ -566,6 +677,7 @@ actual class BoloPlayerController actual constructor(
     ) {
         if (mediaLifecycle == MediaLifecycle.Disposed) return
 
+        removeSeekFrameHolder()
         mediaGeneration += 1
         val generation = mediaGeneration
         mediaLifecycle = MediaLifecycle.Loading
@@ -624,6 +736,7 @@ actual class BoloPlayerController actual constructor(
         }
     }
 
+    @OptIn(kotlinx.cinterop.BetaInteropApi::class)
     actual fun play() {
         if (!isInForeground || _state.value.isPlaybackSuspended) return
         if (
@@ -634,7 +747,17 @@ actual class BoloPlayerController actual constructor(
             return
         }
         playWhenReady = true
-        AVAudioSession.sharedInstance().setActive(true, null)
+        logAudioPlayback("PLAY_REQUEST")
+        val startedMs = continuousTimeMs()
+        memScoped {
+            val error = alloc<ObjCObjectVar<NSError?>>()
+            error.value = null
+            val succeeded = AVAudioSession.sharedInstance().setActive(true, error.ptr)
+            println(
+                "[AudioPlayback] timeMs=${continuousTimeMs()} event=ACTIVATE success=$succeeded " +
+                    "durationMs=${continuousTimeMs() - startedMs} errorDomain=${error.value?.domain} errorCode=${error.value?.code}"
+            )
+        }
         mediaPlayer.audio?.volume = volumeGain
         mediaLifecycle = MediaLifecycle.Loading
         mediaPlayer.play()
@@ -650,13 +773,46 @@ actual class BoloPlayerController actual constructor(
         ) {
             return
         }
+        logAudioPlayback("PAUSE_REQUEST")
         playWhenReady = false
         mediaPlayer.pause()
         _state.value = _state.value.copy(isPlaying = false)
     }
 
+    /**
+     * 只读取自有状态与 AVAudioSession；不再读取 VLCMediaPlayer 的 rate/time/audio/statistics。
+     * VLCKit 4 的这些属性会同步进入 libvlc（`libvlc_media_player_get_rate` 等），
+     * 播放线程进入终态后调用会在主线程永久阻塞 —— 这不是版本升级能接受的代价。
+     */
+    private fun logAudioPlayback(event: String) {
+        val session = AVAudioSession.sharedInstance()
+        val routes = session.currentRoute.outputs.map { (it as? platform.AVFAudio.AVAudioSessionPortDescription)?.portType }
+        if (event == "PLAY_REQUEST") {
+            val library = VLCLibrary.sharedLibrary()
+            println("[AudioPlayback] timeMs=${continuousTimeMs()} event=ENGINE version=${library.version} changeset=${library.changeset}")
+        }
+        println(
+            "[AudioPlayback] timeMs=${continuousTimeMs()} event=$event generation=$mediaGeneration " +
+                "lifecycle=$mediaLifecycle suspended=${_state.value.isPlaybackSuspended} " +
+                "positionMs=${_state.value.currentPositionMs} rate=${playbackSpeed.rateNumber} vlcVolume=$volumeGain " +
+                "systemVolume=${session.outputVolume} category=${session.category} mode=${session.mode} routeTypes=$routes " +
+                "sampleRate=${session.sampleRate} ioBufferSec=${session.IOBufferDuration} outputLatencySec=${session.outputLatency}"
+        )
+    }
+
     actual fun seekToMs(positionMs: Long) {
         if (!isInForeground || (_state.value.isPlaybackSuspended && !restoringPlayback)) return
+        seekToMsInternal(positionMs, holdFrame = true)
+    }
+
+    /**
+     * 恢复流程与用户跳转共用同一套提交逻辑。
+     *
+     * `isPlaybackSuspended` 在恢复期间仍为 true，但恢复中允许提交跳转；恢复时后台前画面已不在
+     * 屏幕上，不需要再压快照，因此 `holdFrame` 只对用户跳转生效。
+     */
+    private fun seekToMsInternal(positionMs: Long, holdFrame: Boolean) {
+        if (!isInForeground) return
         if (
             mediaLifecycle == MediaLifecycle.Empty ||
             mediaLifecycle == MediaLifecycle.Released ||
@@ -704,7 +860,12 @@ actual class BoloPlayerController actual constructor(
         val state = mediaPlayer.state
         val canConfirmSeekability = state == VLCMediaPlayerState.VLCMediaPlayerStatePlaying ||
             state == VLCMediaPlayerState.VLCMediaPlayerStatePaused
+        // 恢复路径可能停在 Paused：必须先读到 native seekable，否则 pending seek 永远不提交。
         refreshSeekability(mediaPlayer, mediaGeneration, canConfirmSeekability)
+        if (holdFrame) {
+            // 提交 native 跳转前先压住当前画面：vout 重建期间渲染层为空。
+            holdLastFrameForSeek()
+        }
         submitPendingSeekIfReady(mediaPlayer, mediaGeneration)
 
         if (!seekabilityKnown && !playWhenReady && state != VLCMediaPlayerState.VLCMediaPlayerStatePlaying) {
@@ -726,10 +887,10 @@ actual class BoloPlayerController actual constructor(
         if (mediaLifecycle == MediaLifecycle.Disposed) return
 
         playbackSpeed = speed
-        if (speedApplyGate.onSpeedRequested()) {
+        if (speedApplyGate.canApplyNow()) {
             applyPlaybackSpeed(mediaPlayer, mediaGeneration)
         } else {
-            // 延迟到下一次 Playing 提交 native rate；UI 仍沿用现有的选中值展示语义。
+            // 媒体尚未就绪：先发布选择值，等 Playing/Paused 分支补提交 native rate。
             _state.value = _state.value.copy(playbackSpeed = playbackSpeed)
         }
     }
@@ -756,6 +917,7 @@ actual class BoloPlayerController actual constructor(
         }
 
         if (_state.value.isPlaybackSuspended) lastSavedPositionMs = backgroundPositionMs else savePositionFromCurrent()
+        removeSeekFrameHolder()
         mediaLifecycle = MediaLifecycle.Released
         mediaGeneration += 1
         removePlayerObservers()
@@ -782,6 +944,7 @@ actual class BoloPlayerController actual constructor(
         removePlayerObservers()
         removeApplicationObservers()
         seekScope.cancel()
+        deferScope.cancel()
         removeMpdFile()
         lastMpd = null
         lastSavedPositionMs = 0L
@@ -814,18 +977,50 @@ actual class BoloPlayerController actual constructor(
     }
 
     private fun installPlayerObservers(player: VLCMediaPlayer, generation: Long) {
+        // VLCKit 4 在 libvlc 输入线程上同步回调观察者，并用 NSOperationQueue.mainQueue 投递：
+        // 输入线程会一直阻塞在 waitUntilFinished，且该线程此刻持有播放器锁。
+        // 因此在回调栈内（包括嵌套的 mainQueue 块）做任何 player.* 同步调用都会死锁；
+        // 必须用定时器把工作移出回调栈，等输入线程退出回调并释放锁之后再访问播放器。
         playerObservers += NSNotificationCenter.defaultCenter.addObserverForName(
-            VLCMediaPlayerStateChanged, player, NSOperationQueue.mainQueue
+            VLCMediaPlayerStateChangedNotification, player, null
         ) { _ ->
-            if (isCurrentPlayerGeneration(player, generation)) {
-                onStateChanged(player, generation)
+            deferOffCallback {
+                if (isCurrentPlayerGeneration(player, generation)) {
+                    onStateChanged(player, generation)
+                }
             }
         }
         playerObservers += NSNotificationCenter.defaultCenter.addObserverForName(
-            VLCMediaPlayerTimeChanged, player, NSOperationQueue.mainQueue
+            VLCMediaPlayerTimeChangedNotification, player, null
         ) { _ ->
-            if (isCurrentPlayerGeneration(player, generation)) {
-                updateTimeAndDuration(player, generation)
+            deferOffCallback {
+                if (isCurrentPlayerGeneration(player, generation)) {
+                    updateTimeAndDuration(player, generation)
+                }
+            }
+        }
+        val delegate = BufferingDelegate()
+        playerDelegates += delegate
+        player.delegate = delegate
+    }
+
+    /**
+     * 把回调工作移出当前回调栈：在后台调度器上延迟一个极短间隔，再切回主线程执行。
+     * 直接 async 到主队列仍会被输入线程的 waitUntilFinished 包住，因此必须离开回调栈并带延迟，
+     * 等输入线程退出回调、释放播放器锁之后再访问 player.*。
+     */
+    private fun deferOffCallback(block: () -> Unit) {
+        deferScope.launch {
+            delay(PlayerWorkDeferralMs)
+            withContext(Dispatchers.Main) { block() }
+        }
+    }
+
+    private inner class BufferingDelegate : NSObject(), VLCMediaPlayerDelegateProtocol {
+        override fun mediaPlayerBufferingChanged(progress: Float) {
+            // delegate 回调来自 libvlc 事件队列，状态发布统一回到主队列。
+            NSOperationQueue.mainQueue.addOperationWithBlock {
+                handleBufferingChanged(mediaPlayer, progress)
             }
         }
     }
@@ -840,6 +1035,7 @@ actual class BoloPlayerController actual constructor(
     private fun removePlayerObservers() {
         playerObservers.forEach { NSNotificationCenter.defaultCenter.removeObserver(it) }
         playerObservers.clear()
+        playerDelegates.clear()
     }
 
     private fun removeApplicationObservers() {
@@ -1335,13 +1531,57 @@ actual class BoloPlayerController actual constructor(
         }
     }
 
+    /**
+     * 提交 native rate 并发布选中倍速。
+     *
+     * native setter 完成不代表 rate 立即生效（VLC 需要一个输入周期收敛），因此回读值是过渡值，
+     * 不作为发布依据；期间换了媒体代次则放弃本次提交。
+     */
     private fun applyPlaybackSpeed(player: VLCMediaPlayer, generation: Long) {
         if (!isCurrentPlayerGeneration(player, generation)) return
+        if (generation != mediaGeneration) return
 
+        val requested = playbackSpeed
         try {
-            player.rate = playbackSpeed.rateNumber
-            playbackSpeed = BoloPlayerSpeed.fromRateNumber(player.rate)
+            player.rate = requested.rateNumber
         } catch (_: Exception) {}
-        _state.value = _state.value.copy(playbackSpeed = playbackSpeed)
+        // native setter 完成不代表 rate 立即生效（VLC 需要一次输入线程周期），回读值是过渡值；
+        // 因此发布用户选择值，native 会收敛到同一目标。
+        _state.value = _state.value.copy(playbackSpeed = requested)
     }
+
+    /**
+     * 媒体就绪后补提交倍速。
+     *
+     * 无条件重下发当前意图：native rate 在重建媒体后可能回到 1x，且"请求早于媒体就绪"时
+     * 唯一的状态同步时机就是这里。
+     */
+    private fun applyPendingPlaybackSpeed(player: VLCMediaPlayer, generation: Long) {
+        if (!isCurrentPlayerGeneration(player, generation)) return
+        if (!speedApplyGate.onMediaReady()) return
+        applyPlaybackSpeed(player, generation)
+    }
+
 }
+
+/** VLCKit 回调离开回调栈后的最短延迟。 */
+private const val PlayerWorkDeferralMs = 20L
+
+/** 跳转空档保留上一帧的最长时长与观测间隔。 */
+private const val SeekFrameHoldTimeoutMs = 2_000L
+private const val SeekFrameWatchIntervalMs = 30L
+
+/** 恢复流程的最长等待；位置确认在毫秒级完成，这里只兜住异常情况。 */
+private const val RestoreTimeoutMs = 8_000L
+
+/** 恢复期间的完成条件轮询间隔，与 seek 确认 readback 保持同一量级。 */
+private const val RestorePollIntervalMs = 50L
+
+/** 恢复期间允许的位置越界：暂停态 seek 不前进，超出该范围视为错误回读。 */
+private const val MaxRestoreDriftMs = 3_000L
+
+/** 恢复成立后等待新画面呈现的最长观测时长。 */
+private const val RestoreFrameObserveMs = 2_000L
+
+/** 画面计数的合理上界；越界视为读取失败。 */
+private val MaxPlausibleDisplayedPictures = 100_000_000uL
