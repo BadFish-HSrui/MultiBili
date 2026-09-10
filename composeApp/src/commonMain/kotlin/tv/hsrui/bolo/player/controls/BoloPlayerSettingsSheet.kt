@@ -94,6 +94,19 @@ import kotlin.math.roundToInt
 @Composable
 fun BoloPlayerSettingsSheet(
     isOpen: Boolean,
+    supportsDeviceGestures: Boolean,
+    autoReplayEnabled: Boolean,
+    onAutoReplayEnabledChange: (Boolean) -> Unit,
+    seekGestureEnabled: Boolean,
+    onSeekGestureEnabledChange: (Boolean) -> Unit,
+    brightnessGestureEnabled: Boolean,
+    onBrightnessGestureEnabledChange: (Boolean) -> Unit,
+    volumeGestureEnabled: Boolean,
+    onVolumeGestureEnabledChange: (Boolean) -> Unit,
+    sideDoubleTapSeekEnabled: Boolean,
+    onSideDoubleTapSeekEnabledChange: (Boolean) -> Unit,
+    doubleTapSeekSeconds: Int,
+    onDoubleTapSeekSecondsChange: (Int) -> Unit,
     danmakuFilterLevel: Int,
     onDanmakuFilterLevelChange: (Int) -> Unit,
     danmakuScale: Float,
@@ -236,7 +249,72 @@ fun BoloPlayerSettingsSheet(
                                         verticalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
                                         when (BoloPlayerSettingsTab.entries[page]) {
-                                            BoloPlayerSettingsTab.Playback -> Text("暂无播放设置")
+                                            BoloPlayerSettingsTab.Playback -> {
+                                                Card(Modifier.fillMaxWidth()) {
+                                                    Row(
+                                                        Modifier.fillMaxWidth()
+                                                            .toggleable(
+                                                                value = autoReplayEnabled,
+                                                                enabled = isOpen,
+                                                                role = Role.Switch,
+                                                                onValueChange = onAutoReplayEnabledChange,
+                                                            )
+                                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                    ) {
+                                                        Text(
+                                                            text = "自动重播",
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            modifier = Modifier.weight(1f),
+                                                        )
+                                                        Switch(
+                                                            checked = autoReplayEnabled,
+                                                            onCheckedChange = null,
+                                                            enabled = isOpen,
+                                                            modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
+                                                        )
+                                                    }
+                                                }
+                                                Card(Modifier.fillMaxWidth()) {
+                                                    Column(Modifier.padding(4.dp).animateContentSize()) {
+                                                        PlayerGestureSwitch(
+                                                            label = "启用进度调节手势",
+                                                            checked = seekGestureEnabled,
+                                                            enabled = isOpen,
+                                                            onCheckedChange = onSeekGestureEnabledChange,
+                                                        )
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        PlayerGestureSwitch(
+                                                            label = "启用亮度调节手势",
+                                                            checked = brightnessGestureEnabled,
+                                                            enabled = isOpen && supportsDeviceGestures,
+                                                            onCheckedChange = onBrightnessGestureEnabledChange,
+                                                        )
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        PlayerGestureSwitch(
+                                                            label = "启用音量调节手势",
+                                                            checked = volumeGestureEnabled,
+                                                            enabled = isOpen && supportsDeviceGestures,
+                                                            onCheckedChange = onVolumeGestureEnabledChange,
+                                                        )
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        PlayerGestureSwitch(
+                                                            label = "双击两侧调节进度",
+                                                            checked = sideDoubleTapSeekEnabled,
+                                                            enabled = isOpen,
+                                                            onCheckedChange = onSideDoubleTapSeekEnabledChange,
+                                                        )
+                                                        if (sideDoubleTapSeekEnabled) {
+                                                            HorizontalDivider(thickness = 1.dp)
+                                                            PlayerSeekDurationSlider(
+                                                                seconds = doubleTapSeekSeconds,
+                                                                enabled = isOpen,
+                                                                onValueChange = onDoubleTapSeekSecondsChange,
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
                                             BoloPlayerSettingsTab.Danmaku -> {
                                                 Card(Modifier.fillMaxWidth()) {
                                                     Column(Modifier.padding(4.dp)) {
@@ -498,12 +576,115 @@ fun BoloPlayerSettingsSheet(
             ) {
                 CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
                     Scrim(
-                        contentDescription = "关闭播放设置",
+                        contentDescription = "关闭播放器设置",
                         onClick = onDismissRequest,
                         alpha = { scrimAlpha },
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PlayerGestureSwitch(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            )
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f).alpha(if (enabled) 1f else 0.38f),
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            enabled = enabled,
+            modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlayerSeekDurationSlider(
+    seconds: Int,
+    enabled: Boolean,
+    onValueChange: (Int) -> Unit,
+) {
+    var previewSeconds by remember { mutableStateOf<Int?>(null) }
+    val active by rememberUpdatedState(enabled)
+    val onChange by rememberUpdatedState(onValueChange)
+    val interactionSource = remember { MutableInteractionSource() }
+    val thumbInteractionSource = remember(interactionSource) {
+        object : MutableInteractionSource by interactionSource {
+            override val interactions = interactionSource.interactions.filterNot { interaction ->
+                interaction is FocusInteraction.Focus || interaction is FocusInteraction.Unfocus
+            }
+        }
+    }
+    DisposableEffect(enabled) {
+        previewSeconds = null
+        onDispose { previewSeconds = null }
+    }
+    val displayedSeconds = previewSeconds ?: seconds
+    Column(Modifier.padding(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+                .alpha(if (enabled) 1f else 0.38f),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("快进快退时长", style = MaterialTheme.typography.bodyMedium)
+            Text("$displayedSeconds 秒", style = MaterialTheme.typography.bodySmall)
+        }
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
+            Slider(
+                value = displayedSeconds.toFloat(),
+                onValueChange = { previewSeconds = it.roundToInt().coerceIn(5, 30) },
+                onValueChangeFinished = {
+                    if (active) previewSeconds?.let(onChange)
+                    previewSeconds = null
+                },
+                valueRange = 5f..30f,
+                steps = 24,
+                enabled = enabled,
+                interactionSource = interactionSource,
+                thumb = {
+                    SliderDefaults.Thumb(
+                        interactionSource = thumbInteractionSource,
+                        enabled = enabled,
+                        thumbSize = DpSize(4.dp, 24.dp),
+                    )
+                },
+                track = { sliderState ->
+                    SliderDefaults.Track(
+                        sliderState = sliderState,
+                        enabled = enabled,
+                        modifier = Modifier.height(12.dp),
+                        drawTick = { _, _ -> },
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().height(32.dp).semantics {
+                    contentDescription = "快进快退时长"
+                    stateDescription = "$displayedSeconds 秒"
+                },
+            )
         }
     }
 }
