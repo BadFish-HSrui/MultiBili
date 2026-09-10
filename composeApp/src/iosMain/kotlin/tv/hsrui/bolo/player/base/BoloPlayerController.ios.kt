@@ -255,7 +255,11 @@ actual class BoloPlayerController actual constructor(
             VLCMediaPlayerState.VLCMediaPlayerStatePaused -> {
                 mediaLifecycle = MediaLifecycle.Loaded
                 speedApplyGate.onPaused()
-                _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
+                if (playWhenReady) {
+                    handleEndReached(player, generation)
+                } else {
+                    _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
+                }
             }
             VLCMediaPlayerState.VLCMediaPlayerStateStopped -> {
                 mediaLifecycle = MediaLifecycle.Loaded
@@ -408,7 +412,7 @@ actual class BoloPlayerController actual constructor(
 
         installPlayerObservers(player, generation)
         val media = VLCMedia(uRL = nsUrl)
-        val options = mutableMapOf<Any?, Any?>()
+        val options = mutableMapOf<Any?, Any?>("play-and-pause" to true)
         videoPlayHeaders.forEach { (key, value) ->
             when (key.lowercase()) {
                 "referer" -> options["http-referrer"] = value
@@ -900,7 +904,7 @@ actual class BoloPlayerController actual constructor(
         expectedRevision: Long? = null,
         expectedSubmittedAttempt: Int? = null
     ): Boolean {
-        if (!isCurrentPlayerGeneration(player, generation) || positionMs < 0L) return false
+        if (!isCurrentPlayerGeneration(player, generation) || positionMs < 0L || _state.value.isEnded) return false
 
         var hadPending = false
         var accepted = false
@@ -1064,6 +1068,7 @@ actual class BoloPlayerController actual constructor(
         timeoutJob?.cancel()
         readbackJob?.cancel()
 
+        playWhenReady = false
         _state.value = _state.value.copy(
             isPlaying = false,
             isBuffering = false,

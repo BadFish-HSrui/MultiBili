@@ -9,6 +9,90 @@ import eu.anifantakis.lib.ksafe.KSafePlain
 import kotlin.math.roundToInt
 
 class BoloSettings(settingsKSafe: KSafePlain) {
+    private var storedPlayerAutoReplayEnabled by settingsKSafe(false, key = "player_auto_replay_enabled")
+    private var currentPlayerAutoReplayEnabled by mutableStateOf(storedPlayerAutoReplayEnabled)
+
+    var playerAutoReplayEnabled: Boolean
+        get() = currentPlayerAutoReplayEnabled
+        set(value) {
+            if (value == currentPlayerAutoReplayEnabled) return
+            storedPlayerAutoReplayEnabled = value
+            currentPlayerAutoReplayEnabled = value
+        }
+
+    private var storedPlayerSeekGestureEnabled by settingsKSafe(
+        true,
+        key = "player_seek_gesture_enabled",
+    )
+    private var currentPlayerSeekGestureEnabled by mutableStateOf(storedPlayerSeekGestureEnabled)
+
+    var playerSeekGestureEnabled: Boolean
+        get() = currentPlayerSeekGestureEnabled
+        set(value) {
+            if (value == currentPlayerSeekGestureEnabled) return
+            storedPlayerSeekGestureEnabled = value
+            currentPlayerSeekGestureEnabled = value
+        }
+
+    private var storedPlayerBrightnessGestureEnabled by settingsKSafe(
+        true,
+        key = "player_brightness_gesture_enabled",
+    )
+    private var currentPlayerBrightnessGestureEnabled by mutableStateOf(storedPlayerBrightnessGestureEnabled)
+
+    var playerBrightnessGestureEnabled: Boolean
+        get() = currentPlayerBrightnessGestureEnabled
+        set(value) {
+            if (value == currentPlayerBrightnessGestureEnabled) return
+            storedPlayerBrightnessGestureEnabled = value
+            currentPlayerBrightnessGestureEnabled = value
+        }
+
+    private var storedPlayerVolumeGestureEnabled by settingsKSafe(
+        true,
+        key = "player_volume_gesture_enabled",
+    )
+    private var currentPlayerVolumeGestureEnabled by mutableStateOf(storedPlayerVolumeGestureEnabled)
+
+    var playerVolumeGestureEnabled: Boolean
+        get() = currentPlayerVolumeGestureEnabled
+        set(value) {
+            if (value == currentPlayerVolumeGestureEnabled) return
+            storedPlayerVolumeGestureEnabled = value
+            currentPlayerVolumeGestureEnabled = value
+        }
+
+    private var storedPlayerSideDoubleTapSeekEnabled by settingsKSafe(
+        false,
+        key = "player_side_double_tap_seek_enabled",
+    )
+    private var currentPlayerSideDoubleTapSeekEnabled by mutableStateOf(storedPlayerSideDoubleTapSeekEnabled)
+
+    var playerSideDoubleTapSeekEnabled: Boolean
+        get() = currentPlayerSideDoubleTapSeekEnabled
+        set(value) {
+            if (value == currentPlayerSideDoubleTapSeekEnabled) return
+            storedPlayerSideDoubleTapSeekEnabled = value
+            currentPlayerSideDoubleTapSeekEnabled = value
+        }
+
+    private var storedPlayerDoubleTapSeekSeconds by settingsKSafe(
+        10,
+        key = "player_double_tap_seek_seconds",
+    )
+    private var currentPlayerDoubleTapSeekSeconds by mutableIntStateOf(
+        storedPlayerDoubleTapSeekSeconds.coerceIn(5, 30),
+    )
+
+    var playerDoubleTapSeekSeconds: Int
+        get() = currentPlayerDoubleTapSeekSeconds
+        set(value) {
+            val seconds = value.coerceIn(5, 30)
+            if (seconds == currentPlayerDoubleTapSeekSeconds) return
+            storedPlayerDoubleTapSeekSeconds = seconds
+            currentPlayerDoubleTapSeekSeconds = seconds
+        }
+
     private var storedDanmakuFilterLevel by settingsKSafe(0, key = "danmaku_filter_level")
     private var currentDanmakuFilterLevel by mutableIntStateOf(storedDanmakuFilterLevel.coerceIn(0, 10))
 

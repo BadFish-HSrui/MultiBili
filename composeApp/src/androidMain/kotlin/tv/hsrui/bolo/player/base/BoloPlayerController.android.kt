@@ -392,7 +392,11 @@ actual class BoloPlayerController actual constructor(
                 MediaPlayer.Event.Paused -> {
                     synchronized(speedLock) { speedApplyGate.onPaused() }
                     synchronized(seekLock) { nativeIsPlaying = false }
-                    _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
+                    if (playWhenReady) {
+                        handleEndReached(newPlayer, generation, keepMediaReady = true)
+                    } else {
+                        _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
+                    }
                 }
                 MediaPlayer.Event.Stopped -> {
                     synchronized(speedLock) { speedApplyGate.onInactive() }
@@ -611,6 +615,8 @@ actual class BoloPlayerController actual constructor(
                 }
             }
 
+            // EOF 时暂停输入，保留最后一帧及直接 seek 的能力。
+            media.addOption(":play-and-pause")
             val requestedSpeed = synchronized(speedLock) { playbackSpeed }
             debugLog(DebugMpd, "MediaPrepared mode=localMpd uri=$mediaUri requestedSpeed=${requestedSpeed.title}")
 
@@ -1269,7 +1275,7 @@ actual class BoloPlayerController actual constructor(
         var completedAtEnd = false
         var acceptedObservation = false
         synchronized(seekLock) {
-            if (!isCurrentPlayer(player, playerGeneration)) return false
+            if (!isCurrentPlayer(player, playerGeneration) || _state.value.isEnded) return false
             if (
                 expectedMediaGeneration != null &&
                 expectedRevision != null &&
@@ -1303,8 +1309,6 @@ actual class BoloPlayerController actual constructor(
                 val confirmedPositionMs = if (completedAtEnd) durationMs else positionMs
                 lastSavedPositionMs = confirmedPositionMs
                 if (completedAtEnd) {
-                    nativeIsPlaying = false
-                    mediaReadyForSeek = false
                     pendingPauseAfterStart = false
                 }
                 _state.value = _state.value.copy(
@@ -1338,7 +1342,7 @@ actual class BoloPlayerController actual constructor(
         return acceptedObservation
     }
 
-    private fun handleEndReached(player: MediaPlayer, playerGeneration: Long) {
+    private fun handleEndReached(player: MediaPlayer, playerGeneration: Long, keepMediaReady: Boolean = false) {
         val durationMs = getDurationForCompletion(player)
         val playbackRate = synchronized(speedLock) { playbackSpeed.rateNumber }
         var ended = false
@@ -1370,8 +1374,9 @@ actual class BoloPlayerController actual constructor(
                 seekReadbackJob?.cancel()
                 seekReadbackJob = null
                 nativeIsPlaying = false
-                mediaReadyForSeek = false
+                mediaReadyForSeek = keepMediaReady
                 pendingPauseAfterStart = false
+                playWhenReady = false
                 lastSavedPositionMs = durationMs
                 _state.value = _state.value.copy(
                     isPlaying = false,

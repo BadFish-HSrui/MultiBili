@@ -9,10 +9,12 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.player.base.BoloPlayerController
 import tv.hsrui.bolo.player.base.BoloPlayerError
+import tv.hsrui.bolo.player.base.BoloPlayerSeekCoordinator
 import tv.hsrui.bolo.player.base.BoloPlayerState
 import tv.hsrui.bolo.player.base.load
 import tv.hsrui.bolo.player.danmaku.BoloDanmakuController
@@ -32,6 +34,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         set(value) {
             if (field == value) return
             playbackLoadJob?.cancel()
+            replayJob?.cancel()
             field = value
             resetDanmaku()
         }
@@ -39,6 +42,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         set(value) {
             if (field == value) return
             playbackLoadJob?.cancel()
+            replayJob?.cancel()
             field = value
             resetDanmaku()
         }
@@ -68,6 +72,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
 
     var isLoading: Boolean = false
     private var playbackLoadJob: Job? = null
+    private var replayJob: Job? = null
 
     val controller = BoloPlayerController(onError = { e ->
         when (e) {
@@ -95,6 +100,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
     }
 
     private fun playVideo(startPositionMs: Long = 0L) {
+        replayJob?.cancel()
         val currentState = uiState.value
         if (currentState !is VideoPlayerUiState.Success) return
 
@@ -148,7 +154,29 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         }
     }
 
+    fun play() {
+        if (!controller.state.value.isEnded) {
+            if (replayJob?.isActive != true) controller.play()
+            return
+        }
+        if (replayJob?.isActive == true) return
+        seekToMs(0L)
+        replayJob = viewModelScope.launch {
+            // 先确认 EOF 暂停媒体已跳离结尾，再恢复播放，避免 VLC 直接结束输入。
+            val playback = controller.state.first { !it.isSeeking }
+            if (playback.currentPositionMs in 0L..BoloPlayerSeekCoordinator.ConfirmationToleranceMs) {
+                controller.play()
+            }
+        }
+    }
+
+    fun pause() {
+        replayJob?.cancel()
+        controller.pause()
+    }
+
     fun seekToMs(positionMs: Long) {
+        replayJob?.cancel()
         danmakuController.pause()
         danmakuController.seekToMs(positionMs)
         awaitingDanmakuSeek = true

@@ -33,6 +33,9 @@ data class BoloPlayerState(
     /** 实时传输速度（bps），获取不到时为 0L */
     val transferSpeed: Long = 0L
 ) {
+    /** 已停留在结尾；当前媒体仍保留，允许直接跳转。 */
+    val isEnded: Boolean get() = !isPlaying && !isSeeking && durationMs > 0L && currentPositionMs >= durationMs
+
     /** 是否存在等待 VLC 确认的跳转请求 */
     val isSeeking: Boolean get() = pendingSeekPositionMs != null
 

@@ -91,6 +91,9 @@ fun BoloPlayerControls(
     val deviceControls = rememberPlayerDeviceControls()
     val navigator: Navigator = koinInject()
     val settings: BoloSettings = koinInject()
+    val seekGestureEnabled = settings.playerSeekGestureEnabled
+    val brightnessGestureEnabled = settings.playerBrightnessGestureEnabled
+    val volumeGestureEnabled = settings.playerVolumeGestureEnabled
     val playState by viewModel.controller.state.collectAsState()
     val playerUiState by viewModel.uiState.collectAsState()
     val subtitleState by viewModel.subtitleController.state.collectAsState()
@@ -127,25 +130,64 @@ fun BoloPlayerControls(
         // 背景独立命中：上层按钮、滑块与面板不会把事件传给手势层。
         Box(
             Modifier.fillMaxSize()
-                .pointerInput(viewModel, videoInfo, playerUiState, settingsOpen) {
+                .pointerInput(
+                    viewModel,
+                    videoInfo,
+                    playerUiState,
+                    settingsOpen,
+                    settings.playerSideDoubleTapSeekEnabled,
+                    settings.playerDoubleTapSeekSeconds,
+                ) {
                     if (!settingsOpen) {
                         detectTapGestures(
                             onTap = { controlsVisible = !controlsVisible },
-                            onDoubleTap = {
-                                if (latestPlayState.isPlaying) viewModel.controller.pause()
-                                else viewModel.controller.play()
+                            onDoubleTap = { position ->
+                                val direction = when {
+                                    position.x < size.width / 3f -> -1
+                                    position.x >= size.width * 2f / 3f -> 1
+                                    else -> 0
+                                }
+                                val playback = viewModel.controller.state.value
+                                if (
+                                    settings.playerSideDoubleTapSeekEnabled &&
+                                    direction != 0 &&
+                                    playback.isSeekable &&
+                                    playback.durationMs > 0L
+                                ) {
+                                    val offsetMs = direction * settings.playerDoubleTapSeekSeconds * 1_000L
+                                    viewModel.seekToMs(
+                                        (playback.displayPositionMs + offsetMs)
+                                            .coerceIn(0L, playback.durationMs),
+                                    )
+                                } else if (direction == 0 || !settings.playerSideDoubleTapSeekEnabled) {
+                                    if (playback.isPlaying) viewModel.pause()
+                                    else viewModel.play()
+                                }
                             },
                         )
                     }
                 }
-                .pointerInput(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen, deviceControls) {
+                .pointerInput(
+                    viewModel,
+                    videoInfo,
+                    playerUiState,
+                    currentVideoQuality,
+                    isFullscreen,
+                    settingsOpen,
+                    deviceControls,
+                    seekGestureEnabled,
+                    brightnessGestureEnabled,
+                    volumeGestureEnabled,
+                ) {
                     if (!isFullscreen || settingsOpen) return@pointerInput
                     try {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val startPositionMs = latestPlayState.displayPositionMs
                             val leftSide = down.position.x < size.width / 2f
-                            val startDeviceValue = if (deviceControls.supportsDeviceGestures) {
+                            val deviceGestureEnabled = deviceControls.supportsDeviceGestures &&
+                                if (leftSide) brightnessGestureEnabled else volumeGestureEnabled
+                            val startDeviceValue = if (deviceGestureEnabled) {
                                 if (leftSide) deviceControls.readBrightness() else deviceControls.readVolume()
                             } else null
                             var movement = Offset.Zero
@@ -167,14 +209,22 @@ fun BoloPlayerControls(
                                         if (movement.getDistance() <= viewConfiguration.touchSlop) continue
                                         horizontal = abs(movement.x) >= abs(movement.y)
                                         if (horizontal == true) {
-                                            if (!latestPlayState.isSeekable || latestPlayState.durationMs <= 0L) break
+                                            if (
+                                                !seekGestureEnabled ||
+                                                !latestPlayState.isSeekable ||
+                                                latestPlayState.durationMs <= 0L
+                                            ) break
                                         } else {
-                                            if (!deviceControls.supportsDeviceGestures || startDeviceValue == null) break
+                                            if (!deviceGestureEnabled || startDeviceValue == null) break
                                         }
                                     }
                                     change.consume()
                                     if (horizontal == true) {
-                                        if (!latestPlayState.isSeekable || latestPlayState.durationMs <= 0L) break
+                                        if (
+                                            !seekGestureEnabled ||
+                                            !latestPlayState.isSeekable ||
+                                            latestPlayState.durationMs <= 0L
+                                        ) break
                                         gesturePreviewMs = (startPositionMs +
                                             (movement.x.toDouble() / size.width.coerceAtLeast(1) * 120_000.0).roundToLong())
                                             .coerceIn(0L, latestPlayState.durationMs)
@@ -300,7 +350,7 @@ fun BoloPlayerControls(
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Settings,
-                                contentDescription = "播放设置",
+                                contentDescription = "播放器设置",
                                 tint = Color.White,
                             )
                         }
@@ -374,7 +424,7 @@ fun BoloPlayerControls(
                     ) {
                         // 播放按钮
                         IconButton(onClick = {
-                            if (playState.isPlaying) viewModel.controller.pause() else viewModel.controller.play()
+                            if (playState.isPlaying) viewModel.pause() else viewModel.play()
                         }) {
                             Icon(
                                 imageVector = if (playState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -474,7 +524,20 @@ fun BoloPlayerControls(
         }
         if (isFullscreen) {
             BoloPlayerSettingsSheet(
+                autoReplayEnabled = settings.playerAutoReplayEnabled,
+                onAutoReplayEnabledChange = { settings.playerAutoReplayEnabled = it },
                 isOpen = settingsOpen,
+                supportsDeviceGestures = deviceControls.supportsDeviceGestures,
+                seekGestureEnabled = seekGestureEnabled,
+                onSeekGestureEnabledChange = { settings.playerSeekGestureEnabled = it },
+                brightnessGestureEnabled = brightnessGestureEnabled,
+                onBrightnessGestureEnabledChange = { settings.playerBrightnessGestureEnabled = it },
+                volumeGestureEnabled = volumeGestureEnabled,
+                onVolumeGestureEnabledChange = { settings.playerVolumeGestureEnabled = it },
+                sideDoubleTapSeekEnabled = settings.playerSideDoubleTapSeekEnabled,
+                onSideDoubleTapSeekEnabledChange = { settings.playerSideDoubleTapSeekEnabled = it },
+                doubleTapSeekSeconds = settings.playerDoubleTapSeekSeconds,
+                onDoubleTapSeekSecondsChange = { settings.playerDoubleTapSeekSeconds = it },
                 danmakuFilterLevel = settings.danmakuFilterLevel,
                 onDanmakuFilterLevelChange = { settings.danmakuFilterLevel = it },
                 danmakuScale = settings.danmakuScale,
