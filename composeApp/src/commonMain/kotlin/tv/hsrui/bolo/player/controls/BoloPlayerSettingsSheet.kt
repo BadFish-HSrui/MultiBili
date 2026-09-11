@@ -124,6 +124,12 @@ fun BoloPlayerSettingsSheet(
     onDanmakuTopBottomScrollEnabledChange: (Boolean) -> Unit,
     danmakuExtraLineSpacingEnabled: Boolean,
     onDanmakuExtraLineSpacingEnabledChange: (Boolean) -> Unit,
+    danmakuScrollEnabled: Boolean,
+    onDanmakuScrollEnabledChange: (Boolean) -> Unit,
+    danmakuTopEnabled: Boolean,
+    onDanmakuTopEnabledChange: (Boolean) -> Unit,
+    danmakuBottomEnabled: Boolean,
+    onDanmakuBottomEnabledChange: (Boolean) -> Unit,
     subtitleAlwaysOn: Boolean,
     onSubtitleAlwaysOnChange: (Boolean) -> Unit,
     subtitleAutoChineseOnly: Boolean,
@@ -557,6 +563,66 @@ fun BoloPlayerSettingsSheet(
                                                             Text("增大弹幕行距", style = MaterialTheme.typography.bodyMedium)
                                                             Switch(
                                                                 checked = danmakuExtraLineSpacingEnabled,
+                                                                onCheckedChange = null,
+                                                                enabled = isOpen,
+                                                                modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                Card(Modifier.fillMaxWidth()) {
+                                                    Column(Modifier.padding(4.dp)) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth().toggleable(
+                                                                value = danmakuScrollEnabled,
+                                                                enabled = isOpen,
+                                                                role = Role.Switch,
+                                                                onValueChange = onDanmakuScrollEnabledChange,
+                                                            ).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                        ) {
+                                                            Text("滚动弹幕", style = MaterialTheme.typography.bodyMedium)
+                                                            Switch(
+                                                                checked = danmakuScrollEnabled,
+                                                                onCheckedChange = null,
+                                                                enabled = isOpen,
+                                                                modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
+                                                            )
+                                                        }
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth().toggleable(
+                                                                value = danmakuTopEnabled,
+                                                                enabled = isOpen,
+                                                                role = Role.Switch,
+                                                                onValueChange = onDanmakuTopEnabledChange,
+                                                            ).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                        ) {
+                                                            Text("顶部弹幕", style = MaterialTheme.typography.bodyMedium)
+                                                            Switch(
+                                                                checked = danmakuTopEnabled,
+                                                                onCheckedChange = null,
+                                                                enabled = isOpen,
+                                                                modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
+                                                            )
+                                                        }
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth().toggleable(
+                                                                value = danmakuBottomEnabled,
+                                                                enabled = isOpen,
+                                                                role = Role.Switch,
+                                                                onValueChange = onDanmakuBottomEnabledChange,
+                                                            ).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                        ) {
+                                                            Text("底部弹幕", style = MaterialTheme.typography.bodyMedium)
+                                                            Switch(
+                                                                checked = danmakuBottomEnabled,
                                                                 onCheckedChange = null,
                                                                 enabled = isOpen,
                                                                 modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),

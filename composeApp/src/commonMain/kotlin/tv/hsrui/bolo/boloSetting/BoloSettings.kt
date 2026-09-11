@@ -236,6 +236,36 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentDanmakuExtraLineSpacingEnabled = value
         }
 
+    private var storedDanmakuScrollEnabled by settingsKSafe(true, key = "danmaku_scroll_enabled")
+    private var currentDanmakuScrollEnabled by mutableStateOf(storedDanmakuScrollEnabled)
+
+    var danmakuScrollEnabled: Boolean
+        get() = currentDanmakuScrollEnabled
+        set(value) {
+            storedDanmakuScrollEnabled = value
+            currentDanmakuScrollEnabled = value
+        }
+
+    private var storedDanmakuTopEnabled by settingsKSafe(true, key = "danmaku_top_enabled")
+    private var currentDanmakuTopEnabled by mutableStateOf(storedDanmakuTopEnabled)
+
+    var danmakuTopEnabled: Boolean
+        get() = currentDanmakuTopEnabled
+        set(value) {
+            storedDanmakuTopEnabled = value
+            currentDanmakuTopEnabled = value
+        }
+
+    private var storedDanmakuBottomEnabled by settingsKSafe(true, key = "danmaku_bottom_enabled")
+    private var currentDanmakuBottomEnabled by mutableStateOf(storedDanmakuBottomEnabled)
+
+    var danmakuBottomEnabled: Boolean
+        get() = currentDanmakuBottomEnabled
+        set(value) {
+            storedDanmakuBottomEnabled = value
+            currentDanmakuBottomEnabled = value
+        }
+
     private var storedSubtitleAlwaysOn by settingsKSafe(false, key = "subtitle_always_on")
     private var currentSubtitleAlwaysOn by mutableStateOf(storedSubtitleAlwaysOn)
 

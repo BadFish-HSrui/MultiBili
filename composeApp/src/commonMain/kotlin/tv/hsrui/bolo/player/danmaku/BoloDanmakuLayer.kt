@@ -46,6 +46,9 @@ fun BoloDanmakuLayer(
     val danmakuTopBottomScrollEnabled = settings.danmakuTopBottomScrollEnabled
     val danmakuFilterLevel = settings.danmakuFilterLevel
     val danmakuExtraLineSpacingEnabled = settings.danmakuExtraLineSpacingEnabled
+    val danmakuScrollEnabled = settings.danmakuScrollEnabled
+    val danmakuTopEnabled = settings.danmakuTopEnabled
+    val danmakuBottomEnabled = settings.danmakuBottomEnabled
     val fontFamily = MaterialTheme.typography.bodyLarge.fontFamily
     val measurer = rememberTextMeasurer(cacheSize = 512)
     val density = LocalDensity.current
@@ -113,6 +116,9 @@ fun BoloDanmakuLayer(
             fontScale = danmakuScale,
             speedFactor = danmakuSpeed,
             filterLevel = danmakuFilterLevel,
+            scrollEnabled = danmakuScrollEnabled,
+            topEnabled = danmakuTopEnabled,
+            bottomEnabled = danmakuBottomEnabled,
             baseSpeed = { viewportWidth, textWidth ->
                 calculateBiliDanmakuSpeed(viewportWidth / density.density, textWidth / density.density) * density.density
             },
