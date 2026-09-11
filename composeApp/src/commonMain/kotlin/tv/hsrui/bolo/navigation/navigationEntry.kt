@@ -39,6 +39,7 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
             when (route) {
                 is BoloRoute.AccountFeature.List -> NavEntry(
                     key = route,
+                    contentKey = "AccountFeature.List",
                     metadata = ListDetailSceneStrategy.listPane()
                 ) { AccountFeaturesScreen() }
 
@@ -66,6 +67,7 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
         is BoloRoute.BoloSetting -> when (route) {
             is BoloRoute.BoloSetting.List -> NavEntry(
                 key = route,
+                contentKey = "BoloSetting.List",
                 metadata = ListDetailSceneStrategy.listPane()
             ) { BoloSettingsScreen() }
 
