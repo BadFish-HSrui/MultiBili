@@ -475,6 +475,7 @@ fun BoloPlayerControls(
 
                     // 下方播放进度条
                     Slider(
+                        modifier = Modifier.fillMaxWidth().height(32.dp),
                         value = sliderValue,
                         valueRange = 0f..1f,
                         enabled = durationMs > 0L && playState.isSeekable,
@@ -511,16 +512,21 @@ fun BoloPlayerControls(
                         }
                     )
 
+                    Spacer(Modifier.height(8.dp))
+
                     // 下方播放控件
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().height(32.dp).padding(horizontal = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // 播放按钮
-                        IconButton(onClick = {
-                            if (playState.isPlaying) viewModel.pause() else viewModel.play()
-                        }) {
+                        IconButton(
+                            onClick = {
+                                if (playState.isPlaying) viewModel.pause() else viewModel.play()
+                            },
+                            modifier = Modifier.size(32.dp),
+                        ) {
                             Icon(
                                 imageVector = if (playState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                                 contentDescription = if (playState.isPlaying) "暂停" else "播放",
@@ -565,7 +571,7 @@ fun BoloPlayerControls(
 
                         IconButton(
                             onClick = { onFullscreenChange(!isFullscreen) },
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
                                 imageVector = if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
@@ -754,7 +760,7 @@ private fun SpeedSliderPopup(
         TextButton(
             onClick = { expanded = !expanded },
             colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
-            modifier = Modifier.semantics { contentDescription = "播放速度" },
+            modifier = Modifier.height(32.dp).semantics { contentDescription = "播放速度" },
         ) {
             Text(speedText, style = MaterialTheme.typography.labelMedium, maxLines = 1)
         }
@@ -850,6 +856,7 @@ private fun QualityMenu(
     Box {
         TextButton(
             onClick = { expanded = true },
+            modifier = Modifier.height(32.dp),
             colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
         ) {
             Text(
@@ -897,6 +904,7 @@ private fun SubtitleMenu(
     Box {
         TextButton(
             onClick = { expanded = true },
+            modifier = Modifier.height(32.dp),
             colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
         ) {
             Text(

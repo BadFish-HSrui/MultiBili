@@ -280,7 +280,7 @@ fun BoloPlayerSettingsSheet(
                                         when (BoloPlayerSettingsTab.entries[page]) {
                                             BoloPlayerSettingsTab.Playback -> {
                                                 Card(Modifier.fillMaxWidth()) {
-                                                    Column {
+                                                    Column(Modifier.padding(4.dp)) {
                                                         Row(
                                                             Modifier.fillMaxWidth()
                                                                 .toggleable(
@@ -289,7 +289,7 @@ fun BoloPlayerSettingsSheet(
                                                                     role = Role.Switch,
                                                                     onValueChange = onAutoReplayEnabledChange,
                                                                 )
-                                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                                .padding(horizontal = 8.dp, vertical = 4.dp),
                                                             verticalAlignment = Alignment.CenterVertically,
                                                         ) {
                                                             Text(
@@ -313,7 +313,7 @@ fun BoloPlayerSettingsSheet(
                                                                     role = Role.Switch,
                                                                     onValueChange = onAutoPlayAfterSeekEnabledChange,
                                                                 )
-                                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                                .padding(horizontal = 8.dp, vertical = 4.dp),
                                                             verticalAlignment = Alignment.CenterVertically,
                                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                         ) {
@@ -326,7 +326,7 @@ fun BoloPlayerSettingsSheet(
                                                                 IconButton(
                                                                     onClick = { showAutoPlayAfterSeekInfo = true },
                                                                     enabled = isOpen,
-                                                                    modifier = Modifier.size(20.dp),
+                                                                    modifier = Modifier.size(16.dp),
                                                                 ) {
                                                                     Icon(
                                                                         imageVector = Icons.Outlined.Info,
@@ -352,7 +352,7 @@ fun BoloPlayerSettingsSheet(
                                                                         role = Role.Switch,
                                                                         onValueChange = onResumeAfterBackgroundEnabledChange,
                                                                     )
-                                                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                                    .padding(horizontal = 8.dp, vertical = 4.dp),
                                                                 verticalAlignment = Alignment.CenterVertically,
                                                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                             ) {
@@ -365,7 +365,7 @@ fun BoloPlayerSettingsSheet(
                                                                     IconButton(
                                                                         onClick = { showResumeAfterBackgroundInfo = true },
                                                                         enabled = isOpen,
-                                                                        modifier = Modifier.size(20.dp),
+                                                                        modifier = Modifier.size(16.dp),
                                                                     ) {
                                                                         Icon(
                                                                             imageVector = Icons.Outlined.Info,
@@ -445,7 +445,7 @@ fun BoloPlayerSettingsSheet(
                                                         val levelText = if (danmakuFilterLevel == 0) "关闭" else danmakuFilterLevel.toString()
                                                         val interactionSource = remember { MutableInteractionSource() }
                                                         Row(
-                                                            Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                                            Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                                                             horizontalArrangement = Arrangement.SpaceBetween,
                                                             verticalAlignment = Alignment.CenterVertically,
                                                         ) {
@@ -483,83 +483,85 @@ fun BoloPlayerSettingsSheet(
                                                     }
                                                 }
                                                 Card(Modifier.fillMaxWidth()) {
-                                                    PlayerPercentageSlider(
-                                                        label = "弹幕缩放",
-                                                        value = danmakuScale,
-                                                        isOpen = isOpen,
-                                                        onValueChange = onDanmakuScaleChange,
-                                                    )
-                                                    HorizontalDivider(thickness = 1.dp)
-                                                    PlayerPercentageSlider(
-                                                        label = "弹幕速度",
-                                                        value = danmakuSpeed,
-                                                        isOpen = isOpen,
-                                                        onValueChange = onDanmakuSpeedChange,
-                                                    )
-                                                    HorizontalDivider(thickness = 1.dp)
-                                                    PlayerPercentageSlider(
-                                                        label = "弹幕显示区域",
-                                                        value = danmakuDisplayAreaRatio,
-                                                        isOpen = isOpen,
-                                                        onValueChange = onDanmakuDisplayAreaRatioChange,
-                                                        percentRange = 20..100,
-                                                        percentStep = 5,
-                                                        centeredAt100 = false,
-                                                    )
-                                                    HorizontalDivider(thickness = 1.dp)
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth().toggleable(
-                                                            value = danmakuTopBottomScrollEnabled,
-                                                            enabled = isOpen,
-                                                            role = Role.Switch,
-                                                            onValueChange = onDanmakuTopBottomScrollEnabledChange,
-                                                        ).padding(4.dp).padding(horizontal = 4.dp),
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                    ) {
+                                                    Column(Modifier.padding(4.dp)) {
+                                                        PlayerPercentageSlider(
+                                                            label = "弹幕缩放",
+                                                            value = danmakuScale,
+                                                            isOpen = isOpen,
+                                                            onValueChange = onDanmakuScaleChange,
+                                                        )
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        PlayerPercentageSlider(
+                                                            label = "弹幕速度",
+                                                            value = danmakuSpeed,
+                                                            isOpen = isOpen,
+                                                            onValueChange = onDanmakuSpeedChange,
+                                                        )
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        PlayerPercentageSlider(
+                                                            label = "弹幕显示区域",
+                                                            value = danmakuDisplayAreaRatio,
+                                                            isOpen = isOpen,
+                                                            onValueChange = onDanmakuDisplayAreaRatioChange,
+                                                            percentRange = 20..100,
+                                                            percentStep = 5,
+                                                            centeredAt100 = false,
+                                                        )
+                                                        HorizontalDivider(thickness = 1.dp)
                                                         Row(
-                                                            modifier = Modifier.weight(1f),
-                                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                            modifier = Modifier.fillMaxWidth().toggleable(
+                                                                value = danmakuTopBottomScrollEnabled,
+                                                                enabled = isOpen,
+                                                                role = Role.Switch,
+                                                                onValueChange = onDanmakuTopBottomScrollEnabledChange,
+                                                            ).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
                                                             verticalAlignment = Alignment.CenterVertically,
                                                         ) {
-                                                            Text("上下显示滚动弹幕", style = MaterialTheme.typography.bodyMedium)
-                                                            IconButton(
-                                                                onClick = { showTopBottomScrollInfo = true },
-                                                                enabled = isOpen,
-                                                                modifier = Modifier.size(16.dp),
+                                                            Row(
+                                                                modifier = Modifier.weight(1f),
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
                                                             ) {
-                                                                Icon(
-                                                                    imageVector = Icons.Outlined.Info,
-                                                                    contentDescription = "上下显示滚动弹幕说明",
+                                                                Text("上下显示滚动弹幕", style = MaterialTheme.typography.bodyMedium)
+                                                                IconButton(
+                                                                    onClick = { showTopBottomScrollInfo = true },
+                                                                    enabled = isOpen,
                                                                     modifier = Modifier.size(16.dp),
-                                                                )
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Outlined.Info,
+                                                                        contentDescription = "上下显示滚动弹幕说明",
+                                                                        modifier = Modifier.size(16.dp),
+                                                                    )
+                                                                }
                                                             }
+                                                            Switch(
+                                                                checked = danmakuTopBottomScrollEnabled,
+                                                                onCheckedChange = null,
+                                                                enabled = isOpen,
+                                                                modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
+                                                            )
                                                         }
-                                                        Switch(
-                                                            checked = danmakuTopBottomScrollEnabled,
-                                                            onCheckedChange = null,
-                                                            enabled = isOpen,
-                                                            modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
-                                                        )
-                                                    }
-                                                    HorizontalDivider(thickness = 1.dp)
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth().toggleable(
-                                                            value = danmakuExtraLineSpacingEnabled,
-                                                            enabled = isOpen,
-                                                            role = Role.Switch,
-                                                            onValueChange = onDanmakuExtraLineSpacingEnabledChange,
-                                                        ).padding(4.dp).padding(horizontal = 4.dp),
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                    ) {
-                                                        Text("增大弹幕行距", style = MaterialTheme.typography.bodyMedium)
-                                                        Switch(
-                                                            checked = danmakuExtraLineSpacingEnabled,
-                                                            onCheckedChange = null,
-                                                            enabled = isOpen,
-                                                            modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
-                                                        )
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth().toggleable(
+                                                                value = danmakuExtraLineSpacingEnabled,
+                                                                enabled = isOpen,
+                                                                role = Role.Switch,
+                                                                onValueChange = onDanmakuExtraLineSpacingEnabledChange,
+                                                            ).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                        ) {
+                                                            Text("增大弹幕行距", style = MaterialTheme.typography.bodyMedium)
+                                                            Switch(
+                                                                checked = danmakuExtraLineSpacingEnabled,
+                                                                onCheckedChange = null,
+                                                                enabled = isOpen,
+                                                                modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
@@ -567,7 +569,7 @@ fun BoloPlayerSettingsSheet(
                                                 val subtitlePageActive = isOpen && pagerState.currentPage == page &&
                                                     !pagerState.isScrollInProgress
                                                 Card(Modifier.fillMaxWidth()) {
-                                                    Column(Modifier.fillMaxWidth().animateContentSize()) {
+                                                    Column(Modifier.fillMaxWidth().padding(4.dp).animateContentSize()) {
                                                         Row(
                                                             modifier = Modifier.fillMaxWidth().toggleable(
                                                                 value = subtitleAlwaysOn,
@@ -637,34 +639,36 @@ fun BoloPlayerSettingsSheet(
                                                     }
                                                 }
                                                 Card(Modifier.fillMaxWidth()) {
-                                                    PlayerPercentageSlider(
-                                                        label = "字幕缩放",
-                                                        value = subtitleScale,
-                                                        isOpen = subtitlePageActive,
-                                                        onValueChange = onSubtitleScaleChange,
-                                                        onValuePreview = onSubtitleScalePreview,
-                                                    )
-                                                    HorizontalDivider(thickness = 1.dp)
-                                                    PlayerPercentageSlider(
-                                                        label = "字幕位置",
-                                                        onInfoClick = { showSubtitlePositionInfo = true },
-                                                        value = subtitleHeightRatio,
-                                                        isOpen = subtitlePageActive,
-                                                        onValueChange = onSubtitleHeightRatioChange,
-                                                        onValuePreview = onSubtitleHeightRatioPreview,
-                                                        percentRange = 0..100,
-                                                        centeredAt100 = false,
-                                                    )
-                                                    HorizontalDivider(thickness = 1.dp)
-                                                    PlayerPercentageSlider(
-                                                        label = "背景不透明度",
-                                                        value = subtitleBackgroundAlpha,
-                                                        isOpen = subtitlePageActive,
-                                                        onValueChange = onSubtitleBackgroundAlphaChange,
-                                                        onValuePreview = onSubtitleBackgroundAlphaPreview,
-                                                        percentRange = 0..100,
-                                                        centeredAt100 = false,
-                                                    )
+                                                    Column(Modifier.padding(4.dp)) {
+                                                        PlayerPercentageSlider(
+                                                            label = "字幕缩放",
+                                                            value = subtitleScale,
+                                                            isOpen = subtitlePageActive,
+                                                            onValueChange = onSubtitleScaleChange,
+                                                            onValuePreview = onSubtitleScalePreview,
+                                                        )
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        PlayerPercentageSlider(
+                                                            label = "字幕位置",
+                                                            onInfoClick = { showSubtitlePositionInfo = true },
+                                                            value = subtitleHeightRatio,
+                                                            isOpen = subtitlePageActive,
+                                                            onValueChange = onSubtitleHeightRatioChange,
+                                                            onValuePreview = onSubtitleHeightRatioPreview,
+                                                            percentRange = 0..100,
+                                                            centeredAt100 = false,
+                                                        )
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        PlayerPercentageSlider(
+                                                            label = "背景不透明度",
+                                                            value = subtitleBackgroundAlpha,
+                                                            isOpen = subtitlePageActive,
+                                                            onValueChange = onSubtitleBackgroundAlphaChange,
+                                                            onValuePreview = onSubtitleBackgroundAlphaPreview,
+                                                            percentRange = 0..100,
+                                                            centeredAt100 = false,
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
