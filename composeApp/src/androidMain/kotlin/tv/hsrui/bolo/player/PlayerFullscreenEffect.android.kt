@@ -6,17 +6,22 @@ import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.os.Build
 import android.view.View
+import android.view.ViewTreeObserver
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @Composable
 actual fun PlayerFullscreenEffect(isFullscreen: Boolean) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    DisposableEffect(context, isFullscreen) {
+    DisposableEffect(context, lifecycleOwner, isFullscreen) {
         val activity = context.findActivity()
         if (!isFullscreen || activity == null) {
             onDispose {}
@@ -25,10 +30,28 @@ actual fun PlayerFullscreenEffect(isFullscreen: Boolean) {
             val originalOrientation = activity.requestedOrientation
             val originalSystemUiVisibility = window.decorView.systemUiVisibility
 
-            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            hideSystemBars(activity)
+            fun applyFullscreen() {
+                if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+                if (activity.requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
+                    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                }
+                hideSystemBars(activity)
+            }
+
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) applyFullscreen()
+            }
+            val focusListener = ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
+                if (hasFocus) applyFullscreen()
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            window.decorView.viewTreeObserver.addOnWindowFocusChangeListener(focusListener)
+            applyFullscreen()
 
             onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+                window.decorView.viewTreeObserver.takeIf { it.isAlive }
+                    ?.removeOnWindowFocusChangeListener(focusListener)
                 activity.requestedOrientation = originalOrientation
                 showSystemBars(activity, originalSystemUiVisibility)
             }

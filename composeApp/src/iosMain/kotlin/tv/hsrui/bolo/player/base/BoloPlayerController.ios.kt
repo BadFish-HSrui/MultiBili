@@ -53,6 +53,7 @@ import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidReceiveMemoryWarningNotification
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationState
+import platform.UIKit.UISceneActivationStateForegroundActive
 import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
 import platform.UIKit.UIViewAutoresizingFlexibleWidth
@@ -146,6 +147,7 @@ actual class BoloPlayerController actual constructor(
     private var backgroundReleaseJob: Job? = null
     private var recoveryJob: Job? = null
     private var boundDrawable: UIView? = null
+    private var drawableRevision = 0L
     private var seekFrameHolder: UIView? = null
     private var seekFrameWatchJob: Job? = null
     private var volumeGain = 100
@@ -197,7 +199,8 @@ actual class BoloPlayerController actual constructor(
             NSOperationQueue.mainQueue
         ) { _ ->
             isInForeground = true
-            resumePlaybackIfReady()
+            // 恢复交给视图的布局回调，避免在方向恢复前使用后台留下的尺寸。
+            boundDrawable?.setNeedsLayout()
         }
         applicationObservers += NSNotificationCenter.defaultCenter.addObserverForName(
             UIApplicationDidReceiveMemoryWarningNotification, null, NSOperationQueue.mainQueue
@@ -212,9 +215,12 @@ actual class BoloPlayerController actual constructor(
      */
     fun bindDrawable(view: UIView) {
         if (mediaLifecycle == MediaLifecycle.Disposed) return
-        if (boundDrawable !== view) outputNeedsRefresh = true
+        if (boundDrawable !== view) {
+            invalidateDrawableRecovery()
+            outputNeedsRefresh = true
+        }
         boundDrawable = view
-        if (!isInForeground || view.window == null) return
+        if (!isDrawableReady(view)) return
         if (mediaPlayer.drawable !== view) mediaPlayer.drawable = view
         if (_state.value.isPlaybackSuspended) {
             resumePlaybackIfReady()
@@ -225,11 +231,30 @@ actual class BoloPlayerController actual constructor(
 
     fun unbindDrawable(view: UIView) {
         if (boundDrawable !== view) return
+        invalidateDrawableRecovery()
         removeSeekFrameHolder()
         boundDrawable = null
         mediaPlayer.drawable = null
         outputNeedsRefresh = true
     }
+
+    private fun invalidateDrawableRecovery() {
+        drawableRevision += 1L
+        recoveryJob?.cancel()
+        recoveryJob = null
+        if (restoringPlayback) {
+            mediaPlayer.pause()
+            cancelCurrentSeek()
+            needsRestoreSeek = true
+        }
+        restoringPlayback = false
+    }
+
+    private fun isDrawableReady(view: UIView): Boolean =
+        isInForeground && mediaLifecycle != MediaLifecycle.Disposed &&
+            boundDrawable === view &&
+            view.window?.windowScene?.activationState == UISceneActivationStateForegroundActive &&
+            view.bounds.useContents { size.width > 0.0 && size.height > 0.0 }
 
     /**
      * 跳转空档保留上一帧。
@@ -340,17 +365,20 @@ actual class BoloPlayerController actual constructor(
         if (!isInForeground || mediaLifecycle == MediaLifecycle.Disposed ||
             !_state.value.isPlaybackSuspended || restoringPlayback) return
         val view = boundDrawable ?: return
-        if (view.window == null) return
+        if (!isDrawableReady(view)) return
         backgroundReleaseJob?.cancel()
         val startedMs = backgroundStartedMs
         if (startedMs != null && continuousTimeMs() - startedMs >= 60_000L) releaseResources()
         backgroundStartedMs = null
         restoringPlayback = true
         val revision = ++lifecycleRevision
+        val bindingRevision = drawableRevision
+        fun isCurrentRecovery() = revision == lifecycleRevision &&
+            bindingRevision == drawableRevision && isDrawableReady(view)
         recoveryJob = seekScope.launch {
             try {
                 for (attempt in 0..1) {
-                    if (revision != lifecycleRevision || !isInForeground) return@launch
+                    if (!isCurrentRecovery()) return@launch
                     val mpd = lastMpd
                     if (mpd == null) {
                         recoveryFailed = false
@@ -375,6 +403,7 @@ actual class BoloPlayerController actual constructor(
                     }
                     val restored = withTimeoutOrNull(RestoreTimeoutMs) {
                         while (!recoveryFailed) {
+                            if (!isCurrentRecovery()) return@withTimeoutOrNull false
                             val playback = _state.value
                             // 恢复完成以位置为准：VLC 4 的画面计数在暂停态不增长，
                             // 且底层读取可能返回未初始化值，不能作为完成条件。
@@ -390,8 +419,8 @@ actual class BoloPlayerController actual constructor(
                         }
                         !recoveryFailed
                     } == true
+                    if (!isCurrentRecovery()) return@launch
                     if (!restored) continue
-                    if (revision != lifecycleRevision || !isInForeground) return@launch
                     mediaPlayer.pause()
                     mediaPlayer.audio?.volume = volumeGain
                     applyPendingPlaybackSpeed(mediaPlayer, mediaGeneration)
@@ -408,14 +437,14 @@ actual class BoloPlayerController actual constructor(
                     observeRestoredFrame(previousPictures, revision)
                     return@launch
                 }
-                if (revision == lifecycleRevision && isInForeground) {
+                if (isCurrentRecovery()) {
                     releaseResources()
                     resumeEligible = false
                     _state.value = _state.value.copy(isPlaybackSuspended = false, isPlaying = false, isBuffering = false)
                     onError(BoloPlayerError.UnknownError("播放器恢复失败，请重新打开视频"))
                 }
             } finally {
-                if (revision == lifecycleRevision) restoringPlayback = false
+                if (revision == lifecycleRevision && bindingRevision == drawableRevision) restoringPlayback = false
             }
         }
     }
