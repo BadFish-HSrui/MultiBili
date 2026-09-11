@@ -247,7 +247,7 @@ actual class BoloPlayerController actual constructor(
     private var lastMpdFile: File? = null
     private var hasPendingLoadRequest = false
     private var pendingLoadStartPositionMs = 0L
-    private var playbackSpeed = BoloPlayerSpeed.default
+    private var playbackSpeed = 1f
     private var speedProbeUntilWallTimeMs = 0L
     private var speedProbeStartWallTimeMs = 0L
     private var speedChangeSeq = 0L
@@ -799,7 +799,7 @@ actual class BoloPlayerController actual constructor(
             // EOF 时暂停输入，保留最后一帧及直接 seek 的能力。
             media.addOption(":play-and-pause")
             val requestedSpeed = synchronized(speedLock) { playbackSpeed }
-            debugLog(DebugMpd, "MediaPrepared mode=localMpd uri=$mediaUri requestedSpeed=${requestedSpeed.title}")
+            debugLog(DebugMpd, "MediaPrepared mode=localMpd uri=$mediaUri requestedSpeed=$requestedSpeed")
 
             if (mediaPlayer !== player) {
                 return
@@ -970,7 +970,8 @@ actual class BoloPlayerController actual constructor(
         }
     }
 
-    actual fun setPlaybackSpeed(speed: BoloPlayerSpeed) {
+    actual fun setPlaybackSpeed(speed: Float) {
+        if (!speed.isFinite() || speed <= 0f) return
         if (disposed) {
             return
         }
@@ -988,8 +989,8 @@ actual class BoloPlayerController actual constructor(
         if (EnableSpeedChangeProbe) {
             debugLog(
                 DebugSpeed,
-                "SpeedChange begin seq=$seq previous=${previousSpeed.title} previousRate=${previousSpeed.rateNumber} " +
-                    "selected=${speed.title} selectedRate=${speed.rateNumber} ${statsLog(statsBefore)} " +
+                "SpeedChange begin seq=$seq previous=$previousSpeed previousRate=$previousSpeed " +
+                    "selected=$speed selectedRate=$speed ${statsLog(statsBefore)} " +
                     "before=${playerSnapshot(player)}"
             )
         }
@@ -1009,8 +1010,8 @@ actual class BoloPlayerController actual constructor(
             val statsAfter = player?.let(::vlcStatsSnapshot)
             debugLog(
                 DebugSpeed,
-                "SpeedChange end seq=$seq selected=${speed.title} " +
-                    "stored=${synchronized(speedLock) { playbackSpeed }.title} " +
+                "SpeedChange end seq=$seq selected=$speed " +
+                    "stored=${synchronized(speedLock) { playbackSpeed }} " +
                     "${statsLog(statsAfter)} ${statsAfter?.deltaLogString(statsBefore) ?: "statsDelta=null"} " +
                     "after=${playerSnapshot(player)}"
             )
@@ -1414,7 +1415,7 @@ actual class BoloPlayerController actual constructor(
                 .getOrNull()
                 ?.takeIf { it >= 0L }
         }
-        val playbackRate = synchronized(speedLock) { playbackSpeed.rateNumber }
+        val playbackRate = synchronized(speedLock) { playbackSpeed }
         var confirmed = false
         var retry = false
         var failed = false
@@ -1485,7 +1486,7 @@ actual class BoloPlayerController actual constructor(
         expectedRevision: Long? = null,
         expectedSubmittedAttempt: Int? = null
     ): Boolean {
-        val playbackRate = synchronized(speedLock) { playbackSpeed.rateNumber }
+        val playbackRate = synchronized(speedLock) { playbackSpeed }
         var shouldPause = false
         var completedAtEnd = false
         var acceptedObservation = false
@@ -1570,7 +1571,7 @@ actual class BoloPlayerController actual constructor(
 
     private fun handleEndReached(player: MediaPlayer, playerGeneration: Long, keepMediaReady: Boolean = false) {
         val durationMs = getDurationForCompletion(player)
-        val playbackRate = synchronized(speedLock) { playbackSpeed.rateNumber }
+        val playbackRate = synchronized(speedLock) { playbackSpeed }
         var ended = false
         var seekFailed = false
         synchronized(seekLock) {
@@ -1798,11 +1799,11 @@ actual class BoloPlayerController actual constructor(
                 if (speedProbeSeq != null) {
                     debugLog(
                         DebugSpeed,
-                        "applyPlaybackSpeed before seq=$speedProbeSeq requested=${requestedSpeed.title} " +
-                            "requestedRate=${requestedSpeed.rateNumber} ${statsLog(statsBefore)} ${playerSnapshot(player)}"
+                        "applyPlaybackSpeed before seq=$speedProbeSeq requested=$requestedSpeed " +
+                            "requestedRate=$requestedSpeed ${statsLog(statsBefore)} ${playerSnapshot(player)}"
                     )
                 }
-                player.setRate(requestedSpeed.rateNumber)
+                player.setRate(requestedSpeed)
                 val nativeRate = player.getRate()
                 if (
                     disposed ||
@@ -1811,19 +1812,19 @@ actual class BoloPlayerController actual constructor(
                 ) {
                     return
                 }
-                val storedSpeed = BoloPlayerSpeed.fromRateNumber(nativeRate)
+                val storedSpeed = nativeRate.takeIf { it.isFinite() && it > 0f } ?: playbackSpeed
                 playbackSpeed = storedSpeed
                 _state.value = _state.value.copy(playbackSpeed = storedSpeed)
                 debugLog(
                     DebugSpeed,
                     "RateApplied generation=$applyGeneration requestSeq=$applyRequestSeq " +
-                        "requested=${requestedSpeed.title} nativeRate=$nativeRate stored=${storedSpeed.title}"
+                        "requested=$requestedSpeed nativeRate=$nativeRate stored=$storedSpeed"
                 )
                 val statsAfter = speedProbeSeq?.let { vlcStatsSnapshot(player) }
                 if (speedProbeSeq != null) {
                     debugLog(
                         DebugSpeed,
-                        "applyPlaybackSpeed after seq=$speedProbeSeq nativeRate=$nativeRate stored=${storedSpeed.title} " +
+                        "applyPlaybackSpeed after seq=$speedProbeSeq nativeRate=$nativeRate stored=$storedSpeed " +
                             "${statsLog(statsAfter)} ${statsAfter?.deltaLogString(statsBefore) ?: "statsDelta=null"} " +
                             playerSnapshot(player)
                     )
@@ -1919,7 +1920,7 @@ actual class BoloPlayerController actual constructor(
             "videoTrack=$videoTrack/$videoTrackCount statePlaying=${state.isPlaying} stateBuffering=${state.isBuffering} " +
             "statePositionMs=${state.currentPositionMs} stateDurationMs=${state.durationMs} " +
             "pendingSeekPositionMs=${state.pendingSeekPositionMs} stateSeekable=${state.isSeekable} " +
-            "stateSpeed=${state.playbackSpeed.title}"
+            "stateSpeed=${state.playbackSpeed}"
     }
 
 }

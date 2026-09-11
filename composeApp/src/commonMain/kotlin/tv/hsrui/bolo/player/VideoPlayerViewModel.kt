@@ -235,7 +235,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         danmakuController.syncPlayback(
             positionMs = playback.currentPositionMs,
             isPlaying = playback.isPlaying && (playback.durationMs <= 0L || playback.currentPositionMs < playback.durationMs),
-            speed = playback.playbackSpeed.rateNumber,
+            speed = playback.playbackSpeed,
             discontinuity = awaitingDanmakuSeek,
         )
         awaitingDanmakuSeek = false

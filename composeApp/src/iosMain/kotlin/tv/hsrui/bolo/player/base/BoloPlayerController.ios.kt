@@ -176,7 +176,7 @@ actual class BoloPlayerController actual constructor(
     private var refreshFrameAfterSeek = false
     private var lastMpd: BoloDashMpd? = null
     private var lastMpdFilePath: String? = null
-    private var playbackSpeed = BoloPlayerSpeed.default
+    private var playbackSpeed = 1f
 
     init {
         AVAudioSession.sharedInstance().apply {
@@ -794,7 +794,7 @@ actual class BoloPlayerController actual constructor(
         println(
             "[AudioPlayback] timeMs=${continuousTimeMs()} event=$event generation=$mediaGeneration " +
                 "lifecycle=$mediaLifecycle suspended=${_state.value.isPlaybackSuspended} " +
-                "positionMs=${_state.value.currentPositionMs} rate=${playbackSpeed.rateNumber} vlcVolume=$volumeGain " +
+                "positionMs=${_state.value.currentPositionMs} rate=${playbackSpeed} vlcVolume=$volumeGain " +
                 "systemVolume=${session.outputVolume} category=${session.category} mode=${session.mode} routeTypes=$routes " +
                 "sampleRate=${session.sampleRate} ioBufferSec=${session.IOBufferDuration} outputLatencySec=${session.outputLatency}"
         )
@@ -883,7 +883,8 @@ actual class BoloPlayerController actual constructor(
         mediaPlayer.audio?.volume = if (_state.value.isPlaybackSuspended) 0 else vlcVolume
     }
 
-    actual fun setPlaybackSpeed(speed: BoloPlayerSpeed) {
+    actual fun setPlaybackSpeed(speed: Float) {
+        if (!speed.isFinite() || speed <= 0f) return
         if (mediaLifecycle == MediaLifecycle.Disposed) return
 
         playbackSpeed = speed
@@ -1328,7 +1329,7 @@ actual class BoloPlayerController actual constructor(
             accepted = !forceTimeout && seekCoordinator.acceptObservedPosition(
                     positionMs = positionMs,
                     isPlaying = player.state == VLCMediaPlayerState.VLCMediaPlayerStatePlaying,
-                    playbackRate = _state.value.playbackSpeed.rateNumber
+                    playbackRate = _state.value.playbackSpeed
                 )
             if (hadPending && accepted) {
                 refreshFrameAfterSeek = false
@@ -1452,7 +1453,7 @@ actual class BoloPlayerController actual constructor(
                     seekCoordinator.acceptObservedPosition(
                         positionMs = durationMs,
                         isPlaying = false,
-                        playbackRate = _state.value.playbackSpeed.rateNumber
+                        playbackRate = _state.value.playbackSpeed
                     )
                 if (!confirmed) {
                     failedRevision = seekCoordinator.currentRevision
@@ -1543,7 +1544,7 @@ actual class BoloPlayerController actual constructor(
 
         val requested = playbackSpeed
         try {
-            player.rate = requested.rateNumber
+            player.rate = requested
         } catch (_: Exception) {}
         // native setter 完成不代表 rate 立即生效（VLC 需要一次输入线程周期），回读值是过渡值；
         // 因此发布用户选择值，native 会收敛到同一目标。

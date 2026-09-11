@@ -81,9 +81,9 @@ expect class BoloPlayerController(
 
     /**
      * 调整播放速度。
-     * @param speed 倍速枚举，包含展示标题和 VLC 实际速率值。
+     * @param speed 直接传给 VLC 的倍率数值；非有限值或非正值不会生效。
      */
-    fun setPlaybackSpeed(speed: BoloPlayerSpeed)
+    fun setPlaybackSpeed(speed: Float)
 
     /** 临时释放底层播放器资源，保留恢复播放所需状态。 */
     fun release()

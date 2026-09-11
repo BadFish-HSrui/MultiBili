@@ -1,6 +1,10 @@
 package tv.hsrui.bolo.player.controls
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -23,6 +27,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.rounded.Brightness6
@@ -36,6 +42,7 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ButtonDefaults
@@ -66,9 +73,25 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.compose.koinInject
@@ -76,8 +99,8 @@ import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.VideoPlayerViewModel
-import tv.hsrui.bolo.player.base.BoloPlayerSpeed
 import tv.hsrui.bolo.ui.theme.BiliColor
+import tv.hsrui.bolo.ui.components.slider.ShowSlider
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.subtitle.SubtitleItem
@@ -124,10 +147,10 @@ fun BoloPlayerControls(
     }
     // 长按倍速期间的状态：临时倍速用于预览，原倍速用于松手恢复。
     var gestureSpeedBoost by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
-        mutableStateOf<BoloPlayerSpeed?>(null)
+        mutableStateOf<Float?>(null)
     }
     var gestureBaseSpeed by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
-        mutableStateOf<BoloPlayerSpeed?>(null)
+        mutableStateOf<Float?>(null)
     }
     val restoreBaseSpeedOnDispose by rememberUpdatedState(gestureBaseSpeed)
     DisposableEffect(viewModel) {
@@ -219,7 +242,7 @@ fun BoloPlayerControls(
                             longPress.consume()
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
                             gestureBaseSpeed = playback.playbackSpeed
-                            val boostSpeed = BoloPlayerSpeed.fromRateNumber(longPressSpeed)
+                            val boostSpeed = longPressSpeed
                             gestureSpeedBoost = boostSpeed
                             speedBoostApplied = true
                             viewModel.controller.setPlaybackSpeed(boostSpeed)
@@ -524,8 +547,9 @@ fun BoloPlayerControls(
                                 )
                             }
 
-                            SpeedMenu(
+                            SpeedSliderPopup(
                                 currentSpeed = gestureSpeedBoost ?: playState.playbackSpeed,
+                                isFullscreen = isFullscreen,
                                 onSpeedSelected = viewModel.controller::setPlaybackSpeed
                             )
 
@@ -605,7 +629,7 @@ fun BoloPlayerControls(
                             tint = Color.White,
                         )
                         Text(
-                            text = speedMultiplierText((gestureSpeedPreview.rateNumber * 100f).roundToInt()),
+                            text = speedMultiplierText((gestureSpeedPreview * 100f).roundToInt()),
                             style = MaterialTheme.typography.labelLarge,
                             color = Color.White,
                         )
@@ -690,47 +714,126 @@ private fun Long.formatPlayerDuration(): String {
 }
 
 @Composable
-private fun SpeedMenu(
-    currentSpeed: BoloPlayerSpeed,
-    onSpeedSelected: (BoloPlayerSpeed) -> Unit
+private fun SpeedSliderPopup(
+    currentSpeed: Float,
+    isFullscreen: Boolean,
+    onSpeedSelected: (Float) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-
+    var expanded by remember(isFullscreen) { mutableStateOf(false) }
+    val visibility = remember(isFullscreen) { MutableTransitionState(false) }
+    visibility.targetState = expanded
+    val transformOrigin = TransformOrigin(
+        pivotFractionX = if (LocalLayoutDirection.current == LayoutDirection.Ltr) 1f else 0f,
+        pivotFractionY = 1f,
+    )
+    var lastRequestedSpeed by remember(currentSpeed) { mutableStateOf(currentSpeed) }
+    val speedText = speedMultiplierText((currentSpeed * 100f).roundToInt())
+    val density = LocalDensity.current
+    val windowWidth = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val margin = with(density) { 8.dp.roundToPx() }
+    val positionProvider = remember(margin) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(
+                anchorBounds: IntRect,
+                windowSize: IntSize,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize,
+            ): IntOffset {
+                val x = if (layoutDirection == LayoutDirection.Ltr) {
+                    anchorBounds.right - popupContentSize.width
+                } else anchorBounds.left
+                val y = anchorBounds.top - popupContentSize.height - margin
+                return IntOffset(
+                    x.coerceIn(margin, (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin)),
+                    y.coerceIn(margin, (windowSize.height - popupContentSize.height - margin).coerceAtLeast(margin)),
+                )
+            }
+        }
+    }
     Box {
         TextButton(
-            onClick = { expanded = true },
-            colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
+            onClick = { expanded = !expanded },
+            colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+            modifier = Modifier.semantics { contentDescription = "播放速度" },
         ) {
-            Text(
-                text = currentSpeed.title,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1
-            )
+            Text(speedText, style = MaterialTheme.typography.labelMedium, maxLines = 1)
         }
-
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            BoloPlayerSpeed.entries.forEach { speed ->
-                val selected = speed == currentSpeed
-                DropdownMenuItem(
-                    text = { Text(speed.title) },
-                    trailingIcon = {
-                        if (selected) {
-                            Icon(
-                                imageVector = Icons.Rounded.Check,
-                                contentDescription = "当前倍速"
+        if (visibility.currentState || visibility.targetState || !visibility.isIdle) {
+            Popup(
+                popupPositionProvider = positionProvider,
+                onDismissRequest = { expanded = false },
+                properties = PopupProperties(focusable = true),
+            ) {
+                AnimatedVisibility(
+                    visibleState = visibility,
+                    enter = fadeIn(tween(180)) + scaleIn(
+                        animationSpec = tween(180),
+                        initialScale = 0.92f,
+                        transformOrigin = transformOrigin,
+                    ),
+                    exit = fadeOut(tween(120)) + scaleOut(
+                        animationSpec = tween(120),
+                        targetScale = 0.92f,
+                        transformOrigin = transformOrigin,
+                    ),
+                ) {
+                    Card(
+                        shape = RoundedCornerShape(percent = 50),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                        modifier = Modifier.widthIn(max = (windowWidth - 16.dp).coerceAtLeast(1.dp)).width(320.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = speedText,
+                                modifier = Modifier.width(48.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
                             )
-                        }
-                    },
-                    onClick = {
-                        expanded = false
-                        if (!selected) {
-                            onSpeedSelected(speed)
+                            ShowSlider(
+                                value = currentSpeed,
+                                onValueChange = { value ->
+                                    val speed = (value * 4f).roundToInt().coerceIn(2, 12) / 4f
+                                    if (speed != lastRequestedSpeed) {
+                                        lastRequestedSpeed = speed
+                                        onSpeedSelected(speed)
+                                    }
+                                },
+                                valueRange = 0.5f..3f,
+                                steps = 9,
+                                uniformTrackColor = true,
+                                showStops = false,
+                                tickValues = listOf(0.5f, 1f, 2f, 3f),
+                                modifier = Modifier.weight(1f).semantics {
+                                    contentDescription = "播放速度"
+                                    stateDescription = speedText
+                                },
+                            )
+                            IconButton(
+                                onClick = {
+                                    if (lastRequestedSpeed != 1f) {
+                                        lastRequestedSpeed = 1f
+                                        onSpeedSelected(1f)
+                                    }
+                                },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.RestartAlt,
+                                    contentDescription = "重置播放速度为 1x",
+                                    modifier = Modifier.size(20.dp).graphicsLayer {
+                                        // 24×24 路径的圆环中心为 (12, 13)，向上补偿一个矢量单位。
+                                        translationY = -size.height / 24f
+                                    },
+                                )
+                            }
                         }
                     }
-                )
+                }
             }
         }
     }

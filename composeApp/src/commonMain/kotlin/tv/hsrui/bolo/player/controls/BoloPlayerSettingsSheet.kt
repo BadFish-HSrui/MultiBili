@@ -3,7 +3,6 @@ package tv.hsrui.bolo.player.controls
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.interaction.DragInteraction
-import androidx.compose.foundation.interaction.FocusInteraction
 import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -38,13 +37,10 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scrim
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
@@ -79,17 +75,16 @@ import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.filterNot
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.ui.components.dialog.ShowInfoDialog
+import tv.hsrui.bolo.ui.components.slider.ShowSlider
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
@@ -449,13 +444,6 @@ fun BoloPlayerSettingsSheet(
                                                     Column(Modifier.padding(4.dp)) {
                                                         val levelText = if (danmakuFilterLevel == 0) "关闭" else danmakuFilterLevel.toString()
                                                         val interactionSource = remember { MutableInteractionSource() }
-                                                        val thumbInteractionSource = remember(interactionSource) {
-                                                            object : MutableInteractionSource by interactionSource {
-                                                                override val interactions = interactionSource.interactions.filterNot { interaction ->
-                                                                    interaction is FocusInteraction.Focus || interaction is FocusInteraction.Unfocus
-                                                                }
-                                                            }
-                                                        }
                                                         Row(
                                                             Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -480,34 +468,18 @@ fun BoloPlayerSettingsSheet(
                                                             }
                                                             Text(levelText, style = MaterialTheme.typography.bodySmall)
                                                         }
-                                                        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
-                                                            Slider(
-                                                                value = danmakuFilterLevel.toFloat(),
-                                                                onValueChange = { onDanmakuFilterLevelChange(it.roundToInt().coerceIn(0, 10)) },
-                                                                valueRange = 0f..10f,
-                                                                steps = 9,
-                                                                enabled = isOpen,
-                                                                interactionSource = interactionSource,
-                                                                thumb = {
-                                                                    SliderDefaults.Thumb(
-                                                                        interactionSource = thumbInteractionSource,
-                                                                        enabled = isOpen,
-                                                                        thumbSize = DpSize(4.dp, 24.dp),
-                                                                    )
-                                                                },
-                                                                track = { sliderState ->
-                                                                    SliderDefaults.Track(
-                                                                        sliderState = sliderState,
-                                                                        enabled = isOpen,
-                                                                        modifier = Modifier.height(12.dp),
-                                                                    )
-                                                                },
-                                                                modifier = Modifier.fillMaxWidth().height(32.dp).semantics {
-                                                                    contentDescription = "弹幕过滤"
-                                                                    stateDescription = levelText
-                                                                },
-                                                            )
-                                                        }
+                                                        ShowSlider(
+                                                            value = danmakuFilterLevel.toFloat(),
+                                                            onValueChange = { onDanmakuFilterLevelChange(it.roundToInt().coerceIn(0, 10)) },
+                                                            valueRange = 0f..10f,
+                                                            steps = 9,
+                                                            enabled = isOpen,
+                                                            interactionSource = interactionSource,
+                                                            modifier = Modifier.fillMaxWidth().semantics {
+                                                                contentDescription = "弹幕过滤"
+                                                                stateDescription = levelText
+                                                            },
+                                                        )
                                                     }
                                                 }
                                                 Card(Modifier.fillMaxWidth()) {
@@ -760,13 +732,6 @@ private fun PlayerSeekDurationSlider(
     val active by rememberUpdatedState(enabled)
     val onChange by rememberUpdatedState(onValueChange)
     val interactionSource = remember { MutableInteractionSource() }
-    val thumbInteractionSource = remember(interactionSource) {
-        object : MutableInteractionSource by interactionSource {
-            override val interactions = interactionSource.interactions.filterNot { interaction ->
-                interaction is FocusInteraction.Focus || interaction is FocusInteraction.Unfocus
-            }
-        }
-    }
     DisposableEffect(enabled) {
         previewSeconds = null
         onDispose { previewSeconds = null }
@@ -782,39 +747,23 @@ private fun PlayerSeekDurationSlider(
             Text("快进快退时长", style = MaterialTheme.typography.bodyMedium)
             Text("$displayedSeconds 秒", style = MaterialTheme.typography.bodySmall)
         }
-        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
-            Slider(
-                value = displayedSeconds.toFloat(),
-                onValueChange = { previewSeconds = it.roundToInt().coerceIn(5, 30) },
-                onValueChangeFinished = {
-                    if (active) previewSeconds?.let(onChange)
-                    previewSeconds = null
-                },
-                valueRange = 5f..30f,
-                steps = 24,
-                enabled = enabled,
-                interactionSource = interactionSource,
-                thumb = {
-                    SliderDefaults.Thumb(
-                        interactionSource = thumbInteractionSource,
-                        enabled = enabled,
-                        thumbSize = DpSize(4.dp, 24.dp),
-                    )
-                },
-                track = { sliderState ->
-                    SliderDefaults.Track(
-                        sliderState = sliderState,
-                        enabled = enabled,
-                        modifier = Modifier.height(12.dp),
-                        drawTick = { _, _ -> },
-                    )
-                },
-                modifier = Modifier.fillMaxWidth().height(32.dp).semantics {
-                    contentDescription = "快进快退时长"
-                    stateDescription = "$displayedSeconds 秒"
-                },
-            )
-        }
+        ShowSlider(
+            value = displayedSeconds.toFloat(),
+            onValueChange = { previewSeconds = it.roundToInt().coerceIn(5, 30) },
+            onValueChangeFinished = {
+                if (active) previewSeconds?.let(onChange)
+                previewSeconds = null
+            },
+            valueRange = 5f..30f,
+            steps = 24,
+            enabled = enabled,
+            interactionSource = interactionSource,
+            showTicks = false,
+            modifier = Modifier.fillMaxWidth().semantics {
+                contentDescription = "快进快退时长"
+                stateDescription = "$displayedSeconds 秒"
+            },
+        )
     }
 }
 
@@ -829,16 +778,6 @@ private fun PlayerLongPressSpeedSlider(
     val active by rememberUpdatedState(enabled)
     val onChange by rememberUpdatedState(onValueChange)
     val interactionSource = remember { MutableInteractionSource() }
-    val thumbInteractionSource = remember(interactionSource) {
-        object : MutableInteractionSource by interactionSource {
-            override val interactions = interactionSource.interactions.filterNot { interaction ->
-                interaction is FocusInteraction.Focus || interaction is FocusInteraction.Unfocus
-            }
-        }
-    }
-    // 使用 Material 3 默认配色，档位仍由离散值和档位点明确表达。
-    val sliderColors = SliderDefaults.colors()
-    val stopIndicatorColor = MaterialTheme.colorScheme.onSurfaceVariant
     DisposableEffect(enabled) {
         previewSpeed = null
         onDispose { previewSpeed = null }
@@ -855,60 +794,27 @@ private fun PlayerLongPressSpeedSlider(
             Text("长按快进速度", style = MaterialTheme.typography.bodyMedium)
             Text(displayedText, style = MaterialTheme.typography.bodySmall)
         }
-        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
-            Slider(
-                value = longPressSpeedSliderPosition(displayedSpeed),
-                onValueChange = { position -> previewSpeed = longPressSpeedFromSliderPosition(position) },
-                onValueChangeFinished = {
-                    if (active) previewSpeed?.let(onChange)
-                    previewSpeed = null
-                },
-                valueRange = 0f..(LongPressSpeedStepCount - 1).toFloat(),
-                steps = LongPressSpeedStepCount - 2,
-                enabled = enabled,
-                colors = sliderColors,
-                interactionSource = interactionSource,
-                thumb = {
-                    SliderDefaults.Thumb(
-                        interactionSource = thumbInteractionSource,
-                        colors = sliderColors,
-                        enabled = enabled,
-                        thumbSize = DpSize(4.dp, 24.dp),
-                    )
-                },
-                track = { sliderState ->
-                    SliderDefaults.Track(
-                        sliderState = sliderState,
-                        enabled = enabled,
-                        colors = sliderColors,
-                        modifier = Modifier.height(12.dp),
-                        drawTick = { offset, color ->
-                            drawCircle(
-                                color = color,
-                                radius = LongPressSpeedStopIndicatorRadius.toPx(),
-                                center = offset,
-                            )
-                        },
-                        drawStopIndicator = { offset ->
-                            drawCircle(
-                                color = stopIndicatorColor,
-                                radius = LongPressSpeedStopIndicatorRadius.toPx(),
-                                center = offset,
-                            )
-                        },
-                    )
-                },
-                modifier = Modifier.fillMaxWidth().height(32.dp).semantics {
-                    contentDescription = "长按快进速度"
-                    stateDescription = displayedText
-                    progressBarRangeInfo = ProgressBarRangeInfo(
-                        longPressSpeedSliderPosition(displayedSpeed),
-                        longPressSpeedSliderPosition(LongPressSpeedPercentMinimum.toFloat())..
-                            longPressSpeedSliderPosition(LongPressSpeedPercentMaximum.toFloat()),
-                    )
-                },
-            )
-        }
+        ShowSlider(
+            value = longPressSpeedSliderPosition(displayedSpeed),
+            onValueChange = { position -> previewSpeed = longPressSpeedFromSliderPosition(position) },
+            onValueChangeFinished = {
+                if (active) previewSpeed?.let(onChange)
+                previewSpeed = null
+            },
+            valueRange = 0f..(LongPressSpeedStepCount - 1).toFloat(),
+            steps = LongPressSpeedStepCount - 2,
+            enabled = enabled,
+            interactionSource = interactionSource,
+            modifier = Modifier.fillMaxWidth().semantics {
+                contentDescription = "长按快进速度"
+                stateDescription = displayedText
+                progressBarRangeInfo = ProgressBarRangeInfo(
+                    longPressSpeedSliderPosition(displayedSpeed),
+                    longPressSpeedSliderPosition(LongPressSpeedPercentMinimum.toFloat())..
+                        longPressSpeedSliderPosition(LongPressSpeedPercentMaximum.toFloat()),
+                )
+            },
+        )
     }
 }
 
@@ -917,9 +823,6 @@ private const val LongPressSpeedPercentMaximum = 300
 private const val LongPressSpeedPercentStep = 25
 private const val LongPressSpeedPercentSpan = LongPressSpeedPercentMaximum - LongPressSpeedPercentMinimum
 private const val LongPressSpeedStepCount = LongPressSpeedPercentSpan / LongPressSpeedPercentStep + 1
-
-// M3 滑块档位点为直径 4dp 的圆点，这里按半径 2dp 绘制。
-private val LongPressSpeedStopIndicatorRadius = 2.dp
 
 // 长按倍速滑块按 0.25x 一档映射到整数档位，避免浮点误差影响档位对齐。
 private fun longPressSpeedSliderPosition(speed: Float): Float =
@@ -936,7 +839,7 @@ private fun longPressSpeedSliderPosition(percent: Int): Float =
 internal fun speedMultiplierText(percent: Int): String {
     val whole = percent / 100
     val fraction = percent % 100
-    return if (fraction == 0) "${whole}x" else "$whole.${fraction.toString().padStart(2, '0')}x"
+    return if (fraction == 0) "${whole}x" else "$whole.${fraction.toString().padStart(2, '0').trimEnd('0')}x"
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -972,13 +875,6 @@ private fun PlayerPercentageSlider(
             override fun tryEmit(interaction: Interaction): Boolean {
                 if (interaction is DragInteraction.Cancel) discardPreview()
                 return source.tryEmit(interaction)
-            }
-        }
-    }
-    val thumbInteractionSource = remember(interactionSource) {
-        object : MutableInteractionSource by interactionSource {
-            override val interactions = interactionSource.interactions.filterNot { interaction ->
-                interaction is FocusInteraction.Focus || interaction is FocusInteraction.Unfocus
             }
         }
     }
@@ -1027,87 +923,63 @@ private fun PlayerPercentageSlider(
             }
             Text("$percent%", style = MaterialTheme.typography.bodySmall)
         }
-        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
-            Slider(
-                value = sliderPosition,
-                onValueChange = { position ->
-                    previewPercent = snapPercent(
-                        if (centeredAt100) 100f + position * if (position <= 0f) 50f else 100f
-                        else position,
-                    )
-                    onPreview?.invoke(previewPercent?.div(100f))
-                },
-                onValueChangeFinished = ::commitPreview,
-                valueRange = if (centeredAt100) -1f..1f
-                else percentRange.first.toFloat()..percentRange.last.toFloat(),
-                steps = if (centeredAt100) 0 else (percentRange.last - percentRange.first) / percentStep - 1,
-                enabled = isOpen,
-                interactionSource = interactionSource,
-                thumb = {
-                    SliderDefaults.Thumb(
-                        interactionSource = thumbInteractionSource,
-                        enabled = isOpen,
-                        thumbSize = DpSize(4.dp, 24.dp),
-                    )
-                },
-                track = { sliderState ->
-                    if (centeredAt100) {
-                        SliderDefaults.CenteredTrack(
-                            sliderState = sliderState,
-                            enabled = isOpen,
-                            modifier = Modifier.height(12.dp),
-                        )
-                    } else {
-                        SliderDefaults.Track(
-                            sliderState = sliderState,
-                            enabled = isOpen,
-                            modifier = Modifier.height(12.dp),
-                            drawTick = { _, _ -> },
-                        )
+        ShowSlider(
+            value = sliderPosition,
+            onValueChange = { position ->
+                previewPercent = snapPercent(
+                    if (centeredAt100) 100f + position * if (position <= 0f) 50f else 100f
+                    else position,
+                )
+                onPreview?.invoke(previewPercent?.div(100f))
+            },
+            onValueChangeFinished = ::commitPreview,
+            valueRange = if (centeredAt100) -1f..1f
+            else percentRange.first.toFloat()..percentRange.last.toFloat(),
+            steps = if (centeredAt100) 0 else (percentRange.last - percentRange.first) / percentStep - 1,
+            enabled = isOpen,
+            interactionSource = interactionSource,
+            centered = centeredAt100,
+            showTicks = false,
+            modifier = Modifier.fillMaxWidth()
+                .onPreviewKeyEvent { event ->
+                    if (!isOpen) return@onPreviewKeyEvent false
+                    val forward = if (layoutDirection == LayoutDirection.Ltr) 1 else -1
+                    val target = when (event.key) {
+                        Key.DirectionRight -> percent + forward * percentStep
+                        Key.DirectionLeft -> percent - forward * percentStep
+                        Key.MoveHome -> percentRange.first
+                        Key.MoveEnd -> percentRange.last
+                        Key.PageUp -> percent + 10
+                        Key.PageDown -> percent - 10
+                        else -> return@onPreviewKeyEvent false
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
-                    .height(32.dp)
-                    .onPreviewKeyEvent { event ->
-                        if (!isOpen) return@onPreviewKeyEvent false
-                        val forward = if (layoutDirection == LayoutDirection.Ltr) 1 else -1
-                        val target = when (event.key) {
-                            Key.DirectionRight -> percent + forward * percentStep
-                            Key.DirectionLeft -> percent - forward * percentStep
-                            Key.MoveHome -> percentRange.first
-                            Key.MoveEnd -> percentRange.last
-                            Key.PageUp -> percent + 10
-                            Key.PageDown -> percent - 10
-                            else -> return@onPreviewKeyEvent false
+                    when (event.type) {
+                        KeyEventType.KeyDown -> {
+                            previewPercent = snapPercent(target.toFloat())
+                            onPreview?.invoke(previewPercent?.div(100f))
                         }
-                        when (event.type) {
-                            KeyEventType.KeyDown -> {
-                                previewPercent = snapPercent(target.toFloat())
-                                onPreview?.invoke(previewPercent?.div(100f))
-                            }
-                            KeyEventType.KeyUp -> commitPreview()
-                            else -> return@onPreviewKeyEvent false
-                        }
+                        KeyEventType.KeyUp -> commitPreview()
+                        else -> return@onPreviewKeyEvent false
+                    }
+                    true
+                }
+                .semantics {
+                    contentDescription = label
+                    stateDescription = "$percent%"
+                    progressBarRangeInfo = ProgressBarRangeInfo(
+                        percent.toFloat(),
+                        percentRange.first.toFloat()..percentRange.last.toFloat(),
+                        (percentRange.last - percentRange.first) / percentStep - 1,
+                    )
+                    setProgress { target ->
+                        if (!isOpen) return@setProgress false
+                        val next = snapPercent(target)
+                        if (next == percent) return@setProgress false
+                        previewPercent = next
+                        commitPreview()
                         true
                     }
-                    .semantics {
-                        contentDescription = label
-                        stateDescription = "$percent%"
-                        progressBarRangeInfo = ProgressBarRangeInfo(
-                            percent.toFloat(),
-                            percentRange.first.toFloat()..percentRange.last.toFloat(),
-                            (percentRange.last - percentRange.first) / percentStep - 1,
-                        )
-                        setProgress { target ->
-                            if (!isOpen) return@setProgress false
-                            val next = snapPercent(target)
-                            if (next == percent) return@setProgress false
-                            previewPercent = next
-                            commitPreview()
-                            true
-                        }
-                    },
-            )
-        }
+                },
+        )
     }
 }

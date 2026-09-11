@@ -19,7 +19,7 @@ data class BoloPlayerState(
     /** 当前媒体是否支持跳转 */
     val isSeekable: Boolean = false,
     /** 当前播放速度 */
-    val playbackSpeed: BoloPlayerSpeed = BoloPlayerSpeed.default,
+    val playbackSpeed: Float = 1f,
     /** 视频编码格式（如 AVC、HEVC、AV1） */
     val videoCodec: String = "",
     /** 音频编码格式（如 AAC、OPUS、MP3） */

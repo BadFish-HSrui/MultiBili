@@ -237,7 +237,7 @@ actual class BoloPlayerController actual constructor(
     private var lastMpd: BoloDashMpd? = null
     private var lastMpdFile: File? = null
     private var pendingLoad: PendingLoad? = null
-    private var playbackSpeed = BoloPlayerSpeed.default
+    private var playbackSpeed = 1f
 
     internal fun bindVideo(host: JPanel) {
         val canBind = synchronized(lock) {
@@ -1049,7 +1049,8 @@ actual class BoloPlayerController actual constructor(
         }
     }
 
-    actual fun setPlaybackSpeed(speed: BoloPlayerSpeed) {
+    actual fun setPlaybackSpeed(speed: Float) {
+        if (!speed.isFinite() || speed <= 0f) return
         val command = synchronized(lock) {
             if (lifecycleState == LifecycleState.Disposed) return
             playbackSpeed = speed
@@ -1240,7 +1241,7 @@ actual class BoloPlayerController actual constructor(
             val accepted = !forceTimeout && seekCoordinator.acceptObservedPosition(
                     positionMs = positionMs,
                     isPlaying = isPlaying,
-                    playbackRate = playbackSpeed.rateNumber
+                    playbackRate = playbackSpeed
                 )
             val resolvedSeek = accepted && hadPending
             if (resolvedSeek) {
@@ -1685,7 +1686,7 @@ actual class BoloPlayerController actual constructor(
         }
 
         val nativeRate = runCatching {
-            if (player.controls().setRate(requestedSpeed.rateNumber)) {
+            if (player.controls().setRate(requestedSpeed)) {
                 player.status().rate()
             } else {
                 null
@@ -1694,8 +1695,8 @@ actual class BoloPlayerController actual constructor(
 
         synchronized(lock) {
             if (!isCurrentMediaLocked(handle, media) || !speedApplyState.isCurrent(ticket)) return
-            if (nativeRate != null) {
-                playbackSpeed = BoloPlayerSpeed.fromRateNumber(nativeRate)
+            if (nativeRate != null && nativeRate.isFinite() && nativeRate > 0f) {
+                playbackSpeed = nativeRate
             }
             speedApplyState.onAttempted(ticket)
             // ticket 当前性、readback 与 UI 回写在同一把锁内，避免旧任务覆盖新请求。
