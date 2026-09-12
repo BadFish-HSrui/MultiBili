@@ -3,6 +3,8 @@ package tv.hsrui.bolo.player.base
 import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.res.Configuration
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.net.Uri
 import android.util.Log
@@ -41,31 +43,29 @@ actual class BoloPlayerController actual constructor(
         private const val SpeedProbeWindowMs = 8_000L
         private const val EnableVlcNativeVerbose = false
         private const val EnableSpeedChangeProbe = false
+        // eap29 Java 保留旧名称，但同一数值在 VLC 4 中已改为 Stopping。
+        private const val VlcStoppingEvent = MediaPlayer.Event.EndReached
     }
 
     private data class VlcStatsSnapshot(
-        val readBytes: Int,
+        val readBytes: Long,
         val inputBitrate: Float,
-        val demuxReadBytes: Int,
+        val demuxReadBytes: Long,
         val demuxBitrate: Float,
-        val demuxCorrupted: Int,
-        val demuxDiscontinuity: Int,
-        val decodedVideo: Int,
-        val decodedAudio: Int,
-        val displayedPictures: Int,
-        val lostPictures: Int,
-        val playedAbuffers: Int,
-        val lostAbuffers: Int,
-        val sentPackets: Int,
-        val sentBytes: Int,
-        val sendBitrate: Float
+        val demuxCorrupted: Long,
+        val demuxDiscontinuity: Long,
+        val decodedVideo: Long,
+        val decodedAudio: Long,
+        val displayedPictures: Long,
+        val lostPictures: Long,
+        val playedAbuffers: Long,
+        val lostAbuffers: Long
     ) {
         fun toLogString(): String =
             "stats(readBytes=$readBytes inputBitrate=$inputBitrate demuxReadBytes=$demuxReadBytes demuxBitrate=$demuxBitrate " +
                 "demuxCorrupted=$demuxCorrupted demuxDiscontinuity=$demuxDiscontinuity decodedVideo=$decodedVideo " +
                 "decodedAudio=$decodedAudio displayedPictures=$displayedPictures lostPictures=$lostPictures " +
-                "playedAbuffers=$playedAbuffers lostAbuffers=$lostAbuffers sentPackets=$sentPackets sentBytes=$sentBytes " +
-                "sendBitrate=$sendBitrate)"
+                "playedAbuffers=$playedAbuffers lostAbuffers=$lostAbuffers)"
 
         fun deltaLogString(previous: VlcStatsSnapshot?): String {
             if (previous == null) return "statsDelta=first"
@@ -73,8 +73,7 @@ actual class BoloPlayerController actual constructor(
                 "demuxCorrupted=${demuxCorrupted - previous.demuxCorrupted} demuxDiscontinuity=${demuxDiscontinuity - previous.demuxDiscontinuity} " +
                 "decodedVideo=${decodedVideo - previous.decodedVideo} decodedAudio=${decodedAudio - previous.decodedAudio} " +
                 "displayedPictures=${displayedPictures - previous.displayedPictures} lostPictures=${lostPictures - previous.lostPictures} " +
-                "playedAbuffers=${playedAbuffers - previous.playedAbuffers} lostAbuffers=${lostAbuffers - previous.lostAbuffers} " +
-                "sentPackets=${sentPackets - previous.sentPackets} sentBytes=${sentBytes - previous.sentBytes})"
+                "playedAbuffers=${playedAbuffers - previous.playedAbuffers} lostAbuffers=${lostAbuffers - previous.lostAbuffers})"
         }
     }
 
@@ -97,7 +96,6 @@ actual class BoloPlayerController actual constructor(
         private enum class Phase {
             Inactive,
             Loading,
-            Buffering,
             Playing,
             Paused
         }
@@ -107,34 +105,16 @@ actual class BoloPlayerController actual constructor(
         private var requestRevision = 0L
         private var appliedGeneration = -1L
         private var appliedRevision = -1L
-        private var phaseBeforeBuffering = Phase.Inactive
 
         @Synchronized
         fun onMediaChanged() {
             mediaGeneration += 1
             phase = Phase.Loading
-            phaseBeforeBuffering = Phase.Loading
         }
 
         @Synchronized
         fun onOpening() {
             phase = Phase.Loading
-            phaseBeforeBuffering = Phase.Loading
-        }
-
-        @Synchronized
-        fun onBuffering() {
-            if (phase != Phase.Buffering) {
-                phaseBeforeBuffering = phase
-            }
-            phase = Phase.Buffering
-        }
-
-        @Synchronized
-        fun onBufferingCompleted() {
-            if (phase == Phase.Buffering) {
-                phase = phaseBeforeBuffering
-            }
         }
 
         @Synchronized
@@ -144,14 +124,14 @@ actual class BoloPlayerController actual constructor(
         }
 
         @Synchronized
-        fun onPaused() {
+        fun onPaused(): ApplyTicket? {
             phase = Phase.Paused
+            return consumeIfNeeded()
         }
 
         @Synchronized
         fun onInactive() {
             phase = Phase.Inactive
-            phaseBeforeBuffering = Phase.Inactive
         }
 
         @Synchronized
@@ -159,7 +139,7 @@ actual class BoloPlayerController actual constructor(
             requestRevision += 1
             return when (phase) {
                 Phase.Playing, Phase.Paused -> consumeIfNeeded()
-                Phase.Inactive, Phase.Loading, Phase.Buffering -> null
+                Phase.Inactive, Phase.Loading -> null
             }
         }
 
@@ -168,6 +148,7 @@ actual class BoloPlayerController actual constructor(
             appliedGeneration == ticket.mediaGeneration &&
                 appliedRevision == ticket.requestRevision &&
                 mediaGeneration == ticket.mediaGeneration &&
+                requestRevision == ticket.requestRevision &&
                 phase != Phase.Inactive
 
         private fun consumeIfNeeded(): ApplyTicket? {
@@ -222,7 +203,9 @@ actual class BoloPlayerController actual constructor(
     private val seekLock = Any()
     private val nativeSeekSubmitLock = Any()
     private val seekCoordinator = BoloPlayerSeekCoordinator()
-    private val seekScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    // Java VLC 事件与视图回调在主线程；回读、超时和释放也在此串行执行，避免检查后对象被释放。
+    private val seekScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var seekTimeoutJob: Job? = null
     private var seekReadbackJob: Job? = null
     private var mediaReadyForSeek = false
@@ -237,7 +220,7 @@ actual class BoloPlayerController actual constructor(
 
     // 恢复后需要暂停（之前是暂停状态离开）
     private var frameRefreshRevision: Long? = null
-    private var frameRefreshDisplayedPictures: Int? = null
+    private var frameRefreshDisplayedPictures: Long? = null
     private var pendingPauseAfterStart = false
 
     // 保留 pending target 或最后一次已确认 native 时间，供底层播放器重建后恢复。
@@ -255,6 +238,7 @@ actual class BoloPlayerController actual constructor(
     private var lastSpeedProbeStats: VlcStatsSnapshot? = null
 
     fun bindLifecycle(owner: LifecycleOwner) {
+        check(Looper.myLooper() == Looper.getMainLooper()) { "播放器视图与生命周期必须在主线程绑定" }
         if (disposed || lifecycleOwner === owner) {
             return
         }
@@ -275,6 +259,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun setResumeAfterBackgroundEnabled(enabled: Boolean) {
+        if (dispatchToMain { setResumeAfterBackgroundEnabled(enabled) }) return
         resumeAfterBackgroundEnabled = enabled
         if (!enabled) resumeEligible = false
     }
@@ -394,6 +379,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     fun unbindLifecycle(owner: LifecycleOwner): Boolean {
+        check(Looper.myLooper() == Looper.getMainLooper()) { "播放器视图与生命周期必须在主线程绑定" }
         if (lifecycleOwner !== owner) {
             return false
         }
@@ -415,6 +401,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     fun bindVideo(layout: VLCVideoLayout) {
+        check(Looper.myLooper() == Looper.getMainLooper()) { "播放器视图与生命周期必须在主线程绑定" }
         if (disposed) {
             return
         }
@@ -465,7 +452,8 @@ actual class BoloPlayerController actual constructor(
         debugLog(
             DebugEvent,
             "PlayerCreated generation=$generation nativeVerbose=$EnableVlcNativeVerbose " +
-                "speedProbe=$EnableSpeedChangeProbe audioTimeStretch=default"
+                "speedProbe=$EnableSpeedChangeProbe audioTimeStretch=default " +
+                "vlcVersion=${LibVLC.version()} changeset=${LibVLC.changeset()}"
         )
         val installEventListener: (Long) -> Unit = { eventMediaGeneration ->
             newPlayer.setEventListener eventListener@ { event ->
@@ -499,11 +487,6 @@ actual class BoloPlayerController actual constructor(
                                 seekCoordinator.pendingPositionMs != null ||
                                 pendingPauseAfterStart
                             )
-                    }
-                    if (shouldPublishBuffering) {
-                        synchronized(speedLock) { speedApplyGate.onBuffering() }
-                    } else if (event.buffering >= 100f) {
-                        synchronized(speedLock) { speedApplyGate.onBufferingCompleted() }
                     }
                     _state.value = _state.value.copy(isBuffering = shouldPublishBuffering)
                     if (isSpeedProbeActive()) {
@@ -559,6 +542,7 @@ actual class BoloPlayerController actual constructor(
                 }
                 MediaPlayer.Event.Paused -> {
                     synchronized(speedLock) { speedApplyGate.onPaused() }
+                        ?.let { applyPlaybackSpeed(newPlayer, it) }
                     synchronized(seekLock) { nativeIsPlaying = false }
                     if (playWhenReady) {
                         handleEndReached(newPlayer, generation, keepMediaReady = true)
@@ -567,6 +551,10 @@ actual class BoloPlayerController actual constructor(
                     }
                 }
                 MediaPlayer.Event.Stopped -> {
+                    // Stopping 还可能来自换源；只在当前媒体已就绪且仍有播放意图时处理完成。
+                    if (mediaReadyForSeek && playWhenReady) {
+                        handleEndReached(newPlayer, generation)
+                    }
                     synchronized(speedLock) { speedApplyGate.onInactive() }
                     synchronized(seekLock) {
                         nativeIsPlaying = false
@@ -575,9 +563,7 @@ actual class BoloPlayerController actual constructor(
                     }
                     _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
                 }
-                MediaPlayer.Event.EndReached -> {
-                    handleEndReached(newPlayer, generation)
-                }
+                VlcStoppingEvent -> Unit // 等待 Stopped；停止开始不等于自然播放结束。
                 MediaPlayer.Event.EncounteredError -> {
                     if (restoringPlayback) recoveryFailed = true
                     synchronized(speedLock) { speedApplyGate.onInactive() }
@@ -673,6 +659,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     fun unbindVideo(layout: VLCVideoLayout) {
+        check(Looper.myLooper() == Looper.getMainLooper()) { "播放器视图与生命周期必须在主线程绑定" }
         if (videoLayout !== layout) {
             return
         }
@@ -695,6 +682,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     internal actual fun load(mpd: BoloDashMpd, startPositionMs: Long) {
+        if (dispatchToMain { load(mpd, startPositionMs) }) return
         if (disposed) {
             return
         }
@@ -729,6 +717,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     internal actual fun reportLoadError(error: BoloPlayerError) {
+        if (dispatchToMain { reportLoadError(error) }) return
         debugLog(DebugMpd, "MpdBuildFailed reason=commonBuilder error=${error.message}")
         onError(error)
     }
@@ -855,6 +844,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun play() {
+        if (dispatchToMain { play() }) return
         if (_state.value.isPlaybackSuspended || inBackground) return
         if (disposed) {
             return
@@ -868,6 +858,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun pause() {
+        if (dispatchToMain { pause() }) return
         resumeEligible = false
         if (disposed) {
             return
@@ -883,6 +874,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun seekToMs(positionMs: Long) {
+        if (dispatchToMain { seekToMs(positionMs) }) return
         if (disposed) return
         if (inBackground || (_state.value.isPlaybackSuspended && !restoringPlayback)) return
 
@@ -961,6 +953,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun setVolumeGain(gain: Int) {
+        if (dispatchToMain { setVolumeGain(gain) }) return
         volumeGain = gain.coerceIn(0, 200)
         if (disposed) {
             return
@@ -971,6 +964,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun setPlaybackSpeed(speed: Float) {
+        if (dispatchToMain { setPlaybackSpeed(speed) }) return
         if (!speed.isFinite() || speed <= 0f) return
         if (disposed) {
             return
@@ -1019,6 +1013,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun release() {
+        if (dispatchToMain { release() }) return
         lifecycleRevision += 1L
         backgroundReleaseJob?.cancel()
         recoveryJob?.cancel()
@@ -1076,6 +1071,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     actual fun dispose() {
+        if (dispatchToMain { dispose() }) return
         if (disposed) return
 
         release()
@@ -1207,19 +1203,19 @@ actual class BoloPlayerController actual constructor(
                 }
             }
             if (shouldCallNative) {
-                val nativeResult: Result<Long> = when {
+                val nativeResult: Result<Unit> = when {
                     injectNativeSubmissionFailure -> Result.failure(
                         IllegalStateException("调试注入：VLC 提交跳转失败")
                     )
-                    injectTimeout -> Result.success(0L)
+                    injectTimeout -> Result.success(Unit)
                     else -> runCatching {
                         val refreshFrame = synchronized(seekLock) { frameRefreshRevision == revision && !playWhenReady }
                         if (refreshFrame) {
                             frameRefreshDisplayedPictures = vlcStatsSnapshot(player)?.displayedPictures
                         }
-                        val result = player.setTime(submittedTargetMs, false)
-                        if (result >= 0L && refreshFrame) player.play()
-                        result
+                        // eap29 JNI 的 nativeSetTime 返回 void，不能使用 Java long 声明的返回值判断成功。
+                        player.setTime(submittedTargetMs, false)
+                        if (refreshFrame) player.play()
                     }
                 }
                 synchronized(seekLock) {
@@ -1228,21 +1224,8 @@ actual class BoloPlayerController actual constructor(
                         seekCoordinator.isCurrent(mediaGeneration, revision)
                     ) {
                         nativeResult.fold(
-                            onSuccess = { result ->
-                                if (result < 0L) {
-                                    seekCoordinator.cancelSeek(revision)
-                                    clearDebugSeekRevisionLocked(revision)
-                                    lastSavedPositionMs = _state.value.currentPositionMs
-                                    _state.value = _state.value.copy(
-                                        pendingSeekPositionMs = null,
-                                        isBuffering = if (!playWhenReady) {
-                                            false
-                                        } else {
-                                            _state.value.isBuffering
-                                        }
-                                    )
-                                    failure = BoloPlayerError.SeekError("VLC 拒绝了跳转请求")
-                                } else if (seekCoordinator.submittedAttempt == submittedAttempt) {
+                            onSuccess = {
+                                if (seekCoordinator.submittedAttempt == submittedAttempt) {
                                     if (!injectTimeout) {
                                         debugNativeSubmissionFailureRevision = null
                                     }
@@ -1618,6 +1601,7 @@ actual class BoloPlayerController actual constructor(
             synchronized(speedLock) { speedApplyGate.onInactive() }
         }
         if (seekFailed) {
+            if (restoringPlayback) recoveryFailed = true
             onError(BoloPlayerError.SeekError("媒体在跳转目标确认前结束播放"))
         }
     }
@@ -1646,6 +1630,7 @@ actual class BoloPlayerController actual constructor(
             }
         }
         if (shouldReport) {
+            if (restoringPlayback) recoveryFailed = true
             mediaPlayer?.let { pauseAfterStartupSeekIfNeeded(it, playerGeneration) }
             onError(BoloPlayerError.SeekError(message, cause))
         }
@@ -1711,9 +1696,14 @@ actual class BoloPlayerController actual constructor(
     private fun buildDashMpdUri(mpd: BoloDashMpd): Uri {
         val context = videoLayout?.context ?: throw IllegalStateException("视频组件尚未绑定，无法创建 MPD")
         val mpdDir = File(context.cacheDir, "bolo_dash_mpd").apply { mkdirs() }
-        val mpdFile = File(mpdDir, "bolo_${System.currentTimeMillis()}.mpd")
+        val mpdFile = File.createTempFile("bolo_", ".mpd", mpdDir)
+        try {
+            mpdFile.writeText(mpd.xml, Charsets.UTF_8)
+        } catch (error: Exception) {
+            mpdFile.delete()
+            throw error
+        }
         runCatching { lastMpdFile?.delete() }
-        mpdFile.writeText(mpd.xml, Charsets.UTF_8)
         lastMpdFile = mpdFile
         debugLog(
             DebugMpd,
@@ -1721,6 +1711,12 @@ actual class BoloPlayerController actual constructor(
                 "hasAudio=${mpd.hasAudio} durationMs=${mpd.durationMs}"
         )
         return Uri.fromFile(mpdFile)
+    }
+
+    private fun dispatchToMain(action: () -> Unit): Boolean {
+        if (Looper.myLooper() == Looper.getMainLooper()) return false
+        mainHandler.post { action() }
+        return true
     }
 
     private fun isCurrentPlayer(player: MediaPlayer, generation: Long): Boolean =
@@ -1732,50 +1728,26 @@ actual class BoloPlayerController actual constructor(
     }
 
     private fun readTrackSnapshot(player: MediaPlayer): TrackSnapshot {
-        val media = runCatching { player.media }.getOrNull() ?: return TrackSnapshot()
-        return try {
-            val trackCount = runCatching { media.trackCount }.getOrDefault(0)
-            var videoCodec = ""
-            var audioCodec = ""
-            var videoWidth = 0
-            var videoHeight = 0
-            var videoBitrate = 0L
-            var audioBitrate = 0L
-            for (index in 0 until trackCount) {
-                val track = runCatching { media.getTrack(index) }.getOrNull() ?: continue
-                when (track.type) {
-                    IMedia.Track.Type.Video -> {
-                        val videoTrack = track as IMedia.VideoTrack
-                        videoWidth = videoTrack.width
-                        videoHeight = videoTrack.height
-                        videoBitrate = videoTrack.bitrate.toLong().takeIf { it > 0L } ?: 0L
-                        videoCodec = videoTrack.codec?.uppercase() ?: ""
-                    }
-                    IMedia.Track.Type.Audio -> {
-                        val audioTrack = track as IMedia.AudioTrack
-                        audioBitrate = audioTrack.bitrate.toLong().takeIf { it > 0L } ?: 0L
-                        audioCodec = audioTrack.codec?.uppercase() ?: ""
-                    }
-                }
-            }
-            TrackSnapshot(
-                trackCount = trackCount,
-                videoCodec = videoCodec,
-                videoWidth = videoWidth,
-                videoHeight = videoHeight,
-                videoBitrate = videoBitrate,
-                audioCodec = audioCodec,
-                audioBitrate = audioBitrate
-            )
-        } finally {
-            runCatching { media.release() }
-        }
+        val videoTracks = runCatching { player.getTracks(IMedia.Track.Type.Video) }.getOrNull().orEmpty()
+        val audioTracks = runCatching { player.getTracks(IMedia.Track.Type.Audio) }.getOrNull().orEmpty()
+        val textTracks = runCatching { player.getTracks(IMedia.Track.Type.Text) }.getOrNull().orEmpty()
+        val video = (videoTracks.firstOrNull { it.selected } ?: videoTracks.firstOrNull()) as? IMedia.VideoTrack
+        val audio = (audioTracks.firstOrNull { it.selected } ?: audioTracks.firstOrNull()) as? IMedia.AudioTrack
+        return TrackSnapshot(
+            trackCount = videoTracks.size + audioTracks.size + textTracks.size,
+            videoCodec = video?.codec?.uppercase().orEmpty(),
+            videoWidth = video?.width ?: 0,
+            videoHeight = video?.height ?: 0,
+            videoBitrate = video?.bitrate?.toLong()?.coerceAtLeast(0L) ?: 0L,
+            audioCodec = audio?.codec?.uppercase().orEmpty(),
+            audioBitrate = audio?.bitrate?.toLong()?.coerceAtLeast(0L) ?: 0L
+        )
     }
 
     private fun readTransferSpeedBps(player: MediaPlayer): Long {
         val media = runCatching { player.media }.getOrNull() ?: return 0L
         return try {
-            val inputBitrate = runCatching { media.stats.inputBitrate }.getOrNull() ?: return 0L
+            val inputBitrate = runCatching { media.stats?.inputBitrate }.getOrNull() ?: return 0L
             inputBitrate.toLong().takeIf { it > 0L }?.times(8L) ?: 0L
         } finally {
             runCatching { media.release() }
@@ -1804,7 +1776,8 @@ actual class BoloPlayerController actual constructor(
                     )
                 }
                 player.setRate(requestedSpeed)
-                val nativeRate = player.getRate()
+                // VLC 4 的 setter 是异步请求；即时回读可能仍是旧速率。
+                val nativeRate = speedProbeSeq?.let { player.getRate() }
                 if (
                     disposed ||
                     mediaPlayer !== player ||
@@ -1812,8 +1785,7 @@ actual class BoloPlayerController actual constructor(
                 ) {
                     return
                 }
-                val storedSpeed = nativeRate.takeIf { it.isFinite() && it > 0f } ?: playbackSpeed
-                playbackSpeed = storedSpeed
+                val storedSpeed = requestedSpeed
                 _state.value = _state.value.copy(playbackSpeed = storedSpeed)
                 debugLog(
                     DebugSpeed,
@@ -1852,7 +1824,7 @@ actual class BoloPlayerController actual constructor(
         debugLog(
             DebugAudio,
             "$name afterSpeedSwitch seq=$activeSpeedChangeSeq wallElapsedMs=${speedProbeElapsedMs()} " +
-                "type=${event.esChangedType} id=${event.esChangedID} ${playerSnapshot(player)}"
+                "type=${event.esChangedType} ${playerSnapshot(player)}"
         )
     }
 
@@ -1872,10 +1844,7 @@ actual class BoloPlayerController actual constructor(
                 displayedPictures = stats.displayedPictures,
                 lostPictures = stats.lostPictures,
                 playedAbuffers = stats.playedAbuffers,
-                lostAbuffers = stats.lostAbuffers,
-                sentPackets = stats.sentPackets,
-                sentBytes = stats.sentBytes,
-                sendBitrate = stats.sendBitrate
+                lostAbuffers = stats.lostAbuffers
             )
         } finally {
             runCatching { media.release() }
@@ -1909,11 +1878,11 @@ actual class BoloPlayerController actual constructor(
         val nativeRate = runCatching { player.getRate() }.getOrNull()
         val nativeState = runCatching { player.playerState }.getOrNull()
         val volume = runCatching { player.getVolume() }.getOrNull()
-        val audioTrack = runCatching { player.getAudioTrack() }.getOrNull()
-        val audioTrackCount = runCatching { player.getAudioTracksCount() }.getOrNull()
+        val audioTrack = runCatching { player.getSelectedTrack(IMedia.Track.Type.Audio)?.id }.getOrNull()
+        val audioTrackCount = runCatching { player.getTracks(IMedia.Track.Type.Audio)?.size }.getOrNull()
         val audioDelayUs = runCatching { player.getAudioDelay() }.getOrNull()
-        val videoTrack = runCatching { player.getVideoTrack() }.getOrNull()
-        val videoTrackCount = runCatching { player.getVideoTracksCount() }.getOrNull()
+        val videoTrack = runCatching { player.getSelectedTrack(IMedia.Track.Type.Video)?.id }.getOrNull()
+        val videoTrackCount = runCatching { player.getTracks(IMedia.Track.Type.Video)?.size }.getOrNull()
         val state = _state.value
         return "nativeState=$nativeState nativeTimeMs=$nativeTime nativeLengthMs=$nativeLength nativePosition=$nativePosition " +
             "nativeRate=$nativeRate volume=$volume audioTrack=$audioTrack/$audioTrackCount audioDelayUs=$audioDelayUs " +

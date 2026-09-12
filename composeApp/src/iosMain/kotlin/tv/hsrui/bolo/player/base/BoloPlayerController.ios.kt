@@ -48,6 +48,7 @@ import platform.Foundation.NSNumber
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
+import platform.Foundation.NSUUID
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidReceiveMemoryWarningNotification
@@ -65,7 +66,6 @@ import platform.posix.clock_gettime_nsec_np
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
-import platform.posix.time
 
 @OptIn(ExperimentalForeignApi::class)
 actual class BoloPlayerController actual constructor(
@@ -410,11 +410,10 @@ actual class BoloPlayerController actual constructor(
                             val seekAccepted = isRestorePositionAccepted(
                                 positionMs = playback.currentPositionMs,
                                 targetMs = backgroundPositionMs,
-                                observingSeek = !recreate &&
-                                    withSeekLock { seekCoordinator.pendingPositionMs != null }
+                                allowForwardDrift = !recreate
                             )
                             val reachable = _state.value.isSeekable || (seekabilityKnown && !_state.value.isSeekable)
-                            if (!playback.isBuffering && reachable && seekAccepted) break
+                            if (!playback.isSeeking && !playback.isBuffering && reachable && seekAccepted) break
                             delay(RestorePollIntervalMs)
                         }
                         !recoveryFailed
@@ -452,12 +451,11 @@ actual class BoloPlayerController actual constructor(
     /**
      * 恢复位置是否已被 native 接受。
      *
-     * 有 pending seek 时只认 seek 确认：跳转目标可能远离当前帧，`displayPositionMs` 会被
-     * pending 目标污染，不能当成位置已回位。等待 seek 确认期间允许位置越过目标
-     * [MaxRestoreDriftMs]，但暂停态 seek 不前进，越界只可能来自错误回读。
+     * 调用方必须先等待 pending seek 确认，不能用待跳转目标冒充已回位的位置。
+     * 复用播放器时允许确认后播放位置向前漂移 [MaxRestoreDriftMs]。
      */
-    private fun isRestorePositionAccepted(positionMs: Long, targetMs: Long, observingSeek: Boolean): Boolean {
-        if (observingSeek) {
+    private fun isRestorePositionAccepted(positionMs: Long, targetMs: Long, allowForwardDrift: Boolean): Boolean {
+        if (allowForwardDrift) {
             val driftMs = positionMs - targetMs
             return driftMs >= -BoloPlayerSeekCoordinator.ConfirmationToleranceMs &&
                 driftMs <= MaxRestoreDriftMs
@@ -890,8 +888,8 @@ actual class BoloPlayerController actual constructor(
         val canConfirmSeekability = state == VLCMediaPlayerState.VLCMediaPlayerStatePlaying ||
             state == VLCMediaPlayerState.VLCMediaPlayerStatePaused
         // 恢复路径可能停在 Paused：必须先读到 native seekable，否则 pending seek 永远不提交。
-        refreshSeekability(mediaPlayer, mediaGeneration, canConfirmSeekability)
-        if (holdFrame) {
+        refreshSeekability(mediaPlayer, mediaGeneration, canConfirmSeekability, submitPending = false)
+        if (holdFrame && _state.value.isSeeking) {
             // 提交 native 跳转前先压住当前画面：vout 重建期间渲染层为空。
             holdLastFrameForSeek()
         }
@@ -990,8 +988,7 @@ actual class BoloPlayerController actual constructor(
             attributes = null,
             error = null
         )
-        lastMpdFilePath?.let { NSFileManager.defaultManager.removeItemAtPath(it, null) }
-        val path = "$dir/bolo_${time(null)}.mpd"
+        val path = "$dir/bolo_${NSUUID().UUIDString}.mpd"
         val bytes = mpd.xml.encodeToByteArray()
         val file = fopen(path, "wb") ?: return null
         val written = bytes.usePinned { pinned ->
@@ -1002,6 +999,7 @@ actual class BoloPlayerController actual constructor(
             NSFileManager.defaultManager.removeItemAtPath(path, null)
             return null
         }
+        lastMpdFilePath?.let { NSFileManager.defaultManager.removeItemAtPath(it, null) }
         lastMpdFilePath = path
         return NSURL.fileURLWithPath(path)
     }
@@ -1029,7 +1027,7 @@ actual class BoloPlayerController actual constructor(
                 }
             }
         }
-        val delegate = BufferingDelegate()
+        val delegate = BufferingDelegate(player, generation)
         playerDelegates += delegate
         player.delegate = delegate
     }
@@ -1046,11 +1044,16 @@ actual class BoloPlayerController actual constructor(
         }
     }
 
-    private inner class BufferingDelegate : NSObject(), VLCMediaPlayerDelegateProtocol {
+    private inner class BufferingDelegate(
+        private val player: VLCMediaPlayer,
+        private val generation: Long
+    ) : NSObject(), VLCMediaPlayerDelegateProtocol {
         override fun mediaPlayerBufferingChanged(progress: Float) {
-            // delegate 回调来自 libvlc 事件队列，状态发布统一回到主队列。
-            NSOperationQueue.mainQueue.addOperationWithBlock {
-                handleBufferingChanged(mediaPlayer, progress)
+            // 与通知共用回调隔离，并丢弃媒体切换前排队的缓冲进度。
+            deferOffCallback {
+                if (isCurrentPlayerGeneration(player, generation)) {
+                    handleBufferingChanged(player, progress)
+                }
             }
         }
     }
@@ -1063,6 +1066,7 @@ actual class BoloPlayerController actual constructor(
     }
 
     private fun removePlayerObservers() {
+        mediaPlayer.delegate = null
         playerObservers.forEach { NSNotificationCenter.defaultCenter.removeObserver(it) }
         playerObservers.clear()
         playerDelegates.clear()
@@ -1114,7 +1118,8 @@ actual class BoloPlayerController actual constructor(
     private fun refreshSeekability(
         player: VLCMediaPlayer,
         generation: Long,
-        confirmUnavailable: Boolean
+        confirmUnavailable: Boolean,
+        submitPending: Boolean = true
     ) {
         if (!isCurrentPlayerGeneration(player, generation)) return
 
@@ -1136,7 +1141,7 @@ actual class BoloPlayerController actual constructor(
         val revision = failedRevision
         if (revision != null) {
             failSeek(revision, "当前媒体不支持跳转")
-        } else if (nativeSeekable) {
+        } else if (nativeSeekable && submitPending) {
             submitPendingSeekIfReady(player, generation)
         }
     }
@@ -1335,6 +1340,7 @@ actual class BoloPlayerController actual constructor(
     ): Boolean {
         if (!isInForeground || !isCurrentPlayerGeneration(player, generation) || positionMs < 0L || _state.value.isEnded) return false
 
+        val nativeIsPlaying = player.state == VLCMediaPlayerState.VLCMediaPlayerStatePlaying
         var hadPending = false
         var accepted = false
         var timeoutJob: Job? = null
@@ -1357,7 +1363,7 @@ actual class BoloPlayerController actual constructor(
             val forceTimeout = pendingRevision != null && debugTimeoutRevision == pendingRevision
             accepted = !forceTimeout && seekCoordinator.acceptObservedPosition(
                     positionMs = positionMs,
-                    isPlaying = player.state == VLCMediaPlayerState.VLCMediaPlayerStatePlaying,
+                    isPlaying = nativeIsPlaying,
                     playbackRate = _state.value.playbackSpeed
                 )
             if (hadPending && accepted) {
@@ -1382,7 +1388,6 @@ actual class BoloPlayerController actual constructor(
             positionMs >= (durationMs - BoloPlayerSeekCoordinator.ConfirmationToleranceMs)
                 .coerceAtLeast(0L)
         val confirmedPositionMs = if (completedAtEnd) durationMs else positionMs
-        val nativeIsPlaying = player.state == VLCMediaPlayerState.VLCMediaPlayerStatePlaying
         _state.value = _state.value.copy(
             isPlaying = if (completedAtEnd) false else _state.value.isPlaying,
             isBuffering = if (completedAtEnd || !nativeIsPlaying || !playWhenReady) {
@@ -1426,6 +1431,7 @@ actual class BoloPlayerController actual constructor(
             }
         }
         if (!didCancel) return
+        if (restoringPlayback) recoveryFailed = true
 
         timeoutJob?.cancel()
         readbackJob?.cancel()
