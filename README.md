@@ -9,7 +9,6 @@
 
 ### :warning:: 本项目目的不是实现官方客户端的所有功能,而是更专注于视频
 
-> 启动这个项目的原因就是我不喜欢官方客户端越来越多的在主页与视频下方推荐广告、会员购、专栏、直播、PGC内容
 
 ### 不包含以下特性：
 
@@ -30,10 +29,9 @@
 - [jordond/MaterialKolor](https://github.com/jordond/MaterialKolor): 用于创建动态Material3色彩
 - [KevinnZou/compose-webview-multiplatform](https://github.com/KevinnZou/compose-webview-multiplatform): 用于加载ios与安卓的网页登录页面 
 - [ioannisa/KSafe](https://github.com/ioannisa/KSafe): 加密存储登录Cookie等敏感信息
-- [vlcKit](https://code.videolan.org/videolan/VLCKit) / [libVlc](https://code.videolan.org/videolan/vlc) / [vlcj](https://github.com/caprica/vlcj): 底层播放器平台实现
+- [FFmpeg](https://ffmpeg.org/) / [libmpv](https://github.com/mpv-player/mpv): 底层播放器平台实现
 
 ### 开源协议
-- 本项目代码使用 [GPL-3.0 license](LICENSE) 开源
-- 由于动态链接了 [vlcKit](https://code.videolan.org/videolan/VLCKit), iOS构建产物受 [LGPL-2.1](LICENSE-LGPL-2.1) 约束
-- 由于动态链接了 [libVlc](https://code.videolan.org/videolan/vlc), 安卓构建产物受 [LGPL-2.1](LICENSE-LGPL-2.1) 约束
-- 由于使用了 [vlcj](https://github.com/caprica/vlcj), 桌面端(jvm)构建产物受 [GPL-3.0](LICENSE-GPL-3.0) 约束
+- 本项目自有代码使用 [GPL-3.0 license](LICENSE) 开源
+- iOS、macOS、Windows 播放器组件遵循 [LGPL-2.1-or-later](LICENSE-LGPL-2.1)
+- Android、Linux 播放器组件遵循 [LGPL-3.0-or-later](LICENSE-LGPL-3.0)
