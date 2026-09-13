@@ -1,20 +1,16 @@
 package tv.hsrui.bolo.player.base
 
-import com.jogamp.opengl.GL
-import com.jogamp.opengl.GLAutoDrawable
-import com.jogamp.opengl.GLCapabilities
-import com.jogamp.opengl.GLEventListener
-import com.jogamp.opengl.GLProfile
-import com.jogamp.opengl.awt.GLJPanel
-import com.jogamp.opengl.util.FPSAnimator
+import androidx.compose.ui.awt.ComposeWindow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.swing.Swing
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.awt.BorderLayout
-import javax.swing.JPanel
+import kotlinx.coroutines.withTimeout
+import tv.hsrui.bolo.player.DesktopPlayerFullscreenWindow
 
 internal actual class BoloMpvBackend actual constructor() {
     private val handle = BoloMpvNative.create("desktop").also { check(it != 0L) { "libmpv 初始化失败" } }
@@ -26,64 +22,58 @@ internal actual class BoloMpvBackend actual constructor() {
     }
     private val outputMutex = Mutex()
     private val outputReady = CompletableDeferred<Unit>()
-    private var host: JPanel? = null
-    private var panel: GLJPanel? = null
-    private var animator: FPSAnimator? = null
+    private var output: BoloDesktopVideoOutput? = null
+    private var renderer: BoloDesktopMpvRenderer? = null
     @Volatile private var closed = false
     private var destroyed = false
-    private var initialized = false
-    private var resized = true
 
     actual suspend fun bind(output: Any) = outputMutex.withLock {
-        withContext(Dispatchers.Swing) {
-            if (closed || host === output) return@withContext
-            detach()
-            if (closed) return@withContext
-            try {
-                host = output as JPanel
-                val view = GLJPanel(GLCapabilities(GLProfile.get(GLProfile.GL3)))
-                panel = view
-                view.addGLEventListener(object : GLEventListener {
-                    override fun init(drawable: GLAutoDrawable) {
-                        val result = BoloMpvNative.renderCreate(handle)
-                        initialized = result >= 0
-                        if (initialized) outputReady.complete(Unit)
-                        else outputReady.completeExceptionally(IllegalStateException("OpenGL 播放器初始化失败（$result）"))
-                    }
-                    override fun display(drawable: GLAutoDrawable) {
-                        if (!initialized || closed) return
-                        val dirty = BoloMpvNative.renderDirty(handle)
-                        if (!dirty && !resized) return
-                        resized = false
-                        val fbo = IntArray(1)
-                        drawable.gl.glGetIntegerv(GL.GL_FRAMEBUFFER_BINDING, fbo, 0)
-                        BoloMpvNative.render(handle, fbo[0], drawable.surfaceWidth, drawable.surfaceHeight, true)
-                    }
-                    override fun reshape(drawable: GLAutoDrawable, x: Int, y: Int, width: Int, height: Int) { resized = true }
-                    override fun dispose(drawable: GLAutoDrawable) {
-                        if (initialized) BoloMpvNative.renderFree(handle)
-                        initialized = false
-                    }
-                })
-                host?.add(view, BorderLayout.CENTER)
-                host?.revalidate()
-                animator = FPSAnimator(view, 60, true).also { it.start() }
-            } catch (error: Exception) { outputReady.completeExceptionally(error) }
+        if (closed || this.output === output) return@withLock
+        check(this.output == null) { "视频输出已绑定" }
+        val host = output as BoloDesktopVideoOutput
+        this.output = host
+        try {
+            var direct = withContext(Dispatchers.Swing) {
+                host.supportsDirect(DesktopPlayerFullscreenWindow.window as? ComposeWindow)
+            }
+            while (!closed) {
+                val next = BoloDesktopMpvRenderer(handle, host, direct) { cause ->
+                    if (!closed) host.failed(this@BoloMpvBackend, cause)
+                }
+                renderer = next
+                try {
+                    next.start()
+                    withTimeout(if (direct) 3_000L else 4_000L) { next.ready.await() }
+                    outputReady.complete(Unit)
+                    break
+                } catch (error: Throwable) {
+                    next.close()
+                    renderer = null
+                    if (error is CancellationException && error !is TimeoutCancellationException) throw error
+                    if (!direct || closed) throw error
+                    withContext(Dispatchers.Swing) { host.disableDirect() }
+                    println("Bolo mpv GPU 输出初始化失败，改用离屏输出：${error.message}")
+                    direct = false
+                }
+            }
+        } catch (error: TimeoutCancellationException) {
+            withContext(Dispatchers.Swing) { host.showError(error) }
+            outputReady.completeExceptionally(error)
+        } catch (error: CancellationException) {
+            outputReady.completeExceptionally(error)
+            throw error
+        } catch (error: Throwable) {
+            withContext(Dispatchers.Swing) { host.showError(error) }
+            outputReady.completeExceptionally(error)
         }
     }
 
-    actual suspend fun unbind() { closed = true; outputMutex.withLock { detach() } }
-
-    private suspend fun detach() {
-        // 不在 EDT 等待 Animator：其 AWT 任务也可能等待 EDT。
-        withContext(Dispatchers.Default) { animator?.stop() }
-        animator = null
-        withContext(Dispatchers.Swing) {
-            panel?.destroy()
-            panel?.let { host?.remove(it) }
-            host?.revalidate()
-            panel = null
-            host = null
+    actual suspend fun unbind() {
+        closed = true
+        outputMutex.withLock {
+            renderer?.close()
+            renderer = null
+            output = null
         }
     }
     actual suspend fun awaitOutput() { outputReady.await() }

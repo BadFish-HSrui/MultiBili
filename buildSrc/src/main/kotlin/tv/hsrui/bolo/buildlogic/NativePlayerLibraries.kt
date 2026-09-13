@@ -39,12 +39,12 @@ internal class NativePlayerLibraries(
         }
         if (name == "mpv") {
             run("patch", "-p1", "-i", owner.root.resolve("patches/mpv-playback-info.patch"), cwd = source)
-            val patch = when (chain.system) {
-                "ios", "iossim" -> "ios-audio-session.patch"
-                "macos" -> "macos-no-swift-clipboard.patch"
-                else -> null
+            val patches = when (chain.system) {
+                "ios", "iossim" -> listOf("ios-audio-session.patch")
+                "macos" -> listOf("macos-no-swift-clipboard.patch", "macos-coreaudio-channel-layout.patch")
+                else -> emptyList()
             }
-            if (patch != null) run("patch", "-p1", "-i", owner.root.resolve("patches/$patch"), cwd = source)
+            for (patch in patches) run("patch", "-p1", "-i", owner.root.resolve("patches/$patch"), cwd = source)
         }
         val directory = work.resolve(name)
         run(listOf("meson", "setup", directory, source, "--prefix=${nativePath(prefix)}", "--libdir=lib",
