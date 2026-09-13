@@ -3,10 +3,49 @@
 ## 安装依赖
 
 ### JDK
-安装JDK17以上版本 [Oracle JDK](https://www.oracle.com/cn/java/technologies/downloads/)
+安装 JDK 21 [Oracle JDK](https://www.oracle.com/cn/java/technologies/downloads/)
+
+### 原生播放器构建工具
+
+- Git、curl、Bash、GNU Make、patch
+- Python 3.10+、Jinja2、MarkupSafe
+- Meson 1.8.3+、Ninja 1.11.1+、pkg-config 0.29+（或 pkgconf）
+- CMake 3.31+（Android/Linux）
+- NASM 2.16+（x86/x86_64）
+- C/C++ 工具链：Xcode、Android NDK、Linux GCC/Clang 或 MSYS2 UCRT64 GCC
+
+**macOS**
+```bash
+xcode-select --install
+brew install meson ninja cmake pkgconf nasm jinja2-cli
+```
+
+**Ubuntu / Debian**
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential git curl bash patch pkg-config nasm \
+  python3 python3-jinja2 python3-markupsafe meson ninja-build cmake rpm \
+  libpulse-dev libasound2-dev libva-dev libgl-dev
+```
+
+**Windows（MSYS2 UCRT64）**
+```bash
+pacman -S --needed make patch diffutils git curl \
+  mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-nasm \
+  mingw-w64-ucrt-x86_64-meson mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-cmake \
+  mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-python-jinja mingw-w64-ucrt-x86_64-python-markupsafe
+```
+
+PowerShell/IDE 构建时，将 `C:\msys64\ucrt64\bin`、`C:\msys64\usr\bin` 依次加入 PATH。
 
 ### Android SDK (可选)
 编译安卓目标时需要
+
+安装 NDK `28.2.13676358`：
+
+```bash
+sdkmanager "ndk;28.2.13676358"
+```
 
 推荐直接下载 [Android Studio](https://developer.android.com/studio) 进行配置
 
@@ -38,6 +77,11 @@ sudo gem install cocoapods
 ```
 
 ## 编译目标
+
+初始化源码：
+```bash
+git submodule update --init --recursive
+```
 
 ### iOS
 > **仅限macOS,需安装[Xcode](#xcode-可选)和[CocoaPods](#cocoapods-可选)**
