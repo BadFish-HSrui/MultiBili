@@ -1,12 +1,16 @@
 package tv.hsrui.bolo.player.controls
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
@@ -69,6 +73,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
@@ -140,7 +145,7 @@ fun BoloPlayerControls(
     var sliderPreviewFraction by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen) {
         mutableStateOf<Float?>(null)
     }
-    var controlsVisible by remember { mutableStateOf(true) }
+    var controlsVisible by remember { mutableStateOf(false) }
     var settingsOpen by remember(isFullscreen) { mutableStateOf(false) }
     var infoOpen by remember(viewModel, isFullscreen) { mutableStateOf(false) }
     DisposableEffect(viewModel, infoOpen) {
@@ -383,15 +388,19 @@ fun BoloPlayerControls(
         }
         AnimatedVisibility(
             visible = controlsVisible,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.fillMaxSize()
+            enter = EnterTransition.None,
+            exit = ExitTransition.None,
+            modifier = Modifier.fillMaxSize().clipToBounds()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
 
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
+                        .animateEnterExit(
+                            enter = slideInVertically(tween(200)) { -it },
+                            exit = slideOutVertically(tween(200)) { -it },
+                        )
                         .fillMaxWidth()
                         .height(72.dp)
                         .background(
@@ -407,6 +416,10 @@ fun BoloPlayerControls(
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .animateEnterExit(
+                            enter = slideInVertically(tween(200)) { it },
+                            exit = slideOutVertically(tween(200)) { it },
+                        )
                         .fillMaxWidth()
                         .height(112.dp)
                         .background(
@@ -423,6 +436,10 @@ fun BoloPlayerControls(
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopStart)
+                        .animateEnterExit(
+                            enter = slideInVertically(tween(200)) { -it },
+                            exit = slideOutVertically(tween(200)) { -it },
+                        )
                         .fillMaxWidth()
                         .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
                         .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -495,6 +512,10 @@ fun BoloPlayerControls(
                 Column(
                     Modifier
                         .align(Alignment.BottomCenter)
+                        .animateEnterExit(
+                            enter = slideInVertically(tween(200)) { it },
+                            exit = slideOutVertically(tween(200)) { it },
+                        )
                         .fillMaxWidth()
                         .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
                         .padding(horizontal = 16.dp, vertical = 16.dp)
