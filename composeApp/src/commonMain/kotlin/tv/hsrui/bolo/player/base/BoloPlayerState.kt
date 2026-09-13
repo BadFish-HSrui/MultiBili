@@ -6,6 +6,8 @@ package tv.hsrui.bolo.player.base
 data class BoloPlayerState(
     /** 后台暂停或恢复准备中，禁止普通播放请求启动媒体。 */
     val isPlaybackSuspended: Boolean = false,
+    /** 手动重建实例并恢复当前媒体期间。 */
+    val isRebuilding: Boolean = false,
     /** 是否正在播放 */
     val isPlaying: Boolean = false,
     /** 是否正在缓冲 */

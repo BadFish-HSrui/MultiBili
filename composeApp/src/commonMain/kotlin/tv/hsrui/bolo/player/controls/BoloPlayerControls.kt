@@ -696,6 +696,14 @@ fun BoloPlayerControls(
                 onResumeAfterBackgroundEnabledChange = { settings.playerResumeAfterBackgroundEnabled = it },
                 autoPlayAfterSeekEnabled = settings.playerAutoPlayAfterSeekEnabled,
                 onAutoPlayAfterSeekEnabledChange = { settings.playerAutoPlayAfterSeekEnabled = it },
+                mergeAudioChannelsEnabled = settings.playerMergeAudioChannelsEnabled,
+                onMergeAudioChannelsEnabledChange = { settings.playerMergeAudioChannelsEnabled = it },
+                rebuildEnabled = !playState.isRebuilding && !playState.isPlaybackSuspended,
+                onRebuild = {
+                    viewModel.controller.rebuild()
+                    settingsOpen = false
+                    controlsVisible = true
+                },
                 autoReplayEnabled = settings.playerAutoReplayEnabled,
                 onAutoReplayEnabledChange = { settings.playerAutoReplayEnabled = it },
                 isOpen = settingsOpen,

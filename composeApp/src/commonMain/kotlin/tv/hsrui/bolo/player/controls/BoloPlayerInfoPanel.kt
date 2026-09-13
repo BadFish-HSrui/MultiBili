@@ -65,7 +65,16 @@ internal fun BoloPlayerInfoPanel(
                 BoloPlayerInfoRow("标称码率", formatPlayerBitrate(audio?.nominalBitrateBps))
                 BoloPlayerInfoRow("播放码率", formatPlayerBitrate(audio?.playbackBitrateBps))
                 BoloPlayerInfoRow("采样率", audio?.sampleRateHz?.let { "$it Hz" })
-                BoloPlayerInfoRow("声道布局", playerInfoChannelLayout(audio?.channelLayout))
+                val originalLayout = audio?.channelLayout
+                val outputLayout = audio?.outputChannelLayout
+                val layout = if (originalLayout != null && outputLayout != null && originalLayout != outputLayout) {
+                    "${playerInfoChannelLayout(originalLayout)} >>> ${playerInfoChannelLayout(outputLayout)}"
+                } else {
+                    playerInfoChannelLayout(originalLayout)
+                }
+                val merged = audio?.channelsMerged == true && outputLayout != null &&
+                    (audio.outputChannelCount ?: 0) > 1
+                BoloPlayerInfoRow("声道布局", if (merged && layout != null) "$layout（已合并）" else layout)
                 BoloPlayerInfoRow("播放分片", playerInfoFragment(audio?.fragmentIndex, audio?.fragmentCount))
                 BoloPlayerInfoRow("音频解码器", playerInfoDecoder(audio?.decoder, audio?.decoderDescription))
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Color.White.copy(alpha = 0.2f))

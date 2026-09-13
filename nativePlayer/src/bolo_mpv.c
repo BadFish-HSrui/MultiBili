@@ -17,6 +17,7 @@ struct bolo_mpv {
     double seek_target;
     int report_eof;
     int loaded, needs_audio;
+    int merge_audio_channels;
 };
 
 static const char *properties[] = {
@@ -44,6 +45,7 @@ bolo_mpv *bolo_mpv_create(const char *platform) {
         {"sub-auto", "no"}, {"audio-file-auto", "no"},
         {"idle", "yes"}, {"keep-open", "yes"}, {"pause", "yes"},
         {"audio-pitch-correction", "yes"}, {"volume-max", "200"},
+        {"ad-lavc-downmix", "no"},
         {"audio-fallback-to-null", "no"}, {"stop-playback-on-init-failure", "yes"},
         {"gapless-audio", "no"}, {"tls-verify", "yes"},
     };
@@ -131,6 +133,23 @@ int bolo_mpv_speed(bolo_mpv *p, double speed) {
 }
 int bolo_mpv_volume(bolo_mpv *p, double volume) {
     return mpv_set_property(p->player, "volume", MPV_FORMAT_DOUBLE, &volume);
+}
+static int apply_audio_merge(bolo_mpv *p, int enabled) {
+    int r = mpv_set_property_string(p->player, "audio-normalize-downmix", enabled ? "yes" : "no");
+    if (r < 0) return r;
+    r = mpv_set_property_string(p->player, "audio-channels", enabled ? "mono" : "auto-safe");
+    if (r < 0) return r;
+    const char *args[] = {"af", enabled ? "add" : "remove",
+                         enabled ? "@bolo-mono:format=channels=mono" : "@bolo-mono", NULL};
+    return mpv_command(p->player, args);
+}
+int bolo_mpv_merge_audio_channels(bolo_mpv *p, int enabled) {
+    enabled = !!enabled;
+    if (p->merge_audio_channels == enabled) return 0;
+    int r = apply_audio_merge(p, enabled);
+    if (r >= 0) p->merge_audio_channels = enabled;
+    else apply_audio_merge(p, p->merge_audio_channels);
+    return r;
 }
 char *bolo_mpv_info(bolo_mpv *p) {
     if (p->expected_entry < 0) return NULL;

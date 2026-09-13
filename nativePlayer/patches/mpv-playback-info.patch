@@ -31,7 +31,7 @@
  #include "misc/thread_pool.h"
  #include "misc/thread_tools.h"
  
-@@ -3623,6 +3625,149 @@
+@@ -3623,6 +3625,154 @@
      return m_property_int64_ro(action, arg, llrint(rate));
  }
  
@@ -158,6 +158,11 @@
 +        } else {
 +            bolo_info_property(mpctx, item, "sampleRateHz", "audio-params/samplerate");
 +            bolo_info_property(mpctx, item, "channelLayout", "audio-params/channels");
++            bolo_info_property(mpctx, item, "outputChannelLayout", "audio-out-params/channels");
++            bolo_info_property(mpctx, item, "outputChannelCount", "audio-out-params/channel-count");
++            if (mpctx->ao && mpctx->ao_chain && !mpctx->ao_chain->filter->ao_needs_update)
++                node_map_add_flag(item, "channelsMerged",
++                    mp_output_chain_bolo_mono_active(mpctx->ao_chain->filter));
 +            bolo_info_property(mpctx, item, "sampleFormat", "audio-params/format");
 +        }
 +    }
@@ -181,7 +186,7 @@
  static int mp_property_cwd(void *ctx, struct m_property *prop,
                             int action, void *arg)
  {
-@@ -4395,6 +4540,7 @@
+@@ -4395,6 +4545,7 @@
      {"eof-reached", mp_property_eof_reached},
      {"seeking", mp_property_seeking},
      {"playback-abort", mp_property_playback_abort},
@@ -189,3 +194,60 @@
      {"cache-speed", mp_property_cache_speed},
      {"demuxer-cache-duration", mp_property_demuxer_cache_duration},
      {"demuxer-cache-time", mp_property_demuxer_cache_time},
+--- a/filters/f_output_chain.h
++++ b/filters/f_output_chain.h
+@@ -61,6 +61,9 @@
+ struct ao;
+ void mp_output_chain_set_ao(struct mp_output_chain *p, struct ao *ao);
+ 
++// True only after Bolo's merge filter has produced a mono audio frame.
++bool mp_output_chain_bolo_mono_active(struct mp_output_chain *p);
++
+ // Send a command to the filter with the target label.
+ bool mp_output_chain_command(struct mp_output_chain *p, const char *target,
+                              struct mp_filter_command *cmd);
+--- a/filters/f_output_chain.c
++++ b/filters/f_output_chain.c
+@@ -66,6 +66,7 @@
+     struct mp_aframe *last_in_aformat;
+ 
+     bool last_is_active;
++    bool bolo_mono_output;
+ 
+     int64_t last_in_pts, last_out_pts;
+ 
+@@ -197,6 +198,13 @@
+     if (mp_pin_can_transfer_data(f->ppins[1], u->f->pins[1])) {
+         struct mp_frame frame = mp_pin_out_read(u->f->pins[1]);
+ 
++        if (frame.type == MP_FRAME_AUDIO && u->label && !strcmp(u->label, "bolo-mono")) {
++            struct mp_chmap channels;
++            mp_aframe_get_chmap(frame.data, &channels);
++            struct mp_chmap mono = MP_CHMAP_INIT_MONO;
++            u->bolo_mono_output = mp_chmap_equals(&channels, &mono);
++        }
++
+         double pts = mp_frame_get_pts(frame);
+         if (pts != MP_NOPTS_VALUE)
+             u->last_out_pts = pts;
+@@ -217,6 +225,7 @@
+     struct mp_user_filter *u = f->priv;
+ 
+     u->error_eof_sent = false;
++    u->bolo_mono_output = false;
+     u->last_in_pts = u->last_out_pts = MP_NOPTS_VALUE;
+ }
+ 
+@@ -440,6 +449,12 @@
+             return u;
+     }
+     return NULL;
++}
++
++bool mp_output_chain_bolo_mono_active(struct mp_output_chain *c)
++{
++    struct mp_user_filter *u = find_by_label(c->f->priv, "bolo-mono");
++    return u && !u->failed && !mp_filter_has_failed(u->f) && u->bolo_mono_output;
+ }
+ 
+ bool mp_output_chain_command(struct mp_output_chain *c, const char *target,

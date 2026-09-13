@@ -48,6 +48,20 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentPlayerAutoReplayEnabled = value
         }
 
+    private var storedPlayerMergeAudioChannelsEnabled by settingsKSafe(
+        false,
+        key = "player_merge_audio_channels_enabled",
+    )
+    private var currentPlayerMergeAudioChannelsEnabled by mutableStateOf(storedPlayerMergeAudioChannelsEnabled)
+
+    var playerMergeAudioChannelsEnabled: Boolean
+        get() = currentPlayerMergeAudioChannelsEnabled
+        set(value) {
+            if (value == currentPlayerMergeAudioChannelsEnabled) return
+            storedPlayerMergeAudioChannelsEnabled = value
+            currentPlayerMergeAudioChannelsEnabled = value
+        }
+
     private var storedPlayerSeekGestureEnabled by settingsKSafe(
         true,
         key = "player_seek_gesture_enabled",

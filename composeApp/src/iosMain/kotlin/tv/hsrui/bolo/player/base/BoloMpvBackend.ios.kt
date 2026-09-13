@@ -58,6 +58,7 @@ internal actual class BoloMpvBackend actual constructor() {
     actual fun pause(paused: Boolean) = if (destroyed) -3 else bolo_mpv_pause(handle, if (paused) 1 else 0)
     actual fun speed(speed: Double) = if (destroyed) -3 else bolo_mpv_speed(handle, speed)
     actual fun volume(volume: Double) = if (destroyed) -3 else bolo_mpv_volume(handle, volume)
+    actual fun mergeAudioChannels(enabled: Boolean) = if (destroyed) -3 else bolo_mpv_merge_audio_channels(handle, if (enabled) 1 else 0)
     actual fun seek(seconds: Double, request: Long) = if (destroyed) -3 else bolo_mpv_seek(handle, seconds, request)
     actual fun poll(): BoloMpvEvent? = if (destroyed) null else memScoped {
         val event = alloc<bolo_mpv_event>()

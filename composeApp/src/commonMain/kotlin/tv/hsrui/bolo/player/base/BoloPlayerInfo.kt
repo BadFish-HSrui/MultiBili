@@ -3,6 +3,7 @@ package tv.hsrui.bolo.player.base
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
@@ -38,6 +39,9 @@ data class BoloPlayerAudioInfo(
     val playbackBitrateBps: Long? = null,
     val sampleRateHz: Int? = null,
     val channelLayout: String? = null,
+    val outputChannelLayout: String? = null,
+    val outputChannelCount: Int? = null,
+    val channelsMerged: Boolean? = null,
     val sampleFormat: String? = null,
     val decoder: String? = null,
     val decoderDescription: String? = null,
@@ -82,6 +86,9 @@ internal data class BoloMpvInfoSnapshot(
                             playbackBitrateBps = it.number("playbackBitrateBps"),
                             sampleRateHz = it.positiveInt("sampleRateHz"),
                             channelLayout = it.string("channelLayout"),
+                            outputChannelLayout = it.string("outputChannelLayout"),
+                            outputChannelCount = it.positiveInt("outputChannelCount"),
+                            channelsMerged = (it["channelsMerged"] as? JsonPrimitive)?.booleanOrNull,
                             sampleFormat = it.string("sampleFormat"),
                             decoder = it.string("decoder"),
                             decoderDescription = it.string("decoderDescription"),

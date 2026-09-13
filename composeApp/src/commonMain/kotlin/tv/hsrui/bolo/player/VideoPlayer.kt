@@ -31,6 +31,9 @@ fun VideoPlayer(
     LaunchedEffect(viewModel, settings.playerResumeAfterBackgroundEnabled) {
         viewModel.controller.setResumeAfterBackgroundEnabled(settings.playerResumeAfterBackgroundEnabled)
     }
+    LaunchedEffect(viewModel, settings.playerMergeAudioChannelsEnabled) {
+        viewModel.controller.setMergeAudioChannelsEnabled(settings.playerMergeAudioChannelsEnabled)
+    }
     LaunchedEffect(viewModel, settings.playerAutoReplayEnabled) {
         if (settings.playerAutoReplayEnabled) {
             var wasPlaying = false

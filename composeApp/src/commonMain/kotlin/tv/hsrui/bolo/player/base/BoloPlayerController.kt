@@ -2,6 +2,7 @@ package tv.hsrui.bolo.player.base
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -14,6 +15,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import tv.hsrui.network.feature.player.BiliDashObject
@@ -51,6 +54,11 @@ class BoloPlayerController(
     private var speedJob: Job? = null
     private var intentJob: Job? = null
     private var backgroundJob: Job? = null
+    private var rebuildJob: Job? = null
+    private var mergeAudioJob: Job? = null
+    private val engineMutex = Mutex()
+    private var mergeAudioChannelsEnabled = false
+    private var mergeAudioRevision = 0L
     private var ready = false
     private var seekabilityKnown = false
     private var disposed = false
@@ -72,6 +80,7 @@ class BoloPlayerController(
     internal suspend fun loadMedia(video: BiliDashObject, audio: BiliDashObject?, start: Long) {
         withContext(Dispatchers.Main.immediate) {
             if (disposed) return@withContext
+            cancelRebuild()
             videoUrls = (listOf(video.baseUrl) + video.backupUrl).filter(String::isNotBlank).distinct()
             audioUrls = audio?.let { (listOf(it.baseUrl) + it.backupUrl).filter(String::isNotBlank).distinct() }.orEmpty()
             mediaInfo = BoloPlayerInfo(
@@ -115,18 +124,21 @@ class BoloPlayerController(
             isSeekable = false, pendingSeekPositionMs = position)
         loadJob = scope.launch {
             try {
-                var engine = mutableBackend.value
-                if (engine == null) {
-                    // 创建期间的取消不能遗失已分配的 native handle。
-                    engine = withContext(NonCancellable + boloMpvDispatcher) { BoloMpvBackend() }
-                    if (!isActive || disposed || generation != expected) {
-                        withContext(NonCancellable + boloMpvDispatcher) { engine.destroy() }
-                        return@launch
+                val current = engineMutex.withLock {
+                    if (!isActive || disposed || generation != expected) return@launch
+                    var engine = mutableBackend.value
+                    if (engine == null) {
+                        // 与销毁互斥；创建期间的取消不能遗失已分配的 native handle。
+                        engine = withContext(NonCancellable + boloMpvDispatcher) { BoloMpvBackend() }
+                        if (!isActive || disposed || generation != expected) {
+                            withContext(NonCancellable + boloMpvDispatcher) { engine.destroy() }
+                            return@launch
+                        }
+                        mutableBackend.value = engine
+                        startEvents(engine)
                     }
-                    mutableBackend.value = engine
-                    startEvents(engine)
+                    engine
                 }
-                val current = engine
                 withTimeout(8_000) { current.awaitOutput() }
                 if (generation != expected || inBackground || disposed) return@launch
                 check(current.setAudioActive(true)) { "音频会话激活失败" }
@@ -134,7 +146,10 @@ class BoloPlayerController(
                 val volume = volumeGain.toDouble()
                 val video = videoUrls[videoIndex]
                 val audio = audioUrls.getOrNull(audioIndex)
+                val mergeChannels = mergeAudioChannelsEnabled
                 val result = withContext(boloMpvDispatcher) {
+                    val mergeResult = current.mergeAudioChannels(mergeChannels)
+                    check(mergeResult >= 0) { "合并多声道配置失败（$mergeResult）" }
                     current.volume(volume)
                     current.speed(speed)
                     current.load(video, audio, position / 1000.0, expected, videoPlayHeaders.getValue("User-Agent"), videoPlayHeaders.getValue("Referer"))
@@ -197,6 +212,7 @@ class BoloPlayerController(
         if (lastInfoSample?.elapsedNow()?.inWholeMilliseconds?.let { it < 500 } == true) return
         lastInfoSample = TimeSource.Monotonic.markNow()
         val expected = generation
+        val audioRevision = mergeAudioRevision
         val snapshot = try {
             withContext(boloMpvDispatcher) { engine.info() }
         } catch (error: CancellationException) {
@@ -204,7 +220,8 @@ class BoloPlayerController(
         } catch (_: Exception) {
             null
         }
-        if (disposed || inBackground || generation != expected || mutableBackend.value !== engine) return
+        if (disposed || inBackground || generation != expected || mutableBackend.value !== engine ||
+            audioRevision != mergeAudioRevision) return
         if (!infoPanelVisible && !state.value.isBuffering) {
             mutableInfo.value = info.value.withoutDynamicValues()
             return
@@ -226,6 +243,9 @@ class BoloPlayerController(
                 nominalBitrateBps = mediaInfo.audio?.nominalBitrateBps,
                 playbackBitrateBps = native.audio.playbackBitrateBps.takeUnless { seeking },
                 fragmentIndex = native.audio.fragmentIndex.takeUnless { seeking },
+                outputChannelLayout = native.audio.outputChannelLayout.takeUnless { mergeAudioJob?.isActive == true },
+                outputChannelCount = native.audio.outputChannelCount.takeUnless { mergeAudioJob?.isActive == true },
+                channelsMerged = native.audio.channelsMerged.takeUnless { mergeAudioJob?.isActive == true },
             ) ?: mediaInfo.audio,
             downloadBytesPerSecond = native.downloadBytesPerSecond.takeIf {
                 native.video.downloadBytesPerSecond != null &&
@@ -269,7 +289,7 @@ class BoloPlayerController(
                 seekJob?.cancel()
                 playWhenReady = false
                 restoring = false
-                mutableState.value = state.value.copy(isEnded = true, isPlaying = false, isBuffering = false,
+                mutableState.value = state.value.copy(isEnded = true, isPlaying = false, isBuffering = false, isRebuilding = false,
                     isPlaybackSuspended = false, pendingSeekPositionMs = null,
                     currentPositionMs = state.value.durationMs.takeIf { it > 0 } ?: state.value.currentPositionMs)
                 applyPlayIntent()
@@ -293,7 +313,7 @@ class BoloPlayerController(
             seekJob?.cancel()
             restoring = false
             recoveryAttempted = false
-            mutableState.value = state.value.copy(isPlaybackSuspended = false, isBuffering = false)
+            mutableState.value = state.value.copy(isPlaybackSuspended = false, isBuffering = false, isRebuilding = false)
             applyPlayIntent()
         }
     }
@@ -335,6 +355,65 @@ class BoloPlayerController(
             val volume = volumeGain.toDouble()
             mutableBackend.value?.let { withContext(boloMpvDispatcher) { it.volume(volume) } }
         }
+    }
+
+    fun setMergeAudioChannelsEnabled(enabled: Boolean) {
+        scope.launch {
+            if (disposed || mergeAudioChannelsEnabled == enabled) return@launch
+            mergeAudioChannelsEnabled = enabled
+            val revision = ++mergeAudioRevision
+            mergeAudioJob?.cancel()
+            mutableInfo.value = info.value.copy(audio = info.value.audio?.copy(
+                outputChannelLayout = null, outputChannelCount = null, channelsMerged = null,
+            ))
+            lastInfoSample = null
+            val engine = mutableBackend.value ?: return@launch
+            if (inBackground) return@launch
+            mergeAudioJob = scope.launch {
+                try {
+                    val result = withContext(boloMpvDispatcher) { engine.mergeAudioChannels(enabled) }
+                    if (result < 0 && revision == mergeAudioRevision && mutableBackend.value === engine)
+                        onError(BoloPlayerError.UnknownError("合并多声道配置失败（$result）"))
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    if (revision == mergeAudioRevision && mutableBackend.value === engine)
+                        onError(BoloPlayerError.UnknownError("合并多声道配置失败：${error.message}"))
+                } finally {
+                    if (revision == mergeAudioRevision) lastInfoSample = null
+                }
+            }
+        }
+    }
+
+    fun rebuild() {
+        scope.launch {
+            if (disposed || inBackground || state.value.isRebuilding || videoUrls.isEmpty()) return@launch
+            val expected = generation
+            val lifecycle = lifecycleRevision
+            mutableState.value = state.value.copy(isRebuilding = true)
+            rebuildJob = scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    releaseEngine()
+                    if (!isActive || disposed || inBackground || generation != expected + 1 ||
+                        lifecycleRevision != lifecycle) return@launch
+                    restoring = false
+                    recoveryAttempted = false
+                    startLoad(state.value.displayPositionMs)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    if (generation == expected + 1 && lifecycleRevision == lifecycle && !disposed)
+                        fail(BoloPlayerError.DecoderError("重建播放器失败：${error.message}", error))
+                }
+            }.also { it.start() }
+        }
+    }
+
+    private fun cancelRebuild() {
+        rebuildJob?.cancel()
+        rebuildJob = null
+        mutableState.value = state.value.copy(isRebuilding = false)
     }
 
     fun play() {
@@ -429,7 +508,9 @@ class BoloPlayerController(
         seekJob?.cancel()
         debugTimeout = false
         mutableState.value = state.value.copy(pendingSeekPositionMs = null, isBuffering = false)
-        if (restoring && !recoveryAttempted) {
+        if (state.value.isRebuilding) {
+            fail(BoloPlayerError.DecoderError("重建后恢复进度失败：$message"))
+        } else if (restoring && !recoveryAttempted) {
             recoveryAttempted = true
             val expected = generation
             val lifecycle = lifecycleRevision
@@ -454,6 +535,8 @@ class BoloPlayerController(
             val lifecycle = ++lifecycleRevision
             backgroundJob?.cancel()
             if (!foreground) {
+                cancelRebuild()
+                mergeAudioJob?.cancel()
                 resetInfo()
                 resumeEligible = playWhenReady && !state.value.isEnded
                 playWhenReady = false
@@ -487,6 +570,11 @@ class BoloPlayerController(
                 resumeEligible = false
                 val position = state.value.displayPositionMs
                 if (ready && mutableBackend.value != null) {
+                    val engine = mutableBackend.value!!
+                    val mergeChannels = mergeAudioChannelsEnabled
+                    val result = withContext(boloMpvDispatcher) { engine.mergeAudioChannels(mergeChannels) }
+                    if (lifecycle != lifecycleRevision || inBackground || disposed || mutableBackend.value !== engine) return@launch
+                    if (result < 0) onError(BoloPlayerError.UnknownError("合并多声道配置失败（$result）"))
                     coordinator.requestSeek(position)
                     mutableState.value = state.value.copy(pendingSeekPositionMs = position)
                     submitSeek()
@@ -499,7 +587,7 @@ class BoloPlayerController(
         scope.launch { if (!disposed && !inBackground && mutableBackend.value == null && videoUrls.isNotEmpty()) startLoad(state.value.displayPositionMs) }
     }
     internal fun releaseBackgroundResources() { scope.launch { if (inBackground) releaseEngine() } }
-    fun release() { scope.launch { if (!disposed) releaseEngine() } }
+    fun release() { scope.launch { if (!disposed) { cancelRebuild(); releaseEngine() } } }
 
     private suspend fun releaseEngine() {
         resetInfo()
@@ -507,6 +595,7 @@ class BoloPlayerController(
         eventsJob?.cancel()
         seekJob?.cancel()
         speedJob?.cancel()
+        mergeAudioJob?.cancel()
         intentJob?.cancel()
         generation = coordinator.onMediaChanged()
         ready = false
@@ -514,11 +603,24 @@ class BoloPlayerController(
         mutableBackend.value = null
         mutableState.value = state.value.copy(currentPositionMs = state.value.displayPositionMs,
             pendingSeekPositionMs = null, isPlaying = false, isBuffering = false)
-        if (engine != null) withContext(NonCancellable) {
-            withContext(boloMpvDispatcher) { engine.stop() }
-            engine.unbind()
-            withContext(boloMpvDispatcher) { engine.destroy() }
-            engine.setAudioActive(false)
+        withContext(NonCancellable) {
+            engineMutex.withLock {
+                if (engine != null) {
+                    try {
+                        withContext(boloMpvDispatcher) { engine.stop() }
+                    } finally {
+                        try {
+                            engine.unbind()
+                        } finally {
+                            try {
+                                withContext(boloMpvDispatcher) { engine.destroy() }
+                            } finally {
+                                engine.setAudioActive(false)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -526,6 +628,7 @@ class BoloPlayerController(
         scope.launch {
             if (disposed) return@launch
             disposed = true
+            cancelRebuild()
             backgroundJob?.cancel()
             releaseEngine()
             scope.cancel()
@@ -533,6 +636,7 @@ class BoloPlayerController(
     }
 
     private fun fail(error: BoloPlayerError) {
+        cancelRebuild()
         ready = false
         restoring = false
         playWhenReady = false

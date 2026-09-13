@@ -2,10 +2,13 @@ package tv.hsrui.bolo.player.controls
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -50,14 +54,19 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -65,6 +74,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
@@ -80,7 +91,10 @@ import androidx.compose.ui.unit.min
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.ui.components.dialog.ShowInfoDialog
@@ -96,6 +110,10 @@ fun BoloPlayerSettingsSheet(
     onResumeAfterBackgroundEnabledChange: (Boolean) -> Unit,
     autoPlayAfterSeekEnabled: Boolean,
     onAutoPlayAfterSeekEnabledChange: (Boolean) -> Unit,
+    mergeAudioChannelsEnabled: Boolean,
+    onMergeAudioChannelsEnabledChange: (Boolean) -> Unit,
+    rebuildEnabled: Boolean,
+    onRebuild: () -> Unit,
     autoReplayEnabled: Boolean,
     onAutoReplayEnabledChange: (Boolean) -> Unit,
     seekGestureEnabled: Boolean,
@@ -444,6 +462,21 @@ fun BoloPlayerSettingsSheet(
                                                         }
                                                     }
                                                 }
+                                                Card(Modifier.fillMaxWidth()) {
+                                                    Column(Modifier.padding(4.dp)) {
+                                                        PlayerGestureSwitch(
+                                                            label = "合并多声道",
+                                                            checked = mergeAudioChannelsEnabled,
+                                                            enabled = isOpen,
+                                                            onCheckedChange = onMergeAudioChannelsEnabledChange,
+                                                        )
+                                                    }
+                                                }
+                                                PlayerRebuildCard(
+                                                    enabled = isOpen && rebuildEnabled &&
+                                                        pagerState.currentPage == page && !pagerState.isScrollInProgress,
+                                                    onRebuild = onRebuild,
+                                                )
                                             }
                                             BoloPlayerSettingsTab.Danmaku -> {
                                                 Card(Modifier.fillMaxWidth()) {
@@ -752,6 +785,93 @@ fun BoloPlayerSettingsSheet(
                         alpha = { scrimAlpha },
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerRebuildCard(
+    enabled: Boolean,
+    onRebuild: () -> Unit,
+) {
+    var startedAt by remember(enabled) { mutableStateOf<TimeMark?>(null) }
+    var progress by remember(enabled) { mutableFloatStateOf(0f) }
+    val active by rememberUpdatedState(enabled)
+    val rebuild by rememberUpdatedState(onRebuild)
+    val fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+    LaunchedEffect(startedAt, enabled) {
+        progress = 0f
+        val start = startedAt ?: return@LaunchedEffect
+        if (!enabled) return@LaunchedEffect
+        try {
+            while (isActive && active && startedAt === start) {
+                withFrameNanos { }
+                progress = (start.elapsedNow().inWholeMilliseconds / 3_000f).coerceIn(0f, 1f)
+                if (progress >= 1f) {
+                    // 先绘制满格，再触发一次；松开或关闭仍可取消本次按压。
+                    withFrameNanos { }
+                    if (active && startedAt === start) rebuild()
+                    break
+                }
+            }
+        } finally {
+            progress = 0f
+        }
+    }
+    Card(
+        onClick = {},
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth()
+            .onFocusChanged { if (!it.isFocused) startedAt = null }
+            .onPreviewKeyEvent { event ->
+                val activationKey = event.key == Key.Enter || event.key == Key.NumPadEnter ||
+                    event.key == Key.Spacebar || event.key == Key.DirectionCenter
+                if (!enabled || !activationKey) false else {
+                    if (event.type == KeyEventType.KeyDown && startedAt == null)
+                        startedAt = TimeSource.Monotonic.markNow()
+                    if (event.type == KeyEventType.KeyUp) startedAt = null
+                    true
+                }
+            }
+            .pointerInput(enabled) {
+                if (!enabled) return@pointerInput
+                try {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(pass = PointerEventPass.Initial)
+                        startedAt = TimeSource.Monotonic.markNow()
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Final)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                val moved = (change.position - down.position).getDistance() > viewConfiguration.touchSlop
+                                val outside = change.position.x < 0 || change.position.x >= size.width ||
+                                    change.position.y < 0 || change.position.y >= size.height
+                                if (!change.pressed || outside || moved || event.changes.count { it.pressed } > 1) break
+                            }
+                        } finally {
+                            startedAt = null
+                        }
+                    }
+                } finally {
+                    startedAt = null
+                }
+            }
+            .semantics {
+                progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f)
+                stateDescription = if (progress > 0f) "重建进度 ${(progress * 100).roundToInt()}%" else "长按 3 秒重建"
+            },
+    ) {
+        Box(Modifier.fillMaxWidth().drawBehind {
+            drawRect(fillColor, size = Size(size.width * progress, size.height))
+        }) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 12.dp, top = 8.dp, end = 8.dp, bottom = 8.dp).heightIn(min = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("重建播放器", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Text("长按", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
