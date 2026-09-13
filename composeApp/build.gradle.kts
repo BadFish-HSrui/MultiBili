@@ -204,6 +204,6 @@ if (System.getProperty("os.name").startsWith("Mac")) {
         }
     }
 }
-tasks.matching { it.name == "podspec" || it.name.startsWith("podGen") || it.name == "podInstall" || it.name.startsWith("podInstallSynthetic") || it.name.startsWith("cinteropBoloNativePlayer") }.configureEach {
+tasks.matching { it.name == "podspec" || it.name.startsWith("podGen") || it.name == "podInstall" || it.name.startsWith("podInstallSynthetic") || it.name == "generateDefBoloNativePlayer" || it.name.startsWith("cinteropBoloNativePlayer") }.configureEach {
     dependsOn(":nativePlayer:prepareIosNative")
 }
