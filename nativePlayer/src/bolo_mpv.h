@@ -28,6 +28,8 @@ int bolo_mpv_volume(bolo_mpv *, double volume);
 int bolo_mpv_seek(bolo_mpv *, double seconds, int64_t request);
 int bolo_mpv_stop(bolo_mpv *);
 int bolo_mpv_poll(bolo_mpv *, bolo_mpv_event *event);
+char *bolo_mpv_info(bolo_mpv *);
+void bolo_mpv_info_free(char *);
 void bolo_mpv_destroy(bolo_mpv *);
 int bolo_mpv_surface(bolo_mpv *, int64_t surface);
 int bolo_mpv_surface_size(bolo_mpv *, int width, int height);

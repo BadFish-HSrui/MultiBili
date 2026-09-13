@@ -7,6 +7,7 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.rawValue
+import kotlinx.cinterop.toKString
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -64,6 +65,12 @@ internal actual class BoloMpvBackend actual constructor() {
         else BoloMpvEvent(event.type, event.generation, event.request, event.error, event.value)
     }
     actual fun stop() = if (destroyed) -3 else bolo_mpv_stop(handle)
+    actual fun info(): BoloMpvInfoSnapshot? {
+        if (destroyed) return null
+        val text = bolo_mpv_info(handle) ?: return null
+        return try { BoloMpvInfoSnapshot.parse(text.toKString(), this) }
+        finally { bolo_mpv_info_free(text) }
+    }
     actual fun destroy() { if (!destroyed) { destroyed = true; bolo_mpv_destroy(handle) } }
     actual suspend fun setAudioActive(active: Boolean): Boolean = withContext(Dispatchers.Main.immediate) {
         val session = AVAudioSession.sharedInstance()

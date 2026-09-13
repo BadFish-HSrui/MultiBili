@@ -132,6 +132,19 @@ int bolo_mpv_speed(bolo_mpv *p, double speed) {
 int bolo_mpv_volume(bolo_mpv *p, double volume) {
     return mpv_set_property(p->player, "volume", MPV_FORMAT_DOUBLE, &volume);
 }
+char *bolo_mpv_info(bolo_mpv *p) {
+    if (p->expected_entry < 0) return NULL;
+    char *info = mpv_get_property_string(p->player, "bolo-playback-info");
+    if (!info) return NULL;
+    const char *format = "{\"generation\":%lld,\"expectedEntry\":%lld,\"info\":%s}";
+    int size = snprintf(NULL, 0, format, (long long)p->generation, (long long)p->expected_entry, info);
+    char *result = size < 0 ? NULL : malloc((size_t)size + 1);
+    if (result) snprintf(result, (size_t)size + 1, format,
+                         (long long)p->generation, (long long)p->expected_entry, info);
+    mpv_free(info);
+    return result;
+}
+void bolo_mpv_info_free(char *info) { free(info); }
 int bolo_mpv_seek(bolo_mpv *p, double seconds, int64_t request) {
     p->seek_request = request;
     p->seek_reply = 0;

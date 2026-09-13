@@ -11,6 +11,7 @@ internal expect class BoloMpvBackend() {
     fun volume(volume: Double): Int
     fun seek(seconds: Double, request: Long): Int
     fun poll(): BoloMpvEvent?
+    fun info(): BoloMpvInfoSnapshot?
     fun stop(): Int
     fun destroy()
     suspend fun setAudioActive(active: Boolean): Boolean

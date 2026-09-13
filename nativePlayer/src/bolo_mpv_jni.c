@@ -1,6 +1,7 @@
 #include "bolo_mpv.h"
 #include <jni.h>
 #include <stdlib.h>
+#include <string.h>
 #ifdef __ANDROID__
 #include <libavcodec/jni.h>
 #elif defined(_WIN32)
@@ -57,6 +58,15 @@ JNIEXPORT jdoubleArray JNICALL JNI(poll)(JNIEnv *env, jobject self, jlong p) {
     jdouble values[] = {event.type, (double)event.generation, (double)event.request, event.error, event.value};
     jdoubleArray result = (*env)->NewDoubleArray(env, 5);
     if (result) (*env)->SetDoubleArrayRegion(env, result, 0, 5, values);
+    return result;
+}
+JNIEXPORT jbyteArray JNICALL JNI(info)(JNIEnv *env, jobject self, jlong handle) {
+    char *info = bolo_mpv_info(PLAYER(handle)->core);
+    if (!info) return NULL;
+    size_t size = strlen(info);
+    jbyteArray result = size <= INT32_MAX ? (*env)->NewByteArray(env, (jsize)size) : NULL;
+    if (result) (*env)->SetByteArrayRegion(env, result, 0, (jsize)size, (const jbyte *)info);
+    bolo_mpv_info_free(info);
     return result;
 }
 JNIEXPORT jint JNICALL JNI(surface)(JNIEnv *env, jobject self, jlong handle, jobject surface) {

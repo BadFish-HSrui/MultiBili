@@ -103,6 +103,9 @@ internal actual class BoloMpvBackend actual constructor() {
     actual fun volume(volume: Double) = if (destroyed) -3 else BoloMpvNative.volume(handle, volume)
     actual fun seek(seconds: Double, request: Long) = if (destroyed) -3 else BoloMpvNative.seek(handle, seconds, request)
     actual fun poll() = if (destroyed) null else BoloMpvNative.poll(handle)?.toMpvEvent()
+    actual fun info() = if (destroyed) null else BoloMpvNative.info(handle)?.let {
+        BoloMpvInfoSnapshot.parse(it.decodeToString(), this)
+    }
     actual fun stop() = if (destroyed) -3 else BoloMpvNative.stop(handle)
     actual fun destroy() {
         if (destroyed) return
