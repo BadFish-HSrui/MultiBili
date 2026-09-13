@@ -26,8 +26,8 @@ actual fun BoloVideoPlayer(controller: BoloPlayerController, modifier: Modifier)
         val center = NSNotificationCenter.defaultCenter
         val observers = listOf(
             center.addObserverForName(UIApplicationWillResignActiveNotification, null, NSOperationQueue.mainQueue) {
-                // iOS 在后台禁止 GL 调用，必须在失去前台时排空并释放上下文。
-                controller.backend.value?.suspendRendering()
+                // BoloMpvView 独立观察同一通知，在进入后台前排空 GL；
+                // 也覆盖已从 controller 移除、仍在异步关闭的原生宿主。
                 controller.setForeground(false, outputWasReleased = true)
             },
             center.addObserverForName(UIApplicationDidBecomeActiveNotification, null, NSOperationQueue.mainQueue) {

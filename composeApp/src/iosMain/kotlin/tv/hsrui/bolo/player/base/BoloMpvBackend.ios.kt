@@ -10,6 +10,7 @@ import kotlinx.cinterop.rawValue
 import kotlinx.cinterop.toKString
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
@@ -18,42 +19,65 @@ import platform.AVFAudio.setActive
 import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
 import platform.UIKit.UIViewAutoresizingFlexibleWidth
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 private var audioSessionOwner: BoloMpvBackend? = null
 
 internal actual class BoloMpvBackend actual constructor() {
     private val handle = checkNotNull(bolo_mpv_create("ios")) { "libmpv 初始化失败" }
-    private val outputReady = CompletableDeferred<Unit>()
-    private var outputFailure: Throwable? = null
+    private var outputReady = CompletableDeferred<Unit>()
+    private var outputGeneration = 0L
     private var host: UIView? = null
     private var view: BoloMpvView? = null
     private var closed = false
     private var destroyed = false
 
-    actual suspend fun bind(output: Any) = withContext(Dispatchers.Main.immediate) {
+    actual suspend fun bind(output: Any) = withContext(NonCancellable + Dispatchers.Main.immediate) {
         if (closed || host === output) return@withContext
-        view?.close()
+        view?.let { closeOutput(it) }
+        if (closed) return@withContext
         host = output as UIView
         val nativeView = BoloMpvView(player = handle.rawValue.toLong())
         nativeView.setFrame(output.bounds)
         nativeView.autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
         output.addSubview(nativeView)
         view = nativeView
-        if (nativeView.prepare()) outputReady.complete(Unit)
-        else outputReady.completeExceptionally(IllegalStateException("EAGL 播放器初始化失败"))
+        prepareOutput(nativeView)
     }
 
-    fun suspendRendering() { view?.suspendRendering() }
-    fun resumeRendering() {
-        if (view?.prepare() == false) outputFailure = IllegalStateException("EAGL 输出恢复失败")
+    private fun prepareOutput(nativeView: BoloMpvView) {
+        // 首次 bind 复用构造时的 latch：controller 可能已经在等待它。
+        val pending = outputReady
+        val generation = ++outputGeneration
+        nativeView.prepareWithCompletion { ready ->
+            if (!closed && view === nativeView && generation == outputGeneration) {
+                if (ready) pending.complete(Unit)
+                else pending.completeExceptionally(IllegalStateException("EAGL 视频输出准备失败或已中断"))
+            }
+        }
     }
-    actual suspend fun unbind() = withContext(Dispatchers.Main.immediate) {
+
+    fun resumeRendering() {
+        if (!closed) view?.let {
+            // 初次准备可能与 DidBecomeActive 重叠，不能丢弃 controller 正在等待的 latch。
+            if (outputReady.isCompleted) outputReady = CompletableDeferred()
+            prepareOutput(it)
+        }
+    }
+
+    private suspend fun closeOutput(nativeView: BoloMpvView) = suspendCoroutine<Unit> { continuation ->
+        nativeView.closeWithCompletion { continuation.resume(Unit) }
+    }
+
+    actual suspend fun unbind() = withContext(NonCancellable + Dispatchers.Main.immediate) {
         closed = true
-        view?.close()
+        // 等待专用队列释放 Render API 后才允许 controller 销毁 mpv；Main 协程仅挂起。
+        view?.let { closeOutput(it) }
         view = null
         host = null
     }
-    actual suspend fun awaitOutput() { outputFailure?.let { throw it }; outputReady.await() }
+    actual suspend fun awaitOutput() { outputReady.await() }
     actual fun load(video: String, audio: String?, startSeconds: Double, generation: Long, userAgent: String, referrer: String) = if (destroyed) -3 else bolo_mpv_load(handle, video, audio, startSeconds, generation, userAgent, referrer)
     actual fun pause(paused: Boolean) = if (destroyed) -3 else bolo_mpv_pause(handle, if (paused) 1 else 0)
     actual fun speed(speed: Double) = if (destroyed) -3 else bolo_mpv_speed(handle, speed)

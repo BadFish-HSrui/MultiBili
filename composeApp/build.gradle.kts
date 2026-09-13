@@ -120,6 +120,8 @@ kotlin {
 }
 
 tasks.withType<PodBuildTask>().configureEach {
+    // Pod 子任务只编译库，使用对应平台的通用目标，不继承 Xcode Run 的真机 UDID。
+    targetDeviceIdentifier.unsetConvention()
     xcodeBuildSettings.put("IPHONEOS_DEPLOYMENT_TARGET", iosDeploymentTarget)
     xcodeBuildSettings.put("ARCHS", "arm64")
 }

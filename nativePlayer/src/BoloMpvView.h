@@ -4,9 +4,8 @@
 NS_ASSUME_NONNULL_BEGIN
 @interface BoloMpvView : UIView
 - (instancetype)initWithPlayer:(int64_t)player;
-- (BOOL)prepare;
+- (void)prepareWithCompletion:(void (^)(BOOL ready))completion;
 - (void)suspendRendering;
-- (void)resumeRendering;
-- (void)close;
+- (void)closeWithCompletion:(void (^)(void))completion;
 @end
 NS_ASSUME_NONNULL_END

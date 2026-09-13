@@ -260,8 +260,10 @@ internal class NativePlayerEnvironment(
             if (modulePaths.isNotEmpty()) environment["PYTHONPATH"] =
                 (modulePaths.map(::nativePath) + listOfNotNull(environment["PYTHONPATH"])).joinToString(File.pathSeparator)
             environment["SDKROOT"] = run("xcrun", "--sdk", "macosx", "--show-sdk-path", capture = true).trim()
-            environment.remove("MACOSX_DEPLOYMENT_TARGET")
-            environment.remove("IPHONEOS_DEPLOYMENT_TARGET")
+            // Xcode 会同时导出多平台部署版本；宿主工具不能继承，目标版本由 -target 指定。
+            listOf("MACOSX", "IPHONEOS", "TVOS", "WATCHOS", "XROS", "DRIVERKIT").forEach {
+                environment.remove("${it}_DEPLOYMENT_TARGET")
+            }
         }
         val modules = try {
             run(tool("python3"), "-c", "import importlib.metadata as m, jinja2, markupsafe; " +
