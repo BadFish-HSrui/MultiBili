@@ -71,6 +71,7 @@ jobs:
         with:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 0
+          submodules: recursive
           persist-credentials: false
 
       - name: 配置 JDK
@@ -81,6 +82,28 @@ jobs:
 
       - name: 安装 Android SDK
         uses: android-actions/setup-android@v4
+
+      - name: 安装原生播放器工具链
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config nasm libpulse-dev libasound2-dev libva-dev libgl-dev
+          sdkmanager "ndk;28.2.13676358"
+
+      - name: 配置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: 安装 Meson、Ninja、CMake 和生成器模块
+        run: python -m pip install meson==1.8.3 ninja==1.11.1.4 cmake==3.31.10 Jinja2==3.1.6 MarkupSafe==3.0.3
+
+      - name: 配置原生播放器缓存
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/bolo-native
+          key: ${{ runner.os }}-${{ runner.arch }}-native-${{ hashFiles('buildSrc/src/main/kotlin/tv/hsrui/bolo/buildlogic/NativePlayer*.kt', 'buildSrc/build.gradle.kts', 'nativePlayer/build.gradle.kts', 'nativePlayer/dependencies.lock.json', 'nativePlayer/src/**', 'nativePlayer/patches/**', '.gitmodules') }}-${{ inputs.source_sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-native-
 
       - name: 配置缓存
         uses: actions/cache@v4
@@ -94,7 +117,7 @@ jobs:
 
       - name: 清理构建缓存（可选）
         if: ${{ inputs.clean_cache }}
-        run: ./gradlew clean
+        run: ./gradlew clean :nativePlayer:cleanNativeCache
 
       - name: 复核源码与版本元数据
         shell: bash

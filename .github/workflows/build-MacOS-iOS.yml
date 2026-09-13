@@ -71,6 +71,7 @@ jobs:
         with:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 0
+          submodules: recursive
           persist-credentials: false
 
       - name: 配置 JDK
@@ -81,6 +82,17 @@ jobs:
 
       - name: 切换 Xcode 26.3
         run: sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+
+      - name: 安装原生播放器工具链
+        run: brew install meson ninja cmake pkgconf nasm jinja2-cli
+
+      - name: 配置原生播放器缓存
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/bolo-native
+          key: ${{ runner.os }}-${{ runner.arch }}-native-${{ hashFiles('buildSrc/src/main/kotlin/tv/hsrui/bolo/buildlogic/NativePlayer*.kt', 'buildSrc/build.gradle.kts', 'nativePlayer/build.gradle.kts', 'nativePlayer/dependencies.lock.json', 'nativePlayer/src/**', 'nativePlayer/patches/**', '.gitmodules') }}-${{ inputs.source_sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-native-
 
       - name: 配置缓存
         uses: actions/cache@v4
@@ -95,7 +107,7 @@ jobs:
 
       - name: 清理构建缓存（可选）
         if: ${{ inputs.clean_cache }}
-        run: ./gradlew clean
+        run: ./gradlew clean :nativePlayer:cleanNativeCache
 
       - name: 复核源码与版本元数据
         shell: bash

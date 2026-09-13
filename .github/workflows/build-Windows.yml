@@ -71,6 +71,7 @@ jobs:
         with:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 0
+          submodules: recursive
           persist-credentials: false
 
       - name: 配置 JDK
@@ -78,6 +79,37 @@ jobs:
         with:
           distribution: zulu
           java-version: '17'
+
+      - name: 配置 MSYS2 UCRT64 原生工具链
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make patch diffutils
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-meson
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-jinja
+            mingw-w64-ucrt-x86_64-python-markupsafe
+
+      - name: 暴露原生工具链
+        shell: pwsh
+        run: |
+          'C:\msys64\ucrt64\bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          'C:\msys64\usr\bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: 配置原生播放器缓存
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/bolo-native
+          key: ${{ runner.os }}-${{ runner.arch }}-native-${{ hashFiles('buildSrc/src/main/kotlin/tv/hsrui/bolo/buildlogic/NativePlayer*.kt', 'buildSrc/build.gradle.kts', 'nativePlayer/build.gradle.kts', 'nativePlayer/dependencies.lock.json', 'nativePlayer/src/**', 'nativePlayer/patches/**', '.gitmodules') }}-${{ inputs.source_sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-native-
 
       - name: 配置缓存
         uses: actions/cache@v4
@@ -91,7 +123,7 @@ jobs:
 
       - name: 清理构建缓存（可选）
         if: ${{ inputs.clean_cache }}
-        run: .\gradlew.bat clean
+        run: .\gradlew.bat clean :nativePlayer:cleanNativeCache
 
       - name: 复核源码与版本元数据
         shell: pwsh

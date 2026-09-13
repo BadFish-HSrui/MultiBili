@@ -44,6 +44,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          submodules: recursive
           persist-credentials: false
 
       - name: 锁定源码与构建来源
