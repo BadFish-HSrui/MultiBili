@@ -16,6 +16,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -39,6 +41,7 @@ import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
@@ -93,6 +96,9 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.unit.dp
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
@@ -127,6 +133,7 @@ fun BoloPlayerControls(
     val longPressSpeedGestureEnabled = settings.playerLongPressSpeedGestureEnabled
     val longPressSpeed = settings.playerLongPressSpeed
     val playState by viewModel.controller.state.collectAsState()
+    val playerInfo by viewModel.controller.info.collectAsState()
     val playerUiState by viewModel.uiState.collectAsState()
     val subtitleState by viewModel.subtitleController.state.collectAsState()
     val currentVideoQuality by viewModel.currentVideoQuality.collectAsState()
@@ -135,6 +142,16 @@ fun BoloPlayerControls(
     }
     var controlsVisible by remember { mutableStateOf(true) }
     var settingsOpen by remember(isFullscreen) { mutableStateOf(false) }
+    var infoOpen by remember(viewModel, isFullscreen) { mutableStateOf(false) }
+    DisposableEffect(viewModel, infoOpen) {
+        viewModel.controller.setInfoPanelVisible(infoOpen)
+        onDispose { viewModel.controller.setInfoPanelVisible(false) }
+    }
+    NavigationBackHandler(
+        state = rememberNavigationEventState(NavigationEventInfo.None),
+        isBackEnabled = isFullscreen && infoOpen,
+        onBackCompleted = { infoOpen = false },
+    )
     val latestPlayState by rememberUpdatedState(playState)
     var gesturePreviewMs by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Long?>(null)
@@ -351,6 +368,19 @@ fun BoloPlayerControls(
                     }
                 }
         )
+        if (isFullscreen && infoOpen) {
+            BoxWithConstraints(
+                Modifier.fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(16.dp),
+            ) {
+                BoloPlayerInfoPanel(
+                    info = playerInfo,
+                    onClose = { infoOpen = false },
+                    modifier = Modifier.align(Alignment.TopStart).heightIn(max = maxHeight),
+                )
+            }
+        }
         AnimatedVisibility(
             visible = controlsVisible,
             enter = fadeIn(),
@@ -401,7 +431,9 @@ fun BoloPlayerControls(
                     // 导航按钮
                     IconButton(
                         onClick = {
-                            if (isFullscreen) {
+                            if (infoOpen) {
+                                infoOpen = false
+                            } else if (isFullscreen) {
                                 onFullscreenChange(false)
                             } else {
                                 navigator.goBack()
@@ -411,8 +443,9 @@ fun BoloPlayerControls(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
-                            contentDescription = if (isFullscreen) "退出全屏" else "返回",
-                            tint = Color.White
+                            contentDescription = if (infoOpen) "关闭播放信息" else if (isFullscreen) "退出全屏" else "返回",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp),
                         )
                     }
 
@@ -440,13 +473,20 @@ fun BoloPlayerControls(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        IconButton(
-                            onClick = { settingsOpen = true },
-                        ) {
+                        IconButton(onClick = { infoOpen = !infoOpen }) {
+                            Icon(
+                                imageVector = Icons.Rounded.Info,
+                                contentDescription = if (infoOpen) "隐藏播放信息" else "显示播放信息",
+                                tint = if (infoOpen) BiliColor.ThemeColor else Color.White,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                        IconButton(onClick = { infoOpen = false; settingsOpen = true }) {
                             Icon(
                                 imageVector = Icons.Rounded.Settings,
                                 contentDescription = "播放器设置",
                                 tint = Color.White,
+                                modifier = Modifier.size(24.dp),
                             )
                         }
                     }
@@ -584,6 +624,13 @@ fun BoloPlayerControls(
             }
         }
         val gestureSpeedPreview = gestureSpeedBoost
+        if (playState.isBuffering && !settingsOpen && devicePreview == null &&
+            previewPositionMs == null && gestureSpeedPreview == null) {
+            BoloPlayerBufferingIndicator(
+                downloadBytesPerSecond = playerInfo.downloadBytesPerSecond,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
         if (devicePreview != null || previewPositionMs != null || gestureSpeedPreview != null) {
             Card(
                 modifier = Modifier.align(Alignment.Center),

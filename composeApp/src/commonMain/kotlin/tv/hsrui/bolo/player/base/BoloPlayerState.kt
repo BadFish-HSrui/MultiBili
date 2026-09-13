@@ -3,8 +3,6 @@ package tv.hsrui.bolo.player.base
 /**
  * 播放器实时状态快照（通过[BoloPlayerController.state] StateFlow 订阅）
  */
-// TODO: 根据 libmpv 可用属性重新设计独立的播放器信息与统计模型及展示，
-// 明确数据来源、单位、采样周期和主流/外部音轨范围，不沿用 VLC 统计语义。
 data class BoloPlayerState(
     /** 后台暂停或恢复准备中，禁止普通播放请求启动媒体。 */
     val isPlaybackSuspended: Boolean = false,

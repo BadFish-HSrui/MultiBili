@@ -18,6 +18,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import tv.hsrui.network.feature.player.BiliDashObject
 import kotlin.math.roundToLong
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 internal val boloMpvDispatcher = Dispatchers.Default.limitedParallelism(1)
 
@@ -29,6 +31,11 @@ class BoloPlayerController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutableState = MutableStateFlow(BoloPlayerState())
     val state: StateFlow<BoloPlayerState> = mutableState.asStateFlow()
+    private val mutableInfo = MutableStateFlow(BoloPlayerInfo())
+    val info: StateFlow<BoloPlayerInfo> = mutableInfo.asStateFlow()
+    private var mediaInfo = BoloPlayerInfo()
+    private var infoPanelVisible = false
+    private var lastInfoSample: TimeMark? = null
     private val mutableBackend = MutableStateFlow<BoloMpvBackend?>(null)
     internal val backend: StateFlow<BoloMpvBackend?> = mutableBackend.asStateFlow()
     private val coordinator = BoloPlayerSeekCoordinator()
@@ -67,6 +74,14 @@ class BoloPlayerController(
             if (disposed) return@withContext
             videoUrls = (listOf(video.baseUrl) + video.backupUrl).filter(String::isNotBlank).distinct()
             audioUrls = audio?.let { (listOf(it.baseUrl) + it.backupUrl).filter(String::isNotBlank).distinct() }.orEmpty()
+            mediaInfo = BoloPlayerInfo(
+                video = BoloPlayerVideoInfo(
+                    nominalBitrateBps = video.bandwidth.takeIf { it > 0 },
+                    fps = parsePlayerFrameRate(video.frameRate),
+                ),
+                audio = audio?.let { BoloPlayerAudioInfo(nominalBitrateBps = it.bandwidth.takeIf { bitrate -> bitrate > 0 }) },
+            )
+            resetInfo()
             videoIndex = 0
             audioIndex = 0
             resumeEligible = false
@@ -86,6 +101,7 @@ class BoloPlayerController(
     }
 
     private fun startLoad(position: Long) {
+        resetInfo()
         loadJob?.cancel()
         seekJob?.cancel()
         ready = false
@@ -149,9 +165,73 @@ class BoloPlayerController(
                     if (mutableBackend.value !== engine) break
                     if (event.generation == generation && !disposed) handleEvent(event)
                 }
+                sampleInfo(engine)
                 delay(20)
             }
         }
+    }
+
+    internal fun setInfoPanelVisible(visible: Boolean) {
+        scope.launch {
+            if (disposed) return@launch
+            infoPanelVisible = visible
+            lastInfoSample = null
+            mutableInfo.value = info.value.withoutDynamicValues()
+        }
+    }
+
+    private fun resetInfo() {
+        lastInfoSample = null
+        mutableInfo.value = mediaInfo
+    }
+
+    private suspend fun sampleInfo(engine: BoloMpvBackend) {
+        if (disposed || inBackground || mutableBackend.value !== engine ||
+            (!infoPanelVisible && !state.value.isBuffering)) {
+            if (lastInfoSample != null) {
+                lastInfoSample = null
+                mutableInfo.value = info.value.withoutDynamicValues()
+            }
+            return
+        }
+        if (lastInfoSample?.elapsedNow()?.inWholeMilliseconds?.let { it < 500 } == true) return
+        lastInfoSample = TimeSource.Monotonic.markNow()
+        val expected = generation
+        val snapshot = try {
+            withContext(boloMpvDispatcher) { engine.info() }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            null
+        }
+        if (disposed || inBackground || generation != expected || mutableBackend.value !== engine) return
+        if (!infoPanelVisible && !state.value.isBuffering) {
+            mutableInfo.value = info.value.withoutDynamicValues()
+            return
+        }
+        if (snapshot == null || snapshot.instance !== engine || snapshot.generation != expected) {
+            mutableInfo.value = mediaInfo
+            return
+        }
+        val native = snapshot.info
+        val seeking = state.value.isSeeking
+        mutableInfo.value = native.copy(
+            video = native.video.copy(
+                nominalBitrateBps = mediaInfo.video.nominalBitrateBps,
+                fps = native.video.fps ?: mediaInfo.video.fps,
+                playbackBitrateBps = native.video.playbackBitrateBps.takeUnless { seeking },
+                fragmentIndex = native.video.fragmentIndex.takeUnless { seeking },
+            ),
+            audio = native.audio?.copy(
+                nominalBitrateBps = mediaInfo.audio?.nominalBitrateBps,
+                playbackBitrateBps = native.audio.playbackBitrateBps.takeUnless { seeking },
+                fragmentIndex = native.audio.fragmentIndex.takeUnless { seeking },
+            ) ?: mediaInfo.audio,
+            downloadBytesPerSecond = native.downloadBytesPerSecond.takeIf {
+                native.video.downloadBytesPerSecond != null &&
+                    (mediaInfo.audio == null || native.audio?.downloadBytesPerSecond != null)
+            },
+        )
     }
 
     private fun handleEvent(event: BoloMpvEvent) {
@@ -298,6 +378,8 @@ class BoloPlayerController(
             seekJob?.cancel()
             activeSeekRequest = ++requestSequence
             coordinator.requestSeek(target)
+            mutableInfo.value = info.value.withoutDynamicValues()
+            lastInfoSample = null
             mutableState.value = state.value.copy(pendingSeekPositionMs = target, isEnded = false, isBuffering = true)
             if (ready) submitSeek()
         }
@@ -372,6 +454,7 @@ class BoloPlayerController(
             val lifecycle = ++lifecycleRevision
             backgroundJob?.cancel()
             if (!foreground) {
+                resetInfo()
                 resumeEligible = playWhenReady && !state.value.isEnded
                 playWhenReady = false
                 restoring = false
@@ -419,6 +502,7 @@ class BoloPlayerController(
     fun release() { scope.launch { if (!disposed) releaseEngine() } }
 
     private suspend fun releaseEngine() {
+        resetInfo()
         loadJob?.cancel()
         eventsJob?.cancel()
         seekJob?.cancel()
