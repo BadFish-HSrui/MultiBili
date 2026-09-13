@@ -105,7 +105,6 @@
 				B25F0AB2715274CBAD5F6E05 /* Sources */,
 				76E613361B5B25E403A82FCA /* Frameworks */,
 				9085D3860C70E480D374E003 /* Resources */,
-				F2BAA13109F769A010CC39F1 /* [CP] Embed Pods Frameworks */,
 				DBBD61CC8B7A8C66A62CAE55 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
@@ -206,7 +205,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-				shellScript = "set -eu\nREPO_ROOT=\"${SRCROOT}/..\"\nGENERATED_VERSION=\"${SRCROOT}/Configuration/GeneratedVersion.xcconfig\"\n\nif [ ! -f \"${GENERATED_VERSION}\" ]; then\n    echo \"error: The iOS scheme Build Pre-action did not generate GeneratedVersion.xcconfig.\" >&2\n    exit 1\nfi\n\nif [ \"$(git -C \"${REPO_ROOT}\" rev-parse --is-shallow-repository)\" = \"true\" ]; then\n    echo \"error: iOS version metadata requires a complete Git history.\" >&2\n    exit 1\nfi\n\nEXPECTED_BUILD_NUMBER=$(git -C \"${REPO_ROOT}\" rev-list --count HEAD)\nEXPECTED_COMMIT_SHA=$(git -C \"${REPO_ROOT}\" rev-parse HEAD)\nCONFIG_BUILD_NUMBER=$(sed -n 's/^[[:space:]]*APP_BUILD_NUMBER[[:space:]]*=[[:space:]]*//p' \"${GENERATED_VERSION}\" | tr -d '[:space:]')\nCONFIG_COMMIT_SHA=$(sed -n 's/^[[:space:]]*APP_COMMIT_SHA[[:space:]]*=[[:space:]]*//p' \"${GENERATED_VERSION}\" | tr -d '[:space:]')\n\nif [ \"${CONFIG_BUILD_NUMBER}\" != \"${EXPECTED_BUILD_NUMBER}\" ] || [ \"${CONFIG_COMMIT_SHA}\" != \"${EXPECTED_COMMIT_SHA}\" ]; then\n    echo \"error: Generated iOS version metadata is stale. The scheme Build Pre-action must run before building.\" >&2\n    exit 1\nfi\n";
+			shellScript = "set -eu\nREPO_ROOT=\"${SRCROOT}/..\"\nGENERATED_VERSION=\"${SRCROOT}/Configuration/GeneratedVersion.xcconfig\"\n\nif [ ! -f \"${GENERATED_VERSION}\" ]; then\n    echo \"error: The iOS scheme Build Pre-action did not generate GeneratedVersion.xcconfig.\" >&2\n    exit 1\nfi\n\nif [ \"$(git -C \"${REPO_ROOT}\" rev-parse --is-shallow-repository)\" = \"true\" ]; then\n    echo \"error: iOS version metadata requires a complete Git history.\" >&2\n    exit 1\nfi\n\nEXPECTED_BUILD_NUMBER=$(git -C \"${REPO_ROOT}\" rev-list --count HEAD)\nEXPECTED_COMMIT_SHA=$(git -C \"${REPO_ROOT}\" rev-parse HEAD)\nCONFIG_BUILD_NUMBER=$(sed -n 's/^[[:space:]]*APP_BUILD_NUMBER[[:space:]]*=[[:space:]]*//p' \"${GENERATED_VERSION}\" | tr -d '[:space:]')\nCONFIG_COMMIT_SHA=$(sed -n 's/^[[:space:]]*APP_COMMIT_SHA[[:space:]]*=[[:space:]]*//p' \"${GENERATED_VERSION}\" | tr -d '[:space:]')\n\nif [ \"${CONFIG_BUILD_NUMBER}\" != \"${EXPECTED_BUILD_NUMBER}\" ] || [ \"${CONFIG_COMMIT_SHA}\" != \"${EXPECTED_COMMIT_SHA}\" ]; then\n    echo \"error: Generated iOS version metadata is stale. The scheme Build Pre-action must run before building.\" >&2\n    exit 1\nfi\n";
 			showEnvVarsInLog = 0;
 		};
 		DBBD61CC8B7A8C66A62CAE55 /* [CP] Copy Pods Resources */ = {
@@ -224,23 +223,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-iosApp/Pods-iosApp-resources.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		F2BAA13109F769A010CC39F1 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-iosApp/Pods-iosApp-frameworks-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-iosApp/Pods-iosApp-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-iosApp/Pods-iosApp-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

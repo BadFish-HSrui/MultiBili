@@ -72,7 +72,10 @@ fun VideoPlayer(
 
         is VideoPlayerUiState.Success -> {
             Box(modifier.fillMaxSize().background(Color.Black)) {
-                BoloVideoPlayer(controller = viewModel.controller)
+                BoloVideoPlayer(
+                    controller = viewModel.controller,
+                    modifier = Modifier.matchParentSize()
+                )
                 BoloDanmakuLayer(controller = viewModel.danmakuController)
                 BoloSubtitleLayer(controller = viewModel.subtitleController)
                 BoloPlayerControls(

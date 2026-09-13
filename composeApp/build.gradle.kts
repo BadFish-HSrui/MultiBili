@@ -1,5 +1,6 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.targets.native.tasks.AbstractPodInstallTask
 import org.jetbrains.kotlin.gradle.targets.native.tasks.PodBuildTask
 import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.BOOLEAN
 import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.INT
@@ -13,7 +14,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.composeHotReload)
     alias(libs.plugins.buildkonfig)
-    // CocoaPods 插件 — 自动管理 iOS 依赖（VLCKit）并生成 cinterop
+    // CocoaPods 管理本地播放器 XCFramework 并生成 cinterop
     kotlin("native.cocoapods")
 }
 
@@ -57,8 +58,9 @@ kotlin {
         ios.deploymentTarget = iosDeploymentTarget
         podfile = project.file("../iosApp/Podfile")
 
-        pod("VLCKit") {
-            version = libs.versions.vlckit.get()
+        pod("BoloNativePlayer") {
+            version = "0.41.0"
+            source = path(project.file("../nativePlayer/build/ios"))
         }
 
         framework {
@@ -69,11 +71,15 @@ kotlin {
 
     jvm()
 
+    applyDefaultHierarchyTemplate()
+
     sourceSets {
+        val jvmAndAndroidMain by creating { dependsOn(commonMain.get()) }
+        androidMain.get().dependsOn(jvmAndAndroidMain)
+        jvmMain.get().dependsOn(jvmAndAndroidMain)
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.activity.compose)
-            implementation(libs.libvlc)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -106,13 +112,15 @@ kotlin {
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
-            implementation(libs.vlcj)
+            implementation(libs.jogl)
+            implementation(libs.gluegen)
         }
     }
 }
 
 tasks.withType<PodBuildTask>().configureEach {
     xcodeBuildSettings.put("IPHONEOS_DEPLOYMENT_TARGET", iosDeploymentTarget)
+    xcodeBuildSettings.put("ARCHS", "arm64")
 }
 
 dependencies {
@@ -172,4 +180,27 @@ buildkonfig {
         buildConfigField(BOOLEAN, "isOfficialBuild", appOfficialBuild.toString())
         buildConfigField(STRING, "artifactVersion", appVersionMetadata.artifactVersion)
     }
+}
+
+val desktopNativeResources = project(":nativePlayer").layout.buildDirectory.dir("desktop/resources")
+kotlin.sourceSets.named("jvmMain") { resources.srcDir(desktopNativeResources) }
+tasks.matching { it.name == "jvmProcessResources" }.configureEach {
+    dependsOn(":nativePlayer:prepareDesktopNative")
+}
+if (System.getProperty("os.name").startsWith("Mac")) {
+    // Xcode 的 PATH 可能不含 Homebrew；普通及 synthetic Pod 安装共用自动查找结果。
+    val cocoaPodsExecutable = providers.environmentVariable("PATH").orElse("").map { path ->
+        (path.split(File.pathSeparator) + listOf("/opt/homebrew/bin", "/usr/local/bin"))
+            .filter(String::isNotBlank)
+            .map { File(it, "pod") }
+            .firstOrNull { it.isFile && it.canExecute() }
+    }
+    tasks.withType<AbstractPodInstallTask>().configureEach {
+        if (!podExecutablePath.isPresent) {
+            podExecutablePath.set(layout.file(cocoaPodsExecutable))
+        }
+    }
+}
+tasks.matching { it.name == "podspec" || it.name.startsWith("podGen") || it.name == "podInstall" || it.name.startsWith("podInstallSynthetic") || it.name.startsWith("cinteropBoloNativePlayer") }.configureEach {
+    dependsOn(":nativePlayer:prepareIosNative")
 }

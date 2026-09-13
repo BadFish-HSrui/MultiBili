@@ -36,3 +36,4 @@ plugins {
 include(":composeApp")
 include(":androidApp")
 include(":network")
+include(":nativePlayer")

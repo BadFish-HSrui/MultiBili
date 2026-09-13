@@ -3,6 +3,8 @@ package tv.hsrui.bolo.player.base
 /**
  * 播放器实时状态快照（通过[BoloPlayerController.state] StateFlow 订阅）
  */
+// TODO: 根据 libmpv 可用属性重新设计独立的播放器信息与统计模型及展示，
+// 明确数据来源、单位、采样周期和主流/外部音轨范围，不沿用 VLC 统计语义。
 data class BoloPlayerState(
     /** 后台暂停或恢复准备中，禁止普通播放请求启动媒体。 */
     val isPlaybackSuspended: Boolean = false,
@@ -10,35 +12,20 @@ data class BoloPlayerState(
     val isPlaying: Boolean = false,
     /** 是否正在缓冲 */
     val isBuffering: Boolean = false,
-    /** VLC 已确认的实际播放位置（毫秒） */
+    /** 原生播放器已确认的实际播放位置（毫秒） */
     val currentPositionMs: Long = 0L,
     /** 视频总时长（毫秒），0 表示尚未获取 */
     val durationMs: Long = 0L,
-    /** 尚未由 VLC 时间观测确认的最新跳转目标（毫秒） */
+    /** 尚未由原生时间观测确认的最新跳转目标（毫秒） */
     val pendingSeekPositionMs: Long? = null,
     /** 当前媒体是否支持跳转 */
     val isSeekable: Boolean = false,
     /** 当前播放速度 */
     val playbackSpeed: Float = 1f,
-    /** 视频编码格式（如 AVC、HEVC、AV1） */
-    val videoCodec: String = "",
-    /** 音频编码格式（如 AAC、OPUS、MP3） */
-    val audioCodec: String = "",
-    /** 视频宽度（像素） */
-    val videoWidth: Int = 0,
-    /** 视频高度（像素） */
-    val videoHeight: Int = 0,
-    /** 视频码率（bps），获取不到时为 0L */
-    val videoBitrate: Long = 0L,
-    /** 音频码率（bps），获取不到时为 0L */
-    val audioBitrate: Long = 0L,
-    /** 实时传输速度（bps），获取不到时为 0L */
-    val transferSpeed: Long = 0L
+    /** 原生 EOF 已确认；暂停或命令提交不能推导此状态。 */
+    val isEnded: Boolean = false,
 ) {
-    /** 已停留在结尾；当前媒体仍保留，允许直接跳转。 */
-    val isEnded: Boolean get() = !isPlaying && !isSeeking && durationMs > 0L && currentPositionMs >= durationMs
-
-    /** 是否存在等待 VLC 确认的跳转请求 */
+    /** 是否存在等待原生播放器确认的跳转请求 */
     val isSeeking: Boolean get() = pendingSeekPositionMs != null
 
     /** UI 和媒体恢复应展示/保留的位置（毫秒） */

@@ -266,7 +266,8 @@ private fun runGit(
 ): String {
     val command = listOf("git", "-C", repositoryDirectory.absolutePath) + arguments
     val process = ProcessBuilder(command)
-        .redirectErrorStream(true)
+        // Git 的标准输出用于解析版本；Xcode 工具链警告不能混入结果。
+        .redirectError(ProcessBuilder.Redirect.INHERIT)
         .start()
     val output = process.inputStream.bufferedReader().use { it.readText() }.trimEnd()
     val exitCode = process.waitFor()

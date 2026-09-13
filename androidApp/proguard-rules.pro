@@ -1,0 +1,1 @@
+-keep class tv.hsrui.bolo.player.base.BoloMpvNative { native <methods>; }

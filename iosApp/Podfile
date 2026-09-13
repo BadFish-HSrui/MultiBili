@@ -2,15 +2,6 @@ target 'iosApp' do
   use_frameworks!
   platform :ios, '16.0'
 
+  pod 'BoloNativePlayer', :path => '../nativePlayer/build/ios'
   pod 'composeApp', :path => '../composeApp'
-end
-
-post_install do |installer|
-  installer.pods_project.targets.each do |target|
-    next unless target.name == 'VLCKit'
-
-    target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
-    end
-  end
 end

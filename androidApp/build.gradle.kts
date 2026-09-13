@@ -19,6 +19,7 @@ kotlin {
 
 android {
     namespace = "tv.hsrui.bolo"
+    ndkVersion = "28.2.13676358"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
@@ -35,6 +36,7 @@ android {
     }
     buildTypes {
         getByName("release") {
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             isMinifyEnabled = true
             isShrinkResources = true
         }
@@ -52,4 +54,24 @@ dependencies {
     implementation(libs.compose.uiToolingPreview)
     implementation(libs.androidx.activity.compose)
     debugImplementation(libs.compose.uiTooling)
+}
+
+abstract class StagePlayerNative : Sync() {
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+    init { into(outputDirectory) }
+}
+val stagePlayerJni = tasks.register<StagePlayerNative>("stagePlayerJni") {
+    dependsOn(":nativePlayer:prepareAndroidNative")
+    from(project(":nativePlayer").layout.buildDirectory.dir("android/jniLibs"))
+    outputDirectory.set(layout.buildDirectory.dir("generated/nativePlayer/jniLibs"))
+}
+val stagePlayerLicenses = tasks.register<StagePlayerNative>("stagePlayerLicenses") {
+    dependsOn(":nativePlayer:prepareAndroidNative")
+    from(project(":nativePlayer").layout.buildDirectory.dir("android/licenses"))
+    outputDirectory.set(layout.buildDirectory.dir("generated/nativePlayer/assets/licenses"))
+}
+androidComponents.onVariants { variant ->
+    variant.sources.jniLibs?.addGeneratedSourceDirectory(stagePlayerJni, StagePlayerNative::outputDirectory)
+    variant.sources.assets?.addGeneratedSourceDirectory(stagePlayerLicenses, StagePlayerNative::outputDirectory)
 }

@@ -1,23 +1,22 @@
 PODS:
+  - BoloNativePlayer (0.41.0)
   - composeApp (1.0.0-alpha.1):
-    - VLCKit (= 4.0.0a24)
-  - VLCKit (4.0.0a24)
+    - BoloNativePlayer (= 0.41.0)
 
 DEPENDENCIES:
+  - BoloNativePlayer (from `../nativePlayer/build/ios`)
   - composeApp (from `../composeApp`)
 
-SPEC REPOS:
-  trunk:
-    - VLCKit
-
 EXTERNAL SOURCES:
+  BoloNativePlayer:
+    :path: "../nativePlayer/build/ios"
   composeApp:
     :path: "../composeApp"
 
 SPEC CHECKSUMS:
-  composeApp: 84eee1dc3abbf472c19adc220cec9637ca0c6272
-  VLCKit: c6a641a5f215403ae26d37680b963fbe76d66c65
+  BoloNativePlayer: 69fce677e3e7f75830421def3367c3bf479b452e
+  composeApp: 7521300682d7d23bafa979967fabcba7f78d0d8e
 
-PODFILE CHECKSUM: 6f827c170c62b08b649259eb9d2aa51ab5fabc0a
+PODFILE CHECKSUM: 065054bdca7d1b9010482e8db5b20959086c37f3
 
 COCOAPODS: 1.17.0

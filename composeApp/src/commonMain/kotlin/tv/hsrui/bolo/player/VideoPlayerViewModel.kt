@@ -168,7 +168,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         if (replayJob?.isActive == true) return
         seekToMs(0L)
         replayJob = viewModelScope.launch {
-            // 先确认 EOF 暂停媒体已跳离结尾，再恢复播放，避免 VLC 直接结束输入。
+            // 先确认 EOF 暂停媒体已跳离结尾，再恢复播放。
             val playback = controller.state.first { !it.isPlaybackSuspended && !it.isSeeking && !it.isBuffering }
             if (playback.currentPositionMs in 0L..BoloPlayerSeekCoordinator.ConfirmationToleranceMs) {
                 controller.play()

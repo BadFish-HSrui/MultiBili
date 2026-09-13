@@ -22,6 +22,23 @@
                </EnvironmentBuildable>
             </ActionContent>
          </ExecutionAction>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Prepare iOS native player"
+               scriptText = "set -eu&#10;# Avoid Swift runtime warnings contaminating Git/tool version output.&#10;unset SWIFT_DEBUG_INFORMATION_FORMAT SWIFT_DEBUG_INFORMATION_VERSION&#10;&quot;${SRCROOT}/../gradlew&quot; -p &quot;${SRCROOT}/..&quot; :nativePlayer:prepareIosNative"
+               shellToInvoke = "/bin/sh">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "4DC523EBA7DBAB08639D520E"
+                     BuildableName = "Multi Bili.app"
+                     BlueprintName = "iosApp"
+                     ReferencedContainer = "container:iosApp.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
       </PreActions>
       <BuildActionEntries>
          <BuildActionEntry
