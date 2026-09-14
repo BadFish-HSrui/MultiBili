@@ -7,6 +7,8 @@ object ApiUrls {
     const val SEARCH = "x/web-interface/wbi/search/type" //分类搜索
     const val BUVID3 = "x/web-frontend/getbuvid" //匿名请求标识
     const val REGION = "x/web-interface/region/feed/rcmd" //分区
+    const val MEDIA_INDEX = "pgc/season/index/result" //影视番剧索引
+    const val MEDIA_CONDITIONS = "pgc/season/index/condition" //影视番剧筛选条件
     const val ACCOUNT_INFO = "x/space/v2/info" //个人空间信息
     const val MY_ACCOUNT_INFO = "x/space/v2/myinfo" //我的个人空间信息
     const val FOLLOW_STATE = "x/relation/stat" //关注与被关注
