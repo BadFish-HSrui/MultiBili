@@ -17,3 +17,8 @@ fun openFavoriteFolder(mediaId: Long) {
     val navigator: Navigator = KoinPlatformTools.defaultContext().get().get()
     navigator.navigateTo(BoloRoute.AccountFeature.FavoriteFolder(mediaId))
 }
+
+fun openMedia(seasonId: Long) {
+    val navigator: Navigator = KoinPlatformTools.defaultContext().get().get()
+    navigator.navigateTo(BoloRoute.View.Media(seasonId))
+}

@@ -17,6 +17,7 @@ import tv.hsrui.bolo.main.MainScreen
 import tv.hsrui.bolo.search.SearchInputScreen
 import tv.hsrui.bolo.search.SearchResultsScreen
 import tv.hsrui.bolo.view.video.VideoScreen
+import tv.hsrui.bolo.view.media.MediaPlaybackScreen
 
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
@@ -80,6 +81,9 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
         is BoloRoute.View -> when (route) {
             is BoloRoute.View.Video -> NavEntry(key = route) {
                 VideoScreen(vid = route.vid)
+            }
+            is BoloRoute.View.Media -> NavEntry(key = route) {
+                MediaPlaybackScreen(seasonId = route.seasonId)
             }
         }
     }

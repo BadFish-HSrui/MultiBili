@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
+import tv.hsrui.bolo.navigation.openMedia
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.grid.ShowVerticalCardGrid
@@ -115,7 +116,11 @@ fun MediaPage(
                             modifier = Modifier.fillMaxSize(),
                             gridCells = mediaGridCells,
                         ) { media ->
-                            ShowMediaCard(mediaInfo = media, modifier = Modifier.fillMaxWidth())
+                            ShowMediaCard(
+                                mediaInfo = media,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = { openMedia(media.seasonId) },
+                            )
                         }
                     }
                 }

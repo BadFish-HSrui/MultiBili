@@ -67,7 +67,7 @@ class RepliesViewModel(val replySection: ReplySectionType) : ViewModel() {
                 val result = fetchReplies()
                 if (result.isSuccess) {
                     _uiState.value =
-                        RepliesUiState.Success(result.data.topReply, result.data.replies)
+                        RepliesUiState.Success(result.data.topReply, result.data.replies, result.data.totalReplyCount)
                     canLoadMore = result.data.hasMore
                     loadParamsString = result.data.loadParamsString
                     replyLabelText = result.data.replyLabelText
@@ -91,7 +91,9 @@ class RepliesViewModel(val replySection: ReplySectionType) : ViewModel() {
                 if (result.isSuccess) {
                     _uiState.update { oldState ->
                         (oldState as RepliesUiState.Success).copy(
-                            replies = (oldState.replies + result.data.replies).distinctBy { it.rpid })
+                            replies = (oldState.replies + result.data.replies).distinctBy { it.rpid },
+                            totalReplyCount = result.data.totalReplyCount ?: oldState.totalReplyCount,
+                        )
                     }
                     canLoadMore = result.data.hasMore
                     loadParamsString = result.data.loadParamsString
