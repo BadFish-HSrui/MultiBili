@@ -34,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -43,6 +44,7 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
@@ -54,6 +56,7 @@ import tv.hsrui.network.feature.reply.ReplyItem
 import tv.hsrui.network.feature.reply.ReplySort
 import tv.hsrui.network.feature.reply.send.sendRootReply
 import tv.hsrui.network.feature.reply.send.sendSubReply
+import tv.hsrui.network.login.storage.LoginStorage
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
@@ -66,6 +69,7 @@ fun RepliesGridPage(
 ) {
     val sortType by viewModel.sortType.collectAsState()
     val repliesGridState = rememberLazyGridState()
+    val loginStorage: LoginStorage = koinInject()
 
     repliesGridState.OnGridBottomReached(buffer = 4, isLoading = viewModel.isLoading) {
         viewModel.loadMoreReplies()
@@ -179,7 +183,20 @@ fun RepliesGridPage(
                                             isTop = true
                                         )
                                     }
-                                }
+                                },
+                                bottomContent = if (!loginStorage.isLoggedIn) {
+                                    {
+                                        Text(
+                                            text = "查看更多评论需要登录",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 16.dp)
+                                        )
+                                    }
+                                } else null
                             ) { reply ->
                                 ShowReplyCard(
                                     replyInfo = reply,
@@ -246,7 +263,7 @@ fun RepliesGridPage(
                         val subRepliesViewModel = viewModel(key = viewingReply.rpid.toString()) {
                             SubRepliesViewModel(
                                 replySection = viewModel.replySection,
-                                rootReplyID = viewingReply.rpid
+                                rootReply = viewingReply
                             )
                         }
                         val subRepliesUiState by subRepliesViewModel.uiState.collectAsState()

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -26,6 +27,7 @@ fun <T> ShowHorizontalCardGrid(
     noContentPadding: Boolean = false,
     noContentSpacing: Boolean = false,
     topContent: @Composable (() -> Unit)? = null,
+    bottomContent: @Composable (() -> Unit)? = null,
     howToShow: @Composable (T) -> Unit
 ) {
     val contentPadding: Dp
@@ -68,6 +70,12 @@ fun <T> ShowHorizontalCardGrid(
                     key = keySelector
                 ) { card ->
                     howToShow(card)
+                }
+
+                if (bottomContent != null) {
+                    item(key = "bottom", span = { GridItemSpan(maxLineSpan) }) {
+                        bottomContent()
+                    }
                 }
             }
         }

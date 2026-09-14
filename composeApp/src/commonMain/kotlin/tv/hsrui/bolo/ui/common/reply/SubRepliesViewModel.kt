@@ -11,7 +11,7 @@ import tv.hsrui.network.feature.reply.ReplySectionType
 import tv.hsrui.network.feature.reply.SubReplyResponse
 import tv.hsrui.network.feature.reply.fetchSubRepliesWith
 
-class SubRepliesViewModel(val replySection: ReplySectionType, val rootReplyID: Long) : ViewModel() {
+class SubRepliesViewModel(val replySection: ReplySectionType, private val rootReply: ReplyItem) : ViewModel() {
     private val _uiState = MutableStateFlow<SubRepliesUiState>(SubRepliesUiState.Loading)
     val uiState = _uiState.asStateFlow()
 
@@ -40,7 +40,7 @@ class SubRepliesViewModel(val replySection: ReplySectionType, val rootReplyID: L
     suspend fun fetchSubReplies(): SubReplyResponse =
         fetchSubRepliesWith(
             replySection = replySection,
-            rootReplyID = rootReplyID,
+            rootReplyID = rootReply.rpid,
             pageNumber = pageNumber,
             pageSize = 20
         )
@@ -52,7 +52,7 @@ class SubRepliesViewModel(val replySection: ReplySectionType, val rootReplyID: L
                 val result = fetchSubReplies()
                 if (result.isSuccess) {
                     _uiState.value =
-                        SubRepliesUiState.Success(result.data.rootReply, result.data.subReplies)
+                        SubRepliesUiState.Success(result.data.rootReply ?: rootReply, result.data.subReplies)
                     canLoadMore = result.data.hasMore
                 } else {
                     _uiState.value = SubRepliesUiState.Error("[${result.code}]: ${result.message}")

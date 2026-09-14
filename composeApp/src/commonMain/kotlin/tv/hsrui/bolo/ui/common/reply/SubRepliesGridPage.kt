@@ -2,8 +2,12 @@ package tv.hsrui.bolo.ui.common.reply
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -14,8 +18,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
@@ -24,6 +31,7 @@ import tv.hsrui.bolo.ui.components.reply.ShowSubReply
 import tv.hsrui.bolo.utils.OnGridBottomReached
 import tv.hsrui.network.feature.reply.ReplyItem
 import tv.hsrui.network.feature.reply.send.sendSubReply
+import tv.hsrui.network.login.storage.LoginStorage
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
@@ -34,6 +42,7 @@ fun SubRepliesGridPage(
     modifier: Modifier = Modifier
 ) {
     val subRepliesGridState = rememberLazyGridState()
+    val loginStorage: LoginStorage = koinInject()
 
     subRepliesGridState.OnGridBottomReached(buffer = 4, isLoading = viewModel.isLoading) {
         viewModel.loadMoreSubReplies()
@@ -83,7 +92,20 @@ fun SubRepliesGridPage(
                                 updateReply = { viewModel.updateReply(it) },
                                 isTop = true
                             )
-                        }
+                        },
+                        bottomContent = if (!loginStorage.isLoggedIn) {
+                            {
+                                Text(
+                                    text = "查看更多评论需要登录",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 16.dp)
+                                )
+                            }
+                        } else null
                     ) { subReply ->
                         ShowSubReply(
                             replyInfo = subReply,

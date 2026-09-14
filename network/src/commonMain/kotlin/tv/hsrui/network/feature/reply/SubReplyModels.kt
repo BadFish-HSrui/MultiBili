@@ -14,12 +14,13 @@ data class SubReplyResponse(
 
 @Serializable
 data class SubRepliesData(
-    @SerialName("root") val rootReply: ReplyItem = ReplyItem(),
-    @SerialName("replies") val subReplies: List<ReplyItem> = emptyList(),
+    @SerialName("root") val rootReply: ReplyItem? = null,
+    @SerialName("replies") private val _subReplies: List<ReplyItem>? = null,
     @SerialName("control") private val _inputControl: SubReplyInputControl = SubReplyInputControl(),
     @SerialName("page") private val _page: SubReplyPage = SubReplyPage()
 ) {
-    val hasMore get() = ((_page.num * _page.size) < _page.count)
+    val subReplies: List<ReplyItem> get() = _subReplies.orEmpty()
+    val hasMore get() = subReplies.isNotEmpty() && ((_page.num * _page.size) < _page.count)
 
     val replyLabelText by _inputControl::replyLabelText
 
