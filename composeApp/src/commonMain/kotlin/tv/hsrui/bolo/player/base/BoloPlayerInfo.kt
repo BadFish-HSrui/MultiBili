@@ -31,7 +31,12 @@ data class BoloPlayerVideoInfo(
     val fragmentIndex: Int? = null,
     val fragmentCount: Int? = null,
     val downloadBytesPerSecond: Long? = null,
-)
+) {
+    val aspectRatio: Float?
+        get() = if (width != null && width > 0 && height != null && height > 0) {
+            width.toFloat() / height
+        } else null
+}
 
 data class BoloPlayerAudioInfo(
     val codec: String? = null,

@@ -40,8 +40,8 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.min
 import androidx.compose.ui.zIndex
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
@@ -78,6 +78,7 @@ fun PlayerPageLayout(
     replyContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     replyCount: Long? = null,
+    videoAspectRatio: Float? = null,
     playerContent: @Composable (PlayerFullscreenState) -> Unit,
 ) {
     val currentDescContent by rememberUpdatedState(descContent)
@@ -166,7 +167,7 @@ fun PlayerPageLayout(
         ) {
             if (isExpanded()) {
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                    val infoWidth = min((maxWidth * 0.3F), 360.dp)
+                    val infoWidth = (maxWidth * 0.3F).coerceIn(300.dp, 360.dp)
                     Row(Modifier.fillMaxSize()) {
                         Box(
                             modifier = Modifier
@@ -186,7 +187,10 @@ fun PlayerPageLayout(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(4F / 3F)
+                            .aspectRatio(
+                                videoAspectRatio?.takeIf { it.isFinite() && it > 0F }
+                                    ?.coerceIn(4F / 3F, 16F / 9F) ?: (4F / 3F)
+                            )
                             .then(playerBoundsTracker)
                     )
                     Box(

@@ -1,6 +1,9 @@
 package tv.hsrui.bolo.view.video.desc
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -8,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -20,7 +24,8 @@ import tv.hsrui.bolo.ui.components.video.ShowVerticalVideoCard
 fun LazyListScope.relatedVideosContent(
     uiState: VideosUiState,
     viewModel: RelatedViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    columns: Int = 1
 ) {
     when (uiState) {
         is VideosUiState.Loading -> item {
@@ -39,9 +44,18 @@ fun LazyListScope.relatedVideosContent(
             )
         }
 
-        is VideosUiState.Success -> items(items = uiState.videos, key = { it.avid }) { videoCard ->
-            ShowVerticalVideoCard(videoCard, Modifier.height(80.dp)) { onDismiss ->
-                WatchLaterMenuItem(avid = videoCard.avid, onDismiss = onDismiss)
+        is VideosUiState.Success -> items(items = uiState.videos.chunked(columns), key = { it.first().avid }) { videos ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                videos.forEach { videoCard ->
+                    key(videoCard.avid) {
+                        ShowVerticalVideoCard(videoCard, Modifier.weight(1f).height(80.dp)) { onDismiss ->
+                            WatchLaterMenuItem(avid = videoCard.avid, onDismiss = onDismiss)
+                        }
+                    }
+                }
+                repeat(columns - videos.size) {
+                    Spacer(Modifier.weight(1f))
+                }
             }
         }
     }

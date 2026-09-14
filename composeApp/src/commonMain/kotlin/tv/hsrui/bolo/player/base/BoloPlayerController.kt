@@ -86,6 +86,8 @@ class BoloPlayerController(
             mediaInfo = BoloPlayerInfo(
                 video = BoloPlayerVideoInfo(
                     nominalBitrateBps = video.bandwidth.takeIf { it > 0 },
+                    width = video.width.takeIf { it > 0 },
+                    height = video.height.takeIf { it > 0 },
                     fps = parsePlayerFrameRate(video.frameRate),
                 ),
                 audio = audio?.let { BoloPlayerAudioInfo(nominalBitrateBps = it.bandwidth.takeIf { bitrate -> bitrate > 0 }) },
@@ -235,6 +237,8 @@ class BoloPlayerController(
         mutableInfo.value = native.copy(
             video = native.video.copy(
                 nominalBitrateBps = mediaInfo.video.nominalBitrateBps,
+                width = native.video.width ?: mediaInfo.video.width,
+                height = native.video.height ?: mediaInfo.video.height,
                 fps = native.video.fps ?: mediaInfo.video.fps,
                 playbackBitrateBps = native.video.playbackBitrateBps.takeUnless { seeking },
                 fragmentIndex = native.video.fragmentIndex.takeUnless { seeking },

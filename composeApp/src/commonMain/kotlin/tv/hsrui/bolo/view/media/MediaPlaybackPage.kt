@@ -51,6 +51,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.navigation.openMedia
 import tv.hsrui.bolo.player.VideoPlayer
+import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.player.VideoPlayerViewModel
 import tv.hsrui.bolo.player.controls.BoloPlayerControls
 import tv.hsrui.bolo.ui.common.player.PlayerPageLayout
@@ -77,6 +78,7 @@ fun MediaPlaybackPage(
         VideoPlayerViewModel(episode?.avid ?: 0L, episode?.cid ?: 0L, episode?.episodeId)
     }
     val playerUiState by playerViewModel.uiState.collectAsState()
+    val playerInfo by playerViewModel.controller.info.collectAsState()
     LaunchedEffect(episode?.episodeId) {
         if (episode != null) playerViewModel.switchMedia(episode.avid, episode.cid, episode.episodeId)
     }
@@ -117,6 +119,9 @@ fun MediaPlaybackPage(
             }
         },
         replyCount = (repliesUiState as? RepliesUiState.Success)?.totalReplyCount,
+        videoAspectRatio = playerInfo.video.aspectRatio.takeIf {
+            episode != null && playerUiState is VideoPlayerUiState.Success
+        },
         modifier = modifier,
     ) { fullscreenState ->
         if (episode != null) {

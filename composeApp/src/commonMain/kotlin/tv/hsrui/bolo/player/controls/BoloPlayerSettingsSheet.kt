@@ -64,6 +64,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Size
@@ -264,7 +265,7 @@ fun BoloPlayerSettingsSheet(
         }
     }
 
-    BoxWithConstraints(modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier.fillMaxSize().clipToBounds()) {
         val sheetWidth = min(300.dp, maxWidth * 0.85f)
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
             ModalNavigationDrawer(
