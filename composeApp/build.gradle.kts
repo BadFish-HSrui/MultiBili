@@ -77,6 +77,14 @@ kotlin {
         val jvmAndAndroidMain by creating { dependsOn(commonMain.get()) }
         androidMain.get().dependsOn(jvmAndAndroidMain)
         jvmMain.get().dependsOn(jvmAndAndroidMain)
+        val mobileMain by creating {
+            dependsOn(commonMain.get())
+            dependencies {
+                implementation(libs.compose.webview.multiplatform)
+            }
+        }
+        androidMain.get().dependsOn(mobileMain)
+        iosMain.get().dependsOn(mobileMain)
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.activity.compose)
@@ -97,7 +105,7 @@ kotlin {
             implementation(libs.coil.network.ktor3)
             implementation(libs.material.icons)
             implementation(libs.material3.adaptive)
-            implementation(libs.compose.webview.multiplatform)
+            implementation(libs.qrose)
             implementation(libs.ksafe)
             implementation(libs.ksafe.compose)
             implementation(libs.jetbrains.navigation3.ui)

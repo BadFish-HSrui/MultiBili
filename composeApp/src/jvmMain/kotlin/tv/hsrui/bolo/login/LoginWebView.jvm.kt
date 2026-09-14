@@ -1,7 +1,8 @@
 package tv.hsrui.bolo.login
 
-import com.multiplatform.webview.web.NativeWebView
+import androidx.compose.runtime.Composable
 
-actual suspend fun clearWebView() = Unit
-
-actual fun setupWebViewInterceptor(webView: NativeWebView) = Unit
+@Composable
+actual fun LoginWebView() {
+    LoginScreen()
+}

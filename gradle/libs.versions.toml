@@ -66,6 +66,7 @@ coil-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.r
 material-icons = { module = "org.jetbrains.compose.material:material-icons-extended", version = "1.7.3" }
 material3-adaptive = { module = "org.jetbrains.compose.material3.adaptive:adaptive", version.ref = "compose-multiplatform-adaptive" }
 compose-webview-multiplatform = { module = "io.github.kevinnzou:compose-webview-multiplatform", version = "2.0.3" }
+qrose = { module = "io.github.alexzhirkevich:qrose", version = "1.2.1" }
 ksafe = { module = "eu.anifantakis:ksafe", version.ref = "ksafe" }
 ksafe-compose = { module = "eu.anifantakis:ksafe-compose", version.ref = "ksafe" }
 jetbrains-navigation3-ui = { module = "org.jetbrains.androidx.navigation3:navigation3-ui", version.ref = "multiplatform-nav3-ui" }
