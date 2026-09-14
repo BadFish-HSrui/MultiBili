@@ -10,6 +10,11 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +33,7 @@ fun <T> ShowHorizontalCardGrid(
     noContentSpacing: Boolean = false,
     topContent: @Composable (() -> Unit)? = null,
     bottomContent: @Composable (() -> Unit)? = null,
+    staggeredGridState: LazyStaggeredGridState? = null,
     howToShow: @Composable (T) -> Unit
 ) {
     val contentPadding: Dp
@@ -51,30 +57,56 @@ fun <T> ShowHorizontalCardGrid(
     }
     Box(modifier = modifier.fillMaxSize()) {
         Box(modifier = Modifier.widthIn(max = 1280.dp).fillMaxSize().align(Alignment.TopCenter)) {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(325.dp),
-                contentPadding = PaddingValues(if (noContentPadding) 0.dp else contentPadding),
-                verticalArrangement = Arrangement.spacedBy(if (noContentSpacing) 0.dp else contentSpacing),
-                horizontalArrangement = Arrangement.spacedBy(if (noContentSpacing) 0.dp else contentSpacing),
-                state = gridState,
-                modifier = Modifier
-            ) {
-                if (topContent != null){
-                    item(key = "top") {
-                        topContent()
+            if (staggeredGridState != null) {
+                LazyVerticalStaggeredGrid(
+                    columns = StaggeredGridCells.Adaptive(325.dp),
+                    contentPadding = PaddingValues(if (noContentPadding) 0.dp else contentPadding),
+                    verticalItemSpacing = if (noContentSpacing) 0.dp else contentSpacing,
+                    horizontalArrangement = Arrangement.spacedBy(if (noContentSpacing) 0.dp else contentSpacing),
+                    state = staggeredGridState
+                ) {
+                    if (topContent != null) {
+                        item(key = "top") {
+                            topContent()
+                        }
+                    }
+
+                    items(items = cards, key = keySelector) { card ->
+                        howToShow(card)
+                    }
+
+                    if (bottomContent != null) {
+                        item(key = "bottom", span = StaggeredGridItemSpan.FullLine) {
+                            bottomContent()
+                        }
                     }
                 }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(325.dp),
+                    contentPadding = PaddingValues(if (noContentPadding) 0.dp else contentPadding),
+                    verticalArrangement = Arrangement.spacedBy(if (noContentSpacing) 0.dp else contentSpacing),
+                    horizontalArrangement = Arrangement.spacedBy(if (noContentSpacing) 0.dp else contentSpacing),
+                    state = gridState,
+                    modifier = Modifier
+                ) {
+                    if (topContent != null){
+                        item(key = "top") {
+                            topContent()
+                        }
+                    }
 
-                items(
-                    items = cards,
-                    key = keySelector
-                ) { card ->
-                    howToShow(card)
-                }
+                    items(
+                        items = cards,
+                        key = keySelector
+                    ) { card ->
+                        howToShow(card)
+                    }
 
-                if (bottomContent != null) {
-                    item(key = "bottom", span = { GridItemSpan(maxLineSpan) }) {
-                        bottomContent()
+                    if (bottomContent != null) {
+                        item(key = "bottom", span = { GridItemSpan(maxLineSpan) }) {
+                            bottomContent()
+                        }
                     }
                 }
             }

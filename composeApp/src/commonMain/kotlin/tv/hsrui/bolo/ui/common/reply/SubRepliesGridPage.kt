@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -29,6 +30,7 @@ import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
 import tv.hsrui.bolo.ui.components.reply.ShowReplyInput
 import tv.hsrui.bolo.ui.components.reply.ShowSubReply
 import tv.hsrui.bolo.utils.OnGridBottomReached
+import tv.hsrui.bolo.utils.isMedium
 import tv.hsrui.network.feature.reply.ReplyItem
 import tv.hsrui.network.feature.reply.send.sendSubReply
 import tv.hsrui.network.login.storage.LoginStorage
@@ -42,9 +44,15 @@ fun SubRepliesGridPage(
     modifier: Modifier = Modifier
 ) {
     val subRepliesGridState = rememberLazyGridState()
+    val staggeredGridState = rememberLazyStaggeredGridState()
+    val activeStaggeredGridState = staggeredGridState.takeIf { isMedium() }
     val loginStorage: LoginStorage = koinInject()
 
-    subRepliesGridState.OnGridBottomReached(buffer = 4, isLoading = viewModel.isLoading) {
+    subRepliesGridState.OnGridBottomReached(
+        buffer = 4,
+        isLoading = viewModel.isLoading,
+        staggeredGridState = activeStaggeredGridState
+    ) {
         viewModel.loadMoreSubReplies()
     }
 
@@ -82,6 +90,7 @@ fun SubRepliesGridPage(
                         cards = uiState.subReplies,
                         keySelector = { it.rpid },
                         gridState = subRepliesGridState,
+                        staggeredGridState = activeStaggeredGridState,
                         noContentPadding = true,
                         noContentSpacing = true,
                         topContent = {

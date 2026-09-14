@@ -84,6 +84,8 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -328,7 +330,7 @@ fun BoloPlayerControls(
             fullscreenState.toggleFullscreen()
         }
     }
-    val keyboardBlocked = settingsOpen || infoOpen || speedMenuOpen || qualityMenuOpen ||
+    val keyboardBlocked = settingsOpen || speedMenuOpen || qualityMenuOpen ||
         subtitleMenuOpen || mousePressed || sliderPreviewFraction != null
     DisposableEffect(viewModel) {
         onDispose { cancelKeyboardInteraction() }
@@ -341,10 +343,78 @@ fun BoloPlayerControls(
     }
     LaunchedEffect(
         playState.isPlaying, playState.isPlaybackSuspended, playState.isRebuilding,
-        keyboardBlocked, windowFocused,
+        keyboardBlocked, infoOpen, windowFocused,
     ) {
         if (!playState.isPlaying || playState.isPlaybackSuspended || playState.isRebuilding ||
-            keyboardBlocked || !windowFocused) cancelKeyboardInteraction()
+            keyboardBlocked || infoOpen || !windowFocused) cancelKeyboardInteraction()
+    }
+    val onPlayerKeyEvent: (KeyEvent) -> Boolean = { event ->
+        if (event.type == KeyEventType.KeyUp) {
+            val cancelled = keyboardCancelledKeys.remove(event.key)
+            val handled = keyboardPressedKeys.remove(event.key)
+            if (event.key == Key.DirectionRight && handled) {
+                val shouldSeek = rightHoldPending && keyboardBaseSpeed == null
+                rightHoldJob?.cancel()
+                rightHoldJob = null
+                rightHoldPending = false
+                keyboardBaseSpeed?.let { viewModel.controller.setPlaybackSpeed(it) }
+                keyboardBaseSpeed = null
+                keyboardSpeedBoost = null
+                if (shouldSeek) seekByKeyboard(1)
+            }
+            when (event.key) {
+                Key.DirectionLeft -> keyboardSeekTimes.remove(-1)
+                Key.DirectionRight -> keyboardSeekTimes.remove(1)
+            }
+            cancelled || handled
+        } else if (
+            event.type != KeyEventType.KeyDown || keyboardBlocked || !windowFocused ||
+            (infoOpen && event.key != Key.Spacebar) ||
+            event.isCtrlPressed || event.isAltPressed || event.isMetaPressed
+        ) {
+            false
+        } else if (event.key in keyboardCancelledKeys) {
+            true
+        } else {
+            when (event.key) {
+                Key.Spacebar -> {
+                    if (keyboardPressedKeys.add(Key.Spacebar)) {
+                        if (viewModel.controller.state.value.isPlaying) viewModel.pause() else viewModel.play()
+                    }
+                    true
+                }
+                Key.F -> {
+                    if (keyboardPressedKeys.add(Key.F)) toggleDesktopFullscreen()
+                    true
+                }
+                Key.DirectionLeft -> {
+                    val firstDown = keyboardPressedKeys.add(Key.DirectionLeft)
+                    seekByKeyboard(-1, isRepeat = !firstDown)
+                    true
+                }
+                Key.DirectionRight -> {
+                    val firstDown = keyboardPressedKeys.add(Key.DirectionRight)
+                    val playback = viewModel.controller.state.value
+                    if (firstDown && desktopFastForwardHoldSpeedEnabled && playback.isPlaying &&
+                        !playback.isPlaybackSuspended && !playback.isRebuilding) {
+                        rightHoldPending = true
+                        rightHoldJob = keyboardScope.launch {
+                            delay(500)
+                            val current = viewModel.controller.state.value
+                            if (current.isPlaying && !current.isPlaybackSuspended && !current.isRebuilding) {
+                                keyboardBaseSpeed = current.playbackSpeed
+                                keyboardSpeedBoost = longPressSpeed
+                                viewModel.controller.setPlaybackSpeed(longPressSpeed)
+                            }
+                        }
+                    } else if (!rightHoldPending) {
+                        seekByKeyboard(1, isRepeat = !firstDown)
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
     }
     if (isDesktop) {
         PlayerKeyboardEffect(
@@ -352,73 +422,7 @@ fun BoloPlayerControls(
                 cancelKeyboardInteraction()
                 keyboardCancelledKeys.clear()
             },
-            onKeyEvent = { event ->
-                if (event.type == KeyEventType.KeyUp) {
-                    val cancelled = keyboardCancelledKeys.remove(event.key)
-                    val handled = keyboardPressedKeys.remove(event.key)
-                    if (event.key == Key.DirectionRight && handled) {
-                        val shouldSeek = rightHoldPending && keyboardBaseSpeed == null
-                        rightHoldJob?.cancel()
-                        rightHoldJob = null
-                        rightHoldPending = false
-                        keyboardBaseSpeed?.let { viewModel.controller.setPlaybackSpeed(it) }
-                        keyboardBaseSpeed = null
-                        keyboardSpeedBoost = null
-                        if (shouldSeek) seekByKeyboard(1)
-                    }
-                    when (event.key) {
-                        Key.DirectionLeft -> keyboardSeekTimes.remove(-1)
-                        Key.DirectionRight -> keyboardSeekTimes.remove(1)
-                    }
-                    cancelled || handled
-                } else if (
-                    event.type != KeyEventType.KeyDown || keyboardBlocked || !windowFocused ||
-                    event.isCtrlPressed || event.isAltPressed || event.isMetaPressed
-                ) {
-                    false
-                } else if (event.key in keyboardCancelledKeys) {
-                    true
-                } else {
-                    when (event.key) {
-                        Key.Spacebar -> {
-                            if (keyboardPressedKeys.add(Key.Spacebar)) {
-                                if (viewModel.controller.state.value.isPlaying) viewModel.pause() else viewModel.play()
-                            }
-                            true
-                        }
-                        Key.F -> {
-                            if (keyboardPressedKeys.add(Key.F)) toggleDesktopFullscreen()
-                            true
-                        }
-                        Key.DirectionLeft -> {
-                            val firstDown = keyboardPressedKeys.add(Key.DirectionLeft)
-                            seekByKeyboard(-1, isRepeat = !firstDown)
-                            true
-                        }
-                        Key.DirectionRight -> {
-                            val firstDown = keyboardPressedKeys.add(Key.DirectionRight)
-                            val playback = viewModel.controller.state.value
-                            if (firstDown && desktopFastForwardHoldSpeedEnabled && playback.isPlaying &&
-                                !playback.isPlaybackSuspended && !playback.isRebuilding) {
-                                rightHoldPending = true
-                                rightHoldJob = keyboardScope.launch {
-                                    delay(500)
-                                    val current = viewModel.controller.state.value
-                                    if (current.isPlaying && !current.isPlaybackSuspended && !current.isRebuilding) {
-                                        keyboardBaseSpeed = current.playbackSpeed
-                                        keyboardSpeedBoost = longPressSpeed
-                                        viewModel.controller.setPlaybackSpeed(longPressSpeed)
-                                    }
-                                }
-                            } else if (!rightHoldPending) {
-                                seekByKeyboard(1, isRepeat = !firstDown)
-                            }
-                            true
-                        }
-                        else -> false
-                    }
-                }
-            },
+            onKeyEvent = onPlayerKeyEvent,
         )
     }
     val devicePreview = brightnessPreview ?: volumePreview
@@ -435,7 +439,10 @@ fun BoloPlayerControls(
         .orEmpty()
 
     Box(
-        modifier = modifier.fillMaxSize().pointerInput(isDesktop, viewModel) {
+        modifier = modifier.fillMaxSize().onPreviewKeyEvent { event ->
+            // 在播放器按钮处理空格前接管，播放器外的输入框仍沿用自己的按键处理。
+            isDesktop && event.key == Key.Spacebar && onPlayerKeyEvent(event)
+        }.pointerInput(isDesktop, viewModel) {
             if (!isDesktop) return@pointerInput
             try {
                 awaitPointerEventScope {

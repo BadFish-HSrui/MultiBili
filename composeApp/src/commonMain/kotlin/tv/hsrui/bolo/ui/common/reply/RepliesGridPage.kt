@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material3.CircularProgressIndicator
@@ -52,6 +53,7 @@ import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
 import tv.hsrui.bolo.ui.components.reply.ShowReplyCard
 import tv.hsrui.bolo.ui.components.reply.ShowReplyInput
 import tv.hsrui.bolo.utils.OnGridBottomReached
+import tv.hsrui.bolo.utils.isMedium
 import tv.hsrui.network.feature.reply.ReplyItem
 import tv.hsrui.network.feature.reply.ReplySort
 import tv.hsrui.network.feature.reply.send.sendRootReply
@@ -69,9 +71,15 @@ fun RepliesGridPage(
 ) {
     val sortType by viewModel.sortType.collectAsState()
     val repliesGridState = rememberLazyGridState()
+    val staggeredGridState = rememberLazyStaggeredGridState()
+    val activeStaggeredGridState = staggeredGridState.takeIf { isMedium() }
     val loginStorage: LoginStorage = koinInject()
 
-    repliesGridState.OnGridBottomReached(buffer = 4, isLoading = viewModel.isLoading) {
+    repliesGridState.OnGridBottomReached(
+        buffer = 4,
+        isLoading = viewModel.isLoading,
+        staggeredGridState = activeStaggeredGridState
+    ) {
         viewModel.loadMoreReplies()
     }
 
@@ -167,23 +175,26 @@ fun RepliesGridPage(
                                 cards = uiState.replies,
                                 keySelector = { it.rpid },
                                 gridState = repliesGridState,
-                                topContent = {
-                                    uiState.topReply?.let { topReply ->
-                                        ShowReplyCard(
-                                            replyInfo = topReply,
-                                            isUpReply = (topReply.userMid == upMid),
-                                            sendReply = { replyTarget = topReply },
-                                            updateReply = { viewModel.updateReply(it) },
-                                            onViewClick = {
-                                                latestPredictiveBackProgress[0] = 0f
-                                                scope.launch {
-                                                    subRepliesSurfaceState.show(topReply)
-                                                }
-                                            },
-                                            isTop = true
-                                        )
+                                staggeredGridState = activeStaggeredGridState,
+                                topContent = if (uiState.topReply != null) {
+                                    {
+                                        uiState.topReply.let { topReply ->
+                                            ShowReplyCard(
+                                                replyInfo = topReply,
+                                                isUpReply = (topReply.userMid == upMid),
+                                                sendReply = { replyTarget = topReply },
+                                                updateReply = { viewModel.updateReply(it) },
+                                                onViewClick = {
+                                                    latestPredictiveBackProgress[0] = 0f
+                                                    scope.launch {
+                                                        subRepliesSurfaceState.show(topReply)
+                                                    }
+                                                },
+                                                isTop = true
+                                            )
+                                        }
                                     }
-                                },
+                                } else null,
                                 bottomContent = if (!loginStorage.isLoggedIn) {
                                     {
                                         Text(
@@ -214,7 +225,11 @@ fun RepliesGridPage(
                             ShowGridFABMenu(
                                 onBackToTop = {
                                     scope.launch {
-                                        repliesGridState.animateScrollToItem(0)
+                                        if (activeStaggeredGridState != null) {
+                                            activeStaggeredGridState.animateScrollToItem(0)
+                                        } else {
+                                            repliesGridState.animateScrollToItem(0)
+                                        }
                                     }
                                 },
                                 onRefresh = { viewModel.refreshReplies() },
