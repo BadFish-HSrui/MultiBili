@@ -3,6 +3,7 @@ package tv.hsrui.bolo.login
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,6 +25,7 @@ import org.koin.compose.koinInject
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.navigation.Navigator
+import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.network.login.storage.LoginStorage
 
 object LoginWebViewInterceptor {
@@ -83,7 +85,10 @@ actual fun LoginWebView() {
             }
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = { ShowTopBarWithNavigationButton(title = { Text("登录") }) },
+    ) { innerPadding ->
         WebView(
             state = webViewState,
             modifier = Modifier.fillMaxSize().padding(innerPadding),

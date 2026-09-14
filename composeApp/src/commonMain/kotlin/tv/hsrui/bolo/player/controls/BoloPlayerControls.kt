@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -46,6 +47,7 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CropSquare
 import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.Home
@@ -69,6 +71,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.DisposableEffect
@@ -100,6 +103,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -270,6 +274,37 @@ fun BoloPlayerControls(
         onBackCompleted = { infoOpen = false },
     )
     val latestPlayState by rememberUpdatedState(playState)
+    var actionFeedback by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
+        mutableStateOf<Pair<ImageVector, String>?>(null)
+    }
+    var actionFeedbackRevision by remember { mutableIntStateOf(0) }
+    fun showActionFeedback(icon: ImageVector, description: String) {
+        actionFeedback = icon to description
+        actionFeedbackRevision++
+    }
+    fun togglePlayback() {
+        val playback = viewModel.controller.state.value
+        if (playback.isPlaybackSuspended) return
+        if (playback.isPlaying) {
+            viewModel.pause()
+            showActionFeedback(Icons.Rounded.Pause, "暂停")
+        } else {
+            viewModel.play()
+            showActionFeedback(Icons.Rounded.PlayArrow, "播放")
+        }
+    }
+    fun showSeekFeedback(direction: Int) {
+        if (direction < 0) {
+            showActionFeedback(Icons.Rounded.FastRewind, "快退")
+        } else {
+            showActionFeedback(Icons.Rounded.FastForward, "快进")
+        }
+    }
+    LaunchedEffect(actionFeedbackRevision, viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
+        // 淡入 100ms + 保持 200ms，随后由可见性动画淡出 200ms，总计 500ms。
+        delay(300)
+        actionFeedback = null
+    }
     var gesturePreviewMs by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Long?>(null)
     }
@@ -322,6 +357,7 @@ fun BoloPlayerControls(
                 .coerceIn(0L, playback.durationMs),
             autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled,
         )
+        showSeekFeedback(direction)
     }
     fun toggleDesktopFullscreen() {
         if (settings.playerDesktopDefaultWindowFullscreenEnabled) {
@@ -379,7 +415,7 @@ fun BoloPlayerControls(
             when (event.key) {
                 Key.Spacebar -> {
                     if (keyboardPressedKeys.add(Key.Spacebar)) {
-                        if (viewModel.controller.state.value.isPlaying) viewModel.pause() else viewModel.play()
+                        togglePlayback()
                     }
                     true
                 }
@@ -481,6 +517,7 @@ fun BoloPlayerControls(
                     viewModel,
                     title,
                     playerUiState,
+                    currentVideoQuality,
                     settingsOpen,
                     isFullscreen,
                     longPressSpeedGestureEnabled,
@@ -496,12 +533,12 @@ fun BoloPlayerControls(
                         detectTapGestures(
                             onTap = {
                                 if (!desktopDoubleClickPauseEnabled) {
-                                    if (viewModel.controller.state.value.isPlaying) viewModel.pause() else viewModel.play()
+                                    togglePlayback()
                                 }
                             },
                             onDoubleTap = {
                                 if (desktopDoubleClickPauseEnabled) {
-                                    if (viewModel.controller.state.value.isPlaying) viewModel.pause() else viewModel.play()
+                                    togglePlayback()
                                 } else {
                                     toggleDesktopFullscreen()
                                 }
@@ -537,11 +574,12 @@ fun BoloPlayerControls(
                                                 .coerceIn(0L, playback.durationMs),
                                             autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled,
                                         )
+                                        showSeekFeedback(direction)
                                     } else {
-                                        if (playback.isPlaying) viewModel.pause() else viewModel.play()
+                                        togglePlayback()
                                     }
                                 } else {
-                                    if (playback.isPlaying) viewModel.pause() else viewModel.play()
+                                    togglePlayback()
                                 }
                             } else {
                                 controlsVisible = !controlsVisible
@@ -852,9 +890,7 @@ fun BoloPlayerControls(
                     ) {
                         // 播放按钮
                         IconButton(
-                            onClick = {
-                                if (playState.isPlaying) viewModel.pause() else viewModel.play()
-                            },
+                            onClick = { togglePlayback() },
                             modifier = Modifier.size(32.dp),
                         ) {
                             Icon(
@@ -943,16 +979,55 @@ fun BoloPlayerControls(
             }
         }
         val gestureSpeedPreview = keyboardSpeedBoost ?: gestureSpeedBoost
+        val centerFeedback = when {
+            gestureSpeedPreview != null -> Icons.Rounded.FastForward to "长按快进"
+            previewPositionMs != null -> if (previewPositionMs < playState.displayPositionMs) {
+                Icons.Rounded.FastRewind to "快退"
+            } else {
+                Icons.Rounded.FastForward to "快进"
+            }
+            actionFeedback != null -> actionFeedback
+            !playState.isPlaying && !playState.isBuffering && !playState.isSeeking &&
+                !playState.isEnded && !playState.isPlaybackSuspended && !playState.isRebuilding ->
+                Icons.Rounded.Pause to "暂停"
+            else -> null
+        }
+        val feedbackVisibility = remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
+            MutableTransitionState(false)
+        }
+        var retainedFeedback by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
+            mutableStateOf<Pair<ImageVector, String>?>(null)
+        }
+        SideEffect {
+            if (centerFeedback != null) retainedFeedback = centerFeedback
+            feedbackVisibility.targetState = centerFeedback != null && devicePreview == null && !settingsOpen
+        }
         if (playState.isBuffering && !settingsOpen && devicePreview == null &&
-            previewPositionMs == null && gestureSpeedPreview == null) {
+            centerFeedback == null && feedbackVisibility.isIdle && !feedbackVisibility.currentState) {
             BoloPlayerBufferingIndicator(
                 downloadBytesPerSecond = playerInfo.downloadBytesPerSecond,
                 modifier = Modifier.align(Alignment.Center),
             )
         }
+        AnimatedVisibility(
+            visibleState = feedbackVisibility,
+            enter = fadeIn(tween(100)),
+            exit = fadeOut(tween(200)),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            (centerFeedback ?: retainedFeedback)?.let { feedback ->
+                Icon(
+                    imageVector = feedback.first,
+                    contentDescription = feedback.second,
+                    modifier = Modifier.size(64.dp),
+                    tint = Color.White,
+                )
+            }
+        }
         if (devicePreview != null || previewPositionMs != null || gestureSpeedPreview != null) {
             Card(
-                modifier = Modifier.align(Alignment.Center),
+                modifier = Modifier.align(Alignment.Center)
+                    .then(if (devicePreview == null) Modifier.offset(y = 52.dp) else Modifier),
                 shape = RoundedCornerShape(4.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = Color.Black.copy(alpha = 0.75f),
@@ -989,23 +1064,12 @@ fun BoloPlayerControls(
                         color = Color.White,
                     )
                 } else if (gestureSpeedPreview != null) {
-                    Row(
+                    Text(
+                        text = speedMultiplierText((gestureSpeedPreview * 100f).roundToInt()),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.FastForward,
-                            contentDescription = "长按快进",
-                            modifier = Modifier.size(16.dp),
-                            tint = Color.White,
-                        )
-                        Text(
-                            text = speedMultiplierText((gestureSpeedPreview * 100f).roundToInt()),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Color.White,
-                        )
-                    }
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.White,
+                    )
                 }
             }
         }

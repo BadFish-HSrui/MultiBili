@@ -7,7 +7,7 @@ import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.ui.graphics.vector.ImageVector
 
 enum class MainTab(val title: String, val icon: ImageVector) {
+    REGION("视频分区", Icons.Rounded.GridView),
     HOME("主页", Icons.Rounded.Home),
-    REGION("分区", Icons.Rounded.GridView),
-    MEDIA("影视番剧", Icons.Rounded.Movie)
+    MEDIA("番剧影视", Icons.Rounded.Movie)
 }
