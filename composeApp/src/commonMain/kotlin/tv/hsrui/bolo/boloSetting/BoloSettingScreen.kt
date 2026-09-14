@@ -18,10 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,7 +44,7 @@ fun BoloSettingsScreen(modifier: Modifier = Modifier) {
         ) { innerPadding ->
             val settings = BoloSetting.entries
             val navigator: Navigator = koinInject()
-            var selectedSetting by rememberSaveable { mutableStateOf(BoloSetting.About) }
+            val selectedSetting = settings.firstOrNull { it.route == navigator.backStack.lastOrNull() }
 
             val isExpanded = isExpanded()
             LaunchedEffect(Unit) {
