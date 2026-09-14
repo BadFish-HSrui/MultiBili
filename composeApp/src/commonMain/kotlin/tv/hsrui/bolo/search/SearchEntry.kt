@@ -19,7 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 
-internal val SearchInputFieldHeight = 48.dp
+internal val SearchInputFieldHeight = 42.dp
 
 internal fun Modifier.searchInputFieldHeight(shape: Shape): Modifier =
     height(SearchInputFieldHeight)

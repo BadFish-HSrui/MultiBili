@@ -3,6 +3,7 @@ package tv.hsrui.bolo.search
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.text.input.rememberTextFieldState
@@ -18,7 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -71,7 +72,7 @@ fun SearchInputScreen(modifier: Modifier = Modifier) {
     Scaffold(
         modifier = modifier,
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = {
                     SearchBarDefaults.InputField(
                         state = textFieldState,
@@ -103,6 +104,7 @@ fun SearchInputScreen(modifier: Modifier = Modifier) {
                         },
                         colors = inputFieldColors,
                         modifier = Modifier
+                            .widthIn(max = 500.dp)
                             .fillMaxWidth()
                             .searchInputFieldHeight(SearchBarDefaults.inputFieldShape)
                             .focusRequester(focusRequester)
