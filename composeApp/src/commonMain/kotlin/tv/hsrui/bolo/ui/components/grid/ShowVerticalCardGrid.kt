@@ -23,6 +23,7 @@ fun <T> ShowVerticalCardGrid(
     keySelector: (T) -> Any,
     gridState: LazyGridState,
     modifier: Modifier = Modifier,
+    gridCells: GridCells? = null,
     howToShow: @Composable (T) -> Unit
 ) {
     val columns: Int
@@ -51,7 +52,7 @@ fun <T> ShowVerticalCardGrid(
     Box(modifier = modifier.fillMaxSize()){
         Box(modifier = Modifier.widthIn(max = 1920.dp).fillMaxSize().align(Alignment.TopCenter)) {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(columns),
+                columns = gridCells ?: GridCells.Fixed(columns),
                 content = {
                     items(
                         items = cards,

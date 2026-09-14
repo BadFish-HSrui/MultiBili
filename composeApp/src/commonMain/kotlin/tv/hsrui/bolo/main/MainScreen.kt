@@ -36,6 +36,7 @@ import multibili.composeapp.generated.resources.Res
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.main.home.HomeScreen
+import tv.hsrui.bolo.main.media.MediaScreen
 import tv.hsrui.bolo.utils.calculateWithoutBottom
 import tv.hsrui.bolo.main.region.RegionsScreen
 import tv.hsrui.bolo.navigation.BoloRoute
@@ -131,6 +132,7 @@ private fun MainContent(tab: MainTab, modifier: Modifier = Modifier) {
     when (tab) {
         MainTab.HOME -> HomeScreen(modifier)
         MainTab.REGION -> RegionsScreen(modifier)
+        MainTab.MEDIA -> MediaScreen(modifier)
     }
 }
 
