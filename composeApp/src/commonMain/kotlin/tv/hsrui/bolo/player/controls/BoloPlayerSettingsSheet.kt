@@ -107,6 +107,12 @@ import kotlin.math.roundToInt
 fun BoloPlayerSettingsSheet(
     isOpen: Boolean,
     supportsDeviceGestures: Boolean,
+    desktopDoubleClickPauseEnabled: Boolean,
+    onDesktopDoubleClickPauseEnabledChange: (Boolean) -> Unit,
+    desktopDefaultWindowFullscreenEnabled: Boolean,
+    onDesktopDefaultWindowFullscreenEnabledChange: (Boolean) -> Unit,
+    desktopFastForwardHoldSpeedEnabled: Boolean,
+    onDesktopFastForwardHoldSpeedEnabledChange: (Boolean) -> Unit,
     resumeAfterBackgroundEnabled: Boolean,
     onResumeAfterBackgroundEnabledChange: (Boolean) -> Unit,
     autoPlayAfterSeekEnabled: Boolean,
@@ -167,6 +173,7 @@ fun BoloPlayerSettingsSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isDesktop = getPlatform().type == PlatformType.Desktop
     val pagerState = rememberPagerState { BoloPlayerSettingsTab.entries.size }
     val pagerScope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -174,6 +181,7 @@ fun BoloPlayerSettingsSheet(
     val onDismiss by rememberUpdatedState(onDismissRequest)
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
     val scrimAlpha by animateFloatAsState(if (isOpen) 1f else 0f)
+    var showDefaultWindowFullscreenInfo by remember(isOpen) { mutableStateOf(false) }
     var showResumeAfterBackgroundInfo by remember(isOpen) { mutableStateOf(false) }
     var showAutoPlayAfterSeekInfo by remember(isOpen) { mutableStateOf(false) }
     var showFilterInfo by remember(isOpen) { mutableStateOf(false) }
@@ -197,11 +205,22 @@ fun BoloPlayerSettingsSheet(
     NavigationBackHandler(
         state = backState,
         isBackEnabled = (isOpen || !drawerState.isClosed) &&
-            !showFilterInfo && !showTopBottomScrollInfo && !showSubtitlePositionInfo && !showAutoPlayAfterSeekInfo && !showResumeAfterBackgroundInfo,
+            !showDefaultWindowFullscreenInfo && !showFilterInfo && !showTopBottomScrollInfo && !showSubtitlePositionInfo && !showAutoPlayAfterSeekInfo && !showResumeAfterBackgroundInfo,
         onBackCompleted = onDismissRequest,
     )
 
     if (!isOpen && drawerState.isClosed && !drawerState.isAnimationRunning) return
+
+    if (isOpen && showDefaultWindowFullscreenInfo) {
+        ShowInfoDialog(onConfirm = { showDefaultWindowFullscreenInfo = false }) {
+            Text(
+                text = "双击或按 'F' 变为使播放区域填满窗口，而不是切换全屏，开启双击暂停后双击时不生效。",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
+            )
+        }
+    }
 
     if (isOpen && showResumeAfterBackgroundInfo) {
         ShowInfoDialog(onConfirm = { showResumeAfterBackgroundInfo = false }) {
@@ -411,55 +430,93 @@ fun BoloPlayerSettingsSheet(
                                                 }
                                                 Card(Modifier.fillMaxWidth()) {
                                                     Column(Modifier.padding(4.dp).animateContentSize()) {
-                                                        PlayerGestureSwitch(
-                                                            label = "启用进度调节手势",
-                                                            checked = seekGestureEnabled,
-                                                            enabled = isOpen,
-                                                            onCheckedChange = onSeekGestureEnabledChange,
-                                                        )
-                                                        HorizontalDivider(thickness = 1.dp)
-                                                        PlayerGestureSwitch(
-                                                            label = "启用亮度调节手势",
-                                                            checked = brightnessGestureEnabled,
-                                                            enabled = isOpen && supportsDeviceGestures,
-                                                            onCheckedChange = onBrightnessGestureEnabledChange,
-                                                        )
-                                                        HorizontalDivider(thickness = 1.dp)
-                                                        PlayerGestureSwitch(
-                                                            label = "启用音量调节手势",
-                                                            checked = volumeGestureEnabled,
-                                                            enabled = isOpen && supportsDeviceGestures,
-                                                            onCheckedChange = onVolumeGestureEnabledChange,
-                                                        )
-                                                        HorizontalDivider(thickness = 1.dp)
-                                                        PlayerGestureSwitch(
-                                                            label = "双击两侧调节进度",
-                                                            checked = sideDoubleTapSeekEnabled,
-                                                            enabled = isOpen,
-                                                            onCheckedChange = onSideDoubleTapSeekEnabledChange,
-                                                        )
-                                                        if (sideDoubleTapSeekEnabled) {
+                                                        if (isDesktop) {
+                                                            PlayerGestureSwitch(
+                                                                label = "双击暂停",
+                                                                checked = desktopDoubleClickPauseEnabled,
+                                                                enabled = isOpen,
+                                                                onCheckedChange = onDesktopDoubleClickPauseEnabledChange,
+                                                            )
+                                                            HorizontalDivider(thickness = 1.dp)
+                                                            PlayerGestureSwitch(
+                                                                label = "默认窗口内全屏",
+                                                                checked = desktopDefaultWindowFullscreenEnabled,
+                                                                enabled = isOpen,
+                                                                onCheckedChange = onDesktopDefaultWindowFullscreenEnabledChange,
+                                                                onInfoClick = { showDefaultWindowFullscreenInfo = true },
+                                                            )
+                                                            HorizontalDivider(thickness = 1.dp)
+                                                            PlayerGestureSwitch(
+                                                                label = "长按快进切换倍速",
+                                                                checked = desktopFastForwardHoldSpeedEnabled,
+                                                                enabled = isOpen,
+                                                                onCheckedChange = onDesktopFastForwardHoldSpeedEnabledChange,
+                                                            )
+                                                            if (desktopFastForwardHoldSpeedEnabled) {
+                                                                HorizontalDivider(thickness = 1.dp)
+                                                                PlayerLongPressSpeedSlider(
+                                                                    speed = longPressSpeed,
+                                                                    enabled = isOpen,
+                                                                    onValueChange = onLongPressSpeedChange,
+                                                                )
+                                                            }
                                                             HorizontalDivider(thickness = 1.dp)
                                                             PlayerSeekDurationSlider(
                                                                 seconds = doubleTapSeekSeconds,
                                                                 enabled = isOpen,
                                                                 onValueChange = onDoubleTapSeekSecondsChange,
                                                             )
-                                                        }
-                                                        HorizontalDivider(thickness = 1.dp)
-                                                        PlayerGestureSwitch(
-                                                            label = "启用长按倍速手势",
-                                                            checked = longPressSpeedGestureEnabled,
-                                                            enabled = isOpen,
-                                                            onCheckedChange = onLongPressSpeedGestureEnabledChange,
-                                                        )
-                                                        if (longPressSpeedGestureEnabled) {
-                                                            HorizontalDivider(thickness = 1.dp)
-                                                            PlayerLongPressSpeedSlider(
-                                                                speed = longPressSpeed,
+                                                        } else {
+                                                            PlayerGestureSwitch(
+                                                                label = "启用进度调节手势",
+                                                                checked = seekGestureEnabled,
                                                                 enabled = isOpen,
-                                                                onValueChange = onLongPressSpeedChange,
+                                                                onCheckedChange = onSeekGestureEnabledChange,
                                                             )
+                                                            HorizontalDivider(thickness = 1.dp)
+                                                            PlayerGestureSwitch(
+                                                                label = "启用亮度调节手势",
+                                                                checked = brightnessGestureEnabled,
+                                                                enabled = isOpen && supportsDeviceGestures,
+                                                                onCheckedChange = onBrightnessGestureEnabledChange,
+                                                            )
+                                                            HorizontalDivider(thickness = 1.dp)
+                                                            PlayerGestureSwitch(
+                                                                label = "启用音量调节手势",
+                                                                checked = volumeGestureEnabled,
+                                                                enabled = isOpen && supportsDeviceGestures,
+                                                                onCheckedChange = onVolumeGestureEnabledChange,
+                                                            )
+                                                            HorizontalDivider(thickness = 1.dp)
+                                                            PlayerGestureSwitch(
+                                                                label = "双击两侧调节进度",
+                                                                checked = sideDoubleTapSeekEnabled,
+                                                                enabled = isOpen,
+                                                                onCheckedChange = onSideDoubleTapSeekEnabledChange,
+                                                            )
+                                                            if (sideDoubleTapSeekEnabled) {
+                                                                HorizontalDivider(thickness = 1.dp)
+                                                                PlayerSeekDurationSlider(
+                                                                    seconds = doubleTapSeekSeconds,
+                                                                    enabled = isOpen,
+                                                                    onValueChange = onDoubleTapSeekSecondsChange,
+                                                                )
+                                                            }
+                                                            HorizontalDivider(thickness = 1.dp)
+                                                            PlayerGestureSwitch(
+                                                                label = "启用长按倍速手势",
+                                                                checked = longPressSpeedGestureEnabled,
+                                                                enabled = isOpen,
+                                                                onCheckedChange = onLongPressSpeedGestureEnabledChange,
+                                                            )
+                                                            if (longPressSpeedGestureEnabled) {
+                                                                HorizontalDivider(thickness = 1.dp)
+                                                                PlayerLongPressSpeedSlider(
+                                                                    speed = longPressSpeed,
+                                                                    enabled = isOpen,
+                                                                    onValueChange = onLongPressSpeedChange,
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -884,6 +941,7 @@ private fun PlayerGestureSwitch(
     checked: Boolean,
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    onInfoClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
@@ -898,11 +956,30 @@ private fun PlayerGestureSwitch(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f).alpha(if (enabled) 1f else 0.38f),
-        )
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f, fill = false).alpha(if (enabled) 1f else 0.38f),
+            )
+            if (onInfoClick != null) {
+                IconButton(
+                    onClick = onInfoClick,
+                    enabled = enabled,
+                    modifier = Modifier.size(16.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Info,
+                        contentDescription = label + "说明",
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+        }
         Switch(
             checked = checked,
             onCheckedChange = null,

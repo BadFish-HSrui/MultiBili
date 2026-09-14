@@ -11,12 +11,15 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -65,6 +68,9 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -77,6 +83,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -105,12 +121,16 @@ import androidx.compose.ui.unit.dp
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.VideoPlayerViewModel
+import tv.hsrui.bolo.player.PlayerKeyboardEffect
 import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.utils.isExpanded
@@ -120,6 +140,8 @@ import tv.hsrui.network.feature.subtitle.SubtitleItem
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -175,6 +197,7 @@ fun BoloPlayerControls(
         }
         return
     }
+    val isDesktop = fullscreenState.isDesktop
     val deviceControls = rememberPlayerDeviceControls()
     val settings: BoloSettings = koinInject()
     val hapticFeedback = LocalHapticFeedback.current
@@ -183,6 +206,9 @@ fun BoloPlayerControls(
     val volumeGestureEnabled = settings.playerVolumeGestureEnabled
     val longPressSpeedGestureEnabled = settings.playerLongPressSpeedGestureEnabled
     val longPressSpeed = settings.playerLongPressSpeed
+    val desktopDoubleClickPauseEnabled = settings.playerDesktopDoubleClickPauseEnabled
+    val desktopDefaultWindowFullscreenEnabled = settings.playerDesktopDefaultWindowFullscreenEnabled
+    val desktopFastForwardHoldSpeedEnabled = settings.playerDesktopFastForwardHoldSpeedEnabled
     val playState by viewModel.controller.state.collectAsState()
     val playerInfo by viewModel.controller.info.collectAsState()
     val playerUiState by viewModel.uiState.collectAsState()
@@ -191,8 +217,47 @@ fun BoloPlayerControls(
     var sliderPreviewFraction by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
         mutableStateOf<Float?>(null)
     }
+    val sliderInteractionSource = remember { MutableInteractionSource() }
+    val cancelSliderPreview by rememberUpdatedState({ sliderPreviewFraction = null })
+    LaunchedEffect(sliderInteractionSource, isDesktop) {
+        if (!isDesktop) return@LaunchedEffect
+        sliderInteractionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Cancel || interaction is PressInteraction.Cancel) {
+                cancelSliderPreview()
+            }
+        }
+    }
     var controlsVisible by remember { mutableStateOf(false) }
     var settingsOpen by remember(isFullscreen, showExtendedControls) { mutableStateOf(false) }
+    var mouseInside by remember { mutableStateOf(false) }
+    var mousePressed by remember { mutableStateOf(false) }
+    var mouseMovementRevision by remember { mutableIntStateOf(0) }
+    var speedMenuOpen by remember { mutableStateOf(false) }
+    var qualityMenuOpen by remember { mutableStateOf(false) }
+    var subtitleMenuOpen by remember { mutableStateOf(false) }
+    val controlsInteractionActive = mousePressed || sliderPreviewFraction != null ||
+        settingsOpen || speedMenuOpen || qualityMenuOpen || subtitleMenuOpen
+    val latestControlsInteractionActive by rememberUpdatedState(controlsInteractionActive)
+    val windowFocused = LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(isDesktop, mouseInside, mouseMovementRevision, controlsInteractionActive) {
+        if (!isDesktop) return@LaunchedEffect
+        if (controlsInteractionActive) {
+            controlsVisible = true
+        } else if (!mouseInside) {
+            controlsVisible = false
+        } else {
+            controlsVisible = true
+            delay(2_000)
+            controlsVisible = false
+        }
+    }
+    LaunchedEffect(isDesktop, windowFocused) {
+        if (isDesktop && !windowFocused) {
+            mouseInside = false
+            mousePressed = false
+            sliderPreviewFraction = null
+        }
+    }
     DisposableEffect(viewModel, infoOpen) {
         viewModel.controller.setInfoPanelVisible(infoOpen)
         onDispose { viewModel.controller.setInfoPanelVisible(false) }
@@ -226,6 +291,136 @@ fun BoloPlayerControls(
             restoreBaseSpeedOnDispose?.let { viewModel.controller.setPlaybackSpeed(it) }
         }
     }
+    val keyboardScope = rememberCoroutineScope()
+    val keyboardPressedKeys = remember(viewModel) { mutableSetOf<Key>() }
+    val keyboardCancelledKeys = remember(viewModel) { mutableSetOf<Key>() }
+    val keyboardSeekTimes = remember(viewModel) { mutableMapOf<Int, TimeMark>() }
+    var rightHoldJob by remember(viewModel) { mutableStateOf<Job?>(null) }
+    var rightHoldPending by remember(viewModel) { mutableStateOf(false) }
+    var keyboardBaseSpeed by remember(viewModel) { mutableStateOf<Float?>(null) }
+    var keyboardSpeedBoost by remember(viewModel) { mutableStateOf<Float?>(null) }
+    fun cancelKeyboardInteraction() {
+        rightHoldJob?.cancel()
+        rightHoldJob = null
+        rightHoldPending = false
+        keyboardCancelledKeys.addAll(keyboardPressedKeys)
+        keyboardPressedKeys.clear()
+        keyboardSeekTimes.clear()
+        keyboardBaseSpeed?.let { viewModel.controller.setPlaybackSpeed(it) }
+        keyboardBaseSpeed = null
+        keyboardSpeedBoost = null
+    }
+    fun seekByKeyboard(direction: Int, isRepeat: Boolean = false) {
+        if (isRepeat && keyboardSeekTimes[direction]?.elapsedNow()?.inWholeMilliseconds?.let { it < 500L } == true) return
+        val playback = viewModel.controller.state.value
+        if (!playback.isSeekable || playback.durationMs <= 0L || playback.isPlaybackSuspended) return
+        keyboardSeekTimes[direction] = TimeSource.Monotonic.markNow()
+        viewModel.seekToMs(
+            (playback.displayPositionMs + direction * settings.playerDoubleTapSeekSeconds * 1_000L)
+                .coerceIn(0L, playback.durationMs),
+            autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled,
+        )
+    }
+    fun toggleDesktopFullscreen() {
+        if (settings.playerDesktopDefaultWindowFullscreenEnabled) {
+            fullscreenState.toggleWindowFullscreen()
+        } else {
+            fullscreenState.toggleFullscreen()
+        }
+    }
+    val keyboardBlocked = settingsOpen || infoOpen || speedMenuOpen || qualityMenuOpen ||
+        subtitleMenuOpen || mousePressed || sliderPreviewFraction != null
+    DisposableEffect(viewModel) {
+        onDispose { cancelKeyboardInteraction() }
+    }
+    LaunchedEffect(
+        viewModel, title, playerUiState, currentVideoQuality, isFullscreen,
+        desktopFastForwardHoldSpeedEnabled, longPressSpeed,
+    ) {
+        cancelKeyboardInteraction()
+    }
+    LaunchedEffect(
+        playState.isPlaying, playState.isPlaybackSuspended, playState.isRebuilding,
+        keyboardBlocked, windowFocused,
+    ) {
+        if (!playState.isPlaying || playState.isPlaybackSuspended || playState.isRebuilding ||
+            keyboardBlocked || !windowFocused) cancelKeyboardInteraction()
+    }
+    if (isDesktop) {
+        PlayerKeyboardEffect(
+            onCancel = {
+                cancelKeyboardInteraction()
+                keyboardCancelledKeys.clear()
+            },
+            onKeyEvent = { event ->
+                if (event.type == KeyEventType.KeyUp) {
+                    val cancelled = keyboardCancelledKeys.remove(event.key)
+                    val handled = keyboardPressedKeys.remove(event.key)
+                    if (event.key == Key.DirectionRight && handled) {
+                        val shouldSeek = rightHoldPending && keyboardBaseSpeed == null
+                        rightHoldJob?.cancel()
+                        rightHoldJob = null
+                        rightHoldPending = false
+                        keyboardBaseSpeed?.let { viewModel.controller.setPlaybackSpeed(it) }
+                        keyboardBaseSpeed = null
+                        keyboardSpeedBoost = null
+                        if (shouldSeek) seekByKeyboard(1)
+                    }
+                    when (event.key) {
+                        Key.DirectionLeft -> keyboardSeekTimes.remove(-1)
+                        Key.DirectionRight -> keyboardSeekTimes.remove(1)
+                    }
+                    cancelled || handled
+                } else if (
+                    event.type != KeyEventType.KeyDown || keyboardBlocked || !windowFocused ||
+                    event.isCtrlPressed || event.isAltPressed || event.isMetaPressed
+                ) {
+                    false
+                } else if (event.key in keyboardCancelledKeys) {
+                    true
+                } else {
+                    when (event.key) {
+                        Key.Spacebar -> {
+                            if (keyboardPressedKeys.add(Key.Spacebar)) {
+                                if (viewModel.controller.state.value.isPlaying) viewModel.pause() else viewModel.play()
+                            }
+                            true
+                        }
+                        Key.F -> {
+                            if (keyboardPressedKeys.add(Key.F)) toggleDesktopFullscreen()
+                            true
+                        }
+                        Key.DirectionLeft -> {
+                            val firstDown = keyboardPressedKeys.add(Key.DirectionLeft)
+                            seekByKeyboard(-1, isRepeat = !firstDown)
+                            true
+                        }
+                        Key.DirectionRight -> {
+                            val firstDown = keyboardPressedKeys.add(Key.DirectionRight)
+                            val playback = viewModel.controller.state.value
+                            if (firstDown && desktopFastForwardHoldSpeedEnabled && playback.isPlaying &&
+                                !playback.isPlaybackSuspended && !playback.isRebuilding) {
+                                rightHoldPending = true
+                                rightHoldJob = keyboardScope.launch {
+                                    delay(500)
+                                    val current = viewModel.controller.state.value
+                                    if (current.isPlaying && !current.isPlaybackSuspended && !current.isRebuilding) {
+                                        keyboardBaseSpeed = current.playbackSpeed
+                                        keyboardSpeedBoost = longPressSpeed
+                                        viewModel.controller.setPlaybackSpeed(longPressSpeed)
+                                    }
+                                }
+                            } else if (!rightHoldPending) {
+                                seekByKeyboard(1, isRepeat = !firstDown)
+                            }
+                            true
+                        }
+                        else -> false
+                    }
+                }
+            },
+        )
+    }
     val devicePreview = brightnessPreview ?: volumePreview
     val durationMs = playState.durationMs
     val previewPositionMs = gesturePreviewMs ?: sliderPreviewFraction?.let { fraction ->
@@ -239,7 +434,39 @@ fun BoloPlayerControls(
         ?.videoQualities
         .orEmpty()
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier.fillMaxSize().pointerInput(isDesktop, viewModel) {
+            if (!isDesktop) return@pointerInput
+            try {
+                awaitPointerEventScope {
+                    while (true) {
+                        // 父容器只观察事件，按钮、滑块和背景分别正常命中。
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val mouse = event.changes.firstOrNull { it.type == PointerType.Mouse } ?: continue
+                        mousePressed = event.changes.any { it.type == PointerType.Mouse && it.pressed }
+                        when (event.type) {
+                            PointerEventType.Enter, PointerEventType.Move -> {
+                                mouseInside = mouse.position.x >= 0f && mouse.position.x < size.width &&
+                                    mouse.position.y >= 0f && mouse.position.y < size.height
+                                if (mouseInside) {
+                                    controlsVisible = true
+                                    mouseMovementRevision++
+                                }
+                            }
+                            PointerEventType.Exit -> {
+                                mouseInside = false
+                                if (!latestControlsInteractionActive) controlsVisible = false
+                            }
+                            PointerEventType.Press -> cancelKeyboardInteraction()
+                        }
+                    }
+                }
+            } finally {
+                mouseInside = false
+                mousePressed = false
+            }
+        },
+    ) {
         // 背景独立命中：上层按钮、滑块与面板不会把事件传给手势层。
         Box(
             Modifier.fillMaxSize()
@@ -251,10 +478,30 @@ fun BoloPlayerControls(
                     isFullscreen,
                     longPressSpeedGestureEnabled,
                     longPressSpeed,
+                    isDesktop,
+                    desktopDoubleClickPauseEnabled,
+                    desktopDefaultWindowFullscreenEnabled,
                     settings.playerSideDoubleTapSeekEnabled,
                     settings.playerDoubleTapSeekSeconds,
                 ) {
                     if (settingsOpen) return@pointerInput
+                    if (isDesktop) {
+                        detectTapGestures(
+                            onTap = {
+                                if (!desktopDoubleClickPauseEnabled) {
+                                    if (viewModel.controller.state.value.isPlaying) viewModel.pause() else viewModel.play()
+                                }
+                            },
+                            onDoubleTap = {
+                                if (desktopDoubleClickPauseEnabled) {
+                                    if (viewModel.controller.state.value.isPlaying) viewModel.pause() else viewModel.play()
+                                } else {
+                                    toggleDesktopFullscreen()
+                                }
+                            },
+                        )
+                        return@pointerInput
+                    }
                     // 说明面板或全屏切换会重启本手势循环，同一手势内的判定都在一个循环里完成。
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = true)
@@ -336,7 +583,7 @@ fun BoloPlayerControls(
                     brightnessGestureEnabled,
                     volumeGestureEnabled,
                 ) {
-                    if (!isFullscreen || settingsOpen) return@pointerInput
+                    if (isDesktop || !isFullscreen || settingsOpen) return@pointerInput
                     try {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
@@ -536,7 +783,6 @@ fun BoloPlayerControls(
                         .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
                         .padding(horizontal = 16.dp, vertical = 16.dp)
                 ) {
-                    val sliderInteractionSource = remember { MutableInteractionSource() }
                     val sliderColors = SliderDefaults.colors(
                         activeTrackColor = BiliColor.ThemeColor,
                         thumbColor = BiliColor.ThemeColor,
@@ -627,20 +873,23 @@ fun BoloPlayerControls(
                                     subtitles = subtitleState.subtitles,
                                     selectedSubtitle = subtitleState.selected,
                                     onSubtitleSelected = viewModel.subtitleController::loadSubtitleContent,
+                                    onExpandedChange = { subtitleMenuOpen = it },
                                 )
                             }
 
                             SpeedSliderPopup(
-                                currentSpeed = gestureSpeedBoost ?: playState.playbackSpeed,
+                                currentSpeed = keyboardSpeedBoost ?: gestureSpeedBoost ?: playState.playbackSpeed,
                                 isFullscreen = isFullscreen,
-                                onSpeedSelected = viewModel.controller::setPlaybackSpeed
+                                onSpeedSelected = viewModel.controller::setPlaybackSpeed,
+                                onExpandedChange = { speedMenuOpen = it },
                             )
 
                             if (videoQualities.isNotEmpty()) {
                                 QualityMenu(
                                     qualities = videoQualities,
                                     currentQuality = currentVideoQuality,
-                                    onQualitySelected = viewModel::switchQuality
+                                    onQualitySelected = viewModel::switchQuality,
+                                    onExpandedChange = { qualityMenuOpen = it },
                                 )
                             }
 
@@ -686,7 +935,7 @@ fun BoloPlayerControls(
                 }
             }
         }
-        val gestureSpeedPreview = gestureSpeedBoost
+        val gestureSpeedPreview = keyboardSpeedBoost ?: gestureSpeedBoost
         if (playState.isBuffering && !settingsOpen && devicePreview == null &&
             previewPositionMs == null && gestureSpeedPreview == null) {
             BoloPlayerBufferingIndicator(
@@ -771,6 +1020,12 @@ fun BoloPlayerControls(
                 onAutoReplayEnabledChange = { settings.playerAutoReplayEnabled = it },
                 isOpen = settingsOpen,
                 supportsDeviceGestures = deviceControls.supportsDeviceGestures,
+                desktopDoubleClickPauseEnabled = desktopDoubleClickPauseEnabled,
+                onDesktopDoubleClickPauseEnabledChange = { settings.playerDesktopDoubleClickPauseEnabled = it },
+                desktopDefaultWindowFullscreenEnabled = desktopDefaultWindowFullscreenEnabled,
+                onDesktopDefaultWindowFullscreenEnabledChange = { settings.playerDesktopDefaultWindowFullscreenEnabled = it },
+                desktopFastForwardHoldSpeedEnabled = desktopFastForwardHoldSpeedEnabled,
+                onDesktopFastForwardHoldSpeedEnabledChange = { settings.playerDesktopFastForwardHoldSpeedEnabled = it },
                 seekGestureEnabled = seekGestureEnabled,
                 onSeekGestureEnabledChange = { settings.playerSeekGestureEnabled = it },
                 brightnessGestureEnabled = brightnessGestureEnabled,
@@ -848,8 +1103,14 @@ private fun SpeedSliderPopup(
     currentSpeed: Float,
     isFullscreen: Boolean,
     onSpeedSelected: (Float) -> Unit,
+    onExpandedChange: (Boolean) -> Unit,
 ) {
     var expanded by remember(isFullscreen) { mutableStateOf(false) }
+    val latestOnExpandedChange by rememberUpdatedState(onExpandedChange)
+    DisposableEffect(expanded) {
+        latestOnExpandedChange(expanded)
+        onDispose { latestOnExpandedChange(false) }
+    }
     val visibility = remember(isFullscreen) { MutableTransitionState(false) }
     visibility.targetState = expanded
     val transformOrigin = TransformOrigin(
@@ -973,9 +1234,15 @@ private fun SpeedSliderPopup(
 private fun QualityMenu(
     qualities: List<VideoQuality>,
     currentQuality: VideoQuality,
-    onQualitySelected: (VideoQuality) -> Unit
+    onQualitySelected: (VideoQuality) -> Unit,
+    onExpandedChange: (Boolean) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val latestOnExpandedChange by rememberUpdatedState(onExpandedChange)
+    DisposableEffect(expanded) {
+        latestOnExpandedChange(expanded)
+        onDispose { latestOnExpandedChange(false) }
+    }
 
     Box {
         TextButton(
@@ -1023,8 +1290,14 @@ private fun SubtitleMenu(
     subtitles: List<SubtitleItem>,
     selectedSubtitle: SubtitleItem?,
     onSubtitleSelected: (SubtitleItem?) -> Unit,
+    onExpandedChange: (Boolean) -> Unit,
 ) {
     var expanded by remember(subtitles) { mutableStateOf(false) }
+    val latestOnExpandedChange by rememberUpdatedState(onExpandedChange)
+    DisposableEffect(expanded) {
+        latestOnExpandedChange(expanded)
+        onDispose { latestOnExpandedChange(false) }
+    }
     Box {
         TextButton(
             onClick = { expanded = true },

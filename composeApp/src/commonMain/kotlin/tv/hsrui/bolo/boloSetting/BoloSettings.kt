@@ -62,6 +62,48 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentPlayerMergeAudioChannelsEnabled = value
         }
 
+    private var storedPlayerDesktopDoubleClickPauseEnabled by settingsKSafe(
+        false,
+        key = "player_desktop_double_click_pause_enabled",
+    )
+    private var currentPlayerDesktopDoubleClickPauseEnabled by mutableStateOf(storedPlayerDesktopDoubleClickPauseEnabled)
+
+    var playerDesktopDoubleClickPauseEnabled: Boolean
+        get() = currentPlayerDesktopDoubleClickPauseEnabled
+        set(value) {
+            if (value == currentPlayerDesktopDoubleClickPauseEnabled) return
+            storedPlayerDesktopDoubleClickPauseEnabled = value
+            currentPlayerDesktopDoubleClickPauseEnabled = value
+        }
+
+    private var storedPlayerDesktopDefaultWindowFullscreenEnabled by settingsKSafe(
+        false,
+        key = "player_desktop_default_window_fullscreen_enabled",
+    )
+    private var currentPlayerDesktopDefaultWindowFullscreenEnabled by mutableStateOf(storedPlayerDesktopDefaultWindowFullscreenEnabled)
+
+    var playerDesktopDefaultWindowFullscreenEnabled: Boolean
+        get() = currentPlayerDesktopDefaultWindowFullscreenEnabled
+        set(value) {
+            if (value == currentPlayerDesktopDefaultWindowFullscreenEnabled) return
+            storedPlayerDesktopDefaultWindowFullscreenEnabled = value
+            currentPlayerDesktopDefaultWindowFullscreenEnabled = value
+        }
+
+    private var storedPlayerDesktopFastForwardHoldSpeedEnabled by settingsKSafe(
+        false,
+        key = "player_desktop_fast_forward_hold_speed_enabled",
+    )
+    private var currentPlayerDesktopFastForwardHoldSpeedEnabled by mutableStateOf(storedPlayerDesktopFastForwardHoldSpeedEnabled)
+
+    var playerDesktopFastForwardHoldSpeedEnabled: Boolean
+        get() = currentPlayerDesktopFastForwardHoldSpeedEnabled
+        set(value) {
+            if (value == currentPlayerDesktopFastForwardHoldSpeedEnabled) return
+            storedPlayerDesktopFastForwardHoldSpeedEnabled = value
+            currentPlayerDesktopFastForwardHoldSpeedEnabled = value
+        }
+
     private var storedPlayerSeekGestureEnabled by settingsKSafe(
         true,
         key = "player_seek_gesture_enabled",

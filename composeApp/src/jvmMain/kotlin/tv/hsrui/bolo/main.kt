@@ -8,6 +8,7 @@ import multibili.composeapp.generated.resources.Res
 import multibili.composeapp.generated.resources.jvm_icon
 import org.jetbrains.compose.resources.painterResource
 import tv.hsrui.bolo.player.DesktopPlayerFullscreenWindow
+import tv.hsrui.bolo.player.DesktopPlayerKeyboard
 
 fun main() {
     System.setProperty("compose.interop.blending", "true")
@@ -16,7 +17,10 @@ fun main() {
         Window(
             onCloseRequest = ::exitApplication,
             state = windowState,
-            onKeyEvent = DesktopPlayerFullscreenWindow::onKeyEvent,
+            onPreviewKeyEvent = DesktopPlayerKeyboard::onPreviewKeyEvent,
+            onKeyEvent = { event ->
+                DesktopPlayerFullscreenWindow.onKeyEvent(event) || DesktopPlayerKeyboard.onKeyEvent(event)
+            },
             title = "Multi Bili",
             icon = painterResource(Res.drawable.jvm_icon)
         ) {
