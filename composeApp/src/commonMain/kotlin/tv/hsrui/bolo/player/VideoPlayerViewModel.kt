@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.player.base.BoloPlayerController
 import tv.hsrui.bolo.player.base.BoloPlayerError
@@ -43,6 +44,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
 
     val subtitleController = BoloSubtitleController(viewModelScope)
     val danmakuController = BoloDanmakuController()
+    private val playbackReportController = PlaybackReportController()
     private val danmakuSegments = mutableMapOf<Long, List<BoloDanmakuItem>>()
     private val danmakuRequests = mutableMapOf<Long, Job>()
     private val failedDanmakuSegments = mutableSetOf<Long>()
@@ -81,6 +83,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
     init {
         viewModelScope.launch {
             controller.state.collect { playback ->
+                playbackReportController.updatePlayback(playback, controller.backend.value != null)
                 if (playback.isPlaybackSuspended) {
                     replayJob?.cancel()
                     danmakuController.pause()
@@ -92,11 +95,19 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
                 }
             }
         }
+        viewModelScope.launch {
+            while (isActive) {
+                delay(250L)
+                playbackReportController.updatePlayback(controller.state.value, controller.backend.value != null)
+            }
+        }
         if (avid > 0L && cid > 0L) switchMedia(avid, cid, episodeId, forceReload = true)
     }
 
     fun switchMedia(avid: Long, cid: Long, episodeId: Long? = null, forceReload: Boolean = false) {
         if (!forceReload && this.avid == avid && this.cid == cid && this.episodeId == episodeId) return
+        playbackReportController.beforeReload(controller.state.value, controller.backend.value != null)
+        playbackReportController.openMedia(avid, cid)
         sourceLoadJob?.cancel()
         playbackLoadJob?.cancel()
         replayJob?.cancel()
@@ -117,6 +128,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
         replayJob?.cancel()
         val currentState = uiState.value
         if (currentState !is VideoPlayerUiState.Success) return
+        playbackReportController.beforeReload(controller.state.value, controller.backend.value != null)
 
         val video = currentState.videoSource.getVideo(quality = videoQuality, codec = videoCodec)
         val audio = currentState.videoSource.getAudio(quality = audioQuality)
@@ -132,10 +144,28 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
         subtitleController.loadSubtitleList(avid, cid)
         subtitleController.synchronize(startPositionMs)
         playbackLoadJob?.cancel()
+        val generation = sourceGeneration
         playbackLoadJob = viewModelScope.launch {
             controller.load(video = video, audio = audio, startPositionMs = startPositionMs)
+            currentCoroutineContext().ensureActive()
+            if (generation != sourceGeneration) return@launch
+            playbackReportController.mediaLoaded()
             if (autoPlay) controller.play()
         }
+    }
+
+    fun onPlaybackPageEntered() {
+        playbackReportController.enterPage()
+    }
+
+    fun onPlaybackPageExited() {
+        playbackReportController.updatePlayback(controller.state.value, controller.backend.value != null)
+        playbackReportController.leavePage()
+    }
+
+    fun onPlaybackForegroundChanged(active: Boolean) {
+        playbackReportController.updatePlayback(controller.state.value, controller.backend.value != null)
+        playbackReportController.setForeground(active)
     }
 
     fun switchQuality(newVideoQuality: VideoQuality) {
@@ -354,6 +384,8 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
     }
 
     override fun onCleared() {
+        onPlaybackPageExited()
+        playbackReportController.close()
         sourceGeneration += 1
         sourceLoadJob?.cancel()
         playbackLoadJob?.cancel()

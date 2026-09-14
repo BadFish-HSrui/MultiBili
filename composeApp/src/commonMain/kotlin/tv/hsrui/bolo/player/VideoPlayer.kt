@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +32,11 @@ fun VideoPlayer(
     modifier: Modifier = Modifier
 ) {
     val settings: BoloSettings = koinInject()
+    DisposableEffect(viewModel) {
+        viewModel.onPlaybackPageEntered()
+        onDispose { viewModel.onPlaybackPageExited() }
+    }
+    PlaybackReportLifecycleEffect(onForegroundChanged = viewModel::onPlaybackForegroundChanged)
     LaunchedEffect(viewModel, settings.playerResumeAfterBackgroundEnabled) {
         viewModel.controller.setResumeAfterBackgroundEnabled(settings.playerResumeAfterBackgroundEnabled)
     }

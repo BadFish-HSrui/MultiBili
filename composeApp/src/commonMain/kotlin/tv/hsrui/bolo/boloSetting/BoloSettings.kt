@@ -9,6 +9,31 @@ import eu.anifantakis.lib.ksafe.KSafePlain
 import kotlin.math.roundToInt
 
 class BoloSettings(settingsKSafe: KSafePlain) {
+    private var storedPlayerReportStartEnabled by settingsKSafe(true, key = "player_report_start_enabled")
+    private var currentPlayerReportStartEnabled by mutableStateOf(storedPlayerReportStartEnabled)
+
+    var playerReportStartEnabled: Boolean
+        get() = currentPlayerReportStartEnabled
+        set(value) {
+            if (value == currentPlayerReportStartEnabled) return
+            storedPlayerReportStartEnabled = value
+            currentPlayerReportStartEnabled = value
+        }
+
+    private var storedPlayerReportProgressMode by settingsKSafe("on_exit", key = "player_report_progress_mode")
+    private var currentPlayerReportProgressMode by mutableStateOf(
+        PlaybackProgressReportMode.entries.firstOrNull { it.storedValue == storedPlayerReportProgressMode }
+            ?: PlaybackProgressReportMode.OnExit,
+    )
+
+    var playerReportProgressMode: PlaybackProgressReportMode
+        get() = currentPlayerReportProgressMode
+        set(value) {
+            if (value == currentPlayerReportProgressMode) return
+            storedPlayerReportProgressMode = value.storedValue
+            currentPlayerReportProgressMode = value
+        }
+
     private var storedPlayerResumeAfterBackgroundEnabled by settingsKSafe(
         false,
         key = "player_resume_after_background_enabled",
