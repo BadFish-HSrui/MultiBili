@@ -113,9 +113,9 @@ import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.VideoPlayerViewModel
 import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.ui.theme.BiliColor
+import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.bolo.ui.components.slider.ShowSlider
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
-import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.subtitle.SubtitleItem
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -124,14 +124,58 @@ import kotlin.math.roundToLong
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoloPlayerControls(
-    videoInfo: VideoInfoData,
+    title: String,
     viewModel: VideoPlayerViewModel,
     fullscreenState: PlayerFullscreenState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    navigationOnly: Boolean = false,
+    navigationContentColor: Color = Color.White,
 ) {
     val isFullscreen = fullscreenState.isFullscreen
-    val deviceControls = rememberPlayerDeviceControls()
+    val showExtendedControls = isFullscreen || isExpanded()
     val navigator: Navigator = koinInject()
+    var infoOpen by remember(viewModel, isFullscreen, showExtendedControls, navigationOnly) { mutableStateOf(false) }
+    val navigationButtons: @Composable () -> Unit = {
+        // 导航按钮
+        IconButton(
+            onClick = fullscreenState::goBack,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
+                contentDescription = if (infoOpen) "关闭播放信息" else if (fullscreenState.canExitFullscreen) "退出全屏" else "返回",
+                tint = navigationContentColor,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+
+        if (!isFullscreen && navigator.currentDepth > 1) {
+            IconButton(
+                onClick = { navigator.goHome() },
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Home,
+                    contentDescription = "回到主页",
+                    tint = navigationContentColor
+                )
+            }
+        }
+    }
+    if (navigationOnly) {
+        Box(modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.align(Alignment.TopStart)
+                    .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                navigationButtons()
+            }
+        }
+        return
+    }
+    val deviceControls = rememberPlayerDeviceControls()
     val settings: BoloSettings = koinInject()
     val hapticFeedback = LocalHapticFeedback.current
     val seekGestureEnabled = settings.playerSeekGestureEnabled
@@ -144,36 +188,35 @@ fun BoloPlayerControls(
     val playerUiState by viewModel.uiState.collectAsState()
     val subtitleState by viewModel.subtitleController.state.collectAsState()
     val currentVideoQuality by viewModel.currentVideoQuality.collectAsState()
-    var sliderPreviewFraction by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen) {
+    var sliderPreviewFraction by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
         mutableStateOf<Float?>(null)
     }
     var controlsVisible by remember { mutableStateOf(false) }
-    var settingsOpen by remember(isFullscreen) { mutableStateOf(false) }
-    var infoOpen by remember(viewModel, isFullscreen) { mutableStateOf(false) }
+    var settingsOpen by remember(isFullscreen, showExtendedControls) { mutableStateOf(false) }
     DisposableEffect(viewModel, infoOpen) {
         viewModel.controller.setInfoPanelVisible(infoOpen)
         onDispose { viewModel.controller.setInfoPanelVisible(false) }
     }
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
-        isBackEnabled = isFullscreen && infoOpen,
+        isBackEnabled = showExtendedControls && infoOpen,
         onBackCompleted = { infoOpen = false },
     )
     val latestPlayState by rememberUpdatedState(playState)
-    var gesturePreviewMs by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+    var gesturePreviewMs by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Long?>(null)
     }
-    var brightnessPreview by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+    var brightnessPreview by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Float?>(null)
     }
-    var volumePreview by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+    var volumePreview by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Float?>(null)
     }
     // 长按倍速期间的状态：临时倍速用于预览，原倍速用于松手恢复。
-    var gestureSpeedBoost by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+    var gestureSpeedBoost by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Float?>(null)
     }
-    var gestureBaseSpeed by remember(viewModel, videoInfo, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+    var gestureBaseSpeed by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Float?>(null)
     }
     val restoreBaseSpeedOnDispose by rememberUpdatedState(gestureBaseSpeed)
@@ -202,7 +245,7 @@ fun BoloPlayerControls(
             Modifier.fillMaxSize()
                 .pointerInput(
                     viewModel,
-                    videoInfo,
+                    title,
                     playerUiState,
                     settingsOpen,
                     isFullscreen,
@@ -283,7 +326,7 @@ fun BoloPlayerControls(
                 }
                 .pointerInput(
                     viewModel,
-                    videoInfo,
+                    title,
                     playerUiState,
                     currentVideoQuality,
                     isFullscreen,
@@ -375,10 +418,10 @@ fun BoloPlayerControls(
                     }
                 }
         )
-        if (isFullscreen && infoOpen) {
+        if (showExtendedControls && infoOpen) {
             BoxWithConstraints(
                 Modifier.fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
                     .padding(16.dp),
             ) {
                 BoloPlayerInfoPanel(
@@ -447,35 +490,11 @@ fun BoloPlayerControls(
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 导航按钮
-                    IconButton(
-                        onClick = fullscreenState::goBack,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
-                            contentDescription = if (infoOpen) "关闭播放信息" else if (fullscreenState.canExitFullscreen) "退出全屏" else "返回",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-
-                    if (!isFullscreen && navigator.currentDepth > 1) {
-                        IconButton(
-                            onClick = { navigator.goHome() },
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Home,
-                                contentDescription = "回到主页",
-                                tint = Color.White
-                            )
-                        }
-                    }
+                    navigationButtons()
 
                     if (isFullscreen) {
                         Text(
-                            text = videoInfo.title,
+                            text = title,
                             modifier = Modifier
                                 .padding(start = 8.dp)
                                 .weight(1f),
@@ -484,6 +503,9 @@ fun BoloPlayerControls(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                    }
+                    if (showExtendedControls) {
+                        if (!isFullscreen) Spacer(Modifier.weight(1f))
                         IconButton(onClick = { infoOpen = !infoOpen }) {
                             Icon(
                                 imageVector = Icons.Rounded.Info,
@@ -599,7 +621,7 @@ fun BoloPlayerControls(
 
                         Spacer(Modifier.weight(1f))
 
-                        if (isFullscreen) {
+                        if (showExtendedControls) {
                             if (subtitleState.subtitles.isNotEmpty()) {
                                 SubtitleMenu(
                                     subtitles = subtitleState.subtitles,
@@ -731,7 +753,7 @@ fun BoloPlayerControls(
                 }
             }
         }
-        if (isFullscreen) {
+        if (showExtendedControls) {
             BoloPlayerSettingsSheet(
                 resumeAfterBackgroundEnabled = settings.playerResumeAfterBackgroundEnabled,
                 onResumeAfterBackgroundEnabledChange = { settings.playerResumeAfterBackgroundEnabled = it },

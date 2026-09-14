@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -28,24 +29,17 @@ import tv.hsrui.network.feature.player.enumModels.AudioQuality
 import tv.hsrui.network.feature.player.enumModels.VideoCodec
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.player.fetchVideoPlayInfo
+import tv.hsrui.network.feature.player.fetchMediaPlayInfo
 
-class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
+class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : ViewModel() {
     var avid: Long = avid
-        set(value) {
-            if (field == value) return
-            playbackLoadJob?.cancel()
-            replayJob?.cancel()
-            field = value
-            resetDanmaku()
-        }
+        private set
     var cid: Long = cid
-        set(value) {
-            if (field == value) return
-            playbackLoadJob?.cancel()
-            replayJob?.cancel()
-            field = value
-            resetDanmaku()
-        }
+        private set
+    var episodeId: Long? = episodeId
+        private set
+    private var sourceLoadJob: Job? = null
+    private var sourceGeneration = 0L
 
     val subtitleController = BoloSubtitleController(viewModelScope)
     val danmakuController = BoloDanmakuController()
@@ -93,18 +87,33 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
                     return@collect
                 }
                 synchronizeDanmaku(playback)
-                if (danmakuMedia == (avid to cid) && !awaitingPlaybackReload) {
+                if (danmakuMedia == (this@VideoPlayerViewModel.avid to this@VideoPlayerViewModel.cid) && !awaitingPlaybackReload) {
                     subtitleController.synchronize(playback.displayPositionMs)
                 }
             }
         }
-        viewModelScope.launch {
+        if (avid > 0L && cid > 0L) switchMedia(avid, cid, episodeId, forceReload = true)
+    }
+
+    fun switchMedia(avid: Long, cid: Long, episodeId: Long? = null, forceReload: Boolean = false) {
+        if (!forceReload && this.avid == avid && this.cid == cid && this.episodeId == episodeId) return
+        sourceLoadJob?.cancel()
+        playbackLoadJob?.cancel()
+        replayJob?.cancel()
+        val generation = ++sourceGeneration
+        controller.pause()
+        this.avid = avid
+        this.cid = cid
+        this.episodeId = episodeId
+        resetDanmaku()
+        _uiState.value = VideoPlayerUiState.Loading
+        sourceLoadJob = viewModelScope.launch {
             loadVideo()
-            playVideo()
+            if (generation == sourceGeneration) playVideo(autoPlay = true)
         }
     }
 
-    private fun playVideo(startPositionMs: Long = 0L) {
+    private fun playVideo(startPositionMs: Long = 0L, autoPlay: Boolean = false) {
         replayJob?.cancel()
         val currentState = uiState.value
         if (currentState !is VideoPlayerUiState.Success) return
@@ -125,6 +134,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         playbackLoadJob?.cancel()
         playbackLoadJob = viewModelScope.launch {
             controller.load(video = video, audio = audio, startPositionMs = startPositionMs)
+            if (autoPlay) controller.play()
         }
     }
 
@@ -134,18 +144,17 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
     }
 
     suspend fun fetchPlayInfo(): VideoSource {
-        return fetchVideoPlayInfo(
-            avid = avid,
-            cid = cid
-        )
+        return episodeId?.let { fetchMediaPlayInfo(it) } ?: fetchVideoPlayInfo(avid = avid, cid = cid)
     }
 
     suspend fun loadVideo() {
         val requestedAvid = avid
         val requestedCid = cid
+        val generation = sourceGeneration
         try {
             val result = fetchPlayInfo()
-            if (avid != requestedAvid || cid != requestedCid) return
+            currentCoroutineContext().ensureActive()
+            if (generation != sourceGeneration || avid != requestedAvid || cid != requestedCid) return
             if (result.isSuccess) {
                 _uiState.value = VideoPlayerUiState.Success(result)
             } else {
@@ -154,12 +163,13 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (avid != requestedAvid || cid != requestedCid) return
+            if (generation != sourceGeneration || avid != requestedAvid || cid != requestedCid) return
             _uiState.value = VideoPlayerUiState.Error(e.message ?: "其他网络错误")
         }
     }
 
     fun play() {
+        if (uiState.value !is VideoPlayerUiState.Success) return
         if (controller.state.value.isPlaybackSuspended) return
         if (!controller.state.value.isEnded) {
             if (replayJob?.isActive != true) controller.play()
@@ -344,6 +354,10 @@ class VideoPlayerViewModel(avid: Long, cid: Long) : ViewModel() {
     }
 
     override fun onCleared() {
+        sourceGeneration += 1
+        sourceLoadJob?.cancel()
+        playbackLoadJob?.cancel()
+        replayJob?.cancel()
         subtitleController.clear()
         danmakuGeneration += 1
         danmakuRequests.values.toList().forEach { it.cancel() }
