@@ -1,6 +1,5 @@
 package tv.hsrui.bolo.player.base
 
-import androidx.compose.ui.awt.ComposeWindow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +33,7 @@ internal actual class BoloMpvBackend actual constructor() {
         this.output = host
         try {
             var direct = withContext(Dispatchers.Swing) {
-                host.supportsDirect(DesktopPlayerFullscreenWindow.window as? ComposeWindow)
+                host.supportsDirect(DesktopPlayerFullscreenWindow.window)
             }
             while (!closed) {
                 val next = BoloDesktopMpvRenderer(handle, host, direct) { cause ->

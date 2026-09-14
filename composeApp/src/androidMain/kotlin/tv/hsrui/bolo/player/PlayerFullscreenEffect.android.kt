@@ -17,7 +17,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @Composable
-actual fun PlayerFullscreenEffect(isFullscreen: Boolean) {
+actual fun PlayerFullscreenEffect(fullscreenState: PlayerFullscreenState) {
+    val isFullscreen = fullscreenState.isFullscreen
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 

@@ -31,7 +31,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -52,6 +51,7 @@ import kotlinx.coroutines.launch
 import tv.hsrui.bolo.player.PlayerFullscreenEffect
 import tv.hsrui.bolo.player.VideoPlayer
 import tv.hsrui.bolo.player.VideoPlayerViewModel
+import tv.hsrui.bolo.player.rememberPlayerFullscreenState
 import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.bolo.view.video.desc.VideoDescPage
 import tv.hsrui.bolo.view.video.reply.VideoReplyPage
@@ -82,7 +82,8 @@ fun VideoPage(
     modifier: Modifier = Modifier
 ) {
     val videoInfo = uiState.video
-    var isFullscreen by rememberSaveable { mutableStateOf(false) }
+    val fullscreenState = rememberPlayerFullscreenState()
+    val isFullscreen = fullscreenState.isFullscreen
     val fullscreenBackState = rememberNavigationEventState(NavigationEventInfo.None)
     var rootOffsetInRoot by remember { mutableStateOf(IntOffset.Zero) }
     var playerBoundsInRoot by remember { mutableStateOf(IntRect.Zero) }
@@ -94,11 +95,11 @@ fun VideoPage(
     }
     val playerUiState by viewModel.uiState.collectAsState()
 
-    PlayerFullscreenEffect(isFullscreen)
+    PlayerFullscreenEffect(fullscreenState)
     NavigationBackHandler(
         state = fullscreenBackState,
-        isBackEnabled = isFullscreen,
-        onBackCompleted = { isFullscreen = false }
+        isBackEnabled = fullscreenState.canExitFullscreen,
+        onBackCompleted = fullscreenState::exitFullscreen
     )
 
     val videoInfoBar = remember {
@@ -232,8 +233,7 @@ fun VideoPage(
                     videoInfo = videoInfo,
                     viewModel = viewModel,
                     uiState = playerUiState,
-                    isFullscreen = isFullscreen,
-                    onFullscreenChange = { isFullscreen = it },
+                    fullscreenState = fullscreenState,
                     modifier = Modifier.fillMaxSize()
                 )
             }

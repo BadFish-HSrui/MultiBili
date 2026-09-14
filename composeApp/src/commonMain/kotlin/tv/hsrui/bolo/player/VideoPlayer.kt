@@ -23,8 +23,7 @@ fun VideoPlayer(
     videoInfo: VideoInfoData,
     viewModel: VideoPlayerViewModel,
     uiState: VideoPlayerUiState,
-    isFullscreen: Boolean,
-    onFullscreenChange: (Boolean) -> Unit,
+    fullscreenState: PlayerFullscreenState,
     modifier: Modifier = Modifier
 ) {
     val settings: BoloSettings = koinInject()
@@ -84,8 +83,7 @@ fun VideoPlayer(
                 BoloPlayerControls(
                     videoInfo = videoInfo,
                     viewModel = viewModel,
-                    isFullscreen = isFullscreen,
-                    onFullscreenChange = onFullscreenChange
+                    fullscreenState = fullscreenState
                 )
             }
         }

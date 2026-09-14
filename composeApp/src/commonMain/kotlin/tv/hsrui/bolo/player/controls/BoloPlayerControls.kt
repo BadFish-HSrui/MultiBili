@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.Brightness6
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CropSquare
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
@@ -110,6 +111,7 @@ import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.VideoPlayerViewModel
+import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.components.slider.ShowSlider
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
@@ -124,10 +126,10 @@ import kotlin.math.roundToLong
 fun BoloPlayerControls(
     videoInfo: VideoInfoData,
     viewModel: VideoPlayerViewModel,
-    isFullscreen: Boolean,
-    onFullscreenChange: (Boolean) -> Unit,
+    fullscreenState: PlayerFullscreenState,
     modifier: Modifier = Modifier
 ) {
+    val isFullscreen = fullscreenState.isFullscreen
     val deviceControls = rememberPlayerDeviceControls()
     val navigator: Navigator = koinInject()
     val settings: BoloSettings = koinInject()
@@ -447,20 +449,12 @@ fun BoloPlayerControls(
                 ) {
                     // 导航按钮
                     IconButton(
-                        onClick = {
-                            if (infoOpen) {
-                                infoOpen = false
-                            } else if (isFullscreen) {
-                                onFullscreenChange(false)
-                            } else {
-                                navigator.goBack()
-                            }
-                        },
+                        onClick = fullscreenState::goBack,
                         modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
-                            contentDescription = if (infoOpen) "关闭播放信息" else if (isFullscreen) "退出全屏" else "返回",
+                            contentDescription = if (infoOpen) "关闭播放信息" else if (fullscreenState.canExitFullscreen) "退出全屏" else "返回",
                             tint = Color.White,
                             modifier = Modifier.size(24.dp),
                         )
@@ -630,13 +624,39 @@ fun BoloPlayerControls(
 
                         }
 
+                        if (fullscreenState.isDesktop) {
+                            IconButton(
+                                onClick = fullscreenState::toggleWindowFullscreen,
+                                modifier = Modifier.size(32.dp).semantics {
+                                    contentDescription = if (isFullscreen) "退出窗口全屏" else "窗口全屏"
+                                },
+                            ) {
+                                Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.CropSquare,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                    Icon(
+                                        imageVector = if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            }
+                        }
+
+                        val isSystemFullscreen = if (fullscreenState.isDesktop) fullscreenState.isSystemFullscreen else isFullscreen
                         IconButton(
-                            onClick = { onFullscreenChange(!isFullscreen) },
+                            onClick = fullscreenState::toggleFullscreen,
+                            enabled = !fullscreenState.isChangingSystemFullscreen,
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
-                                imageVector = if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                                contentDescription = if (isFullscreen) "退出全屏" else "全屏",
+                                imageVector = if (isSystemFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                contentDescription = if (isSystemFullscreen) "退出全屏" else "全屏",
                                 tint = Color.White
                             )
                         }

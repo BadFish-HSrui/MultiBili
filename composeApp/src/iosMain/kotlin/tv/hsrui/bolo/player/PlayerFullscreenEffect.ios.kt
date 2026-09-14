@@ -18,7 +18,8 @@ import platform.UIKit.setNeedsUpdateOfSupportedInterfaceOrientations
 
 @OptIn(ExperimentalForeignApi::class)
 @Composable
-actual fun PlayerFullscreenEffect(isFullscreen: Boolean) {
+actual fun PlayerFullscreenEffect(fullscreenState: PlayerFullscreenState) {
+    val isFullscreen = fullscreenState.isFullscreen
     val host = LocalUIViewController.current
     DisposableEffect(host, isFullscreen) {
         var active = true
