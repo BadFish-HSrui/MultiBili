@@ -9,7 +9,8 @@ data class VideoSource(
     val isSuccess: Boolean,
     val message: String,
     private val _video: Map<VideoQuality, Map<VideoCodec, BiliDashObject>>,
-    private val _audio: Map<AudioQuality, BiliDashObject>?
+    private val _audio: Map<AudioQuality, BiliDashObject>?,
+    val isPreview: Boolean = false,
 ) {
     val videoQualities: List<VideoQuality> = _video.keys.sortedByDescending { it.code }
 

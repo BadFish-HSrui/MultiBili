@@ -9,6 +9,8 @@ object ApiUrls {
     const val REGION = "x/web-interface/region/feed/rcmd" //分区
     const val MEDIA_INDEX = "pgc/season/index/result" //影视番剧索引
     const val MEDIA_CONDITIONS = "pgc/season/index/condition" //影视番剧筛选条件
+    const val MEDIA_SEASON = "pgc/view/web/season" //媒体详情与分季
+    const val MEDIA_RELATED = "pgc/season/web/related/recommend" //媒体推荐
     const val ACCOUNT_INFO = "x/space/v2/info" //个人空间信息
     const val MY_ACCOUNT_INFO = "x/space/v2/myinfo" //我的个人空间信息
     const val FOLLOW_STATE = "x/relation/stat" //关注与被关注
@@ -56,6 +58,7 @@ object ApiUrls {
 
     object Play {
         const val VIDEO = "x/player/wbi/playurl" //视频播放信息
+        const val MEDIA = "pgc/player/web/playurl" //媒体播放信息
     }
 
     object Danmaku {

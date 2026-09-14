@@ -90,7 +90,7 @@ fun VideoPlayResponse.toVideoSource(): VideoSource {
     when {
         !this.isSuccess -> {
             isSuccess = false
-            message = "[$code]: ${this.message}"
+            message = if (code == -10403) "此内容需要大会员" else "[$code]: ${this.message}"
         }
 
         this.data.videoFormatMap.isEmpty() -> {

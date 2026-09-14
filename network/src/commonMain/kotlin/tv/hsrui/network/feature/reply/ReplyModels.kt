@@ -22,6 +22,7 @@ data class RepliesData(
     val topReply get() = _topReplies?.firstOrNull()
 
     val hasMore get() = !_cursor.isEnd
+    val totalReplyCount: Long? get() = _cursor.totalReplyCount?.takeIf { it >= 0L }
     val loadParamsString by _cursor.paginationReply::loadParamsString
 
     val canReply: Boolean get() = (_replies != null)
@@ -31,6 +32,7 @@ data class RepliesData(
 
     @Serializable
     data class ReplyCursor(
+        @SerialName("all_count") val totalReplyCount: Long? = null,
         @SerialName("is_end") val isEnd: Boolean = true,
         @SerialName("pagination_reply") val paginationReply: PaginationReply = PaginationReply()
     ) {

@@ -26,3 +26,15 @@ suspend fun fetchMediaConditions(seasonType: Int): MediaConditionsResponse {
         parameter("type", 1)
     }.body()
 }
+
+suspend fun fetchMediaSeason(seasonId: Long): MediaSeasonResponse {
+    return ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.MEDIA_SEASON) {
+        parameter("season_id", seasonId)
+    }.body()
+}
+
+suspend fun fetchRelatedMedia(seasonId: Long): MediaRecommendationsResponse {
+    return ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.MEDIA_RELATED) {
+        parameter("season_id", seasonId)
+    }.body()
+}
