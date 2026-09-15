@@ -1,6 +1,7 @@
 package tv.hsrui.bolo
 
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -9,11 +10,12 @@ import multibili.composeapp.generated.resources.jvm_icon
 import org.jetbrains.compose.resources.painterResource
 import tv.hsrui.bolo.player.DesktopPlayerFullscreenWindow
 import tv.hsrui.bolo.player.DesktopPlayerKeyboard
+import java.awt.Dimension
 
 fun main() {
     System.setProperty("compose.interop.blending", "true")
     application {
-        val windowState = rememberWindowState()
+        val windowState = rememberWindowState(width = 1200.dp, height = 800.dp)
         Window(
             onCloseRequest = ::exitApplication,
             state = windowState,
@@ -25,6 +27,7 @@ fun main() {
             icon = painterResource(Res.drawable.jvm_icon)
         ) {
             DisposableEffect(window, windowState) {
+                window.minimumSize = Dimension(720, 480)
                 DesktopPlayerFullscreenWindow.attach(window, windowState)
                 onDispose { DesktopPlayerFullscreenWindow.detach(window) }
             }

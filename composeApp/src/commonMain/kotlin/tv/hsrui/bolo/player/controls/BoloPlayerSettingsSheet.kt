@@ -333,7 +333,7 @@ fun BoloPlayerSettingsSheet(
                                                                     role = Role.Switch,
                                                                     onValueChange = onAutoReplayEnabledChange,
                                                                 )
-                                                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                .height(32.dp).padding(horizontal = 8.dp),
                                                             verticalAlignment = Alignment.CenterVertically,
                                                         ) {
                                                             Text(
@@ -357,7 +357,7 @@ fun BoloPlayerSettingsSheet(
                                                                     role = Role.Switch,
                                                                     onValueChange = onAutoPlayAfterSeekEnabledChange,
                                                                 )
-                                                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                .height(32.dp).padding(horizontal = 8.dp),
                                                             verticalAlignment = Alignment.CenterVertically,
                                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                         ) {
@@ -370,7 +370,7 @@ fun BoloPlayerSettingsSheet(
                                                                 IconButton(
                                                                     onClick = { showAutoPlayAfterSeekInfo = true },
                                                                     enabled = isOpen,
-                                                                    modifier = Modifier.size(16.dp),
+                                                                    modifier = Modifier.size(24.dp),
                                                                 ) {
                                                                     Icon(
                                                                         imageVector = Icons.Outlined.Info,
@@ -396,7 +396,7 @@ fun BoloPlayerSettingsSheet(
                                                                         role = Role.Switch,
                                                                         onValueChange = onResumeAfterBackgroundEnabledChange,
                                                                     )
-                                                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                    .height(32.dp).padding(horizontal = 8.dp),
                                                                 verticalAlignment = Alignment.CenterVertically,
                                                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                             ) {
@@ -409,7 +409,7 @@ fun BoloPlayerSettingsSheet(
                                                                     IconButton(
                                                                         onClick = { showResumeAfterBackgroundInfo = true },
                                                                         enabled = isOpen,
-                                                                        modifier = Modifier.size(16.dp),
+                                                                        modifier = Modifier.size(24.dp),
                                                                     ) {
                                                                         Icon(
                                                                             imageVector = Icons.Outlined.Info,
@@ -554,7 +554,7 @@ fun BoloPlayerSettingsSheet(
                                                                 IconButton(
                                                                     onClick = { showFilterInfo = true },
                                                                     enabled = isOpen,
-                                                                    modifier = Modifier.size(16.dp),
+                                                                    modifier = Modifier.size(24.dp),
                                                                 ) {
                                                                     Icon(
                                                                         imageVector = Icons.Outlined.Info,
@@ -611,7 +611,7 @@ fun BoloPlayerSettingsSheet(
                                                                 enabled = isOpen,
                                                                 role = Role.Switch,
                                                                 onValueChange = onDanmakuTopBottomScrollEnabledChange,
-                                                            ).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                            ).height(32.dp).padding(horizontal = 8.dp),
                                                             horizontalArrangement = Arrangement.SpaceBetween,
                                                             verticalAlignment = Alignment.CenterVertically,
                                                         ) {
@@ -624,7 +624,7 @@ fun BoloPlayerSettingsSheet(
                                                                 IconButton(
                                                                     onClick = { showTopBottomScrollInfo = true },
                                                                     enabled = isOpen,
-                                                                    modifier = Modifier.size(16.dp),
+                                                                    modifier = Modifier.size(24.dp),
                                                                 ) {
                                                                     Icon(
                                                                         imageVector = Icons.Outlined.Info,
@@ -647,7 +647,7 @@ fun BoloPlayerSettingsSheet(
                                                                 enabled = isOpen,
                                                                 role = Role.Switch,
                                                                 onValueChange = onDanmakuExtraLineSpacingEnabledChange,
-                                                            ).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                            ).height(32.dp).padding(horizontal = 8.dp),
                                                             horizontalArrangement = Arrangement.SpaceBetween,
                                                             verticalAlignment = Alignment.CenterVertically,
                                                         ) {
@@ -669,7 +669,7 @@ fun BoloPlayerSettingsSheet(
                                                                 enabled = isOpen,
                                                                 role = Role.Switch,
                                                                 onValueChange = onDanmakuScrollEnabledChange,
-                                                            ).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                            ).height(32.dp).padding(horizontal = 8.dp),
                                                             horizontalArrangement = Arrangement.SpaceBetween,
                                                             verticalAlignment = Alignment.CenterVertically,
                                                         ) {
@@ -688,7 +688,7 @@ fun BoloPlayerSettingsSheet(
                                                                 enabled = isOpen,
                                                                 role = Role.Switch,
                                                                 onValueChange = onDanmakuTopEnabledChange,
-                                                            ).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                            ).height(32.dp).padding(horizontal = 8.dp),
                                                             horizontalArrangement = Arrangement.SpaceBetween,
                                                             verticalAlignment = Alignment.CenterVertically,
                                                         ) {
@@ -707,7 +707,7 @@ fun BoloPlayerSettingsSheet(
                                                                 enabled = isOpen,
                                                                 role = Role.Switch,
                                                                 onValueChange = onDanmakuBottomEnabledChange,
-                                                            ).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                            ).height(32.dp).padding(horizontal = 8.dp),
                                                             horizontalArrangement = Arrangement.SpaceBetween,
                                                             verticalAlignment = Alignment.CenterVertically,
                                                         ) {
@@ -733,7 +733,7 @@ fun BoloPlayerSettingsSheet(
                                                                 enabled = subtitlePageActive,
                                                                 role = Role.Switch,
                                                                 onValueChange = onSubtitleAlwaysOnChange,
-                                                            ).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                            ).height(32.dp).padding(horizontal = 8.dp),
                                                             horizontalArrangement = Arrangement.SpaceBetween,
                                                             verticalAlignment = Alignment.CenterVertically,
                                                         ) {
@@ -753,7 +753,7 @@ fun BoloPlayerSettingsSheet(
                                                                     enabled = subtitlePageActive,
                                                                     role = Role.Switch,
                                                                     onValueChange = onSubtitleAutoChineseOnlyChange,
-                                                                ).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                ).height(32.dp).padding(horizontal = 8.dp),
                                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                                 verticalAlignment = Alignment.CenterVertically,
                                                             ) {
@@ -776,7 +776,7 @@ fun BoloPlayerSettingsSheet(
                                                                     enabled = subtitlePageActive,
                                                                     role = Role.Switch,
                                                                     onValueChange = onSubtitleAutoExcludeAiChange,
-                                                                ).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                ).height(32.dp).padding(horizontal = 8.dp),
                                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                                 verticalAlignment = Alignment.CenterVertically,
                                                             ) {
@@ -952,7 +952,7 @@ private fun PlayerGestureSwitch(
                 role = Role.Switch,
                 onValueChange = onCheckedChange,
             )
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .height(32.dp).padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -970,7 +970,7 @@ private fun PlayerGestureSwitch(
                 IconButton(
                     onClick = onInfoClick,
                     enabled = enabled,
-                    modifier = Modifier.size(16.dp),
+                    modifier = Modifier.size(24.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Info,
@@ -1179,7 +1179,7 @@ private fun PlayerPercentageSlider(
                     IconButton(
                         onClick = onInfoClick,
                         enabled = isOpen,
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(24.dp),
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Info,
