@@ -45,7 +45,7 @@ internal class BoloDanmakuEngine {
 
     private var items = emptyList<BoloDanmakuItem>()
     val itemCount: Int get() = items.size
-    private val active = ArrayList<Entry>(120)
+    private val active = ArrayList<Entry>(500)
     internal val activeEntries: List<Entry> get() = active
     private val pending = linkedMapOf<Long, BoloDanmakuItem>()
     private val scheduledIds = mutableSetOf<Long>()
@@ -161,7 +161,7 @@ internal class BoloDanmakuEngine {
         active.removeAll { it.expired(animationTimeMs) }
         for (item in pending.values) {
             if (item.weight < filterLevel || !isModeEnabled(item.mode)) continue
-            if (active.size >= 120 || active.any { it.item.id == item.id }) continue
+            if (active.size >= 500 || active.any { it.item.id == item.id }) continue
             // 入场时固定显示字号；后续倍率变化不影响在屏条目，也不修改源数据。
             val displayItem = item.copy(
                 fontSize = (item.fontSize.takeIf { it.isFinite() && it > 0f } ?: 25f) * fontScale,
