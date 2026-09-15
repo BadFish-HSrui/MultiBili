@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,18 +29,34 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.accountFeature.feature.AccountFeature
 import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
+import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.bolo.utils.calculateWithoutBottom
 import tv.hsrui.bolo.utils.isExpanded
+import tv.hsrui.network.feature.account.myinfo.MyAccountInfoManager
+import tv.hsrui.network.login.storage.LoginStorage
 
 @Composable
 fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
+    val navigator: Navigator = koinInject()
+    val loginStorage: LoginStorage = koinInject()
+    val accountInfoManager: MyAccountInfoManager = koinInject()
+    val viewModel = viewModel { AccountFeaturesViewModel(loginStorage, accountInfoManager) }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(uiState.isLoggedOut) {
+        if (uiState.isLoggedOut) navigator.goHome()
+    }
+
     Box {
         Scaffold(
             topBar = {
@@ -50,7 +67,6 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
             modifier = modifier.fillMaxSize()
         ) { innerPadding ->
             val features = AccountFeature.entries
-            val navigator: Navigator = koinInject()
             var selectedFeature by rememberSaveable { mutableStateOf(AccountFeature.History) }
 
             val isExpanded = isExpanded()
@@ -101,7 +117,7 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
                 item {
                     Card(
                         onClick = { navigator.navigateTo(BoloRoute.BoloSetting.List) },
-                        shape = BoloShapes.List.Bottom,
+                        shape = BoloShapes.List.Item,
                         modifier = Modifier.fillMaxWidth().height(64.dp)
                     ) {
                         Row(
@@ -120,8 +136,60 @@ fun AccountFeaturesScreen(modifier: Modifier = Modifier) {
                         }
                     }
                 }
+
+                item {
+                    Card(
+                        onClick = viewModel::requestLogout,
+                        enabled = !uiState.isLoggingOut && !uiState.isLoggedOut,
+                        shape = BoloShapes.List.Bottom,
+                        modifier = Modifier.fillMaxWidth().height(64.dp)
+                    ) {
+                        Row(
+                            Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.Logout,
+                                contentDescription = null,
+                                modifier = Modifier.padding(start = 16.dp, end = 8.dp)
+                            )
+                            Text(
+                                text = "退出登录",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                    }
+                }
             }
         }
         if (isExpanded()) VerticalDivider(Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+    }
+
+    if (uiState.showLogoutConfirmation) {
+        ShowConfirmDialog(
+            onCancel = viewModel::cancelLogout,
+            onConfirm = {
+                if (uiState.logoutError != null || uiState.localCleanupError != null) {
+                    viewModel.clearLocalCookies()
+                } else {
+                    viewModel.logout()
+                }
+            },
+            cancelEnabled = !uiState.isLoggingOut,
+            confirmEnabled = !uiState.isLoggingOut,
+        ) {
+            Text(
+                text = when {
+                    uiState.localCleanupError != null ->
+                        "${uiState.localCleanupError}\n\n本地Cookie清理失败，点击确认重试或取消"
+                    uiState.logoutError != null ->
+                        "${uiState.logoutError}\n\n登录凭证注销失败，点击确认仅清理本地Cookie或取消"
+                    else -> "注销当前使用的SESSDATA登录凭证，并清理本地登录Cookie存储"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
+        }
     }
 }

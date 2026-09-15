@@ -141,8 +141,9 @@ fun LoginOrAvatarImage(modifier: Modifier = Modifier) {
     val onClick: () -> Unit
     val loginStorage: LoginStorage = koinInject()
     val navigator: Navigator = koinInject()
+    val isLoggedIn by loginStorage.isLoggedInFlow.collectAsState(initial = loginStorage.isLoggedIn)
 
-    onClick = if (loginStorage.isLoggedIn) {
+    onClick = if (isLoggedIn) {
         { navigator.navigateTo(BoloRoute.AccountFeature.List) }
     } else {
         { navigator.navigateTo(BoloRoute.Login.Screen) }
@@ -153,7 +154,7 @@ fun LoginOrAvatarImage(modifier: Modifier = Modifier) {
         shape = CircleShape,
         modifier = modifier
     ) {
-        if (loginStorage.isLoggedIn) {
+        if (isLoggedIn) {
             val myAccountInfoManager: MyAccountInfoManager = koinInject()
             val myAccountInfo by myAccountInfoManager.info.collectAsState()
 

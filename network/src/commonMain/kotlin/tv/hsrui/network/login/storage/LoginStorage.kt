@@ -2,6 +2,8 @@ package tv.hsrui.network.login.storage
 
 import eu.anifantakis.lib.ksafe.KSafe
 import eu.anifantakis.lib.ksafe.invoke
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import org.koin.mp.KoinPlatformTools
 import tv.hsrui.network.model.Cookies
 
@@ -9,6 +11,9 @@ class LoginStorage(private val loginKSafe: KSafe) {
     var cookies by loginKSafe(Cookies(), key = "cookies")
 
     val isLoggedIn: Boolean get() = (cookies.sessData.isNotEmpty())
+    val isLoggedInFlow = loginKSafe.getFlow("cookies", Cookies())
+        .map { it.sessData.isNotEmpty() }
+        .distinctUntilChanged()
     val hasCookies: Boolean
         get() = cookies.run {
             dedeUserIDCkMd5.isNotEmpty() ||
@@ -34,6 +39,18 @@ class LoginStorage(private val loginKSafe: KSafe) {
             buvid3 = cookieMap["buvid3"] ?: "",
             buvid4 = cookieMap["buvid4"] ?: ""
         )
+    }
+
+    suspend fun clearLoginCookies() {
+        val saved = loginKSafe.get("cookies", Cookies())
+        // 等待落盘成功，不能用异步属性赋值提前报告退出完成。
+        loginKSafe.put("cookies", saved.copy(
+            dedeUserIDCkMd5 = "",
+            dedeUserID = 0,
+            sessData = "",
+            biliJct = "",
+            sid = "",
+        ))
     }
 
     fun saveBuvid3(buvid3: String) {
