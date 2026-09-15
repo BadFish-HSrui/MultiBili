@@ -160,21 +160,35 @@ fun BoloPlayerControls(
     navigationContentColor: Color = Color.White,
 ) {
     val isFullscreen = fullscreenState.isFullscreen
+    val isDesktop = fullscreenState.isDesktop
     val showExtendedControls = isFullscreen || isExpanded()
     val navigator: Navigator = koinInject()
     var infoOpen by remember(viewModel, isFullscreen, showExtendedControls, navigationOnly) { mutableStateOf(false) }
     val navigationButtons: @Composable () -> Unit = {
         // 导航按钮
-        IconButton(
-            onClick = fullscreenState::goBack,
-            modifier = Modifier.size(40.dp)
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
-                contentDescription = if (infoOpen) "关闭播放信息" else if (fullscreenState.canExitFullscreen) "退出全屏" else "返回",
-                tint = navigationContentColor,
-                modifier = Modifier.size(24.dp),
-            )
+        if (!isDesktop || !isFullscreen) {
+            IconButton(
+                onClick = {
+                    if (!isDesktop && fullscreenState.isFullscreen) {
+                        fullscreenState.exitFullscreen()
+                    } else {
+                        fullscreenState.goBack()
+                    }
+                },
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
+                    contentDescription = when {
+                        !isDesktop && isFullscreen -> "退出全屏"
+                        infoOpen -> "关闭播放信息"
+                        fullscreenState.canExitFullscreen -> "退出全屏"
+                        else -> "返回"
+                    },
+                    tint = navigationContentColor,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
         }
 
         if (!isFullscreen && navigator.currentDepth > 1) {
@@ -203,7 +217,6 @@ fun BoloPlayerControls(
         }
         return
     }
-    val isDesktop = fullscreenState.isDesktop
     val deviceControls = rememberPlayerDeviceControls()
     val settings: BoloSettings = koinInject()
     val hapticFeedback = LocalHapticFeedback.current
@@ -362,7 +375,9 @@ fun BoloPlayerControls(
         showSeekFeedback(direction)
     }
     fun toggleDesktopFullscreen() {
-        if (settings.playerDesktopDefaultWindowFullscreenEnabled) {
+        val isExternalSystemFullscreen = fullscreenState.isSystemFullscreen &&
+            !fullscreenState.isSystemFullscreenOwnedByPlayer
+        if (isExternalSystemFullscreen || settings.playerDesktopDefaultWindowFullscreenEnabled) {
             fullscreenState.toggleWindowFullscreen()
         } else {
             fullscreenState.toggleFullscreen()
@@ -986,17 +1001,21 @@ fun BoloPlayerControls(
                             }
                         }
 
-                        val isSystemFullscreen = if (fullscreenState.isDesktop) fullscreenState.isSystemFullscreen else isFullscreen
-                        IconButton(
-                            onClick = fullscreenState::toggleFullscreen,
-                            enabled = !fullscreenState.isChangingSystemFullscreen,
-                            modifier = Modifier.size(32.dp)
+                        if (!isDesktop || !fullscreenState.isSystemFullscreen ||
+                            fullscreenState.isSystemFullscreenOwnedByPlayer
                         ) {
-                            Icon(
-                                imageVector = if (isSystemFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                                contentDescription = if (isSystemFullscreen) "退出全屏" else "全屏",
-                                tint = Color.White
-                            )
+                            val isSystemFullscreen = if (isDesktop) fullscreenState.isSystemFullscreen else isFullscreen
+                            IconButton(
+                                onClick = fullscreenState::toggleFullscreen,
+                                enabled = !fullscreenState.isChangingSystemFullscreen,
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isSystemFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                    contentDescription = if (isSystemFullscreen) "退出全屏" else "全屏",
+                                    tint = Color.White
+                                )
+                            }
                         }
                     }
                 }

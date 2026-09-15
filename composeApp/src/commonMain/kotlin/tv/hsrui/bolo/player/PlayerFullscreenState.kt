@@ -21,11 +21,14 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
         private set
     var isSystemFullscreen by mutableStateOf(false)
         private set
+    internal var isSystemFullscreenOwnedByPlayer by mutableStateOf(false)
+        private set
 
     internal var systemFullscreenRequest by mutableStateOf<Boolean?>(null)
         private set
     private var fullscreenBeforeSystem: Boolean? = null
     internal var dispatchBack: (() -> Unit)? = null
+    internal var releaseSystemFullscreenOwnership: (() -> Unit)? = null
 
     val isChangingSystemFullscreen: Boolean get() = systemFullscreenRequest != null
     val canExitFullscreen: Boolean
@@ -33,6 +36,10 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
 
     fun toggleWindowFullscreen() {
         isFullscreen = !isFullscreen
+        if (isDesktop && !isFullscreen && isSystemFullscreenOwnedByPlayer) {
+            isSystemFullscreenOwnedByPlayer = false
+            releaseSystemFullscreenOwnership?.invoke()
+        }
     }
 
     fun toggleFullscreen() {
@@ -56,11 +63,14 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
         if (fullscreen) {
             fullscreenBeforeSystem = isFullscreen
             isFullscreen = true
+            // 请求尚未交给宿主时缩小播放器，也应放弃本次系统全屏的归属。
+            isSystemFullscreenOwnedByPlayer = true
         }
         systemFullscreenRequest = fullscreen
     }
 
-    internal fun updateSystemFullscreen(fullscreen: Boolean) {
+    internal fun updateSystemFullscreen(fullscreen: Boolean, ownedByPlayer: Boolean) {
+        isSystemFullscreenOwnedByPlayer = fullscreen && ownedByPlayer
         if (isSystemFullscreen == fullscreen) return
         if (fullscreen) {
             // 系统按钮进入时只记录布局；播放器发起的请求已经记录过。
@@ -71,8 +81,8 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
         isSystemFullscreen = fullscreen
     }
 
-    internal fun completeSystemFullscreenRequest(fullscreen: Boolean) {
-        updateSystemFullscreen(fullscreen)
+    internal fun completeSystemFullscreenRequest(fullscreen: Boolean, ownedByPlayer: Boolean) {
+        updateSystemFullscreen(fullscreen, ownedByPlayer)
         if (systemFullscreenRequest == true && !fullscreen) restorePlayerLayout()
         systemFullscreenRequest = null
     }

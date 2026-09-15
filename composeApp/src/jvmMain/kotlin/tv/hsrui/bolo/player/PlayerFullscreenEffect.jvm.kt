@@ -81,6 +81,7 @@ internal object DesktopPlayerFullscreenWindow {
         removeNativeListener?.invoke()
         removeNativeListener = null
         nativeTransition = false
+        player?.releaseSystemFullscreenOwnership = null
         player = null
         requestOwner = null
         fullscreenOwner = null
@@ -97,11 +98,16 @@ internal object DesktopPlayerFullscreenWindow {
     }
 
     fun bindPlayer(state: PlayerFullscreenState) {
+        player?.releaseSystemFullscreenOwnership = null
         player = state
-        state.updateSystemFullscreen(isSystemFullscreen)
+        state.releaseSystemFullscreenOwnership = {
+            if (fullscreenOwner === state) fullscreenOwner = null
+        }
+        state.updateSystemFullscreen(isSystemFullscreen, ownedByPlayer = fullscreenOwner === state)
     }
 
     fun unbindPlayer(state: PlayerFullscreenState) {
+        state.releaseSystemFullscreenOwnership = null
         if (player === state) player = null
         if (requestOwner === state) requestOwner = null
         if (fullscreenOwner !== state) return
@@ -117,7 +123,7 @@ internal object DesktopPlayerFullscreenWindow {
         if (player !== state) return
         observeWindow()
         if (requestedFullscreen != null || nativeTransition || window == null || isSystemFullscreen == fullscreen) {
-            state.completeSystemFullscreenRequest(isSystemFullscreen)
+            state.completeSystemFullscreenRequest(isSystemFullscreen, ownedByPlayer = fullscreenOwner === state)
             return
         }
         beginRequest(fullscreen, state)
@@ -193,7 +199,7 @@ internal object DesktopPlayerFullscreenWindow {
         if (window == null) return
         if (fullscreen) {
             rememberWindowedState()
-            fullscreenOwner = owner
+            fullscreenOwner = owner?.takeIf { it.isSystemFullscreenOwnedByPlayer }
         }
         requestedFullscreen = fullscreen
         requestOwner = owner
@@ -214,7 +220,9 @@ internal object DesktopPlayerFullscreenWindow {
         } catch (error: Exception) {
             println("Bolo 全屏切换失败：${error.message}")
             isSystemFullscreen = window.placement == WindowPlacement.Fullscreen
-            player?.updateSystemFullscreen(isSystemFullscreen)
+            player?.let { state ->
+                state.updateSystemFullscreen(isSystemFullscreen, ownedByPlayer = fullscreenOwner === state)
+            }
             finishRequest()
         }
     }
@@ -237,7 +245,9 @@ internal object DesktopPlayerFullscreenWindow {
         if (fullscreen != isSystemFullscreen) {
             if (fullscreen && originalPlacement == null) rememberWindowedState()
             isSystemFullscreen = fullscreen
-            player?.updateSystemFullscreen(fullscreen)
+            player?.let { state ->
+                state.updateSystemFullscreen(fullscreen, ownedByPlayer = fullscreenOwner === state)
+            }
             if (!fullscreen && requestedFullscreen == null) {
                 // 系统按钮退出同样恢复窗口状态，但不把系统进入的全屏归给页面。
                 beginRequest(false, null)
@@ -291,7 +301,9 @@ internal object DesktopPlayerFullscreenWindow {
         transitionTimer.stop()
         nativeTransition = false
         windowState?.placement = window.placement
-        requestOwner?.takeIf { it === player }?.completeSystemFullscreenRequest(isSystemFullscreen)
+        requestOwner?.takeIf { it === player }?.let { state ->
+            state.completeSystemFullscreenRequest(isSystemFullscreen, ownedByPlayer = fullscreenOwner === state)
+        }
         requestedFullscreen = null
         requestOwner = null
         exitAfterEnter = false
