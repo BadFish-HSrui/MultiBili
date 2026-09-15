@@ -44,7 +44,7 @@ bolo_mpv *bolo_mpv_create(const char *platform) {
         {"osd-level", "0"}, {"sid", "no"},
         {"sub-auto", "no"}, {"audio-file-auto", "no"},
         {"idle", "yes"}, {"keep-open", "yes"}, {"pause", "yes"},
-        {"audio-pitch-correction", "yes"}, {"volume-max", "200"},
+        {"audio-pitch-correction", "yes"}, {"audio-buffer", "0.05"}, {"volume-max", "200"},
         {"ad-lavc-downmix", "no"},
         {"audio-fallback-to-null", "no"}, {"stop-playback-on-init-failure", "yes"},
         {"gapless-audio", "no"}, {"tls-verify", "yes"},
@@ -141,6 +141,9 @@ static int set_dynamic_loudness(bolo_mpv *p, int enabled, double target_lufs, do
                  target_lufs, range_lu, true_peak_dbtp);
         // FFmpeg 参数固定使用小数点，不受宿主进程区域设置影响。
         for (char *c = graph; *c; ++c) if (*c == ',') *c = '.';
+        // loudnorm 内部以 192kHz 处理；倍速前固定采样率和格式，避免高采样率运算及音频输出重建。
+        size_t length = strlen(graph);
+        snprintf(graph + length, sizeof(graph) - length, ",aformat=sample_rates=48000:sample_fmts=fltp");
     }
     mpv_node filters = {0};
     int r = mpv_get_property(p->player, "af", MPV_FORMAT_NODE, &filters);
