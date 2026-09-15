@@ -162,7 +162,12 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
         playbackLoadJob?.cancel()
         val generation = sourceGeneration
         playbackLoadJob = viewModelScope.launch {
-            controller.load(video = video, audio = audio, startPositionMs = startPositionMs)
+            controller.setLoudnessSettings(
+                settings.playerLoudnessMode, settings.playerDynamicLoudnessEnabled,
+                settings.playerDynamicLoudnessTargetLufs.toDouble(), settings.playerDynamicLoudnessRangeLu.toDouble(),
+                settings.playerDynamicLoudnessTruePeakDbtp.toDouble(),
+            )
+            controller.load(video = video, audio = audio, startPositionMs = startPositionMs, loudness = currentState.videoSource.loudness)
             currentCoroutineContext().ensureActive()
             if (generation != sourceGeneration) return@launch
             playbackReportController.mediaLoaded()

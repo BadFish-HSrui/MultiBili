@@ -2,6 +2,7 @@ package tv.hsrui.network.feature.player
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class MediaPlayResponse(
@@ -33,6 +34,7 @@ data class MediaPlayData(
     @SerialName("is_drm") val isDrm: Boolean = false,
     @SerialName("is_preview") private val preview: Int = 0,
     private val dash: VideoPlayData.DashData? = null,
+    private val volume: JsonElement? = null,
 ) {
     val isSuccess: Boolean get() = code == 0 && errorCode == 0
     val message: String
@@ -42,5 +44,5 @@ data class MediaPlayData(
             "[${if (code != 0) code else errorCode}] ${responseMessage.ifBlank { "无法获取媒体播放权限" }}"
         }
     val isPreview: Boolean get() = preview == 1
-    val playData: VideoPlayData get() = VideoPlayData(dash ?: VideoPlayData.DashData())
+    val playData: VideoPlayData get() = VideoPlayData(dash ?: VideoPlayData.DashData(), volume)
 }

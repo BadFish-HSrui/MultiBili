@@ -19,6 +19,7 @@ suspend fun fetchVideoPlayInfo(
             parameter("fnval", 16)
             parameter("fourk", 1)
             parameter("try_look", 1)
+            parameter("voice_balance", 1)
         }
     }
 

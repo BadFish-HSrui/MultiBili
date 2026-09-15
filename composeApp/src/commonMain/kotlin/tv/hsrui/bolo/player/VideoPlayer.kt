@@ -43,6 +43,17 @@ fun VideoPlayer(
     LaunchedEffect(viewModel, settings.playerMergeAudioChannelsEnabled) {
         viewModel.controller.setMergeAudioChannelsEnabled(settings.playerMergeAudioChannelsEnabled)
     }
+    LaunchedEffect(
+        viewModel, settings.playerLoudnessMode, settings.playerDynamicLoudnessEnabled,
+        settings.playerDynamicLoudnessTargetLufs, settings.playerDynamicLoudnessRangeLu,
+        settings.playerDynamicLoudnessTruePeakDbtp,
+    ) {
+        viewModel.controller.setLoudnessSettings(
+            settings.playerLoudnessMode, settings.playerDynamicLoudnessEnabled,
+            settings.playerDynamicLoudnessTargetLufs.toDouble(), settings.playerDynamicLoudnessRangeLu.toDouble(),
+            settings.playerDynamicLoudnessTruePeakDbtp.toDouble(),
+        )
+    }
     LaunchedEffect(viewModel, settings.playerAutoReplayEnabled) {
         if (settings.playerAutoReplayEnabled) {
             var wasPlaying = false

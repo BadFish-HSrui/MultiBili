@@ -16,6 +16,7 @@ internal object BoloMpvNative {
     external fun pause(handle: Long, paused: Boolean): Int
     external fun speed(handle: Long, speed: Double): Int
     external fun volume(handle: Long, volume: Double): Int
+    external fun loudness(handle: Long, gainDb: Double, dynamicEnabled: Boolean, targetLufs: Double, rangeLu: Double, truePeakDbtp: Double): Int
     external fun mergeAudioChannels(handle: Long, enabled: Boolean): Int
     external fun seek(handle: Long, seconds: Double, request: Long): Int
     external fun poll(handle: Long): DoubleArray?

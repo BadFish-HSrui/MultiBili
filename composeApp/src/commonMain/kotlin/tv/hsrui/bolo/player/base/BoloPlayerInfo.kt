@@ -7,6 +7,8 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
+import tv.hsrui.bolo.boloSetting.PlaybackLoudnessMode
+import tv.hsrui.network.feature.player.VideoLoudnessData
 
 /** 独立于播放控制状态；null 表示未知，码率为 bit/s，下载速度为 B/s。 */
 data class BoloPlayerInfo(
@@ -47,6 +49,15 @@ data class BoloPlayerAudioInfo(
     val outputChannelLayout: String? = null,
     val outputChannelCount: Int? = null,
     val channelsMerged: Boolean? = null,
+    val loudnessMode: PlaybackLoudnessMode = PlaybackLoudnessMode.Standard,
+    val dynamicLoudnessEnabled: Boolean = false,
+    /** 控制器配置结果：null 等待应用，false 配置失败；不代表输出响度的实测值。 */
+    val loudnessConfigured: Boolean? = null,
+    val loudnessData: VideoLoudnessData? = null,
+    val loudnessGainDb: Double? = null,
+    val dynamicLoudnessTargetLufs: Double? = null,
+    val dynamicLoudnessRangeLu: Double? = null,
+    val dynamicLoudnessTruePeakDbtp: Double? = null,
     val sampleFormat: String? = null,
     val decoder: String? = null,
     val decoderDescription: String? = null,

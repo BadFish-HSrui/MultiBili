@@ -134,12 +134,69 @@ int bolo_mpv_speed(bolo_mpv *p, double speed) {
 int bolo_mpv_volume(bolo_mpv *p, double volume) {
     return mpv_set_property(p->player, "volume", MPV_FORMAT_DOUBLE, &volume);
 }
+static int set_dynamic_loudness(bolo_mpv *p, int enabled, double target_lufs, double range_lu, double true_peak_dbtp) {
+    char graph[128] = {0};
+    if (enabled) {
+        snprintf(graph, sizeof(graph), "loudnorm=I=%.6g:LRA=%.6g:TP=%.6g:linear=false",
+                 target_lufs, range_lu, true_peak_dbtp);
+        // FFmpeg 参数固定使用小数点，不受宿主进程区域设置影响。
+        for (char *c = graph; *c; ++c) if (*c == ',') *c = '.';
+    }
+    mpv_node filters = {0};
+    int r = mpv_get_property(p->player, "af", MPV_FORMAT_NODE, &filters);
+    if (r < 0) return r;
+    int present = 0, matches = 0;
+    if (filters.format == MPV_FORMAT_NODE_ARRAY) {
+        for (int i = 0; i < filters.u.list->num; ++i) {
+            mpv_node *item = &filters.u.list->values[i];
+            mpv_node *label = field(item, "label");
+            if (!label || label->format != MPV_FORMAT_STRING ||
+                strcmp(label->u.string, "bolo-loudnorm") != 0) continue;
+            present = 1;
+            mpv_node *name = field(item, "name");
+            mpv_node *current_graph = field(field(item, "params"), "graph");
+            matches = name && name->format == MPV_FORMAT_STRING && strcmp(name->u.string, "lavfi") == 0 &&
+                flag(item, "enabled") && current_graph && current_graph->format == MPV_FORMAT_STRING &&
+                strcmp(current_graph->u.string, graph) == 0;
+        }
+    }
+    mpv_free_node_contents(&filters);
+    if (enabled ? matches : !present) return 0;
+    char filter[160];
+    snprintf(filter, sizeof(filter), "@bolo-loudnorm:lavfi=[%s]", graph);
+    // mpv 的 af add 按标签原位替换；只更新本功能，不改变其他滤镜及其顺序。
+    const char *args[] = {"af", enabled ? "add" : "remove", enabled ? filter : "@bolo-loudnorm", NULL};
+    return mpv_command(p->player, args);
+}
+int bolo_mpv_loudness(bolo_mpv *p, double gain_db, int dynamic_enabled, double target_lufs, double range_lu, double true_peak_dbtp) {
+    dynamic_enabled = !!dynamic_enabled;
+    double gain = dynamic_enabled ? 0.0 : gain_db;
+    int r = MPV_ERROR_INVALID_PARAMETER;
+    if (!isfinite(gain) || gain < -150.0 || gain > 150.0) goto fail;
+    if (dynamic_enabled) {
+        if (!isfinite(target_lufs) || target_lufs < -70 || target_lufs > -5 ||
+            !isfinite(range_lu) || range_lu < 1 || range_lu > 50 ||
+            !isfinite(true_peak_dbtp) || true_peak_dbtp < -9 || true_peak_dbtp > 0) goto fail;
+        r = mpv_set_property(p->player, "volume-gain", MPV_FORMAT_DOUBLE, &gain);
+        if (r >= 0) r = set_dynamic_loudness(p, 1, target_lufs, range_lu, true_peak_dbtp);
+    } else {
+        r = set_dynamic_loudness(p, 0, 0, 0, 0);
+        if (r >= 0) r = mpv_set_property(p->player, "volume-gain", MPV_FORMAT_DOUBLE, &gain);
+    }
+    if (r >= 0) return r;
+fail:
+    // 可选音效失败时恢复无均衡；不带着上一视频的固定增益继续播放。
+    gain = 0.0;
+    mpv_set_property(p->player, "volume-gain", MPV_FORMAT_DOUBLE, &gain);
+    set_dynamic_loudness(p, 0, 0, 0, 0);
+    return r;
+}
 static int apply_audio_merge(bolo_mpv *p, int enabled) {
     int r = mpv_set_property_string(p->player, "audio-normalize-downmix", enabled ? "yes" : "no");
     if (r < 0) return r;
     r = mpv_set_property_string(p->player, "audio-channels", enabled ? "mono" : "auto-safe");
     if (r < 0) return r;
-    const char *args[] = {"af", enabled ? "add" : "remove",
+    const char *args[] = {"af", enabled ? "pre" : "remove",
                          enabled ? "@bolo-mono:format=channels=mono" : "@bolo-mono", NULL};
     return mpv_command(p->player, args);
 }

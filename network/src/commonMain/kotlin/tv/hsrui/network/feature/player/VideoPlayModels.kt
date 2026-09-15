@@ -2,6 +2,7 @@ package tv.hsrui.network.feature.player
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
 import tv.hsrui.network.feature.player.enumModels.AudioQuality.Companion.AudioQuality
 import tv.hsrui.network.feature.player.enumModels.Quality
@@ -22,7 +23,10 @@ data class VideoPlayResponse(
 @Serializable
 data class VideoPlayData(
     @SerialName("dash") private val _dashData: DashData = DashData(),
+    private val volume: JsonElement? = null,
 ) {
+    val loudness: VideoLoudnessData? get() = VideoLoudnessData.fromJson(volume)
+
     val videoFormatMap: Map<VideoQuality, Map<VideoCodec, BiliDashObject>>
         get() = _dashData.video
             .map { it.withFallbackDuration(_dashData.duration) }
@@ -113,6 +117,7 @@ fun VideoPlayResponse.toVideoSource(): VideoSource {
         isSuccess = isSuccess,
         message = message,
         _video = this.data.videoFormatMap,
-        _audio = this.data.audioFormatMap
+        _audio = this.data.audioFormatMap,
+        loudness = this.data.loudness,
     )
 }

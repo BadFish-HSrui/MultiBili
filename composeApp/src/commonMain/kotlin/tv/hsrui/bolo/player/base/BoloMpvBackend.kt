@@ -9,6 +9,7 @@ internal expect class BoloMpvBackend() {
     fun pause(paused: Boolean): Int
     fun speed(speed: Double): Int
     fun volume(volume: Double): Int
+    fun loudness(gainDb: Double, dynamicEnabled: Boolean, targetLufs: Double = -14.0, rangeLu: Double = 11.0, truePeakDbtp: Double = -2.0): Int
     fun mergeAudioChannels(enabled: Boolean): Int
     fun seek(seconds: Double, request: Long): Int
     fun poll(): BoloMpvEvent?

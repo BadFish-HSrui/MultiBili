@@ -19,7 +19,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import tv.hsrui.bolo.boloSetting.PlaybackLoudnessMode
 import tv.hsrui.network.feature.player.BiliDashObject
+import tv.hsrui.network.feature.player.VideoLoudnessData
 import kotlin.math.roundToLong
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
@@ -56,6 +58,16 @@ class BoloPlayerController(
     private var backgroundJob: Job? = null
     private var rebuildJob: Job? = null
     private var mergeAudioJob: Job? = null
+    private var loudnessJob: Job? = null
+    private var loudnessMode = PlaybackLoudnessMode.Standard
+    private var dynamicLoudnessEnabled = false
+    private var dynamicLoudnessTargetLufs = -14.0
+    private var dynamicLoudnessRangeLu = 11.0
+    private var dynamicLoudnessTruePeakDbtp = -2.0
+    private var mediaLoudness: VideoLoudnessData? = null
+    private var loudnessRevision = 0L
+    private var loudnessConfigured: Boolean? = null
+    private var appliedLoudnessGainDb: Double? = null
     private val engineMutex = Mutex()
     private var mergeAudioChannelsEnabled = false
     private var mergeAudioRevision = 0L
@@ -77,10 +89,13 @@ class BoloPlayerController(
     private var debugTimeout = false
     private var debugNotSeekable = false
 
-    internal suspend fun loadMedia(video: BiliDashObject, audio: BiliDashObject?, start: Long) {
+    internal suspend fun loadMedia(video: BiliDashObject, audio: BiliDashObject?, start: Long, loudness: VideoLoudnessData?) {
         withContext(Dispatchers.Main.immediate) {
             if (disposed) return@withContext
             cancelRebuild()
+            loudnessJob?.cancel()
+            loudnessRevision++
+            mediaLoudness = loudness
             videoUrls = (listOf(video.baseUrl) + video.backupUrl).filter(String::isNotBlank).distinct()
             audioUrls = audio?.let { (listOf(it.baseUrl) + it.backupUrl).filter(String::isNotBlank).distinct() }.orEmpty()
             mediaInfo = BoloPlayerInfo(
@@ -113,6 +128,7 @@ class BoloPlayerController(
 
     private fun startLoad(position: Long) {
         resetInfo()
+        loudnessJob?.cancel()
         loadJob?.cancel()
         seekJob?.cancel()
         ready = false
@@ -144,6 +160,8 @@ class BoloPlayerController(
                 withTimeout(8_000) { current.awaitOutput() }
                 if (generation != expected || inBackground || disposed) return@launch
                 check(current.setAudioActive(true)) { "音频会话激活失败" }
+                applyLoudness(current)
+                if (generation != expected || inBackground || disposed) return@launch
                 val speed = state.value.playbackSpeed.toDouble()
                 val volume = volumeGain.toDouble()
                 val video = videoUrls[videoIndex]
@@ -199,7 +217,28 @@ class BoloPlayerController(
 
     private fun resetInfo() {
         lastInfoSample = null
-        mutableInfo.value = mediaInfo
+        loudnessConfigured = null
+        appliedLoudnessGainDb = null
+        mutableInfo.value = mediaInfo.withLoudnessInfo()
+    }
+
+    private fun BoloPlayerInfo.withLoudnessInfo(): BoloPlayerInfo = copy(
+        audio = audio?.copy(
+            loudnessMode = loudnessMode,
+            dynamicLoudnessEnabled = dynamicLoudnessEnabled,
+            loudnessConfigured = loudnessConfigured,
+            loudnessData = mediaLoudness,
+            loudnessGainDb = appliedLoudnessGainDb,
+            dynamicLoudnessTargetLufs = dynamicLoudnessTargetLufs.takeIf { loudnessConfigured == true && dynamicLoudnessEnabled },
+            dynamicLoudnessRangeLu = dynamicLoudnessRangeLu.takeIf { loudnessConfigured == true && dynamicLoudnessEnabled },
+            dynamicLoudnessTruePeakDbtp = dynamicLoudnessTruePeakDbtp.takeIf { loudnessConfigured == true && dynamicLoudnessEnabled },
+        ),
+    )
+
+    private fun updateLoudnessInfo(configured: Boolean?, gainDb: Double? = null) {
+        loudnessConfigured = configured
+        appliedLoudnessGainDb = gainDb
+        mutableInfo.value = info.value.withLoudnessInfo()
     }
 
     private suspend fun sampleInfo(engine: BoloMpvBackend) {
@@ -229,7 +268,7 @@ class BoloPlayerController(
             return
         }
         if (snapshot == null || snapshot.instance !== engine || snapshot.generation != expected) {
-            mutableInfo.value = mediaInfo
+            mutableInfo.value = mediaInfo.withLoudnessInfo()
             return
         }
         val native = snapshot.info
@@ -255,7 +294,7 @@ class BoloPlayerController(
                 native.video.downloadBytesPerSecond != null &&
                     (mediaInfo.audio == null || native.audio?.downloadBytesPerSecond != null)
             },
-        )
+        ).withLoudnessInfo()
     }
 
     private fun handleEvent(event: BoloMpvEvent) {
@@ -358,6 +397,62 @@ class BoloPlayerController(
             volumeGain = gain.coerceIn(0, 200)
             val volume = volumeGain.toDouble()
             mutableBackend.value?.let { withContext(boloMpvDispatcher) { it.volume(volume) } }
+        }
+    }
+
+    fun setLoudnessSettings(
+        mode: PlaybackLoudnessMode,
+        dynamicEnabled: Boolean,
+        targetLufs: Double = -14.0,
+        rangeLu: Double = 11.0,
+        truePeakDbtp: Double = -2.0,
+    ) {
+        val target = targetLufs.takeIf { it.isFinite() && it in -70.0..-5.0 } ?: -14.0
+        val range = rangeLu.takeIf { it.isFinite() && it in 1.0..50.0 } ?: 11.0
+        val peak = truePeakDbtp.takeIf { it.isFinite() && it in -9.0..0.0 } ?: -2.0
+        scope.launch {
+            if (disposed || (loudnessMode == mode && dynamicLoudnessEnabled == dynamicEnabled &&
+                dynamicLoudnessTargetLufs == target && dynamicLoudnessRangeLu == range &&
+                dynamicLoudnessTruePeakDbtp == peak)) return@launch
+            loudnessMode = mode
+            dynamicLoudnessEnabled = dynamicEnabled
+            dynamicLoudnessTargetLufs = target
+            dynamicLoudnessRangeLu = range
+            dynamicLoudnessTruePeakDbtp = peak
+            loudnessRevision++
+            loudnessJob?.cancel()
+            updateLoudnessInfo(null)
+            val engine = mutableBackend.value ?: return@launch
+            if (!inBackground) loudnessJob = scope.launch { applyLoudness(engine) }
+        }
+    }
+
+    private suspend fun applyLoudness(engine: BoloMpvBackend) {
+        val revision = loudnessRevision
+        val expected = generation
+        val dynamicEnabled = dynamicLoudnessEnabled
+        val gain = if (dynamicEnabled) 0.0 else loudnessMode.gainDb(mediaLoudness)
+        val target = dynamicLoudnessTargetLufs
+        val range = dynamicLoudnessRangeLu
+        val peak = dynamicLoudnessTruePeakDbtp
+        updateLoudnessInfo(null)
+        try {
+            val result = withContext(boloMpvDispatcher) { engine.loudness(gain, dynamicEnabled, target, range, peak) }
+            if (revision != loudnessRevision || expected != generation ||
+                mutableBackend.value !== engine || disposed || inBackground) return
+            updateLoudnessInfo(result >= 0, gain.takeIf { result >= 0 })
+            if (result < 0)
+                onError(BoloPlayerError.UnknownError("音量均衡配置失败（$result），已停用本次均衡"))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            if (revision != loudnessRevision || expected != generation || mutableBackend.value !== engine || disposed) return
+            // 平台调用异常同样尽力恢复无均衡，不让可选音效中断播放。
+            withContext(NonCancellable + boloMpvDispatcher) { runCatching { engine.loudness(0.0, false) } }
+            if (revision == loudnessRevision && expected == generation && mutableBackend.value === engine && !disposed && !inBackground) {
+                updateLoudnessInfo(false)
+                onError(BoloPlayerError.UnknownError("音量均衡配置失败：${error.message}"))
+            }
         }
     }
 
@@ -541,6 +636,7 @@ class BoloPlayerController(
             if (!foreground) {
                 cancelRebuild()
                 mergeAudioJob?.cancel()
+                loudnessJob?.cancel()
                 resetInfo()
                 resumeEligible = playWhenReady && !state.value.isEnded
                 playWhenReady = false
@@ -579,6 +675,8 @@ class BoloPlayerController(
                     val result = withContext(boloMpvDispatcher) { engine.mergeAudioChannels(mergeChannels) }
                     if (lifecycle != lifecycleRevision || inBackground || disposed || mutableBackend.value !== engine) return@launch
                     if (result < 0) onError(BoloPlayerError.UnknownError("合并多声道配置失败（$result）"))
+                    applyLoudness(engine)
+                    if (lifecycle != lifecycleRevision || inBackground || disposed || mutableBackend.value !== engine) return@launch
                     coordinator.requestSeek(position)
                     mutableState.value = state.value.copy(pendingSeekPositionMs = position)
                     submitSeek()
@@ -600,6 +698,7 @@ class BoloPlayerController(
         seekJob?.cancel()
         speedJob?.cancel()
         mergeAudioJob?.cancel()
+        loudnessJob?.cancel()
         intentJob?.cancel()
         generation = coordinator.onMediaChanged()
         ready = false
@@ -665,5 +764,9 @@ class BoloPlayerController(
         ?.let { (it * 1000).roundToLong() }
 }
 
-suspend fun BoloPlayerController.load(video: BiliDashObject, audio: BiliDashObject? = null, startPositionMs: Long = 0L) =
-    loadMedia(video, audio, startPositionMs)
+suspend fun BoloPlayerController.load(
+    video: BiliDashObject,
+    audio: BiliDashObject? = null,
+    startPositionMs: Long = 0L,
+    loudness: VideoLoudnessData? = null,
+) = loadMedia(video, audio, startPositionMs, loudness)

@@ -1,5 +1,6 @@
 package tv.hsrui.bolo.player.controls
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,7 +26,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import tv.hsrui.bolo.boloSetting.PlaybackLoudnessMode
+import tv.hsrui.bolo.player.base.BoloPlayerAudioInfo
 import tv.hsrui.bolo.player.base.BoloPlayerInfo
+import kotlin.math.abs
 import kotlin.math.roundToLong
 
 @Composable
@@ -77,6 +81,7 @@ internal fun BoloPlayerInfoPanel(
                 BoloPlayerInfoRow("声道布局", if (merged && layout != null) "$layout（已合并）" else layout)
                 BoloPlayerInfoRow("播放分片", playerInfoFragment(audio?.fragmentIndex, audio?.fragmentCount))
                 BoloPlayerInfoRow("音频解码器", playerInfoDecoder(audio?.decoder, audio?.decoderDescription))
+                BoloPlayerInfoRow("音量均衡", audio?.let(::playerInfoLoudnessStatus), singleLine = true)
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Color.White.copy(alpha = 0.2f))
                 BoloPlayerInfoRow("硬解路径", if (info.hardwareDecoder == "no") "软件解码" else info.hardwareDecoder)
                 BoloPlayerInfoRow("硬解互操作", info.hardwareInterop)
@@ -92,7 +97,7 @@ internal fun BoloPlayerInfoPanel(
 }
 
 @Composable
-private fun BoloPlayerInfoRow(label: String, value: String?) {
+private fun BoloPlayerInfoRow(label: String, value: String?, singleLine: Boolean = false) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = label,
@@ -102,9 +107,10 @@ private fun BoloPlayerInfoRow(label: String, value: String?) {
         )
         Text(
             text = value ?: "—",
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).then(if (singleLine) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
             style = MaterialTheme.typography.bodySmall,
             fontFamily = FontFamily.Monospace,
+            maxLines = if (singleLine) 1 else Int.MAX_VALUE,
         )
     }
 }
@@ -113,6 +119,40 @@ private fun playerInfoChannelLayout(layout: String?): String? = when (layout) {
     "mono" -> "单声道"
     "stereo" -> "双声道"
     else -> layout
+}
+
+private fun playerInfoLoudnessStatus(audio: BoloPlayerAudioInfo): String? = when {
+    audio.loudnessConfigured == null -> null
+    !audio.loudnessConfigured -> "未生效（设置失败）"
+    audio.dynamicLoudnessEnabled -> if (audio.dynamicLoudnessTargetLufs != null &&
+        audio.dynamicLoudnessRangeLu != null && audio.dynamicLoudnessTruePeakDbtp != null) {
+        "loudnorm（I=${playerInfoLoudnessDecimal(audio.dynamicLoudnessTargetLufs)}/" +
+            "LRA=${playerInfoLoudnessDecimal(audio.dynamicLoudnessRangeLu)}/" +
+            "TP=${playerInfoLoudnessDecimal(audio.dynamicLoudnessTruePeakDbtp)}）"
+    } else null
+    audio.loudnessMode == PlaybackLoudnessMode.Off -> "未生效（未启用）"
+    !audio.hasValidLoudnessGain() || audio.loudnessGainDb == null -> "未生效（数据无效）"
+    else -> "volume-gain（${if (audio.loudnessGainDb > 0) "+" else ""}${playerInfoLoudnessDecimal(audio.loudnessGainDb)} dB）"
+}
+
+private fun BoloPlayerAudioInfo.loudnessTarget(): Double? = when (loudnessMode) {
+    PlaybackLoudnessMode.Standard -> loudnessData?.standardTargetLoudnessLufs
+    PlaybackLoudnessMode.HighDynamic -> loudnessData?.highDynamicTargetLoudnessLufs
+    PlaybackLoudnessMode.Off -> null
+}
+
+private fun BoloPlayerAudioInfo.hasValidLoudnessGain(): Boolean {
+    val data = loudnessData ?: return false
+    if (data.measuredLoudnessLufs < data.lowLoudnessThresholdLufs) return false
+    val gain = (loudnessTarget() ?: return false) - data.measuredLoudnessLufs
+    return gain.isFinite() && gain in -150.0..150.0
+}
+
+private fun playerInfoLoudnessDecimal(value: Double): String {
+    val scaled = (abs(value) * 1000).roundToLong()
+    val fraction = (scaled % 1000).toString().padStart(3, '0').trimEnd('0')
+    val sign = if (value < 0 && scaled != 0L) "-" else ""
+    return "$sign${scaled / 1000}${if (fraction.isEmpty()) "" else ".$fraction"}"
 }
 
 private fun playerInfoFragment(index: Int?, count: Int?): String =

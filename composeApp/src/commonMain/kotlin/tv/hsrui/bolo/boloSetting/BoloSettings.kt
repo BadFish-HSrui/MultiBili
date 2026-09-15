@@ -37,6 +37,76 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentPlayerAutoEnableDanmakuOnOpenEnabled = value
         }
 
+    private var storedPlayerLoudnessMode by settingsKSafe("standard", key = "player_loudness_mode")
+    private var currentPlayerLoudnessMode by mutableStateOf(
+        PlaybackLoudnessMode.entries.firstOrNull { it.storedValue == storedPlayerLoudnessMode }
+            ?: PlaybackLoudnessMode.Standard,
+    )
+
+    var playerLoudnessMode: PlaybackLoudnessMode
+        get() = currentPlayerLoudnessMode
+        set(value) {
+            if (value == currentPlayerLoudnessMode) return
+            storedPlayerLoudnessMode = value.storedValue
+            currentPlayerLoudnessMode = value
+        }
+
+    private var storedPlayerDynamicLoudnessEnabled by settingsKSafe(true, key = "player_dynamic_loudness_enabled")
+    private var currentPlayerDynamicLoudnessEnabled by mutableStateOf(storedPlayerDynamicLoudnessEnabled)
+
+    var playerDynamicLoudnessEnabled: Boolean
+        get() = currentPlayerDynamicLoudnessEnabled
+        set(value) {
+            if (value == currentPlayerDynamicLoudnessEnabled) return
+            storedPlayerDynamicLoudnessEnabled = value
+            currentPlayerDynamicLoudnessEnabled = value
+        }
+
+    private var storedPlayerDynamicLoudnessTargetLufs by settingsKSafe(-14f, key = "player_dynamic_loudness_target_lufs")
+    private var currentPlayerDynamicLoudnessTargetLufs by mutableFloatStateOf(normalizeDynamicLoudnessTargetLufs(storedPlayerDynamicLoudnessTargetLufs))
+
+    var playerDynamicLoudnessTargetLufs: Float
+        get() = currentPlayerDynamicLoudnessTargetLufs
+        set(value) {
+            val normalized = normalizeDynamicLoudnessTargetLufs(value)
+            if (normalized == currentPlayerDynamicLoudnessTargetLufs) return
+            storedPlayerDynamicLoudnessTargetLufs = normalized
+            currentPlayerDynamicLoudnessTargetLufs = normalized
+        }
+
+    private fun normalizeDynamicLoudnessTargetLufs(value: Float): Float =
+        (value.takeIf { it.isFinite() } ?: -14f).coerceIn(-20f, -8f).roundToInt().toFloat()
+
+    private var storedPlayerDynamicLoudnessRangeLu by settingsKSafe(11f, key = "player_dynamic_loudness_range_lu")
+    private var currentPlayerDynamicLoudnessRangeLu by mutableFloatStateOf(normalizeDynamicLoudnessRangeLu(storedPlayerDynamicLoudnessRangeLu))
+
+    var playerDynamicLoudnessRangeLu: Float
+        get() = currentPlayerDynamicLoudnessRangeLu
+        set(value) {
+            val normalized = normalizeDynamicLoudnessRangeLu(value)
+            if (normalized == currentPlayerDynamicLoudnessRangeLu) return
+            storedPlayerDynamicLoudnessRangeLu = normalized
+            currentPlayerDynamicLoudnessRangeLu = normalized
+        }
+
+    private fun normalizeDynamicLoudnessRangeLu(value: Float): Float =
+        (value.takeIf { it.isFinite() } ?: 11f).coerceIn(6f, 16f).roundToInt().toFloat()
+
+    private var storedPlayerDynamicLoudnessTruePeakDbtp by settingsKSafe(-2f, key = "player_dynamic_loudness_true_peak_dbtp")
+    private var currentPlayerDynamicLoudnessTruePeakDbtp by mutableFloatStateOf(normalizeDynamicLoudnessTruePeakDbtp(storedPlayerDynamicLoudnessTruePeakDbtp))
+
+    var playerDynamicLoudnessTruePeakDbtp: Float
+        get() = currentPlayerDynamicLoudnessTruePeakDbtp
+        set(value) {
+            val normalized = normalizeDynamicLoudnessTruePeakDbtp(value)
+            if (normalized == currentPlayerDynamicLoudnessTruePeakDbtp) return
+            storedPlayerDynamicLoudnessTruePeakDbtp = normalized
+            currentPlayerDynamicLoudnessTruePeakDbtp = normalized
+        }
+
+    private fun normalizeDynamicLoudnessTruePeakDbtp(value: Float): Float =
+        ((value.takeIf { it.isFinite() } ?: -2f).coerceIn(-4f, 0f) * 2f).roundToInt() / 2f
+
     private var storedDanmakuEnabled by settingsKSafe(true, key = "danmaku_enabled")
     private var currentDanmakuEnabled by mutableStateOf(storedDanmakuEnabled)
 

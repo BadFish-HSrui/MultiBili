@@ -12,5 +12,6 @@ suspend fun fetchMediaPlayInfo(episodeId: Long): VideoSource {
         parameter("fnval", 16)
         parameter("fnver", 0)
         parameter("fourk", 1)
+        parameter("voice_balance", 1)
     }.body<MediaPlayResponse>().toVideoSource()
 }
