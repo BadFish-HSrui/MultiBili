@@ -153,11 +153,13 @@ compose.desktop {
             packageName = "Multi Bili"
 
             macOS {
+                appCategory = "public.app-category.entertainment"
                 packageVersion = appVersionMetadata.coreVersion
                 packageBuildVersion = appVersionMetadata.buildNumber.toString()
                 iconFile.set(project.file("src/jvmMain/icons/mac_icon.icns"))
             }
             linux {
+                menuGroup = "AudioVideo;Video;Player;"
                 packageVersion = appVersionMetadata.coreVersion
                 appRelease = appVersionMetadata.buildNumber.toString()
                 iconFile.set(project.file("src/jvmMain/icons/linux_icon.png"))
