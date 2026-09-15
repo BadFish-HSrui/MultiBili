@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.koin.mp.KoinPlatform.getKoin
+import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.base.BoloPlayerController
 import tv.hsrui.bolo.player.base.BoloPlayerError
 import tv.hsrui.bolo.player.base.BoloPlayerSeekCoordinator
@@ -33,6 +35,7 @@ import tv.hsrui.network.feature.player.fetchVideoPlayInfo
 import tv.hsrui.network.feature.player.fetchMediaPlayInfo
 
 class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : ViewModel() {
+    private val settings: BoloSettings = getKoin().get()
     var avid: Long = avid
         private set
     var cid: Long = cid
@@ -41,6 +44,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
         private set
     private var sourceLoadJob: Job? = null
     private var sourceGeneration = 0L
+    private var autoPlayOnOpen = true
 
     val subtitleController = BoloSubtitleController(viewModelScope)
     val danmakuController = BoloDanmakuController()
@@ -51,7 +55,8 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
     private var danmakuWindow = emptySet<Long>()
     private var currentDanmakuSegment = 0L
     private var danmakuGeneration = 0L
-    private var danmakuClosed = false
+    private val _danmakuClosed = MutableStateFlow(false)
+    val danmakuClosed = _danmakuClosed.asStateFlow()
     private var awaitingPlaybackReload = true
     private var danmakuMedia: Pair<Long, Long>? = null
     private var awaitingDanmakuSeek = false
@@ -106,6 +111,8 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
 
     fun switchMedia(avid: Long, cid: Long, episodeId: Long? = null, forceReload: Boolean = false) {
         if (!forceReload && this.avid == avid && this.cid == cid && this.episodeId == episodeId) return
+        val opensNewMedia = sourceGeneration == 0L || this.avid != avid || this.cid != cid || this.episodeId != episodeId
+        if (opensNewMedia) autoPlayOnOpen = settings.playerAutoPlayOnOpenEnabled
         playbackReportController.beforeReload(controller.state.value, controller.backend.value != null)
         playbackReportController.openMedia(avid, cid)
         sourceLoadJob?.cancel()
@@ -117,11 +124,20 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
         this.cid = cid
         this.episodeId = episodeId
         resetDanmaku()
+        if (opensNewMedia) {
+            setDanmakuVisible(settings.playerAutoEnableDanmakuOnOpenEnabled || settings.danmakuEnabled)
+        }
         _uiState.value = VideoPlayerUiState.Loading
         sourceLoadJob = viewModelScope.launch {
             loadVideo()
-            if (generation == sourceGeneration) playVideo(autoPlay = true)
+            if (generation == sourceGeneration) playVideo(autoPlay = autoPlayOnOpen)
         }
+    }
+
+    fun setDanmakuVisible(visible: Boolean) {
+        if (_danmakuClosed.value) return
+        danmakuController.setVisible(visible)
+        settings.danmakuEnabled = visible
     }
 
     private fun playVideo(startPositionMs: Long = 0L, autoPlay: Boolean = false) {
@@ -284,7 +300,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
     }
 
     private fun updateDanmakuWindow(positionMs: Long, durationMs: Long) {
-        if (danmakuClosed || avid <= 0L || cid <= 0L) return
+        if (_danmakuClosed.value || avid <= 0L || cid <= 0L) return
         val segment = positionMs.coerceAtLeast(0L) / 360_000L + 1L
         val lastSegment = if (durationMs > 0L) (durationMs - 1L) / 360_000L + 1L else Long.MAX_VALUE
         val window = (maxOf(1L, segment - 1L)..minOf(lastSegment, segment + 1L)).toSet()
@@ -313,14 +329,14 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
         val requestedCid = cid
         val requestJob = currentCoroutineContext().job
         fun isCurrent() = generation == danmakuGeneration && requestedAvid == avid && requestedCid == cid &&
-            segmentIndex in danmakuWindow && !danmakuClosed && danmakuRequests[segmentIndex] === requestJob
+            segmentIndex in danmakuWindow && !_danmakuClosed.value && danmakuRequests[segmentIndex] === requestJob
         try {
             repeat(2) { attempt ->
                 try {
                     val response = fetchDanmakuSegment(cid = requestedCid, segmentIndex = segmentIndex, avid = requestedAvid)
                     if (!isCurrent()) return
                     if (response.isClosed) {
-                        danmakuClosed = true
+                        _danmakuClosed.value = true
                         danmakuSegments.clear()
                         danmakuController.clear()
                         danmakuRequests.values.filter { it !== requestJob }.forEach { it.cancel() }
@@ -375,7 +391,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
         failedDanmakuSegments.clear()
         danmakuWindow = emptySet()
         currentDanmakuSegment = 0L
-        danmakuClosed = false
+        _danmakuClosed.value = false
         awaitingPlaybackReload = true
         danmakuMedia = null
         awaitingDanmakuSeek = false

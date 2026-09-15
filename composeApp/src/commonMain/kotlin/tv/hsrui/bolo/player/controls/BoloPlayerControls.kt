@@ -219,6 +219,8 @@ fun BoloPlayerControls(
     val playerInfo by viewModel.controller.info.collectAsState()
     val playerUiState by viewModel.uiState.collectAsState()
     val subtitleState by viewModel.subtitleController.state.collectAsState()
+    val danmakuState by viewModel.danmakuController.state.collectAsState()
+    val danmakuClosed by viewModel.danmakuClosed.collectAsState()
     val currentVideoQuality by viewModel.currentVideoQuality.collectAsState()
     var sliderPreviewFraction by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
         mutableStateOf<Float?>(null)
@@ -907,6 +909,28 @@ fun BoloPlayerControls(
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White
                         )
+
+                        TextButton(
+                            onClick = {
+                                viewModel.setDanmakuVisible(!viewModel.danmakuController.state.value.isVisible)
+                            },
+                            enabled = !danmakuClosed,
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = Color.White,
+                                disabledContentColor = Color.White.copy(alpha = 0.38f),
+                            ),
+                            modifier = Modifier.height(32.dp),
+                        ) {
+                            Text(
+                                text = when {
+                                    danmakuClosed -> "UP已关闭弹幕"
+                                    danmakuState.isVisible -> "弹幕 - 开"
+                                    else -> "弹幕 - 关"
+                                },
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1,
+                            )
+                        }
 
                         Spacer(Modifier.weight(1f))
 

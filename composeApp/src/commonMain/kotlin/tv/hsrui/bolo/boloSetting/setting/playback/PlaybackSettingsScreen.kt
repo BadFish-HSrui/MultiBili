@@ -50,6 +50,18 @@ import tv.hsrui.bolo.utils.isExpanded
 fun PlaybackSettingsScreen(modifier: Modifier = Modifier) {
     val settings: BoloSettings = koinInject()
     var showReportStartInfo by remember { mutableStateOf(false) }
+    var showDanmakuAutoEnableInfo by remember { mutableStateOf(false) }
+
+    if (showDanmakuAutoEnableInfo) {
+        ShowInfoDialog(onConfirm = { showDanmakuAutoEnableInfo = false }) {
+            Text(
+                text = "关闭后，沿用上次开关状态",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
+            )
+        }
+    }
 
     if (showReportStartInfo) {
         ShowInfoDialog(onConfirm = { showReportStartInfo = false }) {
@@ -73,6 +85,48 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.widthIn(max = 1000.dp).fillMaxWidth(),
                 contentPadding = PaddingValues(8.dp),
             ) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("播放习惯", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))
+                        Card(Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.playerAutoPlayOnOpenEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.playerAutoPlayOnOpenEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("打开视频自动播放", style = MaterialTheme.typography.bodyLarge)
+                                Spacer(Modifier.weight(1f))
+                                Switch(checked = settings.playerAutoPlayOnOpenEnabled, onCheckedChange = null)
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.playerAutoEnableDanmakuOnOpenEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.playerAutoEnableDanmakuOnOpenEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("打开视频自动开启弹幕", style = MaterialTheme.typography.bodyLarge)
+                                IconButton(
+                                    onClick = { showDanmakuAutoEnableInfo = true },
+                                    modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Info,
+                                        contentDescription = "打开视频自动开启弹幕说明",
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                                Spacer(Modifier.weight(1f))
+                                Switch(checked = settings.playerAutoEnableDanmakuOnOpenEnabled, onCheckedChange = null)
+                            }
+                        }
+                    }
+                }
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("信息上报", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))

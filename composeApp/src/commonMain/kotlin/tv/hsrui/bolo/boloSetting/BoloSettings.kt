@@ -9,6 +9,45 @@ import eu.anifantakis.lib.ksafe.KSafePlain
 import kotlin.math.roundToInt
 
 class BoloSettings(settingsKSafe: KSafePlain) {
+    private var storedPlayerAutoPlayOnOpenEnabled by settingsKSafe(
+        true,
+        key = "player_auto_play_on_open_enabled",
+    )
+    private var currentPlayerAutoPlayOnOpenEnabled by mutableStateOf(storedPlayerAutoPlayOnOpenEnabled)
+
+    var playerAutoPlayOnOpenEnabled: Boolean
+        get() = currentPlayerAutoPlayOnOpenEnabled
+        set(value) {
+            if (value == currentPlayerAutoPlayOnOpenEnabled) return
+            storedPlayerAutoPlayOnOpenEnabled = value
+            currentPlayerAutoPlayOnOpenEnabled = value
+        }
+
+    private var storedPlayerAutoEnableDanmakuOnOpenEnabled by settingsKSafe(
+        true,
+        key = "player_auto_enable_danmaku_on_open_enabled",
+    )
+    private var currentPlayerAutoEnableDanmakuOnOpenEnabled by mutableStateOf(storedPlayerAutoEnableDanmakuOnOpenEnabled)
+
+    var playerAutoEnableDanmakuOnOpenEnabled: Boolean
+        get() = currentPlayerAutoEnableDanmakuOnOpenEnabled
+        set(value) {
+            if (value == currentPlayerAutoEnableDanmakuOnOpenEnabled) return
+            storedPlayerAutoEnableDanmakuOnOpenEnabled = value
+            currentPlayerAutoEnableDanmakuOnOpenEnabled = value
+        }
+
+    private var storedDanmakuEnabled by settingsKSafe(true, key = "danmaku_enabled")
+    private var currentDanmakuEnabled by mutableStateOf(storedDanmakuEnabled)
+
+    var danmakuEnabled: Boolean
+        get() = currentDanmakuEnabled
+        set(value) {
+            if (value == currentDanmakuEnabled) return
+            storedDanmakuEnabled = value
+            currentDanmakuEnabled = value
+        }
+
     private var storedPlayerReportStartEnabled by settingsKSafe(true, key = "player_report_start_enabled")
     private var currentPlayerReportStartEnabled by mutableStateOf(storedPlayerReportStartEnabled)
 
