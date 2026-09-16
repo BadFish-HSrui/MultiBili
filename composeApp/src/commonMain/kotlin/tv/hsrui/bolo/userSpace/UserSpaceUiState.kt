@@ -2,6 +2,7 @@ package tv.hsrui.bolo.userSpace
 
 import tv.hsrui.network.feature.favorite.FavoriteFolderInfoData
 import tv.hsrui.network.model.VideoCard
+import tv.hsrui.network.feature.video.collection.VideoCollectionSummaryData
 
 sealed interface UserSpaceSectionState<out T> {
     data object Loading : UserSpaceSectionState<Nothing>
@@ -23,7 +24,7 @@ sealed interface UserSpaceSectionState<out T> {
 
 data class UserSpaceUiState(
     val uploads: UserSpaceSectionState<List<VideoCard>> = UserSpaceSectionState.Loading,
-    val collections: UserSpaceSectionState<Boolean> = UserSpaceSectionState.Loading,
+    val collections: UserSpaceSectionState<List<VideoCollectionSummaryData>> = UserSpaceSectionState.Loading,
     val likes: UserSpaceSectionState<List<VideoCard>> = UserSpaceSectionState.Loading,
     val coins: UserSpaceSectionState<List<VideoCard>> = UserSpaceSectionState.Loading,
     val favorites: UserSpaceSectionState<List<FavoriteFolderInfoData>> = UserSpaceSectionState.Loading,
@@ -33,6 +34,11 @@ data class UserSpaceUiState(
     val canLoadMore: Boolean = false,
     val uploadPage: Int = 0,
     val loadMoreError: String? = null,
+    val collectionPage: Int = 0,
+    val canLoadMoreCollections: Boolean = false,
+    val isLoadingMoreCollections: Boolean = false,
+    val collectionLoadMoreError: String? = null,
+    val playingCollectionId: Long? = null,
 ) {
     val visibleTabs get() = UserSpaceTab.entries.filter {
         when (it) {

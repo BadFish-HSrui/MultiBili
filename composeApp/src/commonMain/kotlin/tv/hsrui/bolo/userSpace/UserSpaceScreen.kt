@@ -16,7 +16,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Surface
@@ -25,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -46,7 +46,7 @@ import tv.hsrui.bolo.favorite.FavoriteFoldersContent
 import tv.hsrui.bolo.favorite.FavoriteFoldersUiState
 import tv.hsrui.bolo.ui.common.videosPage.VideosGridPage
 import tv.hsrui.bolo.ui.common.videosPage.VideosUiState
-import tv.hsrui.bolo.ui.components.error.ShowErrorContent
+import tv.hsrui.bolo.userSpace.collection.UserCollectionsContent
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.ui.components.user.ShowUserInfoBar
 import tv.hsrui.network.login.storage.LoginStorage
@@ -56,6 +56,9 @@ fun UserSpaceScreen(mid: Long, modifier: Modifier = Modifier) {
     val loginStorage: LoginStorage = koinInject()
     val viewModel = viewModel(key = "UserSpace:$mid") { UserSpaceViewModel(mid, loginStorage) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.cancelCollectionPlayback() }
+    }
     val currentUserMid by loginStorage.currentUserMidFlow.collectAsStateWithLifecycle(
         initialValue = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L,
     )
@@ -76,6 +79,8 @@ fun UserSpaceScreen(mid: Long, modifier: Modifier = Modifier) {
             state = state,
             onRefresh = viewModel::refreshTab,
             onLoadMore = viewModel::loadMoreUploads,
+            onLoadMoreCollections = viewModel::loadMoreCollections,
+            onPlayCollection = viewModel::playCollection,
             canManageFavorites = currentUserMid > 0 && currentUserMid == mid,
             canManageFavoritesNow = { loginStorage.isLoggedIn && loginStorage.cookies.dedeUserID == mid },
             modifier = Modifier.padding(padding),
@@ -89,6 +94,8 @@ private fun UserSpaceContent(
     state: UserSpaceUiState,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
+    onLoadMoreCollections: () -> Unit,
+    onPlayCollection: (Long) -> Unit,
     canManageFavorites: Boolean,
     canManageFavoritesNow: () -> Boolean,
     modifier: Modifier = Modifier,
@@ -98,6 +105,7 @@ private fun UserSpaceContent(
     val likesGrid = rememberLazyGridState()
     val coinsGrid = rememberLazyGridState()
     val favoritesGrid = rememberLazyGridState()
+    val collectionsGrid = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     val tabs = state.visibleTabs
     val currentTab = selectedTab.takeIf { it in tabs } ?: tabs.firstOrNull()
@@ -191,16 +199,15 @@ private fun UserSpaceContent(
                                         favoriteFoldersGridState = favoritesGrid,
                                         enablePullToRefresh = false,
                                     )
-                                    UserSpaceTab.Collections -> Box(
-                                        modifier = Modifier.fillMaxSize().scrollable(rememberScrollableState { 0f }, Orientation.Vertical),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        when (val section = state.collections) {
-                                            is UserSpaceSectionState.Error -> ShowErrorContent(message = section.message, retry = onRefresh)
-                                            is UserSpaceSectionState.Success -> Text("视频合集暂未开放")
-                                            else -> CircularProgressIndicator()
-                                        }
-                                    }
+                                    UserSpaceTab.Collections -> UserCollectionsContent(
+                                        mid = mid,
+                                        state = state,
+                                        gridState = collectionsGrid,
+                                        onRefresh = onRefresh,
+                                        onLoadMore = onLoadMoreCollections,
+                                        onPlay = onPlayCollection,
+                                        isActive = pager.currentPage == page,
+                                    )
                                 }
                             }
                         }

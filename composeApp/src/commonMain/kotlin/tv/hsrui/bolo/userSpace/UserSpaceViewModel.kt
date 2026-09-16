@@ -18,6 +18,9 @@ import tv.hsrui.network.feature.user.space.fetchUserSpaceLikes
 import tv.hsrui.network.feature.user.space.fetchUserSpacePrivacy
 import tv.hsrui.network.feature.user.space.fetchUserSpaceUploads
 import tv.hsrui.network.login.storage.LoginStorage
+import tv.hsrui.network.feature.video.collection.fetchVideoCollectionVideos
+import tv.hsrui.bolo.navigation.openVideo
+import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 
 class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginStorage) : ViewModel() {
     private val _uiState = MutableStateFlow(UserSpaceUiState())
@@ -25,6 +28,9 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
     private var requestVersion = 0
     private var refreshJob: Job? = null
     private var loadMoreJob: Job? = null
+    private var collectionLoadMoreJob: Job? = null
+    private var collectionPlaybackJob: Job? = null
+    private var collectionPlaybackGeneration = 0
 
     init { refreshSpace() }
 
@@ -32,7 +38,14 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
         val version = ++requestVersion
         refreshJob?.cancel()
         loadMoreJob?.cancel()
-        _uiState.update { it.copy(refreshGeneration = version, isRefreshing = true, isLoadingMore = false, loadMoreError = null) }
+        collectionLoadMoreJob?.cancel()
+        cancelCollectionPlayback()
+        _uiState.update {
+            it.copy(
+                refreshGeneration = version, isRefreshing = true, isLoadingMore = false, loadMoreError = null,
+                isLoadingMoreCollections = false, collectionLoadMoreError = null,
+            )
+        }
         refreshJob = viewModelScope.launch {
             try {
                 supervisorScope {
@@ -97,14 +110,77 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
         }
     }
 
-    private suspend fun loadCollections(version: Int) {
-        val state = try {
-            val result = fetchUserSpaceCollections(mid)
-            check(result.isSuccess) { result.message.ifBlank { "视频合集加载失败" } }
-            UserSpaceSectionState.Success((result.total ?: 0) > 0)
-        } catch (e: CancellationException) { throw e }
-        catch (e: Exception) { UserSpaceSectionState.Error(e.message ?: "视频合集加载失败") }
-        if (version == requestVersion) _uiState.update { it.copy(collections = state) }
+    private suspend fun loadCollections(version: Int, page: Int = 1) {
+        try {
+            var nextPage = page
+            // 混合分页中可能整页都是系列，不能把过滤后的空页当成没有合集。
+            while (true) {
+                val result = fetchUserSpaceCollections(mid, nextPage)
+                check(result.isSuccess) { result.message.ifBlank { "视频合集加载失败" } }
+                if (version != requestVersion) return
+                if (result.collections.isNotEmpty() || !result.hasMore) {
+                    _uiState.update {
+                        val previous = if (page == 1) emptyList() else (it.collections as? UserSpaceSectionState.Success)?.data.orEmpty()
+                        it.copy(
+                            collections = UserSpaceSectionState.Success((previous + result.collections).distinctBy { c -> c.seasonId }),
+                            collectionPage = nextPage, canLoadMoreCollections = result.hasMore, collectionLoadMoreError = null,
+                        )
+                    }
+                    return
+                }
+                nextPage++
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (version != requestVersion) return
+            val message = e.message ?: "视频合集加载失败"
+            _uiState.update {
+                if (page == 1) it.copy(collections = UserSpaceSectionState.Error(message), canLoadMoreCollections = false)
+                else it.copy(collectionLoadMoreError = message)
+            }
+        }
+    }
+
+    fun loadMoreCollections() {
+        val state = _uiState.value
+        if (state.isRefreshing || state.isLoadingMoreCollections || !state.canLoadMoreCollections || state.collections !is UserSpaceSectionState.Success) return
+        val version = requestVersion
+        _uiState.update { it.copy(isLoadingMoreCollections = true, collectionLoadMoreError = null) }
+        collectionLoadMoreJob = viewModelScope.launch {
+            try { loadCollections(version, state.collectionPage + 1) }
+            finally { if (version == requestVersion) _uiState.update { it.copy(isLoadingMoreCollections = false) } }
+        }
+    }
+
+    fun playCollection(seasonId: Long) {
+        if (_uiState.value.playingCollectionId != null) return
+        val collection = (_uiState.value.collections as? UserSpaceSectionState.Success)?.data
+            ?.firstOrNull { it.seasonId == seasonId && it.total > 0 } ?: return
+        val version = ++collectionPlaybackGeneration
+        _uiState.update { it.copy(playingCollectionId = seasonId) }
+        collectionPlaybackJob = viewModelScope.launch {
+            try {
+                val result = fetchVideoCollectionVideos(collection.mid.takeIf { it > 0 } ?: mid, seasonId, pageSize = 1)
+                check(result.isSuccess && result.collection?.seasonId == seasonId) { result.message.ifBlank { "合集加载失败" } }
+                val first = result.videos.firstOrNull { it.avid > 0 } ?: error("暂无可播放视频")
+                if (version != collectionPlaybackGeneration) return@launch
+                openVideo(first.avid)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (version == collectionPlaybackGeneration) showSnackbarMessage(e.message ?: "合集播放失败")
+            } finally {
+                if (version == collectionPlaybackGeneration) _uiState.update { it.copy(playingCollectionId = null) }
+            }
+        }
+    }
+
+    fun cancelCollectionPlayback() {
+        ++collectionPlaybackGeneration
+        collectionPlaybackJob?.cancel()
+        collectionPlaybackJob = null
+        _uiState.update { it.copy(playingCollectionId = null) }
     }
 
     private suspend fun loadLikes(version: Int, hidden: Boolean) {
