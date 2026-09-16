@@ -54,7 +54,7 @@ fun <T> ShowVerticalCardGrid(
     val defaultGridCells = remember(minColumns) {
         object : GridCells {
             override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
-                val adaptiveSizes = with(GridCells.Adaptive(320.dp)) {
+                val adaptiveSizes = with(GridCells.Adaptive(300.dp)) {
                     calculateCrossAxisCellSizes(availableSize, spacing)
                 }
                 val maxColumns = if (minColumns == 4) 6 else Int.MAX_VALUE
