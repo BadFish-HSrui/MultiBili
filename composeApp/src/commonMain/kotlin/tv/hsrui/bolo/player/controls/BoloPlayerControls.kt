@@ -17,6 +17,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.PressInteraction
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -85,6 +87,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -254,10 +258,11 @@ fun BoloPlayerControls(
     var mousePressed by remember { mutableStateOf(false) }
     var mouseMovementRevision by remember { mutableIntStateOf(0) }
     var speedMenuOpen by remember { mutableStateOf(false) }
+    var volumeMenuOpen by remember { mutableStateOf(false) }
     var qualityMenuOpen by remember { mutableStateOf(false) }
     var subtitleMenuOpen by remember { mutableStateOf(false) }
     val controlsInteractionActive = mousePressed || sliderPreviewFraction != null ||
-        settingsOpen || speedMenuOpen || qualityMenuOpen || subtitleMenuOpen
+        settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen || subtitleMenuOpen
     val latestControlsInteractionActive by rememberUpdatedState(controlsInteractionActive)
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     LaunchedEffect(isDesktop, mouseInside, mouseMovementRevision, controlsInteractionActive) {
@@ -329,6 +334,26 @@ fun BoloPlayerControls(
     var volumePreview by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Float?>(null)
     }
+    var desktopVolumeFeedbackVisible by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
+        mutableStateOf(false)
+    }
+    var desktopVolumeFeedbackRevision by remember { mutableIntStateOf(0) }
+    val desktopVolumeText = if (settings.playerDesktopMuted) "已静音" else "${settings.playerDesktopVolumePercent}%"
+    val desktopVolumeIcon = if (settings.playerDesktopMuted || settings.playerDesktopVolumePercent == 0) {
+        Icons.AutoMirrored.Rounded.VolumeOff
+    } else Icons.AutoMirrored.Rounded.VolumeUp
+    fun showDesktopVolumeFeedback() {
+        desktopVolumeFeedbackVisible = true
+        desktopVolumeFeedbackRevision++
+    }
+    fun adjustDesktopVolume(delta: Int) {
+        viewModel.adjustDesktopVolume(delta)
+        showDesktopVolumeFeedback()
+    }
+    LaunchedEffect(desktopVolumeFeedbackRevision, viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
+        delay(500)
+        desktopVolumeFeedbackVisible = false
+    }
     // 长按倍速期间的状态：临时倍速用于预览，原倍速用于松手恢复。
     var gestureSpeedBoost by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Float?>(null)
@@ -383,8 +408,28 @@ fun BoloPlayerControls(
             fullscreenState.toggleFullscreen()
         }
     }
-    val keyboardBlocked = settingsOpen || speedMenuOpen || qualityMenuOpen ||
+    val keyboardBlocked = settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen ||
         subtitleMenuOpen || mousePressed || sliderPreviewFraction != null
+    fun onVolumeKeyEvent(event: KeyEvent): Boolean {
+        if (event.key != Key.DirectionUp && event.key != Key.DirectionDown && event.key != Key.M) return false
+        if (event.type == KeyEventType.KeyUp) {
+            val cancelled = keyboardCancelledKeys.remove(event.key)
+            val handled = keyboardPressedKeys.remove(event.key)
+            return cancelled || handled
+        }
+        if (event.type != KeyEventType.KeyDown || event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) return false
+        if (event.key in keyboardCancelledKeys) return true
+        val firstDown = keyboardPressedKeys.add(event.key)
+        when (event.key) {
+            Key.DirectionUp -> adjustDesktopVolume(10)
+            Key.DirectionDown -> adjustDesktopVolume(-10)
+            Key.M -> if (firstDown) {
+                viewModel.toggleDesktopMuted()
+                showDesktopVolumeFeedback()
+            }
+        }
+        return true
+    }
     DisposableEffect(viewModel) {
         onDispose { cancelKeyboardInteraction() }
     }
@@ -440,6 +485,13 @@ fun BoloPlayerControls(
                     if (keyboardPressedKeys.add(Key.F)) toggleDesktopFullscreen()
                     true
                 }
+                Key.DirectionUp, Key.DirectionDown, Key.M -> onVolumeKeyEvent(event)
+                Key.D -> {
+                    if (keyboardPressedKeys.add(Key.D)) {
+                        viewModel.setDanmakuVisible(!viewModel.danmakuController.state.value.isVisible)
+                    }
+                    true
+                }
                 Key.DirectionLeft -> {
                     val firstDown = keyboardPressedKeys.add(Key.DirectionLeft)
                     seekByKeyboard(-1, isRepeat = !firstDown)
@@ -452,7 +504,7 @@ fun BoloPlayerControls(
                         !playback.isPlaybackSuspended && !playback.isRebuilding) {
                         rightHoldPending = true
                         rightHoldJob = keyboardScope.launch {
-                            delay(500)
+                            delay(300)
                             val current = viewModel.controller.state.value
                             if (current.isPlaying && !current.isPlaybackSuspended && !current.isRebuilding) {
                                 keyboardBaseSpeed = current.playbackSpeed
@@ -479,6 +531,13 @@ fun BoloPlayerControls(
         )
     }
     val devicePreview = brightnessPreview ?: volumePreview
+    val deviceFeedbackVisible = devicePreview != null || desktopVolumeFeedbackVisible
+    val onDesktopVolumeScroll by rememberUpdatedState<(Float) -> Boolean> { delta ->
+        if (isDesktop && windowFocused && !keyboardBlocked && !infoOpen && delta != 0f) {
+            adjustDesktopVolume(if (delta < 0f) 2 else -2)
+            true
+        } else false
+    }
     val durationMs = playState.durationMs
     val previewPositionMs = gesturePreviewMs ?: sliderPreviewFraction?.let { fraction ->
         (fraction.toDouble() * durationMs.toDouble())
@@ -493,15 +552,20 @@ fun BoloPlayerControls(
 
     Box(
         modifier = modifier.fillMaxSize().onPreviewKeyEvent { event ->
-            // 在播放器按钮处理空格前接管，播放器外的输入框仍沿用自己的按键处理。
-            isDesktop && event.key == Key.Spacebar && onPlayerKeyEvent(event)
+            // 播放器内优先接管音量与开关按键，播放器外的输入框仍自行处理。
+            isDesktop && (event.key == Key.Spacebar || event.key == Key.DirectionUp ||
+                event.key == Key.DirectionDown || event.key == Key.M || event.key == Key.D) && onPlayerKeyEvent(event)
         }.pointerInput(isDesktop, viewModel) {
             if (!isDesktop) return@pointerInput
             try {
                 awaitPointerEventScope {
                     while (true) {
-                        // 父容器只观察事件，按钮、滑块和背景分别正常命中。
+                        // 父容器观察鼠标；仅符合条件的音量滚轮会消费事件。
                         val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.type == PointerEventType.Scroll) {
+                            val delta = event.changes.sumOf { it.scrollDelta.y.toDouble() }.toFloat()
+                            if (onDesktopVolumeScroll(delta)) event.changes.forEach { it.consume() }
+                        }
                         val mouse = event.changes.firstOrNull { it.type == PointerType.Mouse } ?: continue
                         mousePressed = event.changes.any { it.type == PointerType.Mouse && it.pressed }
                         when (event.type) {
@@ -949,6 +1013,21 @@ fun BoloPlayerControls(
 
                         Spacer(Modifier.weight(1f))
 
+                        if (isDesktop) {
+                            VolumeSliderPopup(
+                                volumePercent = settings.playerDesktopVolumePercent,
+                                muted = settings.playerDesktopMuted,
+                                isFullscreen = isFullscreen,
+                                onVolumeSelected = {
+                                    viewModel.setDesktopVolume(it)
+                                    showDesktopVolumeFeedback()
+                                },
+                                onKeyEvent = ::onVolumeKeyEvent,
+                                onScroll = { delta -> adjustDesktopVolume(if (delta < 0f) 2 else -2) },
+                                onExpandedChange = { volumeMenuOpen = it },
+                            )
+                        }
+
                         if (showExtendedControls) {
                             if (subtitleState.subtitles.isNotEmpty()) {
                                 SubtitleMenu(
@@ -1043,9 +1122,9 @@ fun BoloPlayerControls(
         }
         SideEffect {
             if (centerFeedback != null) retainedFeedback = centerFeedback
-            feedbackVisibility.targetState = centerFeedback != null && devicePreview == null && !settingsOpen
+            feedbackVisibility.targetState = centerFeedback != null && !deviceFeedbackVisible && !settingsOpen
         }
-        if (playState.isBuffering && !settingsOpen && devicePreview == null &&
+        if (playState.isBuffering && !settingsOpen && !deviceFeedbackVisible &&
             centerFeedback == null && feedbackVisibility.isIdle && !feedbackVisibility.currentState) {
             BoloPlayerBufferingIndicator(
                 downloadBytesPerSecond = playerInfo.downloadBytesPerSecond,
@@ -1067,25 +1146,26 @@ fun BoloPlayerControls(
                 )
             }
         }
-        if (devicePreview != null || previewPositionMs != null || gestureSpeedPreview != null) {
+        if (deviceFeedbackVisible || previewPositionMs != null || gestureSpeedPreview != null) {
             Card(
                 modifier = Modifier.align(Alignment.Center)
-                    .then(if (devicePreview == null) Modifier.offset(y = 52.dp) else Modifier),
+                    .then(if (!deviceFeedbackVisible) Modifier.offset(y = 52.dp) else Modifier),
                 shape = RoundedCornerShape(4.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = Color.Black.copy(alpha = 0.75f),
                     contentColor = Color.White,
                 ),
             ) {
-                if (devicePreview != null) {
+                if (deviceFeedbackVisible) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
                             imageVector = when {
+                                desktopVolumeFeedbackVisible -> desktopVolumeIcon
                                 brightnessPreview != null -> Icons.Rounded.Brightness6
-                                devicePreview <= 0f -> Icons.AutoMirrored.Rounded.VolumeOff
+                                devicePreview != null && devicePreview <= 0f -> Icons.AutoMirrored.Rounded.VolumeOff
                                 else -> Icons.AutoMirrored.Rounded.VolumeUp
                             },
                             contentDescription = if (brightnessPreview != null) "亮度" else "音量",
@@ -1093,7 +1173,8 @@ fun BoloPlayerControls(
                             tint = Color.White,
                         )
                         Text(
-                            text = "${(devicePreview.coerceIn(0f, 1f) * 100).roundToInt()}%",
+                            text = if (desktopVolumeFeedbackVisible) desktopVolumeText
+                                else "${((devicePreview ?: 0f).coerceIn(0f, 1f) * 100).roundToInt()}%",
                             modifier = Modifier.padding(start = 4.dp),
                             style = MaterialTheme.typography.labelLarge,
                             color = Color.White,
@@ -1219,6 +1300,154 @@ private fun SpeedSliderPopup(
     onSpeedSelected: (Float) -> Unit,
     onExpandedChange: (Boolean) -> Unit,
 ) {
+    var lastRequestedSpeed by remember(currentSpeed) { mutableStateOf(currentSpeed) }
+    val speedText = speedMultiplierText((currentSpeed * 100f).roundToInt())
+    PlayerSliderPopup(
+        isFullscreen = isFullscreen,
+        onExpandedChange = onExpandedChange,
+        anchor = { toggle ->
+            TextButton(
+                onClick = toggle,
+                colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+                modifier = Modifier.height(32.dp).semantics { contentDescription = "播放速度" },
+            ) {
+                Text(speedText, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            }
+        },
+    ) {
+        Text(
+            text = speedText,
+            modifier = Modifier.width(48.dp),
+            style = MaterialTheme.typography.labelLarge,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+        )
+        ShowSlider(
+            value = currentSpeed,
+            onValueChange = { value ->
+                val speed = (value * 4f).roundToInt().coerceIn(2, 12) / 4f
+                if (speed != lastRequestedSpeed) {
+                    lastRequestedSpeed = speed
+                    onSpeedSelected(speed)
+                }
+            },
+            valueRange = 0.5f..3f,
+            steps = 9,
+            uniformTrackColor = true,
+            showStops = false,
+            tickValues = listOf(0.5f, 1f, 2f, 3f),
+            modifier = Modifier.weight(1f).semantics {
+                contentDescription = "播放速度"
+                stateDescription = speedText
+            },
+        )
+        IconButton(
+            onClick = {
+                if (lastRequestedSpeed != 1f) {
+                    lastRequestedSpeed = 1f
+                    onSpeedSelected(1f)
+                }
+            },
+            modifier = Modifier.size(32.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.RestartAlt,
+                contentDescription = "重置播放速度为 1x",
+                modifier = Modifier.size(20.dp).graphicsLayer {
+                    // 24×24 路径的圆环中心为 (12, 13)，向上补偿一个矢量单位。
+                    translationY = -size.height / 24f
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun VolumeSliderPopup(
+    volumePercent: Int,
+    muted: Boolean,
+    isFullscreen: Boolean,
+    onVolumeSelected: (Int) -> Unit,
+    onKeyEvent: (KeyEvent) -> Boolean,
+    onScroll: (Float) -> Unit,
+    onExpandedChange: (Boolean) -> Unit,
+) {
+    val volumeText = if (muted) "已静音" else "$volumePercent%"
+    val latestOnKeyEvent by rememberUpdatedState(onKeyEvent)
+    val latestOnScroll by rememberUpdatedState(onScroll)
+    PlayerSliderPopup(
+        isFullscreen = isFullscreen,
+        onExpandedChange = onExpandedChange,
+        requestInitialFocus = true,
+        popupModifier = Modifier.onPreviewKeyEvent { latestOnKeyEvent(it) }.pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    if (event.type == PointerEventType.Scroll) {
+                        val delta = event.changes.sumOf { it.scrollDelta.y.toDouble() }.toFloat()
+                        if (delta != 0f) {
+                            latestOnScroll(delta)
+                            event.changes.forEach { it.consume() }
+                        }
+                    }
+                }
+            }
+        },
+        anchor = { toggle ->
+            IconButton(
+                onClick = toggle,
+                modifier = Modifier.size(32.dp).semantics { stateDescription = volumeText },
+            ) {
+                Icon(
+                    imageVector = if (muted || volumePercent == 0) Icons.AutoMirrored.Rounded.VolumeOff
+                        else Icons.AutoMirrored.Rounded.VolumeUp,
+                    contentDescription = "播放器音量",
+                    tint = Color.White,
+                )
+            }
+        },
+    ) {
+        Text(
+            text = volumeText,
+            modifier = Modifier.width(48.dp),
+            style = MaterialTheme.typography.labelLarge,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+        )
+        ShowSlider(
+            value = volumePercent.toFloat(),
+            onValueChange = { onVolumeSelected(it.roundToInt().coerceIn(0, 200)) },
+            valueRange = 0f..200f,
+            centered = true,
+            showStops = false,
+            showTicks = false,
+            modifier = Modifier.weight(1f).semantics {
+                contentDescription = "播放器音量"
+                stateDescription = volumeText
+            },
+        )
+        IconButton(onClick = { onVolumeSelected(100) }, modifier = Modifier.size(32.dp)) {
+            Icon(
+                imageVector = Icons.Rounded.RestartAlt,
+                contentDescription = "重置音量为 100%",
+                modifier = Modifier.size(20.dp).graphicsLayer {
+                    translationY = -size.height / 24f
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlayerSliderPopup(
+    isFullscreen: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    popupModifier: Modifier = Modifier,
+    requestInitialFocus: Boolean = false,
+    anchor: @Composable (() -> Unit) -> Unit,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
     var expanded by remember(isFullscreen) { mutableStateOf(false) }
     val latestOnExpandedChange by rememberUpdatedState(onExpandedChange)
     DisposableEffect(expanded) {
@@ -1231,8 +1460,6 @@ private fun SpeedSliderPopup(
         pivotFractionX = if (LocalLayoutDirection.current == LayoutDirection.Ltr) 1f else 0f,
         pivotFractionY = 1f,
     )
-    var lastRequestedSpeed by remember(currentSpeed) { mutableStateOf(currentSpeed) }
-    val speedText = speedMultiplierText((currentSpeed * 100f).roundToInt())
     val density = LocalDensity.current
     val windowWidth = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
     val margin = with(density) { 8.dp.roundToPx() }
@@ -1256,19 +1483,16 @@ private fun SpeedSliderPopup(
         }
     }
     Box {
-        TextButton(
-            onClick = { expanded = !expanded },
-            colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
-            modifier = Modifier.height(32.dp).semantics { contentDescription = "播放速度" },
-        ) {
-            Text(speedText, style = MaterialTheme.typography.labelMedium, maxLines = 1)
-        }
+        anchor { expanded = !expanded }
         if (visibility.currentState || visibility.targetState || !visibility.isIdle) {
             Popup(
                 popupPositionProvider = positionProvider,
                 onDismissRequest = { expanded = false },
                 properties = PopupProperties(focusable = true),
             ) {
+                LaunchedEffect(visibility.targetState, requestInitialFocus) {
+                    if (visibility.targetState && requestInitialFocus) focusRequester.requestFocus()
+                }
                 AnimatedVisibility(
                     visibleState = visibility,
                     enter = fadeIn(tween(180)) + scaleIn(
@@ -1285,57 +1509,16 @@ private fun SpeedSliderPopup(
                     Card(
                         shape = RoundedCornerShape(percent = 50),
                         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        modifier = Modifier.widthIn(max = (windowWidth - 16.dp).coerceAtLeast(1.dp)).width(320.dp),
+                        modifier = popupModifier.then(
+                            if (requestInitialFocus) Modifier.focusRequester(focusRequester).focusable() else Modifier,
+                        ).widthIn(max = (windowWidth - 16.dp).coerceAtLeast(1.dp)).width(320.dp),
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                text = speedText,
-                                modifier = Modifier.width(48.dp),
-                                style = MaterialTheme.typography.labelLarge,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1,
-                            )
-                            ShowSlider(
-                                value = currentSpeed,
-                                onValueChange = { value ->
-                                    val speed = (value * 4f).roundToInt().coerceIn(2, 12) / 4f
-                                    if (speed != lastRequestedSpeed) {
-                                        lastRequestedSpeed = speed
-                                        onSpeedSelected(speed)
-                                    }
-                                },
-                                valueRange = 0.5f..3f,
-                                steps = 9,
-                                uniformTrackColor = true,
-                                showStops = false,
-                                tickValues = listOf(0.5f, 1f, 2f, 3f),
-                                modifier = Modifier.weight(1f).semantics {
-                                    contentDescription = "播放速度"
-                                    stateDescription = speedText
-                                },
-                            )
-                            IconButton(
-                                onClick = {
-                                    if (lastRequestedSpeed != 1f) {
-                                        lastRequestedSpeed = 1f
-                                        onSpeedSelected(1f)
-                                    }
-                                },
-                                modifier = Modifier.size(32.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.RestartAlt,
-                                    contentDescription = "重置播放速度为 1x",
-                                    modifier = Modifier.size(20.dp).graphicsLayer {
-                                        // 24×24 路径的圆环中心为 (12, 13)，向上补偿一个矢量单位。
-                                        translationY = -size.height / 24f
-                                    },
-                                )
-                            }
+                            content()
                         }
                     }
                 }

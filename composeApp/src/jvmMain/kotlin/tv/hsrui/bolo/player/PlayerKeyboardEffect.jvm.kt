@@ -47,11 +47,9 @@ internal object DesktopPlayerKeyboard {
         // 已接管的按键即使在松开前改变焦点，也必须结束临时倍速。
         if (event.type == KeyEventType.KeyUp) {
             val captured = pressedKeys.remove(event.key)
-            // 空格也可能由播放器容器的预览阶段接管，释放时询问共享处理器。
-            if (captured || event.key == Key.Spacebar) {
-                val handled = onKeyEvent?.invoke(event) == true
-                if (captured || handled) return true
-            }
+            // 播放器容器和音量弹窗也会在预览阶段接管按键，统一询问其释放状态。
+            val handled = onKeyEvent?.invoke(event) == true
+            if (captured || handled) return true
         }
         if (event.type == KeyEventType.KeyDown && event.key == Key.Tab) cancel()
         return false

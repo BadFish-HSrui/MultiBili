@@ -1,5 +1,7 @@
 package tv.hsrui.bolo.player
 
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -15,7 +17,9 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatform.getKoin
+import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.player.base.BoloPlayerController
 import tv.hsrui.bolo.player.base.BoloPlayerError
 import tv.hsrui.bolo.player.base.BoloPlayerSeekCoordinator
@@ -86,6 +90,13 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
     })
 
     init {
+        if (getPlatform().type == PlatformType.Desktop) {
+            viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                snapshotFlow {
+                    if (settings.playerDesktopMuted) 0 else settings.playerDesktopVolumePercent
+                }.collect(controller::setVolumeGain)
+            }
+        }
         viewModelScope.launch {
             controller.state.collect { playback ->
                 playbackReportController.updatePlayback(playback, controller.backend.value != null)
@@ -138,6 +149,30 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
         if (_danmakuClosed.value) return
         danmakuController.setVisible(visible)
         settings.danmakuEnabled = visible
+    }
+
+    fun setDesktopVolume(percent: Int) {
+        if (getPlatform().type != PlatformType.Desktop) return
+        Snapshot.withMutableSnapshot {
+            settings.playerDesktopVolumePercent = percent
+            settings.playerDesktopMuted = false
+        }
+    }
+
+    fun adjustDesktopVolume(delta: Int) {
+        setDesktopVolume(settings.playerDesktopVolumePercent + delta)
+    }
+
+    fun toggleDesktopMuted() {
+        if (getPlatform().type != PlatformType.Desktop) return
+        Snapshot.withMutableSnapshot {
+            if (settings.playerDesktopVolumePercent == 0) {
+                settings.playerDesktopVolumePercent = 100
+                settings.playerDesktopMuted = false
+            } else {
+                settings.playerDesktopMuted = !settings.playerDesktopMuted
+            }
+        }
     }
 
     private fun playVideo(startPositionMs: Long = 0L, autoPlay: Boolean = false) {

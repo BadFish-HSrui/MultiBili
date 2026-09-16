@@ -196,6 +196,34 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentPlayerMergeAudioChannelsEnabled = value
         }
 
+    private var storedPlayerDesktopVolumePercent by settingsKSafe(
+        100,
+        key = "player_desktop_volume_percent",
+    )
+    private var currentPlayerDesktopVolumePercent by mutableIntStateOf(
+        storedPlayerDesktopVolumePercent.coerceIn(0, 200),
+    )
+
+    var playerDesktopVolumePercent: Int
+        get() = currentPlayerDesktopVolumePercent
+        set(value) {
+            val percent = value.coerceIn(0, 200)
+            if (percent == currentPlayerDesktopVolumePercent) return
+            storedPlayerDesktopVolumePercent = percent
+            currentPlayerDesktopVolumePercent = percent
+        }
+
+    private var storedPlayerDesktopMuted by settingsKSafe(false, key = "player_desktop_muted")
+    private var currentPlayerDesktopMuted by mutableStateOf(storedPlayerDesktopMuted)
+
+    var playerDesktopMuted: Boolean
+        get() = currentPlayerDesktopMuted
+        set(value) {
+            if (value == currentPlayerDesktopMuted) return
+            storedPlayerDesktopMuted = value
+            currentPlayerDesktopMuted = value
+        }
+
     private var storedPlayerDesktopDoubleClickPauseEnabled by settingsKSafe(
         false,
         key = "player_desktop_double_click_pause_enabled",
