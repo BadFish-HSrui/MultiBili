@@ -25,11 +25,15 @@ suspend fun fetchUserSpaceUploads(mid: Long, pageNumber: Int = 1): UserSpaceUplo
     }.body<UserSpaceUploadsResponse>()
 } ?: error("视频投稿请求超时")
 
-suspend fun fetchUserSpaceCollections(mid: Long): UserSpaceCollectionsResponse = withTimeoutOrNull(15_000) {
+suspend fun fetchUserSpaceCollections(
+    mid: Long,
+    pageNumber: Int = 1,
+    pageSize: Int = 20,
+): UserSpaceCollectionsResponse = withTimeoutOrNull(15_000) {
     ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.UserSpace.COLLECTIONS) {
         parameter("mid", mid)
-        parameter("page_num", 1)
-        parameter("page_size", 1)
+        parameter("page_num", pageNumber)
+        parameter("page_size", pageSize)
     }.body<UserSpaceCollectionsResponse>()
 } ?: error("视频合集请求超时")
 
