@@ -6,7 +6,14 @@ import tv.hsrui.bolo.model.Vid
 fun openUserSpace(mid: Long) {
     if (mid <= 0) return
     val navigator: Navigator = KoinPlatformTools.defaultContext().get().get()
-    val route = BoloRoute.UserSpace(mid)
+    val route = BoloRoute.User.Space(mid)
+    if (navigator.backStack.lastOrNull() != route) navigator.navigateTo(route)
+}
+
+fun openUserCollection(mid: Long, seasonId: Long) {
+    if (mid <= 0 || seasonId <= 0) return
+    val navigator: Navigator = KoinPlatformTools.defaultContext().get().get()
+    val route = BoloRoute.User.Collection(mid, seasonId)
     if (navigator.backStack.lastOrNull() != route) navigator.navigateTo(route)
 }
 
