@@ -29,6 +29,7 @@ data class VideoCard(
     val danmakuCount by _stat::danmaku
     val likeCount by _stat::like
     val replyCount by _stat::reply
+    val upMid by _owner::mid
     val upName by _owner::name
     val upAvatarUrl by lazy { _owner.face.toHttpsUrl() }
     val coverUrl by lazy { _cover.toHttpsUrl() }

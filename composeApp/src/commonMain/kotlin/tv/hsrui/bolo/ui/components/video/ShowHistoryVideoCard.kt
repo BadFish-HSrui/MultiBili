@@ -1,5 +1,7 @@
 package tv.hsrui.bolo.ui.components.video
 
+import tv.hsrui.bolo.navigation.openUserSpace
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -153,12 +155,14 @@ fun ShowHistoryVideoCard(
                     AsyncImage(
                         model = videoInfo.upAvatarUrl + "@64w_64h.webp",
                         contentDescription = null,
-                        modifier = Modifier.clip(CircleShape).size(32.dp),
+                        modifier = Modifier.clip(CircleShape).size(32.dp)
+                            .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
                         contentScale = ContentScale.Crop
                     )
                     Column(modifier = Modifier.padding(start = 4.dp)) {
                         Text(
                             text = videoInfo.upName,
+                            modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
                             style = MaterialTheme.typography.labelMedium,
                             maxLines = 1
                         )

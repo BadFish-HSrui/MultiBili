@@ -1,5 +1,7 @@
 package tv.hsrui.bolo.ui.components.video
 
+import tv.hsrui.bolo.navigation.openUserSpace
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -106,6 +108,7 @@ fun ShowVerticalVideoCard(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .padding(horizontal = 4.dp)
+                            .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) }
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.AccountBox,

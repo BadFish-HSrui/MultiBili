@@ -19,6 +19,7 @@ data class FavoriteVideoCard(
 ) {
     val isVideo: Boolean get() = (typeCode == 2)
     val isAvailable: Boolean get() = (attributeCode == 0)
+    val upMid get() = owner?.mid ?: 0L
     val upName get() = owner?.name.orEmpty()
     val coverUrl get() = cover.toHttpsUrl()
     val upAvatarUrl get() = owner?.face.orEmpty().toHttpsUrl()

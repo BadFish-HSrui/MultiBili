@@ -1,5 +1,7 @@
 package tv.hsrui.bolo.view.video.desc
 
+import tv.hsrui.bolo.navigation.openUserSpace
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -60,11 +62,13 @@ fun VideoDescContent(videoInfo: VideoInfoData) {
                         .fillMaxWidth()
                         .aspectRatio(1F)
                         .clip(CircleShape)
+                        .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) }
                         .background(Color.Black)
                 )
                 Column(Modifier.padding(start = 8.dp)) {
                     Text(
                         text = videoInfo.upName,
+                        modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }

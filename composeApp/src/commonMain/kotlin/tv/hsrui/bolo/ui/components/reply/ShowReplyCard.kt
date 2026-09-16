@@ -1,5 +1,6 @@
 package tv.hsrui.bolo.ui.components.reply
 
+import tv.hsrui.bolo.navigation.openUserSpace
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -59,6 +60,7 @@ fun ShowReplyCard(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
+                        .clickable(enabled = replyInfo.userMid > 0) { openUserSpace(replyInfo.userMid) }
 //                        .background(Color.Black)
                 )
                 Column(modifier = Modifier.padding(start = 4.dp)) {
@@ -80,7 +82,7 @@ fun ShowReplyCard(
                         Text(
                             text = replyInfo.userName,
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.alpha(0.8F)
+                            modifier = Modifier.alpha(0.8F).clickable(enabled = replyInfo.userMid > 0) { openUserSpace(replyInfo.userMid) }
                         )
                         Surface(
                             shape = CircleShape,

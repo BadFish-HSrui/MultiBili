@@ -1,5 +1,7 @@
 package tv.hsrui.bolo.ui.components.reply
 
+import tv.hsrui.bolo.navigation.openUserSpace
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -50,6 +52,7 @@ fun ShowSubReply(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
+                        .clickable(enabled = replyInfo.userMid > 0) { openUserSpace(replyInfo.userMid) }
                 )
                 Column(modifier = Modifier.padding(start = 4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -70,7 +73,7 @@ fun ShowSubReply(
                         Text(
                             text = replyInfo.userName,
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.alpha(0.8F)
+                            modifier = Modifier.alpha(0.8F).clickable(enabled = replyInfo.userMid > 0) { openUserSpace(replyInfo.userMid) }
                         )
                         Surface(
                             shape = CircleShape,

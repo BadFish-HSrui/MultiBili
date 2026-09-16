@@ -1,5 +1,7 @@
 package tv.hsrui.bolo.favorite.videos
 
+import tv.hsrui.bolo.navigation.openUserSpace
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -128,6 +130,7 @@ fun ShowFavoriteVideoCard(
                         modifier = Modifier
                             .clip(CircleShape)
                             .size(28.dp)
+                            .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) }
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                     ) {
                         AsyncImage(
@@ -146,6 +149,7 @@ fun ShowFavoriteVideoCard(
                     ) {
                         Text(
                             text = videoInfo.upName.ifEmpty { "未知UP主" },
+                            modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
                             style = MaterialTheme.typography.labelMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis

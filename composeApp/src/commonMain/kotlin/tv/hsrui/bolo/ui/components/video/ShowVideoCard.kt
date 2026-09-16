@@ -1,5 +1,7 @@
 package tv.hsrui.bolo.ui.components.video
 
+import tv.hsrui.bolo.navigation.openUserSpace
+import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -249,6 +251,7 @@ fun ShowVideoCard(
             Box(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(start = 8.dp).alpha(0.5F)) {
                     Row(
+                        modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
