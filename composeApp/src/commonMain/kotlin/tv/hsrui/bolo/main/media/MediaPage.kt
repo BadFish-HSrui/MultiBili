@@ -41,6 +41,7 @@ import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.grid.ShowVerticalCardGrid
 import tv.hsrui.bolo.ui.components.media.ShowMediaCard
 import tv.hsrui.bolo.utils.OnGridBottomReached
+import tv.hsrui.bolo.utils.isMedium
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -56,14 +57,15 @@ fun MediaPage(
     val appliedFilters by mediaViewModel.appliedFilters.collectAsState()
     var showFilterDialog by rememberSaveable(seasonType) { mutableStateOf(false) }
     val gridState = rememberLazyGridState()
-    val mediaGridCells = remember {
+    val minColumns = if (isMedium()) 3 else 2
+    val mediaGridCells = remember(minColumns) {
         object : GridCells {
             override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
                 val adaptiveSizes = with(GridCells.Adaptive(200.dp)) {
                     calculateCrossAxisCellSizes(availableSize, spacing)
                 }
-                // 窄窗口优先保留两列，卡片均分扣除边距和间距后的宽度。
-                return if (adaptiveSizes.size >= 2) adaptiveSizes else with(GridCells.Fixed(2)) {
+                // 空间不足时优先满足布局列数下限，卡片均分实际可用宽度。
+                return if (adaptiveSizes.size >= minColumns) adaptiveSizes else with(GridCells.Fixed(minColumns)) {
                     calculateCrossAxisCellSizes(availableSize, spacing)
                 }
             }

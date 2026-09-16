@@ -10,9 +10,11 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import tv.hsrui.bolo.utils.AppWindowSize
 import tv.hsrui.bolo.utils.getNowWindowSize
@@ -26,33 +28,48 @@ fun <T> ShowVerticalCardGrid(
     gridCells: GridCells? = null,
     howToShow: @Composable (T) -> Unit
 ) {
-    val columns: Int
+    val minColumns: Int
     val contentPadding: Dp
     val contentSpacing: Dp
 
     when (getNowWindowSize()) {
         AppWindowSize.EXPANDED -> {
-            columns = 4
+            minColumns = 4
             contentPadding = 16.dp
             contentSpacing = 12.dp
         }
 
         AppWindowSize.MEDIUM -> {
-            columns = 3
+            minColumns = 3
             contentPadding = 16.dp
             contentSpacing = 8.dp
         }
 
         AppWindowSize.COMPACT -> {
-            columns = 2
+            minColumns = 2
             contentPadding = 8.dp
             contentSpacing = 4.dp
+        }
+    }
+    val defaultGridCells = remember(minColumns) {
+        object : GridCells {
+            override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
+                val adaptiveSizes = with(GridCells.Adaptive(320.dp)) {
+                    calculateCrossAxisCellSizes(availableSize, spacing)
+                }
+                val maxColumns = if (minColumns == 4) 6 else Int.MAX_VALUE
+                val columns = adaptiveSizes.size.coerceIn(minColumns, maxColumns)
+                // 宽度不足时优先满足布局列数下限，卡片均分实际可用宽度。
+                return if (columns == adaptiveSizes.size) adaptiveSizes else with(GridCells.Fixed(columns)) {
+                    calculateCrossAxisCellSizes(availableSize, spacing)
+                }
+            }
         }
     }
     Box(modifier = modifier.fillMaxSize()){
         Box(modifier = Modifier.widthIn(max = 1920.dp).fillMaxSize().align(Alignment.TopCenter)) {
             LazyVerticalGrid(
-                columns = gridCells ?: GridCells.Fixed(columns),
+                columns = gridCells ?: defaultGridCells,
                 content = {
                     items(
                         items = cards,

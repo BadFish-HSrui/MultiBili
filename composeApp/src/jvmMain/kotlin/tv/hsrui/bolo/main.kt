@@ -27,7 +27,7 @@ fun main() {
             icon = painterResource(Res.drawable.jvm_icon)
         ) {
             DisposableEffect(window, windowState) {
-                window.minimumSize = Dimension(720, 480)
+                window.minimumSize = Dimension(720, 600)
                 DesktopPlayerFullscreenWindow.attach(window, windowState)
                 onDispose { DesktopPlayerFullscreenWindow.detach(window) }
             }
