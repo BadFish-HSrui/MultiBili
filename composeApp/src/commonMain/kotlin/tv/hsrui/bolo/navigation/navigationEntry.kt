@@ -14,6 +14,7 @@ import tv.hsrui.bolo.boloSetting.setting.playback.PlaybackSettingsScreen
 import tv.hsrui.bolo.debug.DebugScreen
 import tv.hsrui.bolo.login.LoginScreen
 import tv.hsrui.bolo.login.LoginWebView
+import tv.hsrui.bolo.userSpace.UserSpaceScreen
 import tv.hsrui.bolo.main.MainScreen
 import tv.hsrui.bolo.search.SearchInputScreen
 import tv.hsrui.bolo.search.SearchResultsScreen
@@ -57,6 +58,7 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
             }
         }
 
+        is BoloRoute.UserSpace -> NavEntry(key = route) { UserSpaceScreen(mid = route.mid) }
         is BoloRoute.Favorite -> when (route) {
             is BoloRoute.Favorite.List -> NavEntry(
                 key = route,

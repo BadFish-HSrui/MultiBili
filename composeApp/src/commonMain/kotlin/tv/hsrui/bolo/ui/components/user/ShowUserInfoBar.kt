@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -19,11 +20,11 @@ import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.network.utils.formatCountToString
 
 @Composable
-fun ShowUserInfoBar(mid: Long, modifier: Modifier = Modifier) {
+fun ShowUserInfoBar(mid: Long, modifier: Modifier = Modifier, refreshKey: Int = 0) {
     val viewModel = viewModel(key = "UserInfoBar:$mid") { UserInfoBarViewModel(mid) }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    DisposableEffect(viewModel) {
+    DisposableEffect(viewModel, refreshKey) {
         viewModel.loadUserInfo()
         onDispose { viewModel.cancelLoading() }
     }
@@ -49,6 +50,7 @@ fun ShowUserInfoBar(mid: Long, modifier: Modifier = Modifier) {
             isVip = state.info.isVip,
             vipTypeString = state.info.vipTypeString,
             modifier = modifier,
+            shape = CardDefaults.shape,
         ) {
             listOf(
                 "关注数" to state.following,

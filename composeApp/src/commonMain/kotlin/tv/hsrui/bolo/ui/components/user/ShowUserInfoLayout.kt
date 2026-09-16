@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,11 +42,12 @@ internal fun ShowUserInfoLayout(
     isVip: Boolean,
     vipTypeString: String,
     modifier: Modifier = Modifier,
+    shape: Shape = BoloShapes.List.Top,
     statistics: @Composable RowScope.() -> Unit,
 ) {
     Card(
         modifier = modifier.wrapContentHeight().fillMaxWidth(),
-        shape = BoloShapes.List.Top,
+        shape = shape,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

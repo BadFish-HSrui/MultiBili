@@ -9,6 +9,8 @@ sealed interface BoloRoute {
 
     @Serializable data object Main : BoloRoute
 
+    @Serializable data class UserSpace(val mid: Long) : BoloRoute
+
     @Serializable
     sealed interface Favorite : BoloRoute {
         @Serializable data object List : Favorite
