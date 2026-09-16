@@ -24,6 +24,14 @@ object ApiUrls {
     const val RELATION = "x/web-interface/relation" //关系
     const val MODIFY_RELATION = "x/relation/modify" //修改关系
 
+    object UserSpace {
+        const val PRIVACY = "https://space.bilibili.com/ajax/settings/getSettings"
+        const val UPLOADS = "x/space/wbi/arc/search"
+        const val COLLECTIONS = "x/polymer/web-space/seasons_series_list"
+        const val LIKES = "x/space/like/video"
+        const val COINS = "x/space/coin/video"
+    }
+
     object VideoAction {
         const val LIKE = "x/web-interface/archive/like" //点赞
         const val HAS_LIKE = "x/web-interface/archive/has/like" //点赞状态
