@@ -14,6 +14,8 @@ object ApiUrls {
     const val ACCOUNT_INFO = "x/space/v2/info" //个人空间信息
     const val MY_ACCOUNT_INFO = "x/space/v2/myinfo" //我的个人空间信息
     const val FOLLOW_STATE = "x/relation/stat" //关注与被关注
+    const val USER_INFO = "x/space/wbi/acc/info" //其他用户资料
+    const val USER_UP_STAT = "x/space/upstat" //用户获赞与视频播放统计
     const val HISTORY = "x/web-interface/history/cursor" //历史记录
     const val HISTORY_DELETE = "x/v2/history/delete" //删除历史记录
     const val DYNAMIC = "x/polymer/web-dynamic/v1/feed/all" //动态
