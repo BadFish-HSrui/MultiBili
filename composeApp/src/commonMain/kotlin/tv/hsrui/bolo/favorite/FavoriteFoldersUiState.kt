@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.accountFeature.feature.favorite
+package tv.hsrui.bolo.favorite
 
 import tv.hsrui.network.feature.favorite.FavoriteFolderInfoData
 

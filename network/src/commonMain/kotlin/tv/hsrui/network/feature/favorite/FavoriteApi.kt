@@ -25,15 +25,19 @@ suspend fun fetchMyFavoriteFolders(targetAvid: Long? = null): FavoriteFolderList
         return FavoriteFolderListResponse(message = "账号未登录")
     }
 
+    return fetchFavoriteFolders(loginStorage.cookies.dedeUserID, targetAvid)
+}
+
+suspend fun fetchFavoriteFolders(mid: Long, targetAvid: Long? = null): FavoriteFolderListResponse {
     val response = ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.Favorite.CREATED_FOLDERS) {
-        parameter("up_mid", loginStorage.cookies.dedeUserID)
+        parameter("up_mid", mid)
         if (targetAvid != null) {
             parameter("type", 2)
             parameter("rid", targetAvid)
         }
     }
     val folderListResponse: FavoriteFolderListResponse = response.body()
-    if (!folderListResponse.isSuccess || targetAvid != null) {
+    if (!folderListResponse.isSuccess || folderListResponse.isHidden || targetAvid != null) {
         return folderListResponse
     }
 

@@ -10,6 +10,12 @@ sealed interface BoloRoute {
     @Serializable data object Main : BoloRoute
 
     @Serializable
+    sealed interface Favorite : BoloRoute {
+        @Serializable data object List : Favorite
+        @Serializable data class Folder(val mediaId: Long) : Favorite
+    }
+
+    @Serializable
     sealed interface Search : BoloRoute {
         @Serializable data object Input : Search
         @Serializable data class Results(val keyword: String) : Search
@@ -26,8 +32,6 @@ sealed interface BoloRoute {
         @Serializable data object List : AccountFeature
         @Serializable data object History : AccountFeature
         @Serializable data object WatchLater : AccountFeature
-        @Serializable data object Favorite : AccountFeature
-        @Serializable data class FavoriteFolder(val mediaId: Long) : AccountFeature
     }
 
     @Serializable

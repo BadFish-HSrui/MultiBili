@@ -1,7 +1,12 @@
-package tv.hsrui.bolo.accountFeature.feature.favorite
+package tv.hsrui.bolo.favorite
 
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -32,17 +37,16 @@ fun FavoriteFoldersContent(
     uiState: FavoriteFoldersUiState,
     onRefresh: () -> Unit,
     onFolderDeleted: (Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    canManage: Boolean = false,
+    canManageNow: () -> Boolean = { canManage },
+    favoriteFoldersGridState: LazyGridState = rememberLazyGridState(),
+    enablePullToRefresh: Boolean = true,
 ) {
-    val favoriteFoldersGridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     var showCreateFavoriteFolderDialog by rememberSaveable { mutableStateOf(false) }
 
-    PullToRefreshBox(
-        isRefreshing = false,
-        onRefresh = onRefresh,
-        modifier = modifier.fillMaxSize()
-    ) {
+    val content: @Composable BoxScope.() -> Unit = {
         when (uiState) {
             is FavoriteFoldersUiState.Loading -> {
                 Box(
@@ -81,6 +85,8 @@ fun FavoriteFoldersContent(
                         ) { folder ->
                             FavoriteFolderCard(
                                 folder = folder,
+                                canManage = canManage,
+                                canManageNow = canManageNow,
                                 onDeleted = { onFolderDeleted(folder.id) },
                             )
                         }
@@ -95,7 +101,7 @@ fun FavoriteFoldersContent(
                         onRefresh = onRefresh,
                         modifier = Modifier.align(Alignment.BottomEnd),
                     ) {
-                        FloatingActionButtonMenuItem(
+                        if (canManage) FloatingActionButtonMenuItem(
                             onClick = { showCreateFavoriteFolderDialog = true },
                             text = { Text("新建收藏") },
                             icon = {
@@ -107,8 +113,9 @@ fun FavoriteFoldersContent(
                         )
                     }
 
-                    if (showCreateFavoriteFolderDialog) {
+                    if (showCreateFavoriteFolderDialog && canManage) {
                         ShowCreateFavoriteFolderDialog(
+                            canCreate = canManageNow,
                             onCancel = { showCreateFavoriteFolderDialog = false },
                             onCreated = {
                                 showCreateFavoriteFolderDialog = false
@@ -119,5 +126,17 @@ fun FavoriteFoldersContent(
                 }
             }
         }
+    }
+    if (enablePullToRefresh) {
+        PullToRefreshBox(isRefreshing = false, onRefresh = onRefresh, modifier = modifier.fillMaxSize(), content = content)
+    } else {
+        Box(
+            modifier = modifier.fillMaxSize().then(
+                if (uiState !is FavoriteFoldersUiState.Success || uiState.folders.isEmpty()) {
+                    Modifier.scrollable(rememberScrollableState { 0f }, Orientation.Vertical)
+                } else Modifier
+            ),
+            content = content,
+        )
     }
 }

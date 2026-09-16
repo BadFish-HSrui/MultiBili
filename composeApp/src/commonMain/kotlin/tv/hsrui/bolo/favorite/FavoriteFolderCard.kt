@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.accountFeature.feature.favorite
+package tv.hsrui.bolo.favorite
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +35,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import org.koin.compose.koinInject
+import tv.hsrui.network.login.storage.LoginStorage
 import tv.hsrui.bolo.navigation.openFavoriteFolder
 import tv.hsrui.bolo.ui.components.dialog.ShowDeleteFavoriteFolderDialog
 import tv.hsrui.bolo.ui.theme.BoloShapes
@@ -44,7 +47,16 @@ internal fun FavoriteFolderCard(
     folder: FavoriteFolderInfoData,
     onDeleted: () -> Unit,
     modifier: Modifier = Modifier,
+    canManage: Boolean = false,
+    canManageNow: () -> Boolean = { canManage },
 ) {
+    val loginStorage: LoginStorage = koinInject()
+    val currentUserMid by loginStorage.currentUserMidFlow.collectAsState(
+        initial = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L,
+    )
+    val ownsFolder = {
+        canManageNow() && loginStorage.isLoggedIn && folder.mid > 0 && folder.mid == loginStorage.cookies.dedeUserID
+    }
     Card(
         onClick = { openFavoriteFolder(folder.id) },
         enabled = folder.id > 0,
@@ -115,7 +127,7 @@ internal fun FavoriteFolderCard(
                     )
                 }
 
-                if (folder.id > 0 && !folder.isDefault) {
+                if (canManage && currentUserMid > 0 && ownsFolder() && folder.id > 0 && !folder.isDefault) {
                     var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
 
                     IconButton(
@@ -136,6 +148,7 @@ internal fun FavoriteFolderCard(
 
                     if (showDeleteDialog) {
                         ShowDeleteFavoriteFolderDialog(
+                            canDelete = ownsFolder,
                             mediaId = folder.id,
                             folderTitle = folder.title,
                             onCancel = { showDeleteDialog = false },

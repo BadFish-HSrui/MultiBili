@@ -15,7 +15,7 @@ fun openVideo(avid: Long) {
 
 fun openFavoriteFolder(mediaId: Long) {
     val navigator: Navigator = KoinPlatformTools.defaultContext().get().get()
-    navigator.navigateTo(BoloRoute.AccountFeature.FavoriteFolder(mediaId))
+    navigator.navigateTo(BoloRoute.Favorite.Folder(mediaId))
 }
 
 fun openMedia(seasonId: Long) {

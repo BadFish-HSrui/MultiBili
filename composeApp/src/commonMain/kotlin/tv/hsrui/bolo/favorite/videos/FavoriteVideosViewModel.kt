@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.accountFeature.feature.favorite.videos
+package tv.hsrui.bolo.favorite.videos
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +42,7 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                 var nextPageNumber = 1
                 var folderTitle = ""
                 var isDefault = true
+                var ownerMid = 0L
                 val videos = mutableListOf<FavoriteVideoCard>()
 
                 do {
@@ -58,7 +59,7 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                     if (folderTitle.isEmpty()) {
                         folderTitle = result.folderInfo?.title.orEmpty()
                     }
-                    result.folderInfo?.let { isDefault = it.isDefault }
+                    result.folderInfo?.let { isDefault = it.isDefault; ownerMid = it.mid }
                     videos += result.videos
                     pageNumber = nextPageNumber
                     canLoadMore = result.hasMore
@@ -69,7 +70,8 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                 _uiState.value = FavoriteVideosUiState.Success(
                     folderTitle = folderTitle,
                     isDefault = isDefault,
-                    videos = videos.distinctBy { it.avid }
+                    videos = videos.distinctBy { it.avid },
+                    ownerMid = ownerMid,
                 )
             } catch (e: CancellationException) {
                 throw e
@@ -96,6 +98,7 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                 var nextPageNumber = pageNumber + 1
                 var folderTitle = currentState.folderTitle
                 var isDefault = currentState.isDefault
+                var ownerMid = currentState.ownerMid
                 val videos = mutableListOf<FavoriteVideoCard>()
 
                 do {
@@ -112,7 +115,7 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                     if (folderTitle.isEmpty()) {
                         folderTitle = result.folderInfo?.title.orEmpty()
                     }
-                    result.folderInfo?.let { isDefault = it.isDefault }
+                    result.folderInfo?.let { isDefault = it.isDefault; ownerMid = it.mid }
                     videos += result.videos
                     pageNumber = nextPageNumber
                     canLoadMore = result.hasMore
@@ -123,7 +126,8 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                 _uiState.value = FavoriteVideosUiState.Success(
                     folderTitle = folderTitle,
                     isDefault = isDefault,
-                    videos = (currentState.videos + videos).distinctBy { it.avid }
+                    videos = (currentState.videos + videos).distinctBy { it.avid },
+                    ownerMid = ownerMid,
                 )
             } catch (e: CancellationException) {
                 throw e

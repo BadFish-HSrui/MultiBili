@@ -4,8 +4,8 @@ import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
 import androidx.navigation3.runtime.NavEntry
 import tv.hsrui.bolo.accountFeature.AccountFeaturesScreen
-import tv.hsrui.bolo.accountFeature.feature.favorite.FavoriteScreen
-import tv.hsrui.bolo.accountFeature.feature.favorite.videos.FavoriteVideosScreen
+import tv.hsrui.bolo.favorite.FavoriteScreen
+import tv.hsrui.bolo.favorite.videos.FavoriteVideosScreen
 import tv.hsrui.bolo.accountFeature.feature.history.HistoryScreen
 import tv.hsrui.bolo.accountFeature.feature.watchLater.WatchLaterScreen
 import tv.hsrui.bolo.boloSetting.BoloSettingsScreen
@@ -50,19 +50,21 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
                     metadata = ListDetailSceneStrategy.detailPane()
                 ) { HistoryScreen(isEntryFromList = true) }
 
-                is BoloRoute.AccountFeature.Favorite -> NavEntry(
-                    key = route,
-                    metadata = ListDetailSceneStrategy.detailPane()
-                ) { FavoriteScreen(isEntryFromList = true) }
-
-                is BoloRoute.AccountFeature.FavoriteFolder -> NavEntry(key = route) {
-                    FavoriteVideosScreen(mediaId = route.mediaId)
-                }
-
                 is BoloRoute.AccountFeature.WatchLater -> NavEntry(
                     key = route,
                     metadata = ListDetailSceneStrategy.detailPane()
                 ) { WatchLaterScreen(isEntryFromList = true) }
+            }
+        }
+
+        is BoloRoute.Favorite -> when (route) {
+            is BoloRoute.Favorite.List -> NavEntry(
+                key = route,
+                metadata = ListDetailSceneStrategy.detailPane(),
+            ) { FavoriteScreen(isEntryFromList = true) }
+
+            is BoloRoute.Favorite.Folder -> NavEntry(key = route) {
+                FavoriteVideosScreen(mediaId = route.mediaId)
             }
         }
 

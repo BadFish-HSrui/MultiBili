@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.accountFeature.feature.favorite.videos
+package tv.hsrui.bolo.favorite.videos
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -19,6 +19,7 @@ import tv.hsrui.bolo.ui.components.dialog.ShowDeleteFavoriteFolderDialog
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.utils.calculateWithoutBottom
 import tv.hsrui.network.feature.favorite.removeFavoriteVideo
+import tv.hsrui.network.login.storage.LoginStorage
 
 @Composable
 fun FavoriteVideosScreen(
@@ -31,6 +32,15 @@ fun FavoriteVideosScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarManager: SnackbarManager = koinInject()
     val navigator: Navigator = koinInject()
+    val loginStorage: LoginStorage = koinInject()
+    val currentUserMid by loginStorage.currentUserMidFlow.collectAsState(
+        initial = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L,
+    )
+    val canManageNow = {
+        val ownerMid = (viewModel.uiState.value as? FavoriteVideosUiState.Success)?.ownerMid ?: 0L
+        loginStorage.isLoggedIn && ownerMid > 0 && ownerMid == loginStorage.cookies.dedeUserID
+    }
+    val canManage = currentUserMid > 0 && canManageNow()
     var showDeleteFolderDialog by rememberSaveable(mediaId) { mutableStateOf(false) }
     val successState = uiState as? FavoriteVideosUiState.Success
     val folderTitle = successState
@@ -47,10 +57,12 @@ fun FavoriteVideosScreen(
         FavoriteVideosContent(
             uiState = uiState,
             isLoading = viewModel.isLoading,
+            canManage = canManage,
             onLoadMore = viewModel::loadMoreVideos,
             onRefresh = viewModel::refreshVideos,
             onDeleteFolder = { showDeleteFolderDialog = true },
-            onRemove = { video ->
+            onRemove = remove@{ video ->
+                if (!canManageNow()) return@remove
                 try {
                     val result = removeFavoriteVideo(
                         mediaId = mediaId,
@@ -71,8 +83,9 @@ fun FavoriteVideosScreen(
         )
     }
 
-    if (showDeleteFolderDialog && successState != null && !successState.isDefault) {
+    if (showDeleteFolderDialog && canManage && successState != null && !successState.isDefault) {
         ShowDeleteFavoriteFolderDialog(
+            canDelete = canManageNow,
             mediaId = mediaId,
             folderTitle = folderTitle,
             onCancel = { showDeleteFolderDialog = false },

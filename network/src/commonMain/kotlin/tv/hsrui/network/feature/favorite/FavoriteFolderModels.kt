@@ -11,6 +11,7 @@ data class FavoriteFolderListResponse(
     private val data: FavoriteFolderListData? = null
 ) {
     val isSuccess: Boolean get() = (code == 0)
+    val isHidden: Boolean get() = (code == 0 && data == null) || code == 53013
     val folders: List<FavoriteFolderInfoData> get() = data?.folders.orEmpty()
 
     internal fun withFolders(folders: List<FavoriteFolderInfoData>): FavoriteFolderListResponse =

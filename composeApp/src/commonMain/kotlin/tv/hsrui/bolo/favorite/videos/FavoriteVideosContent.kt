@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.accountFeature.feature.favorite.videos
+package tv.hsrui.bolo.favorite.videos
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +33,7 @@ fun FavoriteVideosContent(
     onDeleteFolder: () -> Unit,
     onRemove: suspend (FavoriteVideoCard) -> Unit,
     modifier: Modifier = Modifier,
+    canManage: Boolean = false,
 ) {
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
@@ -86,6 +87,7 @@ fun FavoriteVideosContent(
                         ) { video ->
                             ShowFavoriteVideoCard(
                                 videoInfo = video,
+                                canManage = canManage,
                                 onRemove = { onRemove(video) }
                             )
                         }
@@ -100,7 +102,7 @@ fun FavoriteVideosContent(
                         onRefresh = onRefresh,
                         modifier = Modifier.align(Alignment.BottomEnd),
                     ) {
-                        if (!uiState.isDefault) {
+                        if (canManage && !uiState.isDefault) {
                             FloatingActionButtonMenuItem(
                                 onClick = onDeleteFolder,
                                 text = { Text("删除收藏") },

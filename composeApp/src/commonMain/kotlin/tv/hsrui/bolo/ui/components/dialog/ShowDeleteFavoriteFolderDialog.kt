@@ -34,6 +34,7 @@ fun ShowDeleteFavoriteFolderDialog(
     folderTitle: String,
     onCancel: () -> Unit,
     onDeleted: () -> Unit,
+    canDelete: () -> Boolean = { true },
 ) {
     var isSubmitting by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -45,13 +46,14 @@ fun ShowDeleteFavoriteFolderDialog(
     ShowConfirmDialog(
         onCancel = onCancel,
         onConfirm = {
-            if (mediaId <= 0 || isSubmitting) {
+            if (mediaId <= 0 || isSubmitting || !canDelete()) {
                 return@ShowConfirmDialog
             }
 
             isSubmitting = true
             scope.launch {
                 try {
+                    if (!canDelete()) return@launch
                     val result = deleteFavoriteFolder(mediaId)
                     if (!result.isSuccess) {
                         snackbarManager.showMessage(
@@ -71,7 +73,7 @@ fun ShowDeleteFavoriteFolderDialog(
             }
         },
         cancelEnabled = !isSubmitting,
-        confirmEnabled = mediaId > 0 && !isSubmitting,
+        confirmEnabled = mediaId > 0 && !isSubmitting && canDelete(),
     ) {
         Column(
             modifier = Modifier.widthIn(max = contentMaxWidth),

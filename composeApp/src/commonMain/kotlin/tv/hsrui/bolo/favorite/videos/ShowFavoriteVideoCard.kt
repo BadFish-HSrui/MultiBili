@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.accountFeature.feature.favorite.videos
+package tv.hsrui.bolo.favorite.videos
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -50,6 +50,7 @@ fun ShowFavoriteVideoCard(
     videoInfo: FavoriteVideoCard,
     onRemove: suspend () -> Unit,
     modifier: Modifier = Modifier,
+    canManage: Boolean = false,
 ) {
     val canOpenVideo = videoInfo.isAvailable && (videoInfo.bvid.isNotEmpty() || videoInfo.avid > 0)
 
@@ -162,45 +163,47 @@ fun ShowFavoriteVideoCard(
                     }
                 }
 
-                var showDialog by rememberSaveable { mutableStateOf(false) }
-                val scope = rememberCoroutineScope()
-                IconButton(
-                    onClick = { showDialog = true },
-                    enabled = videoInfo.avid > 0,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .offset(x = (-4).dp, y = (-4).dp)
-                        .size(24.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.RemoveCircleOutline,
-                        contentDescription = "取消收藏",
-                        modifier = Modifier.size(20.dp).alpha(0.5F)
-                    )
-                }
-                if (showDialog) {
-                    ShowConfirmDialog(
-                        title = { Text("取消收藏") },
-                        onCancel = { showDialog = false },
-                        onConfirm = {
-                            scope.launch {
-                                onRemove()
-                                showDialog = false
+                if (canManage) {
+                    var showDialog by rememberSaveable { mutableStateOf(false) }
+                    val scope = rememberCoroutineScope()
+                    IconButton(
+                        onClick = { showDialog = true },
+                        enabled = videoInfo.avid > 0,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .offset(x = (-4).dp, y = (-4).dp)
+                            .size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.RemoveCircleOutline,
+                            contentDescription = "取消收藏",
+                            modifier = Modifier.size(20.dp).alpha(0.5F)
+                        )
+                    }
+                    if (showDialog) {
+                        ShowConfirmDialog(
+                            title = { Text("取消收藏") },
+                            onCancel = { showDialog = false },
+                            onConfirm = {
+                                scope.launch {
+                                    onRemove()
+                                    showDialog = false
+                                }
+                            },
+                            icon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.RemoveCircleOutline,
+                                    contentDescription = null
+                                )
+                            },
+                            text = buildString {
+                                appendLine("确认从当前收藏夹移除:")
+                                appendLine(videoInfo.title)
+                                appendLine()
+                                append("*会同时在所有设备上取消收藏*")
                             }
-                        },
-                        icon = {
-                            Icon(
-                                imageVector = Icons.Rounded.RemoveCircleOutline,
-                                contentDescription = null
-                            )
-                        },
-                        text = buildString {
-                            appendLine("确认从当前收藏夹移除:")
-                            appendLine(videoInfo.title)
-                            appendLine()
-                            append("*会同时在所有设备上取消收藏*")
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }

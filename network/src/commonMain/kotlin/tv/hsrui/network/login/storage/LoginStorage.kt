@@ -14,6 +14,9 @@ class LoginStorage(private val loginKSafe: KSafe) {
     val isLoggedInFlow = loginKSafe.getFlow("cookies", Cookies())
         .map { it.sessData.isNotEmpty() }
         .distinctUntilChanged()
+    val currentUserMidFlow = loginKSafe.getFlow("cookies", Cookies())
+        .map { if (it.sessData.isNotEmpty()) it.dedeUserID else 0L }
+        .distinctUntilChanged()
     val hasCookies: Boolean
         get() = cookies.run {
             dedeUserIDCkMd5.isNotEmpty() ||

@@ -9,6 +9,6 @@ import tv.hsrui.bolo.navigation.BoloRoute
 
 enum class AccountFeature(val title: String, val icon: ImageVector, val route: BoloRoute) {
     History("历史记录", Icons.Rounded.History, BoloRoute.AccountFeature.History),
-    Favorite("我的收藏", Icons.Rounded.StarOutline, BoloRoute.AccountFeature.Favorite),
+    Favorite("我的收藏", Icons.Rounded.StarOutline, BoloRoute.Favorite.List),
     WatchLater("稍后再看", Icons.Outlined.WatchLater, BoloRoute.AccountFeature.WatchLater),
 }

@@ -35,6 +35,7 @@ import tv.hsrui.network.feature.favorite.createFavoriteFolder
 fun ShowCreateFavoriteFolderDialog(
     onCancel: () -> Unit,
     onCreated: (FavoriteFolderInfoData) -> Unit,
+    canCreate: () -> Boolean = { true },
 ) {
     var title by rememberSaveable { mutableStateOf("") }
     var isPrivate by rememberSaveable { mutableStateOf(false) }
@@ -53,13 +54,14 @@ fun ShowCreateFavoriteFolderDialog(
     ShowConfirmDialog(
         onCancel = onCancel,
         onConfirm = {
-            if (trimmedTitle.isEmpty() || isSubmitting) {
+            if (trimmedTitle.isEmpty() || isSubmitting || !canCreate()) {
                 return@ShowConfirmDialog
             }
 
             isSubmitting = true
             scope.launch {
                 try {
+                    if (!canCreate()) return@launch
                     val result = createFavoriteFolder(
                         title = trimmedTitle,
                         isPrivate = isPrivate,
@@ -83,7 +85,7 @@ fun ShowCreateFavoriteFolderDialog(
             }
         },
         cancelEnabled = !isSubmitting,
-        confirmEnabled = trimmedTitle.isNotEmpty() && !isSubmitting,
+        confirmEnabled = trimmedTitle.isNotEmpty() && !isSubmitting && canCreate(),
     ) {
         Column(
             modifier = Modifier.widthIn(max = contentMaxWidth),

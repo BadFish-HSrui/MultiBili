@@ -1,4 +1,4 @@
-package tv.hsrui.bolo.accountFeature.feature.favorite
+package tv.hsrui.bolo.favorite
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
