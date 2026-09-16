@@ -3,6 +3,7 @@ package tv.hsrui.network.feature.video
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import tv.hsrui.network.model.Owner
+import tv.hsrui.network.feature.video.collection.VideoCollectionData
 import tv.hsrui.network.utils.formatToDateTime
 import tv.hsrui.network.utils.toHttpsUrl
 
@@ -68,6 +69,7 @@ data class VideoInfoData(
     @SerialName("dimension") val dimension: Dimension = Dimension(),
     @SerialName("is_upower_exclusive") val isUpowerExclusive: Boolean = false, //充电专属视频
     @SerialName("is_season_display") val isSeasonDisplay: Boolean = false,
+    @SerialName("ugc_season") val collection: VideoCollectionData? = null,
 ) {
     val copyrightType: CopyrightType
         get() = when (_copyright) {

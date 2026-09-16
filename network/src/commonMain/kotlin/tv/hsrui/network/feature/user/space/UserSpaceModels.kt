@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 import tv.hsrui.network.model.Owner
 import tv.hsrui.network.model.VideoCard
+import tv.hsrui.network.feature.video.collection.VideoCollectionSummaryData
 
 @Serializable
 data class UserSpacePrivacyResponse(
@@ -110,14 +111,26 @@ data class UserSpaceCollectionsResponse(
     private val data: UserSpaceCollectionsData? = null,
 ) {
     val total get() = data?.items?.page?.total
-    val isSuccess get() = code == 0 && total != null
+    val isSuccess get() = code == 0 && total != null && data?.items?.collections != null
+    val collections get() = data?.items?.collections.orEmpty().map { it.collection }.filter { it.seasonId > 0 }
+    val hasMore get() = data?.items?.page?.let { it.pageNumber.toLong() * it.pageSize < (it.total ?: 0) } == true
 }
 
 @Serializable
 data class UserSpaceCollectionsData(@SerialName("items_lists") val items: UserSpaceCollectionListData? = null)
 
 @Serializable
-data class UserSpaceCollectionListData(val page: UserSpaceCollectionPageData? = null)
+data class UserSpaceCollectionListData(
+    val page: UserSpaceCollectionPageData? = null,
+    @SerialName("seasons_list") val collections: List<UserSpaceCollectionData>? = null,
+)
 
 @Serializable
-data class UserSpaceCollectionPageData(val total: Int? = null)
+data class UserSpaceCollectionPageData(
+    val total: Int? = null,
+    @SerialName("page_num") val pageNumber: Int = 1,
+    @SerialName("page_size") val pageSize: Int = 20,
+)
+
+@Serializable
+data class UserSpaceCollectionData(@SerialName("meta") val collection: VideoCollectionSummaryData)
