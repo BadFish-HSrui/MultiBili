@@ -8,7 +8,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -29,9 +28,7 @@ fun  VideoScreen(
     Surface(modifier = modifier.fillMaxSize()) {
         when (val state = uiState) {
             is VideoUiState.Success -> {
-                key(uiState) {
-                    VideoPage(uiState = state)
-                }
+                VideoPage(uiState = state, videoViewModel = viewModel)
             }
             else -> Column(Modifier.fillMaxSize()) {
                 ShowTopBarWithNavigationButton(title = {})

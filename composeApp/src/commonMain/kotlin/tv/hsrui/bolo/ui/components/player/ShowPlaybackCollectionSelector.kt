@@ -2,6 +2,7 @@ package tv.hsrui.bolo.ui.components.player
 
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -80,7 +82,7 @@ fun ShowPlaybackCollectionSelector(
     }
 
     Card(modifier = modifier.fillMaxWidth()) {
-        Column {
+        Column(modifier = Modifier.padding(top = 4.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -127,7 +129,12 @@ fun ShowPlaybackCollectionSelector(
                 displayedItems.isEmpty() -> Text("暂无可选内容", Modifier.padding(16.dp))
                 else -> LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).scrollbar(
+                        state = listState.scrollIndicatorState,
+                        orientation = Orientation.Vertical,
+                        isFadeEnabled = false,
+                        crossAxisTrackInset = 2.dp,
+                    ),
                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
