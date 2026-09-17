@@ -3,8 +3,6 @@ package tv.hsrui.network.feature.player
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
-import tv.hsrui.network.feature.subtitle.SubtitleData
-import tv.hsrui.network.feature.subtitle.SubtitleItem
 
 @Serializable
 data class PlayerInfoResponse(
@@ -18,7 +16,8 @@ data class PlayerInfoResponse(
 
     val isSuccess: Boolean get() = code == 0 && data != null
     val needLoginSubtitle: Boolean? get() = data?.needLoginSubtitle
-    val subtitles: List<SubtitleItem> get() = if (isSuccess) data?.subtitles.orEmpty() else emptyList()
+    val asrLanguage: String? get() = data?.asrLanguage.takeIf { isSuccess }
+    val ocrLanguage: String? get() = data?.ocrLanguage.takeIf { isSuccess }
     val lastPlayCid: Long get() = if (isSuccess) data?.lastPlayCid ?: 0L else 0L
     val lastPlayPositionMs: Long get() = if (isSuccess) data?.lastPlayPositionMs ?: 0L else 0L
 
@@ -38,9 +37,8 @@ data class PlayerInfoResponse(
 @Serializable
 data class PlayerInfoData(
     @SerialName("need_login_subtitle") val needLoginSubtitle: Boolean? = null,
-    @SerialName("subtitle") private val subtitle: SubtitleData? = null,
+    @SerialName("asr_language") val asrLanguage: String? = null,
+    @SerialName("ocr_language") val ocrLanguage: String? = null,
     @SerialName("last_play_cid") val lastPlayCid: Long? = null,
     @SerialName("last_play_time") val lastPlayPositionMs: Long? = null,
-) {
-    val subtitles: List<SubtitleItem> get() = subtitle?.subtitles.orEmpty()
-}
+)

@@ -1336,6 +1336,8 @@ fun BoloPlayerControls(
                 onDanmakuTopEnabledChange = { settings.danmakuTopEnabled = it },
                 danmakuBottomEnabled = settings.danmakuBottomEnabled,
                 onDanmakuBottomEnabledChange = { settings.danmakuBottomEnabled = it },
+                subtitleSmartEnabled = settings.subtitleSmartEnabled,
+                onSubtitleSmartEnabledChange = { settings.subtitleSmartEnabled = it },
                 subtitleAlwaysOn = settings.subtitleAlwaysOn,
                 onSubtitleAlwaysOnChange = { settings.subtitleAlwaysOn = it },
                 subtitleAutoChineseOnly = settings.subtitleAutoChineseOnly,

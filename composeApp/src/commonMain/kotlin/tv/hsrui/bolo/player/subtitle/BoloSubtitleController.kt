@@ -26,7 +26,14 @@ class BoloSubtitleController(private val scope: CoroutineScope) {
     private var contentJob: Job? = null
     private var positionMs = 0L
     private val cache = mutableMapOf<SubtitleItem, List<SubtitleCue>>()
+    private var requestSelection = 0L
+    private var requestAlwaysOn = false
+    private var requestSmartEnabled = true
+    private var requestChineseOnly = false
+    private var requestExcludeAi = false
+    private var sessionIsCurrent: () -> Boolean = { true }
 
+    var smartEnabled: Boolean = true
     var autoChineseOnly: Boolean = false
     var autoExcludeAi: Boolean = false
     private val automaticSubtitle: SubtitleItem?
@@ -43,18 +50,43 @@ class BoloSubtitleController(private val scope: CoroutineScope) {
             }
         }
 
-    fun loadSubtitleList(avid: Long, cid: Long, subtitles: List<SubtitleItem>) {
-        if (media == (avid to cid)) return
+    fun beginSubtitleLoad(avid: Long, cid: Long, sessionIsCurrent: () -> Boolean = { true }): Long {
         clear()
-        if (avid <= 0L || cid <= 0L) return
+        if (avid <= 0L || cid <= 0L) return generation
         media = avid to cid
-        _state.value = BoloSubtitleState(subtitles = subtitles.filter { it.url.isNotBlank() })
-        if (alwaysOn) {
-            automaticSubtitle?.let { loadSubtitleContent(it) }
+        this.sessionIsCurrent = sessionIsCurrent
+        requestSelection = selectionGeneration
+        requestAlwaysOn = alwaysOn
+        requestSmartEnabled = smartEnabled && !alwaysOn
+        requestChineseOnly = autoChineseOnly
+        requestExcludeAi = autoExcludeAi
+        return generation
+    }
+
+    fun loadSubtitleList(avid: Long, cid: Long, subtitles: List<SubtitleItem>, requestGeneration: Long) {
+        if (generation != requestGeneration || media != (avid to cid) || !sessionIsCurrent()) return
+        val playable = subtitles.filter { it.isPlayable }
+        _state.value = _state.value.copy(subtitles = playable)
+        if (selectionGeneration != requestSelection) return
+        val selected = when {
+            requestAlwaysOn -> playable.firstOrNull {
+                (!requestChineseOnly || it.isChinese) && (!requestExcludeAi || !it.isAiGenerated)
+            }
+            requestSmartEnabled -> {
+                val ass = playable.filter { it.isAss }
+                val candidates = ass.ifEmpty { playable }
+                val main = candidates.firstOrNull { it.isMain } ?: ass.firstOrNull()
+                if (main?.isAiGenerated == true && requestExcludeAi) {
+                    playable.firstOrNull { !it.isAiGenerated && it.isChinese }
+                } else main
+            }
+            else -> null
         }
+        selected?.let { loadSubtitleContent(it) }
     }
 
     fun loadSubtitleContent(subtitle: SubtitleItem?) {
+        if (subtitle != null && !sessionIsCurrent()) return
         if (subtitle != null && subtitle !in _state.value.subtitles) return
         contentJob?.cancel()
         selectionGeneration++
@@ -71,17 +103,17 @@ class BoloSubtitleController(private val scope: CoroutineScope) {
         }
         contentJob = scope.launch {
             try {
-                val response = fetchSubtitleContent(subtitle.url)
-                if (generation != requestGeneration || selectionGeneration != requestSelection) return@launch
+                val response = fetchSubtitleContent(subtitle.url, subtitle.isAss)
+                if (generation != requestGeneration || selectionGeneration != requestSelection || !sessionIsCurrent()) return@launch
                 cache[subtitle] = response.cues
                 engine.load(response.cues)
                 synchronize(positionMs)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (generation == requestGeneration && selectionGeneration == requestSelection) {
+                if (generation == requestGeneration && selectionGeneration == requestSelection && sessionIsCurrent()) {
                     _state.value = _state.value.copy(selected = null, text = "")
-                    println("字幕内容加载失败: ${e.message}")
+                    println("字幕内容加载失败")
                 }
             }
         }
@@ -98,6 +130,7 @@ class BoloSubtitleController(private val scope: CoroutineScope) {
         contentJob?.cancel()
         contentJob = null
         media = null
+        sessionIsCurrent = { true }
         positionMs = 0L
         cache.clear()
         engine.load(emptyList())

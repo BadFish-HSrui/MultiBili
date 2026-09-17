@@ -74,6 +74,7 @@ object ApiUrls {
 
     object Play {
         const val INFO = "x/player/wbi/v2" //播放器信息
+        const val SUBTITLE = "x/v2/subtitle/web/view" //字幕选择信息
         const val REPORT_START = "x/click-interface/click/web/h5" //开始播放上报
         const val REPORT_PROGRESS = "x/v2/history/report" //播放进度上报
         const val VIDEO = "x/player/wbi/playurl" //视频播放信息

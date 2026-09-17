@@ -44,6 +44,7 @@ import tv.hsrui.network.feature.player.enumModels.VideoCodec
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.player.fetchVideoPlayInfo
 import tv.hsrui.network.feature.player.fetchMediaPlayInfo
+import tv.hsrui.network.feature.subtitle.fetchSubtitleInfo
 import tv.hsrui.network.login.storage.LoginStorage
 
 class VideoPlayerViewModel(
@@ -62,6 +63,7 @@ class VideoPlayerViewModel(
         private set
     var singleEpisodeLoopEnabled by mutableStateOf(false)
     private var sourceLoadJob: Job? = null
+    private var subtitleLoadJob: Job? = null
     private var sourceGeneration = 0L
     private var autoPlayOnOpen = true
     private var resumeFromHistoryOnOpen = true
@@ -234,8 +236,6 @@ class VideoPlayerViewModel(
         awaitingPlaybackReload = true
         danmakuController.pause()
         danmakuMedia = avid to cid
-        val info = playerInfo?.takeIf { it.matchesRequest(avid, cid, loginStorage.cookies.sessData) }
-        subtitleController.loadSubtitleList(avid, cid, info?.subtitles.orEmpty())
         subtitleController.synchronize(startPositionMs)
         playbackLoadJob?.cancel()
         val generation = sourceGeneration
@@ -303,13 +303,25 @@ class VideoPlayerViewModel(
         val requestedAvid = avid
         val requestedCid = cid
         val generation = sourceGeneration
+        val requestedSession = loginStorage.cookies.sessData
+        val requestedIsMedia = episodeId != null
+        subtitleLoadJob?.cancel()
+        subtitleController.clear()
+        subtitleController.autoChineseOnly = settings.subtitleAutoChineseOnly
+        subtitleController.autoExcludeAi = settings.subtitleAutoExcludeAi
+        subtitleController.smartEnabled = settings.subtitleSmartEnabled
+        subtitleController.alwaysOn = settings.subtitleAlwaysOn
+        val subtitleGeneration = subtitleController.beginSubtitleLoad(requestedAvid, requestedCid) {
+            loginStorage.cookies.sessData == requestedSession
+        }
         try {
             val result = coroutineScope {
                 val infoRequest = async {
-                    playerInfo ?: fetchPlayerInfo(requestedAvid, requestedCid).also {
-                        currentCoroutineContext().ensureActive()
-                        if (generation == sourceGeneration) playerInfo = it
-                    }
+                    playerInfo?.takeIf { it.matchesRequest(requestedAvid, requestedCid, requestedSession) }
+                        ?: fetchPlayerInfo(requestedAvid, requestedCid).also {
+                            currentCoroutineContext().ensureActive()
+                            if (generation == sourceGeneration) playerInfo = it
+                        }
                 }
                 fetchPlayInfo().also { infoRequest.await() }
             }
@@ -317,6 +329,26 @@ class VideoPlayerViewModel(
             if (generation != sourceGeneration || avid != requestedAvid || cid != requestedCid) return
             if (result.isSuccess) {
                 _uiState.value = VideoPlayerUiState.Success(result)
+                subtitleLoadJob = viewModelScope.launch {
+                    try {
+                        val info = playerInfo?.takeIf { it.matchesRequest(requestedAvid, requestedCid, requestedSession) }
+                        if (loginStorage.cookies.sessData != requestedSession) return@launch
+                        val subtitles = fetchSubtitleInfo(
+                            requestedAvid, requestedCid, requestedIsMedia,
+                            result.playbackLanguage, result.playbackProductionType,
+                            info?.asrLanguage, info?.ocrLanguage,
+                        )
+                        currentCoroutineContext().ensureActive()
+                        if (generation != sourceGeneration || avid != requestedAvid || cid != requestedCid ||
+                            loginStorage.cookies.sessData != requestedSession
+                        ) return@launch
+                        subtitleController.loadSubtitleList(requestedAvid, requestedCid, subtitles.subtitles, subtitleGeneration)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        if (generation == sourceGeneration) println("字幕列表加载失败")
+                    }
+                }
             } else {
                 _uiState.value = VideoPlayerUiState.Error(result.message)
             }
@@ -497,6 +529,7 @@ class VideoPlayerViewModel(
     }
 
     private fun resetDanmaku() {
+        subtitleLoadJob?.cancel()
         subtitleController.clear()
         danmakuGeneration += 1
         danmakuRequests.values.toList().forEach { it.cancel() }
@@ -514,6 +547,7 @@ class VideoPlayerViewModel(
     }
 
     override fun onCleared() {
+        subtitleLoadJob?.cancel()
         onPlaybackPageExited()
         playbackReportController.close()
         sourceGeneration += 1

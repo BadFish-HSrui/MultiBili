@@ -581,9 +581,31 @@ class BoloSettings(settingsKSafe: KSafePlain) {
     private var storedSubtitleAlwaysOn by settingsKSafe(false, key = "subtitle_always_on")
     private var currentSubtitleAlwaysOn by mutableStateOf(storedSubtitleAlwaysOn)
 
+    private var storedSubtitleSmartEnabled by settingsKSafe(true, key = "subtitle_smart_enabled")
+    private var currentSubtitleSmartEnabled by mutableStateOf(storedSubtitleSmartEnabled && !storedSubtitleAlwaysOn)
+
+    init {
+        if (storedSubtitleAlwaysOn && storedSubtitleSmartEnabled) storedSubtitleSmartEnabled = false
+    }
+
+    var subtitleSmartEnabled: Boolean
+        get() = currentSubtitleSmartEnabled
+        set(value) {
+            if (value) {
+                storedSubtitleAlwaysOn = false
+                currentSubtitleAlwaysOn = false
+            }
+            storedSubtitleSmartEnabled = value
+            currentSubtitleSmartEnabled = value
+        }
+
     var subtitleAlwaysOn: Boolean
         get() = currentSubtitleAlwaysOn
         set(value) {
+            if (value) {
+                storedSubtitleSmartEnabled = false
+                currentSubtitleSmartEnabled = false
+            }
             if (value == currentSubtitleAlwaysOn) return
             storedSubtitleAlwaysOn = value
             currentSubtitleAlwaysOn = value

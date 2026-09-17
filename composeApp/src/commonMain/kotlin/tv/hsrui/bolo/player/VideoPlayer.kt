@@ -83,12 +83,14 @@ fun VideoPlayer(
     LaunchedEffect(
         viewModel.subtitleController,
         settings.subtitleAlwaysOn,
+        settings.subtitleSmartEnabled,
         settings.subtitleAutoChineseOnly,
         settings.subtitleAutoExcludeAi,
     ) {
         // 先同步过滤条件，避免启用自动字幕时短暂选中不符合条件的轨道。
         viewModel.subtitleController.autoChineseOnly = settings.subtitleAutoChineseOnly
         viewModel.subtitleController.autoExcludeAi = settings.subtitleAutoExcludeAi
+        viewModel.subtitleController.smartEnabled = settings.subtitleSmartEnabled
         viewModel.subtitleController.alwaysOn = settings.subtitleAlwaysOn
     }
 
