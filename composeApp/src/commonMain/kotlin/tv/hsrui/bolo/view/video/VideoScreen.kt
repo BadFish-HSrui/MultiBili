@@ -5,21 +5,21 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
-import tv.hsrui.bolo.model.Vid
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 
 @Composable
-fun  VideoScreen(
-    vid: Vid,
-    viewModel: VideoViewModel = viewModel(key = vid.key) {
-        VideoViewModel(vid =  vid)
+fun VideoScreen(
+    request: VideoPlaybackRequest,
+    viewModel: VideoViewModel = viewModel(key = request.key) {
+        VideoViewModel(request = request)
     },
     modifier: Modifier = Modifier
 ) {
@@ -37,8 +37,9 @@ fun  VideoScreen(
                         is VideoUiState.Loading -> CircularProgressIndicator()
                         is VideoUiState.Error -> ShowErrorContent(
                             message = state.message,
-                            retry = { viewModel.loadVideoInfo() },
+                            retry = viewModel::loadPlayback,
                         )
+                        VideoUiState.Empty -> Text("暂无可播放视频")
                         is VideoUiState.Success -> Unit
                     }
                 }

@@ -2,6 +2,7 @@ package tv.hsrui.bolo.navigation
 
 import kotlinx.serialization.Serializable
 import tv.hsrui.bolo.model.Vid
+import tv.hsrui.bolo.view.video.VideoPlaybackRequest
 
 @Serializable
 sealed interface BoloRoute {
@@ -51,6 +52,7 @@ sealed interface BoloRoute {
     @Serializable
     sealed interface View : BoloRoute {
         @Serializable data class Video(val vid: Vid) : View
+        @Serializable data class VideoList(val request: VideoPlaybackRequest.VideoList) : View
         @Serializable data class Media(val seasonId: Long) : View
     }
 }

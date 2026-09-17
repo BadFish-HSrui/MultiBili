@@ -41,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
@@ -96,18 +97,31 @@ fun ShowPlaybackCollectionSelector(
     playingPartId: String? = null,
     onPartSelected: (String) -> Unit = {},
     selectedItemContentColor: Color = Color.Unspecified,
+    serverOrdered: Boolean = false,
+    totalCount: Int = items.size,
+    scrollRevision: Int = 0,
+    hasPrevious: Boolean = false,
+    hasNext: Boolean = false,
+    isLoadingPrevious: Boolean = false,
+    isLoadingNext: Boolean = false,
+    previousError: String? = null,
+    nextError: String? = null,
+    onLoadMore: (Boolean) -> Unit = {},
 ) {
-    val displayedItems = remember(items, isDescending) { if (isDescending) items.reversed() else items }
+    val displayedItems = remember(items, isDescending, serverOrdered) { if (isDescending && !serverOrdered) items.reversed() else items }
     val listState = rememberLazyListState()
     val groupState = rememberLazyListState()
     val playingIndex = displayedItems.indexOfFirst { it.id == playingItemId }
+    val scrollItemsKey = if (serverOrdered) null else displayedItems
+    val playingRowIndex = playingIndex.coerceAtLeast(0) + if (serverOrdered) 1 else 0
+    val currentPlayingRowIndex by rememberUpdatedState(playingRowIndex)
     var partsExpanded by rememberSaveable(playingItemId) { mutableStateOf(true) }
-    val partBounds = remember(selectedGroupId, playingItemId, items) { mutableStateMapOf<String, Pair<Int, Int>>() }
-    LaunchedEffect(selectedGroupId, playingItemId, playingPartId, isDescending, displayedItems, isLoading, errorMessage) {
+    val partBounds = remember(selectedGroupId, playingItemId, scrollItemsKey, scrollRevision) { mutableStateMapOf<String, Pair<Int, Int>>() }
+    LaunchedEffect(selectedGroupId, playingItemId, playingPartId, isDescending, scrollItemsKey, scrollRevision, isLoading, errorMessage) {
         if (isLoading || errorMessage != null) return@LaunchedEffect
-        if (displayedItems.isNotEmpty()) listState.scrollToItem(playingIndex.coerceAtLeast(0))
+        if (displayedItems.isNotEmpty()) listState.scrollToItem(playingRowIndex)
     }
-    LaunchedEffect(selectedGroupId, playingItemId, playingPartId, isDescending, displayedItems, isLoading, errorMessage, partsExpanded) {
+    LaunchedEffect(selectedGroupId, playingItemId, playingPartId, isDescending, scrollItemsKey, scrollRevision, isLoading, errorMessage, partsExpanded) {
         if (isLoading || errorMessage != null) return@LaunchedEffect
         if (partsExpanded && displayedItems.getOrNull(playingIndex)?.parts?.any { it.id == playingPartId } == true) {
             // 展开动画结束后再定位 P 行；收起不重置列表位置，避免卡片向下跳动。
@@ -116,7 +130,18 @@ fun ShowPlaybackCollectionSelector(
             val layout = listState.layoutInfo
             val visibleHeight = layout.viewportEndOffset - layout.viewportStartOffset - layout.afterContentPadding
             // 一张视频卡片可能高于整个视口；按内部 P 行定位，仍只滚动外层选集列表。
-            listState.scrollToItem(playingIndex, (top + height - visibleHeight).coerceAtLeast(0))
+            listState.scrollToItem(currentPlayingRowIndex, (top + height - visibleHeight).coerceAtLeast(0))
+        }
+    }
+    LaunchedEffect(serverOrdered, items.size, scrollRevision, hasPrevious, hasNext,
+        isLoadingPrevious, isLoadingNext, previousError, nextError) {
+        if (!serverOrdered) return@LaunchedEffect
+        snapshotFlow {
+            val visible = listState.layoutInfo.visibleItemsInfo
+            (visible.firstOrNull()?.index ?: Int.MAX_VALUE) to (visible.lastOrNull()?.index ?: -1)
+        }.collect { (first, last) ->
+            if (first <= 2 && hasPrevious && !isLoadingPrevious && previousError == null) onLoadMore(true)
+            if (last >= displayedItems.size - 2 && last >= 0 && hasNext && !isLoadingNext && nextError == null) onLoadMore(false)
         }
     }
     LaunchedEffect(groups, selectedGroupId) {
@@ -132,7 +157,7 @@ fun ShowPlaybackCollectionSelector(
             ) {
                 Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 if (!isLoading && errorMessage == null) {
-                    Text(items.size.toString(), style = MaterialTheme.typography.labelMedium)
+                    Text(totalCount.toString(), style = MaterialTheme.typography.labelMedium)
                 }
                 CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 24.dp) {
                     TextButton(
@@ -181,6 +206,15 @@ fun ShowPlaybackCollectionSelector(
                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
+                    if (serverOrdered) item(key = "list_previous") {
+                        if (isLoadingPrevious) LinearProgressIndicator(Modifier.fillMaxWidth().padding(8.dp))
+                        previousError?.let { message ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(message, modifier = Modifier.weight(1f), maxLines = 2)
+                                TextButton(onClick = { onLoadMore(true) }) { Text("重试") }
+                            }
+                        }
+                    }
                     items(displayedItems, key = { it.id }) { item ->
                         val playing = item.id == playingItemId
                         val hasParts = playing && item.parts.isNotEmpty()
@@ -294,6 +328,15 @@ fun ShowPlaybackCollectionSelector(
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                    if (serverOrdered) item(key = "list_next") {
+                        if (isLoadingNext) LinearProgressIndicator(Modifier.fillMaxWidth().padding(8.dp))
+                        nextError?.let { message ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(message, modifier = Modifier.weight(1f), maxLines = 2)
+                                TextButton(onClick = { onLoadMore(false) }) { Text("重试") }
                             }
                         }
                     }

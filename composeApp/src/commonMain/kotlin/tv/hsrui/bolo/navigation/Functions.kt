@@ -2,6 +2,14 @@ package tv.hsrui.bolo.navigation
 
 import org.koin.mp.KoinPlatformTools
 import tv.hsrui.bolo.model.Vid
+import tv.hsrui.bolo.view.video.VideoPlaybackRequest
+
+fun openVideoList(request: VideoPlaybackRequest.VideoList) {
+    if (!request.isValid) return
+    val navigator: Navigator = KoinPlatformTools.defaultContext().get().get()
+    val route = BoloRoute.View.VideoList(request)
+    if (navigator.backStack.lastOrNull() != route) navigator.navigateTo(route)
+}
 
 fun openUserSpace(mid: Long) {
     if (mid <= 0) return

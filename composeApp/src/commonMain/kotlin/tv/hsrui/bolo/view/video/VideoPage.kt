@@ -52,6 +52,9 @@ fun VideoPage(
                         onEpisodeSelected = videoViewModel::selectCollectionEpisode,
                         onPartSelected = videoViewModel::selectVideoPart,
                         onDescendingChange = videoViewModel::setDescending,
+                        onListVideoSelected = videoViewModel::selectListVideo,
+                        onLoadMoreListVideos = videoViewModel::loadMoreListVideos,
+                        onRetryList = { videoViewModel.loadVideoList(uiState.videoList?.pendingDescending ?: false) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

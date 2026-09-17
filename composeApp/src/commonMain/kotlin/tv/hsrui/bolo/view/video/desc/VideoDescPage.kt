@@ -36,11 +36,15 @@ fun VideoDescPage(
     onEpisodeSelected: (String) -> Unit,
     onPartSelected: (Long) -> Unit,
     onDescendingChange: (Boolean) -> Unit,
+    onListVideoSelected: (String) -> Unit = {},
+    onLoadMoreListVideos: (Boolean) -> Unit = {},
+    onRetryList: () -> Unit = {},
     viewModel: RelatedViewModel = viewModel(key = "desc_${videoInfo.bvid}") { RelatedViewModel(videoInfo.avid) },
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val columns = if (isMedium()) 2 else 1
+    val videoList = collectionState.videoList
     val collection = videoInfo.collection?.takeIf { it.seasonId > 0 }
     val parts = videoInfo.parts.takeIf { it.size > 1 }.orEmpty()
     LazyColumn(
@@ -50,7 +54,51 @@ fun VideoDescPage(
         modifier = if (columns == 2) modifier.fillMaxWidth() else modifier.widthIn(max = 512.dp)
     ) {
         item(key = "desc") { VideoDescContent(videoInfo) }
-        if (collection != null) {
+        if (videoList != null) {
+            item(key = "video_list") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (videoList.isReloading || collectionState.isSwitchingEpisode) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    videoList.reloadError?.let { message ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(message, modifier = Modifier.weight(1f), maxLines = 2)
+                            TextButton(onClick = onRetryList) { Text("重试") }
+                        }
+                    }
+                    collectionState.episodeError?.let { message ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(message, modifier = Modifier.weight(1f), maxLines = 2)
+                            TextButton(onClick = { collectionState.switchingEpisodeKey?.let(onListVideoSelected) }) { Text("重试") }
+                        }
+                    }
+                    ShowPlaybackCollectionSelector(
+                        groups = emptyList(), selectedGroupId = "",
+                        items = videoList.items.map {
+                            PlaybackCollectionItem(
+                                id = it.key, title = it.title,
+                                enabled = it.isAvailable && !videoList.isReloading,
+                                badge = if (it.isAvailable) "" else it.unavailableMessage,
+                                parts = if (it.isVideo && it.id == videoInfo.avid) parts.map { part ->
+                                    PlaybackCollectionPart(part.cid.toString(), part.title, part.durationString)
+                                } else emptyList(),
+                            )
+                        },
+                        playingItemId = "2:${videoInfo.avid}",
+                        isDescending = videoList.isDescending,
+                        onGroupSelected = {}, onItemSelected = onListVideoSelected,
+                        onDescendingChange = onDescendingChange, onRetry = onRetryList,
+                        title = videoList.title,
+                        playingPartId = videoInfo.cid.toString(),
+                        onPartSelected = { it.toLongOrNull()?.let(onPartSelected) },
+                        serverOrdered = true, totalCount = videoList.total, scrollRevision = videoList.revision,
+                        hasPrevious = videoList.hasPrevious && !videoList.isReloading && videoList.reloadError == null,
+                        hasNext = videoList.hasNext && !videoList.isReloading && videoList.reloadError == null,
+                        isLoadingPrevious = videoList.isLoadingPrevious, isLoadingNext = videoList.isLoadingNext,
+                        previousError = videoList.previousError, nextError = videoList.nextError,
+                        onLoadMore = onLoadMoreListVideos,
+                    )
+                }
+            }
+        } else if (collection != null) {
             item(key = "collection") {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (collectionState.isSwitchingEpisode) LinearProgressIndicator(Modifier.fillMaxWidth())
