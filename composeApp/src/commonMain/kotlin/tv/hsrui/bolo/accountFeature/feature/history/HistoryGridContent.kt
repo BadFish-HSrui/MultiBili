@@ -4,10 +4,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.FloatingActionButtonMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -17,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
@@ -34,6 +45,15 @@ fun HistoryGridContent(
     val uiState by viewModel.uiState.collectAsState()
     val historyGridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
+    val navigator: Navigator = koinInject()
+    var refreshAfterSearch by rememberSaveable { mutableStateOf(false) }
+    val currentRoute = navigator.backStack.lastOrNull()
+    LaunchedEffect(currentRoute, refreshAfterSearch) {
+        if (refreshAfterSearch && currentRoute == BoloRoute.AccountFeature.History) {
+            refreshAfterSearch = false
+            viewModel.refreshVideos()
+        }
+    }
 
     historyGridState.OnGridBottomReached(buffer = 8, isLoading = viewModel.isLoading) {
         viewModel.loadMoreVideos()
@@ -97,7 +117,14 @@ fun HistoryGridContent(
                         onRefresh = { viewModel.refreshVideos() },
                         modifier = Modifier.align(Alignment.BottomEnd)
                     ) {
-
+                        FloatingActionButtonMenuItem(
+                            onClick = {
+                                refreshAfterSearch = true
+                                navigator.navigateTo(BoloRoute.AccountFeature.HistorySearch)
+                            },
+                            text = { Text("搜索内容") },
+                            icon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                        )
                     }
                 }
             }

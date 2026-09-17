@@ -44,6 +44,15 @@ suspend fun fetchHistoryVideos(
     )
 }
 
+suspend fun searchHistoryVideos(keyword: String, pageNumber: Int = 1): HistorySearchResponse {
+    val response = ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.HISTORY_SEARCH) {
+        parameter("keyword", keyword)
+        parameter("pn", pageNumber)
+        parameter("business", "all")
+    }
+    return response.body()
+}
+
 suspend fun deleteHistory(typeString: String, id: Long): DeleteHistoryResponse {
     val loginStorage: LoginStorage = getKoin().get()
 

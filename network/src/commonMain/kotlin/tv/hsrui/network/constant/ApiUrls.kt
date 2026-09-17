@@ -17,6 +17,7 @@ object ApiUrls {
     const val USER_INFO = "x/space/wbi/acc/info" //其他用户资料
     const val USER_UP_STAT = "x/space/upstat" //用户获赞与视频播放统计
     const val HISTORY = "x/web-interface/history/cursor" //历史记录
+    const val HISTORY_SEARCH = "x/web-interface/history/search" //历史记录搜索
     const val HISTORY_DELETE = "x/v2/history/delete" //删除历史记录
     const val DYNAMIC = "x/polymer/web-dynamic/v1/feed/all" //动态
     const val VIDEO_INFO = "x/web-interface/wbi/view" //视频播放信息

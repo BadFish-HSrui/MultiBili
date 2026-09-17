@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButtonMenuItem
@@ -31,6 +32,7 @@ fun FavoriteVideosContent(
     onLoadMore: () -> Unit,
     onRefresh: () -> Unit,
     onDeleteFolder: () -> Unit,
+    onSearch: () -> Unit,
     onRemove: suspend (FavoriteVideoCard) -> Unit,
     modifier: Modifier = Modifier,
     canManage: Boolean = false,
@@ -102,6 +104,11 @@ fun FavoriteVideosContent(
                         onRefresh = onRefresh,
                         modifier = Modifier.align(Alignment.BottomEnd),
                     ) {
+                        FloatingActionButtonMenuItem(
+                            onClick = onSearch,
+                            text = { Text("搜索内容") },
+                            icon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                        )
                         if (canManage && !uiState.isDefault) {
                             FloatingActionButtonMenuItem(
                                 onClick = onDeleteFolder,

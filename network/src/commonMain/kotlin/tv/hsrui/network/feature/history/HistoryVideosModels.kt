@@ -65,7 +65,7 @@ data class HistoryVideoCard(
     val isFullyWatched get() = (watchProgress == -1)
 }
 
-private fun HistoryRawItem.toHistoryVideoCard(): HistoryVideoCard {
+internal fun HistoryRawItem.toHistoryVideoCard(): HistoryVideoCard {
     return HistoryVideoCard(
         avid = id,
         bvid = bvid,

@@ -119,11 +119,13 @@ suspend fun fetchFavoriteFolderContent(
     mediaId: Long,
     pageNumber: Int = 1,
     pageSize: Int = 20,
+    keyword: String = "",
 ): FavoriteFolderContentResponse {
     val response = ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.Favorite.FOLDER_CONTENT) {
         parameter("media_id", mediaId)
         parameter("pn", pageNumber)
         parameter("ps", pageSize)
+        if (keyword.isNotBlank()) parameter("keyword", keyword)
         parameter("order", "mtime")
         parameter("type", 0)
         parameter("platform", "web")

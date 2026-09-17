@@ -13,6 +13,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +25,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.navigation.Navigator
+import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.dialog.ShowDeleteFavoriteFolderDialog
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
@@ -42,6 +44,14 @@ fun FavoriteVideosScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarManager: SnackbarManager = koinInject()
     val navigator: Navigator = koinInject()
+    var refreshAfterSearch by rememberSaveable(mediaId) { mutableStateOf(false) }
+    val currentRoute = navigator.backStack.lastOrNull()
+    LaunchedEffect(currentRoute, refreshAfterSearch) {
+        if (refreshAfterSearch && currentRoute == BoloRoute.Favorite.Folder(mediaId)) {
+            refreshAfterSearch = false
+            viewModel.refreshVideos()
+        }
+    }
     val loginStorage: LoginStorage = koinInject()
     val currentUserMid by loginStorage.currentUserMidFlow.collectAsState(
         initial = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L,
@@ -82,6 +92,10 @@ fun FavoriteVideosScreen(
             onLoadMore = viewModel::loadMoreVideos,
             onRefresh = viewModel::refreshVideos,
             onDeleteFolder = { showDeleteFolderDialog = true },
+            onSearch = {
+                refreshAfterSearch = true
+                navigator.navigateTo(BoloRoute.Favorite.Search(mediaId))
+            },
             onRemove = remove@{ video ->
                 if (!canManageNow()) return@remove
                 try {

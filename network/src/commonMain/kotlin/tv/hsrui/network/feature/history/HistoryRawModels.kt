@@ -12,6 +12,27 @@ data class HistoryRawResponse(
 )
 
 @Serializable
+data class HistorySearchResponse(
+    private val code: Int = -1,
+    val message: String = "",
+    private val data: HistorySearchData? = null,
+) {
+    val isSuccess: Boolean get() = code == 0
+    val videos: List<HistoryVideoCard> get() = data?.videos.orEmpty()
+    val hasMore: Boolean get() = data?.hasMore == true
+}
+
+@Serializable
+data class HistorySearchData(
+    @SerialName("list") private val items: List<HistoryRawItem>? = null,
+    @SerialName("has_more") val hasMore: Boolean = false,
+) {
+    val videos: List<HistoryVideoCard> get() = items.orEmpty()
+        .filter { it.typeString == "archive" && it.id > 0 && it.bvid.isNotBlank() }
+        .map { it.toHistoryVideoCard() }
+}
+
+@Serializable
 data class HistoryRawData(
     val cursor: HistoryRowCursor = HistoryRowCursor(),
     val list: List<HistoryRawItem> = emptyList()

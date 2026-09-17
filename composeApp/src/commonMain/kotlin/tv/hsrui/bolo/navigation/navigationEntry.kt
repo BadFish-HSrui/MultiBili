@@ -7,6 +7,8 @@ import tv.hsrui.bolo.accountFeature.AccountFeaturesScreen
 import tv.hsrui.bolo.favorite.FavoriteScreen
 import tv.hsrui.bolo.favorite.videos.FavoriteVideosScreen
 import tv.hsrui.bolo.accountFeature.feature.history.HistoryScreen
+import tv.hsrui.bolo.accountFeature.feature.history.HistorySearchScreen
+import tv.hsrui.bolo.favorite.videos.FavoriteSearchScreen
 import tv.hsrui.bolo.accountFeature.feature.watchLater.WatchLaterScreen
 import tv.hsrui.bolo.boloSetting.BoloSettingsScreen
 import tv.hsrui.bolo.boloSetting.setting.about.AboutScreen
@@ -43,6 +45,7 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
 
         is BoloRoute.AccountFeature -> {
             when (route) {
+                is BoloRoute.AccountFeature.HistorySearch -> NavEntry(key = route) { HistorySearchScreen() }
                 is BoloRoute.AccountFeature.List -> NavEntry(
                     key = route,
                     contentKey = "AccountFeature.List",
@@ -71,6 +74,7 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
             }
         }
         is BoloRoute.Favorite -> when (route) {
+            is BoloRoute.Favorite.Search -> NavEntry(key = route) { FavoriteSearchScreen(mediaId = route.mediaId) }
             is BoloRoute.Favorite.List -> NavEntry(
                 key = route,
                 metadata = ListDetailSceneStrategy.detailPane(),
