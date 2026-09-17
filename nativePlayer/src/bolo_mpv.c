@@ -154,7 +154,7 @@ static int set_dynamic_loudness(bolo_mpv *p, int enabled, double target_lufs, do
             mpv_node *item = &filters.u.list->values[i];
             mpv_node *label = field(item, "label");
             if (!label || label->format != MPV_FORMAT_STRING ||
-                strcmp(label->u.string, "bolo-loudnorm") != 0) continue;
+                strcmp(label->u.string, "dynamic-loudness") != 0) continue;
             present = 1;
             mpv_node *name = field(item, "name");
             mpv_node *current_graph = field(field(item, "params"), "graph");
@@ -166,9 +166,9 @@ static int set_dynamic_loudness(bolo_mpv *p, int enabled, double target_lufs, do
     mpv_free_node_contents(&filters);
     if (enabled ? matches : !present) return 0;
     char filter[160];
-    snprintf(filter, sizeof(filter), "@bolo-loudnorm:lavfi=[%s]", graph);
+    snprintf(filter, sizeof(filter), "@dynamic-loudness:lavfi=[%s]", graph);
     // mpv 的 af add 按标签原位替换；只更新本功能，不改变其他滤镜及其顺序。
-    const char *args[] = {"af", enabled ? "add" : "remove", enabled ? filter : "@bolo-loudnorm", NULL};
+    const char *args[] = {"af", enabled ? "add" : "remove", enabled ? filter : "@dynamic-loudness", NULL};
     return mpv_command(p->player, args);
 }
 int bolo_mpv_loudness(bolo_mpv *p, double gain_db, int dynamic_enabled, double target_lufs, double range_lu, double true_peak_dbtp) {
@@ -200,7 +200,7 @@ static int apply_audio_merge(bolo_mpv *p, int enabled) {
     r = mpv_set_property_string(p->player, "audio-channels", enabled ? "mono" : "auto-safe");
     if (r < 0) return r;
     const char *args[] = {"af", enabled ? "pre" : "remove",
-                         enabled ? "@bolo-mono:format=channels=mono" : "@bolo-mono", NULL};
+                         enabled ? "@mono-downmix:format=channels=mono" : "@mono-downmix", NULL};
     return mpv_command(p->player, args);
 }
 int bolo_mpv_merge_audio_channels(bolo_mpv *p, int enabled) {
@@ -213,7 +213,7 @@ int bolo_mpv_merge_audio_channels(bolo_mpv *p, int enabled) {
 }
 char *bolo_mpv_info(bolo_mpv *p) {
     if (p->expected_entry < 0) return NULL;
-    char *info = mpv_get_property_string(p->player, "bolo-playback-info");
+    char *info = mpv_get_property_string(p->player, "playback-info");
     if (!info) return NULL;
     const char *format = "{\"generation\":%lld,\"expectedEntry\":%lld,\"info\":%s}";
     int size = snprintf(NULL, 0, format, (long long)p->generation, (long long)p->expected_entry, info);

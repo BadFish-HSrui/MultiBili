@@ -37,15 +37,6 @@ internal class NativePlayerLibraries(
                 owner.dependencySource(dependency, path)
             }
         }
-        if (name == "mpv") {
-            run("patch", "-p1", "-i", owner.root.resolve("patches/mpv-playback-info.patch"), cwd = source)
-            val patches = when (chain.system) {
-                "ios", "iossim" -> listOf("ios-audio-session.patch")
-                "macos" -> listOf("macos-no-swift-clipboard.patch", "macos-coreaudio-channel-layout.patch")
-                else -> emptyList()
-            }
-            for (patch in patches) run("patch", "-p1", "-i", owner.root.resolve("patches/$patch"), cwd = source)
-        }
         val directory = work.resolve(name)
         run(listOf("meson", "setup", directory, source, "--prefix=${nativePath(prefix)}", "--libdir=lib",
             "--buildtype=release", "--default-library=static", "--wrap-mode=nodownload",
@@ -82,7 +73,6 @@ internal class NativePlayerLibraries(
         }
         val ff = sources.resolve("ffmpeg")
         owner.sourceCopy("ffmpeg", ff)
-        run("patch", "-p1", "-i", owner.root.resolve("patches/ffmpeg-fragment-info.patch"), cwd = ff)
         val directory = work.resolve("ffmpeg").apply { mkdirs() }
         val ffFlags = flags + "-I${nativePath(prefix.resolve("include"))}"
         val ffLink = chain.link + "-L${nativePath(prefix.resolve("lib"))}"

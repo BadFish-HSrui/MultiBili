@@ -33,5 +33,5 @@
 
 ### 开源协议
 - 本项目自有代码使用 [GPL-3.0 license](LICENSE) 开源
-- iOS、macOS、Windows 播放器组件遵循 [LGPL-2.1-or-later](LICENSE-LGPL-2.1)
-- Android、Linux 播放器组件遵循 [LGPL-3.0-or-later](LICENSE-LGPL-3.0)
+- iOS、macOS、Windows 播放器组件遵循 [LGPL-2.1-or-later](COPYING.LGPLv2.1)
+- Android、Linux 播放器组件遵循 [LGPL-3.0-or-later](COPYING.LGPLv3)

@@ -110,12 +110,10 @@ internal class NativePlayerBuild(
     private fun build(target: String): File {
         val chain = NativePlayerToolchain(target, host)
         val source = sourceIdentity()
-        val patches = nativeFiles(root.resolve("patches")).filter(File::isFile)
-            .associate { it.relativeTo(root).invariantSeparatorsPath to nativeSha(it) }
         val bridge = nativeFiles(root.resolve("src")).filter(File::isFile)
             .associate { it.relativeTo(root).invariantSeparatorsPath to nativeSha(it) }
         val identity = mapOf("schema" to 2, "sources" to source, "dependencies" to dependencies, "toolchain" to chain.identity,
-            "recipe" to recipes + patches + bridge)
+            "recipe" to recipes + bridge)
         val fingerprint = nativeHash(nativeJson(identity))
         val bundle = cache.resolve("bundles/$target/$fingerprint")
         return nativeLock(cache.resolve("locks/$target-$fingerprint")) {
@@ -135,7 +133,7 @@ internal class NativePlayerBuild(
             val libraries = NativePlayerLibraries(this, chain, work, jobs)
             val libraryRecipe = recipes.filterKeys { it in listOf("NativePlayerLibraries.kt", "NativePlayerBuildSupport.kt", "NativePlayerToolchain.kt") }
             // 编排源码也参与库指纹，防止源码复制、解压或依赖选择变化后错误复用。
-            val libraryIdentity = identity + ("recipe" to (libraryRecipe + patches + ("orchestration" to recipes.getValue("NativePlayerBuild.kt"))))
+            val libraryIdentity = identity + ("recipe" to (libraryRecipe + ("orchestration" to recipes.getValue("NativePlayerBuild.kt"))))
             val libraryKey = nativeHash(nativeJson(libraryIdentity))
             val libraryCache = cache.resolve("libraries/$target/$libraryKey")
             nativeLock(cache.resolve("locks/libraries-$target-$libraryKey")) {

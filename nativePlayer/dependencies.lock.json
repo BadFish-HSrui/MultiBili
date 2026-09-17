@@ -1,8 +1,8 @@
 {
   "libplacebo": {
-    "version": "v7.351.0",
-    "url": "https://code.videolan.org/videolan/libplacebo/-/archive/v7.351.0/libplacebo-v7.351.0.tar.gz",
-    "sha256": "4efe1c8d4da3c61295eb5fdfa50e6037409d8425eb3c15dd86788679c4ce59ee"
+    "version": "v7.360.1",
+    "url": "https://code.videolan.org/videolan/libplacebo/-/archive/v7.360.1/libplacebo-v7.360.1.tar.gz",
+    "sha256": "14c0a99f4b01557ec9826ce6b1d52f6de21be274ba03fd5aab7307f18766dc39"
   },
   "libass": {
     "version": "0.17.4",
@@ -35,14 +35,14 @@
     "sha256": "722a1d9af69f5ec5a5b728de93cdf90aad4355deac2842862ea924ec0e5c4a97"
   },
   "vulkan-headers": {
-    "version": "cacef3039d277c448c89336290ec3937270b0996",
-    "url": "https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/cacef3039d277c448c89336290ec3937270b0996",
-    "sha256": "400dc4bc49438f24ab9e90e6e587d9b1621a236f05eba80f6c048d7a1a96d353"
+    "version": "450bd2232225d6c7728a4108055ac2e37cef6475",
+    "url": "https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/450bd2232225d6c7728a4108055ac2e37cef6475",
+    "sha256": "26df9841c30806a994e2fdf42f7c87bcb1ced9db9a06033469123939fb3fa075"
   },
   "fast-float": {
-    "version": "1bf70101536d37fa9954cc4f03fd0903d045a9f3",
-    "url": "https://codeload.github.com/fastfloat/fast_float/tar.gz/1bf70101536d37fa9954cc4f03fd0903d045a9f3",
-    "sha256": "95c7730f3db8bfb8568e26387bed5df5284158c408d2c6411ed8ad4f5a6dc9ae"
+    "version": "97b54ca9e75f5303507699d27c6b4f4efe4641a1",
+    "url": "https://codeload.github.com/fastfloat/fast_float/tar.gz/97b54ca9e75f5303507699d27c6b4f4efe4641a1",
+    "sha256": "2b132274539286e41f37857cac22aa8441d21bd86d55de825a3342b149f66801"
   },
   "mbedtls-framework": {
     "version": "2a3e2c5ea053c14b745dbdf41f609b1edc6a72fa",

@@ -101,7 +101,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.gradle/bolo-native
-          key: ${{ runner.os }}-${{ runner.arch }}-native-${{ hashFiles('buildSrc/src/main/kotlin/tv/hsrui/bolo/buildlogic/NativePlayer*.kt', 'buildSrc/build.gradle.kts', 'nativePlayer/build.gradle.kts', 'nativePlayer/dependencies.lock.json', 'nativePlayer/src/**', 'nativePlayer/patches/**', '.gitmodules') }}-${{ inputs.source_sha }}
+          key: ${{ runner.os }}-${{ runner.arch }}-native-${{ hashFiles('buildSrc/src/main/kotlin/tv/hsrui/bolo/buildlogic/NativePlayer*.kt', 'buildSrc/build.gradle.kts', 'nativePlayer/build.gradle.kts', 'nativePlayer/dependencies.lock.json', 'nativePlayer/src/**', '.gitmodules') }}-${{ inputs.source_sha }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-native-
 

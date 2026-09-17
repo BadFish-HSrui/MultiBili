@@ -245,7 +245,7 @@ internal class NativePlayerEnvironment(
         val requirements = linkedMapOf("meson" to "1.8.3", "ninja" to "1.11.1", "pkg-config" to "0.29", "python3" to "3.10")
         if (targets.any { it.startsWith("android-") || it.startsWith("linux-") }) requirements["cmake"] = "3.31"
         if (targets.any { it.endsWith("-x64") || it.endsWith("-x86") }) requirements["nasm"] = "2.16"
-        for (name in listOf("git", "curl", "make", "patch", "bash") + requirements.keys) tool(name)
+        for (name in listOf("git", "curl", "make", "bash") + requirements.keys) tool(name)
         for ((name, minimum) in requirements) {
             val executable = tool(name)
             val version = run(executable, "--version", capture = true).trim()
@@ -278,7 +278,7 @@ internal class NativePlayerEnvironment(
                 .associate { it.relativeTo(folder).invariantSeparatorsPath to nativeSha(it) }))
         }
         identity["pythonModules"] = mapOf("details" to modules, "content" to moduleHashes)
-        for (name in listOf("git", "curl", "make", "patch", "bash")) {
+        for (name in listOf("git", "curl", "make", "bash")) {
             val executable = tool(name)
             identity[name] = mapOf("path" to nativePath(executable.canonicalFile), "sha256" to nativeSha(executable))
         }

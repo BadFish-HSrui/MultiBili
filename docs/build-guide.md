@@ -7,7 +7,7 @@
 
 ### 原生播放器构建工具
 
-- Git、curl、Bash、GNU Make、patch
+- Git、curl、Bash、GNU Make
 - Python 3.10+、Jinja2、MarkupSafe
 - Meson 1.8.3+、Ninja 1.11.1+、pkg-config 0.29+（或 pkgconf）
 - CMake 3.31+（Android/Linux）
@@ -23,14 +23,14 @@ brew install meson ninja cmake pkgconf nasm jinja2-cli
 **Ubuntu / Debian**
 ```bash
 sudo apt-get update
-sudo apt-get install -y build-essential git curl bash patch pkg-config nasm \
+sudo apt-get install -y build-essential git curl bash pkg-config nasm \
   python3 python3-jinja2 python3-markupsafe meson ninja-build cmake rpm \
   libpulse-dev libasound2-dev libva-dev libgl-dev
 ```
 
 **Windows（MSYS2 UCRT64）**
 ```bash
-pacman -S --needed make patch diffutils git curl \
+pacman -S --needed make diffutils git curl \
   mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-nasm \
   mingw-w64-ucrt-x86_64-meson mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-cmake \
   mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-python-jinja mingw-w64-ucrt-x86_64-python-markupsafe
