@@ -23,6 +23,8 @@ object ApiUrls {
     const val VIDEO_COLLECTION = "x/polymer/web-space/seasons_archives_list" //视频合集内容
     const val VIDEO_SERIES = "x/series/series" //视频系列信息
     const val VIDEO_SERIES_VIDEOS = "x/series/archives" //视频系列内容
+    const val VIDEO_LIST_INFO = "x/v1/medialist/info"
+    const val VIDEO_LIST_VIDEOS = "x/v2/medialist/resource/list"
     const val VIDEO_RELATED = "x/web-interface/archive/related" //相关视频推荐
     const val RELATION = "x/web-interface/relation" //关系
     const val MODIFY_RELATION = "x/relation/modify" //修改关系
