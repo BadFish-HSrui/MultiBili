@@ -71,6 +71,9 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
     private val _currentVideoQuality = MutableStateFlow(VideoQuality.best)
     val currentVideoQuality = _currentVideoQuality.asStateFlow()
 
+    private val _currentAudioQuality = MutableStateFlow<AudioQuality?>(null)
+    val currentAudioQuality = _currentAudioQuality.asStateFlow()
+
     var videoQuality: VideoQuality = VideoQuality.best
     var videoCodec: VideoCodec = VideoCodec.HEVC
     var audioQuality: AudioQuality? = AudioQuality.best
@@ -188,6 +191,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
         videoCodec = video.codec
         audioQuality = audio?.let { it.quality as AudioQuality }
         _currentVideoQuality.value = videoQuality
+        _currentAudioQuality.value = audioQuality
 
         awaitingPlaybackReload = true
         danmakuController.pause()
@@ -226,6 +230,13 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
 
     fun switchQuality(newVideoQuality: VideoQuality) {
         videoQuality = newVideoQuality
+        playVideo(controller.state.value.displayPositionMs)
+    }
+
+    fun switchAudioQuality(newAudioQuality: AudioQuality) {
+        val source = (uiState.value as? VideoPlayerUiState.Success)?.videoSource ?: return
+        if (newAudioQuality == currentAudioQuality.value || newAudioQuality !in source.audioQualities) return
+        audioQuality = newAudioQuality
         playVideo(controller.state.value.displayPositionMs)
     }
 

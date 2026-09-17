@@ -124,12 +124,12 @@ fun BoloDanmakuLayer(
             },
         ) { item ->
             val result = layout(item)
-            (result.size.width + padding * 2) to (result.size.height + padding * 2)
+            (result.size.width + padding * 2) to result.size.height.toFloat()
         }
         clipRect {
             for (entry in entries) {
                 val result = layout(entry.item)
-                val offset = Offset(entry.x(animationTimeMs, size.width) + padding, entry.y + padding)
+                val offset = Offset(entry.x(animationTimeMs, size.width) + padding, entry.y)
                 drawText(result, color = Color.Black, topLeft = offset, drawStyle = Stroke(width = padding))
                 drawText(result, color = Color((entry.item.colorRgb and 0xFFFFFF) or 0xFF000000), topLeft = offset, drawStyle = Fill)
             }

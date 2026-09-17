@@ -14,6 +14,7 @@ data class VideoSource(
     val loudness: VideoLoudnessData? = null,
 ) {
     val videoQualities: List<VideoQuality> = _video.keys.sortedByDescending { it.code }
+    val audioQualities: List<AudioQuality> = _audio?.keys?.sortedByDescending { it.code }.orEmpty()
 
     fun getVideo(quality: VideoQuality?, codec: VideoCodec): BiliDashObject =
         _video.getTargetOrSmallerOrLargerOrNull(quality ?: VideoQuality.best)

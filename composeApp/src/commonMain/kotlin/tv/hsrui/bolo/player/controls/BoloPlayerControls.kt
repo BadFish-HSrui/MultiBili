@@ -90,6 +90,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.Key
@@ -112,15 +113,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -147,6 +154,7 @@ import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.bolo.ui.components.slider.ShowSlider
+import tv.hsrui.network.feature.player.enumModels.AudioQuality
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.subtitle.SubtitleItem
 import kotlin.math.abs
@@ -244,7 +252,8 @@ fun BoloPlayerControls(
     val danmakuState by viewModel.danmakuController.state.collectAsState()
     val danmakuClosed by viewModel.danmakuClosed.collectAsState()
     val currentVideoQuality by viewModel.currentVideoQuality.collectAsState()
-    var sliderPreviewFraction by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
+    val currentAudioQuality by viewModel.currentAudioQuality.collectAsState()
+    var sliderPreviewFraction by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
         mutableStateOf<Float?>(null)
     }
     val sliderInteractionSource = remember { MutableInteractionSource() }
@@ -265,9 +274,10 @@ fun BoloPlayerControls(
     var speedMenuOpen by remember { mutableStateOf(false) }
     var volumeMenuOpen by remember { mutableStateOf(false) }
     var qualityMenuOpen by remember { mutableStateOf(false) }
+    var audioQualityMenuOpen by remember { mutableStateOf(false) }
     var subtitleMenuOpen by remember { mutableStateOf(false) }
     val controlsInteractionActive = mousePressed || sliderPreviewFraction != null ||
-        settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen || subtitleMenuOpen
+        settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen || audioQualityMenuOpen || subtitleMenuOpen
     val latestControlsInteractionActive by rememberUpdatedState(controlsInteractionActive)
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     LaunchedEffect(isDesktop, mouseInside, mouseMovementRevision, controlsInteractionActive) {
@@ -299,7 +309,7 @@ fun BoloPlayerControls(
         onBackCompleted = { infoOpen = false },
     )
     val latestPlayState by rememberUpdatedState(playState)
-    var actionFeedback by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
+    var actionFeedback by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
         mutableStateOf<Pair<ImageVector, String>?>(null)
     }
     var actionFeedbackRevision by remember { mutableIntStateOf(0) }
@@ -325,21 +335,21 @@ fun BoloPlayerControls(
             showActionFeedback(Icons.Rounded.FastForward, "快进")
         }
     }
-    LaunchedEffect(actionFeedbackRevision, viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
+    LaunchedEffect(actionFeedbackRevision, viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
         // 淡入 100ms + 保持 200ms，随后由可见性动画淡出 200ms，总计 500ms。
         delay(300)
         actionFeedback = null
     }
-    var gesturePreviewMs by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+    var gesturePreviewMs by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Long?>(null)
     }
-    var brightnessPreview by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+    var brightnessPreview by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Float?>(null)
     }
-    var volumePreview by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+    var volumePreview by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Float?>(null)
     }
-    var desktopVolumeFeedbackVisible by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
+    var desktopVolumeFeedbackVisible by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
         mutableStateOf(false)
     }
     var desktopVolumeFeedbackRevision by remember { mutableIntStateOf(0) }
@@ -355,15 +365,15 @@ fun BoloPlayerControls(
         viewModel.adjustDesktopVolume(delta)
         showDesktopVolumeFeedback()
     }
-    LaunchedEffect(desktopVolumeFeedbackRevision, viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
+    LaunchedEffect(desktopVolumeFeedbackRevision, viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
         delay(500)
         desktopVolumeFeedbackVisible = false
     }
     // 长按倍速期间的状态：临时倍速用于预览，原倍速用于松手恢复。
-    var gestureSpeedBoost by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+    var gestureSpeedBoost by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Float?>(null)
     }
-    var gestureBaseSpeed by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen, settingsOpen) {
+    var gestureBaseSpeed by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen, settingsOpen) {
         mutableStateOf<Float?>(null)
     }
     val restoreBaseSpeedOnDispose by rememberUpdatedState(gestureBaseSpeed)
@@ -413,7 +423,7 @@ fun BoloPlayerControls(
             fullscreenState.toggleFullscreen()
         }
     }
-    val keyboardBlocked = settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen ||
+    val keyboardBlocked = settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen || audioQualityMenuOpen ||
         subtitleMenuOpen || mousePressed || sliderPreviewFraction != null
     fun onVolumeKeyEvent(event: KeyEvent): Boolean {
         if (event.key != Key.DirectionUp && event.key != Key.DirectionDown && event.key != Key.M) return false
@@ -439,7 +449,7 @@ fun BoloPlayerControls(
         onDispose { cancelKeyboardInteraction() }
     }
     LaunchedEffect(
-        viewModel, title, playerUiState, currentVideoQuality, isFullscreen,
+        viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen,
         desktopFastForwardHoldSpeedEnabled, longPressSpeed,
     ) {
         cancelKeyboardInteraction()
@@ -554,6 +564,10 @@ fun BoloPlayerControls(
         ?.videoSource
         ?.videoQualities
         .orEmpty()
+    val audioQualities = (playerUiState as? VideoPlayerUiState.Success)
+        ?.videoSource
+        ?.audioQualities
+        .orEmpty()
 
     Box(
         modifier = modifier.fillMaxSize().onPreviewKeyEvent { event ->
@@ -604,6 +618,7 @@ fun BoloPlayerControls(
                     title,
                     playerUiState,
                     currentVideoQuality,
+                    currentAudioQuality,
                     settingsOpen,
                     isFullscreen,
                     longPressSpeedGestureEnabled,
@@ -707,6 +722,7 @@ fun BoloPlayerControls(
                     title,
                     playerUiState,
                     currentVideoQuality,
+                    currentAudioQuality,
                     isFullscreen,
                     settingsOpen,
                     deviceControls,
@@ -969,11 +985,9 @@ fun BoloPlayerControls(
                     Spacer(Modifier.height(8.dp))
 
                     // 下方播放控件
-                    Row(
-                        modifier = Modifier.fillMaxWidth().height(32.dp).padding(horizontal = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    PlayerBottomControlsRow(
+                        collapseControls = showExtendedControls && !isFullscreen,
+                    ) { hiddenControls ->
                         if (showExtendedControls && onPreviousEpisode != null) {
                             IconButton(
                                 onClick = onPreviousEpisode,
@@ -1044,39 +1058,60 @@ fun BoloPlayerControls(
                             )
                         }
 
-                        Spacer(Modifier.weight(1f))
+                        Spacer(Modifier.layoutId("spacer"))
 
-                        if (isDesktop) {
-                            VolumeSliderPopup(
-                                volumePercent = settings.playerDesktopVolumePercent,
-                                muted = settings.playerDesktopMuted,
-                                isFullscreen = isFullscreen,
-                                onVolumeSelected = {
-                                    viewModel.setDesktopVolume(it)
-                                    showDesktopVolumeFeedback()
-                                },
-                                onKeyEvent = ::onVolumeKeyEvent,
-                                onScroll = { delta -> adjustDesktopVolume(if (delta < 0f) 2 else -2) },
-                                onExpandedChange = { volumeMenuOpen = it },
-                            )
-                        }
-
-                        if (showExtendedControls) {
-                            if (subtitleState.subtitles.isNotEmpty()) {
+                        if (showExtendedControls && subtitleState.subtitles.isNotEmpty()) {
+                            Box(
+                                Modifier.layoutId("subtitle")
+                                    .focusProperties { canFocus = "subtitle" !in hiddenControls }
+                                    .then(if ("subtitle" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier),
+                            ) {
                                 SubtitleMenu(
+                                    visible = "subtitle" !in hiddenControls,
                                     subtitles = subtitleState.subtitles,
                                     selectedSubtitle = subtitleState.selected,
                                     onSubtitleSelected = viewModel.subtitleController::loadSubtitleContent,
                                     onExpandedChange = { subtitleMenuOpen = it },
                                 )
                             }
+                        }
 
-                            SpeedSliderPopup(
-                                currentSpeed = keyboardSpeedBoost ?: gestureSpeedBoost ?: playState.playbackSpeed,
-                                isFullscreen = isFullscreen,
-                                onSpeedSelected = viewModel.controller::setPlaybackSpeed,
-                                onExpandedChange = { speedMenuOpen = it },
-                            )
+                        if (isDesktop) {
+                            Box(
+                                Modifier.layoutId("volume")
+                                    .focusProperties { canFocus = "volume" !in hiddenControls }
+                                    .then(if ("volume" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier),
+                            ) {
+                                VolumeSliderPopup(
+                                    visible = "volume" !in hiddenControls,
+                                    volumePercent = settings.playerDesktopVolumePercent,
+                                    muted = settings.playerDesktopMuted,
+                                    isFullscreen = isFullscreen,
+                                    onVolumeSelected = {
+                                        viewModel.setDesktopVolume(it)
+                                        showDesktopVolumeFeedback()
+                                    },
+                                    onKeyEvent = ::onVolumeKeyEvent,
+                                    onScroll = { delta -> adjustDesktopVolume(if (delta < 0f) 2 else -2) },
+                                    onExpandedChange = { volumeMenuOpen = it },
+                                )
+                            }
+                        }
+
+                        if (showExtendedControls) {
+                            Box(
+                                Modifier.layoutId("speed")
+                                    .focusProperties { canFocus = "speed" !in hiddenControls }
+                                    .then(if ("speed" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier),
+                            ) {
+                                SpeedSliderPopup(
+                                    visible = "speed" !in hiddenControls,
+                                    currentSpeed = keyboardSpeedBoost ?: gestureSpeedBoost ?: playState.playbackSpeed,
+                                    isFullscreen = isFullscreen,
+                                    onSpeedSelected = viewModel.controller::setPlaybackSpeed,
+                                    onExpandedChange = { speedMenuOpen = it },
+                                )
+                            }
 
                             if (videoQualities.isNotEmpty()) {
                                 QualityMenu(
@@ -1087,6 +1122,21 @@ fun BoloPlayerControls(
                                 )
                             }
 
+                            if (audioQualities.isNotEmpty()) {
+                                Box(
+                                    Modifier.layoutId("audio")
+                                        .focusProperties { canFocus = "audio" !in hiddenControls }
+                                        .then(if ("audio" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier),
+                                ) {
+                                    AudioQualityMenu(
+                                        qualities = audioQualities,
+                                        currentQuality = currentAudioQuality,
+                                        visible = "audio" !in hiddenControls,
+                                        onQualitySelected = viewModel::switchAudioQuality,
+                                        onExpandedChange = { audioQualityMenuOpen = it },
+                                    )
+                                }
+                            }
                         }
 
                         if (fullscreenState.isDesktop) {
@@ -1147,10 +1197,10 @@ fun BoloPlayerControls(
                 Icons.Rounded.Pause to "暂停"
             else -> null
         }
-        val feedbackVisibility = remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
+        val feedbackVisibility = remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
             MutableTransitionState(false)
         }
-        var retainedFeedback by remember(viewModel, title, playerUiState, currentVideoQuality, isFullscreen) {
+        var retainedFeedback by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
             mutableStateOf<Pair<ImageVector, String>?>(null)
         }
         SideEffect {
@@ -1327,7 +1377,62 @@ private fun Long.formatPlayerDuration(): String {
 }
 
 @Composable
+private fun PlayerBottomControlsRow(
+    collapseControls: Boolean,
+    content: @Composable (Set<String>) -> Unit,
+) {
+    var hiddenControls by remember { mutableStateOf(emptySet<String>()) }
+    Layout(
+        content = { content(hiddenControls) },
+        modifier = Modifier.fillMaxWidth().height(32.dp).padding(horizontal = 8.dp),
+    ) { measurables, constraints ->
+        val spacing = 12.dp.roundToPx()
+        // 隐藏项仍以自然宽度参与测量，恢复时不依赖上一次显示结果。
+        val placeables = measurables.map { it.measure(Constraints(maxHeight = constraints.maxHeight)) }
+        val widths = measurables.mapIndexed { index, measurable ->
+            (measurable.layoutId as? String) to placeables[index].width
+        }
+        val hidden = if (collapseControls) {
+            hiddenPlayerControls(widths, constraints.maxWidth, spacing)
+        } else emptySet()
+        hiddenControls = hidden
+        val visibleIndices = measurables.indices.filter { widths[it].first !in hidden }
+        val contentWidth = visibleIndices.sumOf { placeables[it].width } +
+            spacing * (visibleIndices.size - 1).coerceAtLeast(0)
+        val width = constraints.constrainWidth(contentWidth)
+        val height = constraints.constrainHeight(placeables.maxOfOrNull { it.height } ?: 0)
+        val spacerWidth = (width - contentWidth).coerceAtLeast(0)
+        layout(width, height) {
+            var x = 0
+            for (index in visibleIndices) {
+                val placeable = placeables[index]
+                placeable.placeRelative(x, (height - placeable.height) / 2)
+                x += placeable.width + spacing
+                if (widths[index].first == "spacer") x += spacerWidth
+            }
+        }
+    }
+}
+
+private fun hiddenPlayerControls(
+    widths: List<Pair<String?, Int>>,
+    availableWidth: Int,
+    spacing: Int,
+): Set<String> {
+    val hidden = mutableSetOf<String>()
+    var requiredWidth = widths.sumOf { it.second } + spacing * (widths.size - 1).coerceAtLeast(0)
+    for (id in listOf("audio", "subtitle", "volume", "speed")) {
+        if (requiredWidth <= availableWidth) break
+        val width = widths.firstOrNull { it.first == id }?.second ?: continue
+        hidden.add(id)
+        requiredWidth -= width + spacing
+    }
+    return hidden
+}
+
+@Composable
 private fun SpeedSliderPopup(
+    visible: Boolean,
     currentSpeed: Float,
     isFullscreen: Boolean,
     onSpeedSelected: (Float) -> Unit,
@@ -1336,6 +1441,7 @@ private fun SpeedSliderPopup(
     var lastRequestedSpeed by remember(currentSpeed) { mutableStateOf(currentSpeed) }
     val speedText = speedMultiplierText((currentSpeed * 100f).roundToInt())
     PlayerSliderPopup(
+        visible = visible,
         isFullscreen = isFullscreen,
         onExpandedChange = onExpandedChange,
         anchor = { toggle ->
@@ -1397,6 +1503,7 @@ private fun SpeedSliderPopup(
 
 @Composable
 private fun VolumeSliderPopup(
+    visible: Boolean,
     volumePercent: Int,
     muted: Boolean,
     isFullscreen: Boolean,
@@ -1409,6 +1516,7 @@ private fun VolumeSliderPopup(
     val latestOnKeyEvent by rememberUpdatedState(onKeyEvent)
     val latestOnScroll by rememberUpdatedState(onScroll)
     PlayerSliderPopup(
+        visible = visible,
         isFullscreen = isFullscreen,
         onExpandedChange = onExpandedChange,
         requestInitialFocus = true,
@@ -1473,6 +1581,7 @@ private fun VolumeSliderPopup(
 
 @Composable
 private fun PlayerSliderPopup(
+    visible: Boolean,
     isFullscreen: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     popupModifier: Modifier = Modifier,
@@ -1482,13 +1591,14 @@ private fun PlayerSliderPopup(
 ) {
     val focusRequester = remember { FocusRequester() }
     var expanded by remember(isFullscreen) { mutableStateOf(false) }
+    LaunchedEffect(visible) { if (!visible) expanded = false }
     val latestOnExpandedChange by rememberUpdatedState(onExpandedChange)
-    DisposableEffect(expanded) {
-        latestOnExpandedChange(expanded)
+    DisposableEffect(expanded, visible) {
+        latestOnExpandedChange(expanded && visible)
         onDispose { latestOnExpandedChange(false) }
     }
     val visibility = remember(isFullscreen) { MutableTransitionState(false) }
-    visibility.targetState = expanded
+    visibility.targetState = expanded && visible
     val transformOrigin = TransformOrigin(
         pivotFractionX = if (LocalLayoutDirection.current == LayoutDirection.Ltr) 1f else 0f,
         pivotFractionY = 1f,
@@ -1517,7 +1627,7 @@ private fun PlayerSliderPopup(
     }
     Box {
         anchor { expanded = !expanded }
-        if (visibility.currentState || visibility.targetState || !visibility.isIdle) {
+        if (visible && (visibility.currentState || visibility.targetState || !visibility.isIdle)) {
             Popup(
                 popupPositionProvider = positionProvider,
                 onDismissRequest = { expanded = false },
@@ -1616,16 +1726,75 @@ private fun QualityMenu(
 }
 
 @Composable
+private fun AudioQualityMenu(
+    qualities: List<AudioQuality>,
+    currentQuality: AudioQuality?,
+    visible: Boolean,
+    onQualitySelected: (AudioQuality) -> Unit,
+    onExpandedChange: (Boolean) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    LaunchedEffect(visible) { if (!visible) expanded = false }
+    val latestOnExpandedChange by rememberUpdatedState(onExpandedChange)
+    DisposableEffect(expanded, visible) {
+        latestOnExpandedChange(expanded && visible)
+        onDispose { latestOnExpandedChange(false) }
+    }
+
+    Box {
+        TextButton(
+            onClick = { expanded = true },
+            modifier = Modifier.height(32.dp),
+            colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
+        ) {
+            Text(
+                text = currentQuality?.shortTitle ?: "音质",
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded && visible,
+            onDismissRequest = { expanded = false }
+        ) {
+            qualities.forEach { quality ->
+                val selected = quality == currentQuality
+                DropdownMenuItem(
+                    text = { Text(quality.title) },
+                    trailingIcon = {
+                        if (selected) {
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = "当前音质"
+                            )
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        if (!selected) {
+                            onQualitySelected(quality)
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SubtitleMenu(
+    visible: Boolean,
     subtitles: List<SubtitleItem>,
     selectedSubtitle: SubtitleItem?,
     onSubtitleSelected: (SubtitleItem?) -> Unit,
     onExpandedChange: (Boolean) -> Unit,
 ) {
     var expanded by remember(subtitles) { mutableStateOf(false) }
+    LaunchedEffect(visible) { if (!visible) expanded = false }
     val latestOnExpandedChange by rememberUpdatedState(onExpandedChange)
-    DisposableEffect(expanded) {
-        latestOnExpandedChange(expanded)
+    DisposableEffect(expanded, visible) {
+        latestOnExpandedChange(expanded && visible)
         onDispose { latestOnExpandedChange(false) }
     }
     Box {
@@ -1640,7 +1809,7 @@ private fun SubtitleMenu(
                 maxLines = 1,
             )
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenu(expanded = expanded && visible, onDismissRequest = { expanded = false }) {
             (listOf<SubtitleItem?>(null) + subtitles).forEach { subtitle ->
                 DropdownMenuItem(
                     text = { Text(subtitle?.displayName ?: "关") },
