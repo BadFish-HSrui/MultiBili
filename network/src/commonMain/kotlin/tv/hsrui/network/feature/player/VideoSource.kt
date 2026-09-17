@@ -12,6 +12,8 @@ data class VideoSource(
     private val _audio: Map<AudioQuality, BiliDashObject>?,
     val isPreview: Boolean = false,
     val loudness: VideoLoudnessData? = null,
+    val playbackLanguage: String = "",
+    val playbackProductionType: Int = 0,
 ) {
     val videoQualities: List<VideoQuality> = _video.keys.sortedByDescending { it.code }
     val audioQualities: List<AudioQuality> = _audio?.keys?.sortedByDescending { it.code }.orEmpty()

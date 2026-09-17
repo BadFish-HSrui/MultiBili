@@ -8,13 +8,14 @@ import kotlinx.serialization.json.JsonElement
 data class MediaPlayResponse(
     private val code: Int = -1,
     private val message: String = "",
-    private val result: MediaPlayData? = null,
+    private val result: MediaPlayResult? = null,
 ) {
     fun toVideoSource(): VideoSource {
-        val data = result
+        val data = result?.videoInfo
         val error = when {
             code == -10403 -> "此内容需要大会员"
             code != 0 -> "[$code] ${message.ifBlank { "无法获取媒体播放权限" }}"
+            result?.isDenied == true && (data == null || data.isSuccess) -> "当前剧集无播放权限"
             data == null -> "媒体响应缺少播放信息"
             !data.isSuccess -> data.message
             data.isDrm -> "当前剧集使用 DRM 加密，暂不支持播放"
@@ -27,6 +28,21 @@ data class MediaPlayResponse(
 }
 
 @Serializable
+data class MediaPlayResult(
+    @SerialName("video_info") val videoInfo: MediaPlayData? = null,
+    @SerialName("play_check") private val playCheck: MediaPlayCheck? = null,
+) {
+    val isDenied: Boolean get() = playCheck?.isDenied == true
+}
+
+@Serializable
+data class MediaPlayCheck(
+    @SerialName("play_detail") private val playDetail: String = "",
+) {
+    val isDenied: Boolean get() = playDetail == "PLAY_NONE"
+}
+
+@Serializable
 data class MediaPlayData(
     private val code: Int = -1,
     @SerialName("error_code") private val errorCode: Int = 0,
@@ -35,6 +51,8 @@ data class MediaPlayData(
     @SerialName("is_preview") private val preview: Int = 0,
     private val dash: VideoPlayData.DashData? = null,
     private val volume: JsonElement? = null,
+    @SerialName("cur_language") private val currentLanguage: String? = null,
+    @SerialName("cur_production_type") private val currentProductionType: Int? = null,
 ) {
     val isSuccess: Boolean get() = code == 0 && errorCode == 0
     val message: String
@@ -44,5 +62,7 @@ data class MediaPlayData(
             "[${if (code != 0) code else errorCode}] ${responseMessage.ifBlank { "无法获取媒体播放权限" }}"
         }
     val isPreview: Boolean get() = preview == 1
-    val playData: VideoPlayData get() = VideoPlayData(dash ?: VideoPlayData.DashData(), volume)
+    val playData: VideoPlayData get() = VideoPlayData(
+        dash ?: VideoPlayData.DashData(), volume, currentLanguage, currentProductionType,
+    )
 }

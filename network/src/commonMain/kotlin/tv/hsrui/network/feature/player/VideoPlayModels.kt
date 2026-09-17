@@ -24,7 +24,13 @@ data class VideoPlayResponse(
 data class VideoPlayData(
     @SerialName("dash") private val _dashData: DashData = DashData(),
     private val volume: JsonElement? = null,
+    @SerialName("cur_language") private val currentLanguage: String? = null,
+    @SerialName("cur_production_type") private val currentProductionType: Int? = null,
 ) {
+    val playbackLanguage: String get() = currentLanguage?.trim().orEmpty()
+    val playbackProductionType: Int
+        get() = if (playbackLanguage.isEmpty()) 0 else currentProductionType?.takeIf { it in 1..2 } ?: 2
+
     val loudness: VideoLoudnessData? get() = VideoLoudnessData.fromJson(volume)
 
     val videoFormatMap: Map<VideoQuality, Map<VideoCodec, BiliDashObject>>
@@ -119,5 +125,7 @@ fun VideoPlayResponse.toVideoSource(): VideoSource {
         _video = this.data.videoFormatMap,
         _audio = this.data.audioFormatMap,
         loudness = this.data.loudness,
+        playbackLanguage = this.data.playbackLanguage,
+        playbackProductionType = this.data.playbackProductionType,
     )
 }

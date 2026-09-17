@@ -77,7 +77,7 @@ object ApiUrls {
         const val REPORT_START = "x/click-interface/click/web/h5" //开始播放上报
         const val REPORT_PROGRESS = "x/v2/history/report" //播放进度上报
         const val VIDEO = "x/player/wbi/playurl" //视频播放信息
-        const val MEDIA = "pgc/player/web/playurl" //媒体播放信息
+        const val MEDIA = "pgc/player/web/v2/playurl" //媒体播放信息
     }
 
     object Danmaku {
