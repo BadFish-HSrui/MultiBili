@@ -52,6 +52,7 @@ import tv.hsrui.bolo.favorite.FavoriteFoldersUiState
 import tv.hsrui.bolo.ui.common.videosPage.VideosGridPage
 import tv.hsrui.bolo.ui.common.videosPage.VideosUiState
 import tv.hsrui.bolo.userSpace.collection.UserCollectionsContent
+import tv.hsrui.bolo.userSpace.series.UserSeriesContent
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.ui.components.user.ShowUserInfoBar
 import tv.hsrui.network.login.storage.LoginStorage
@@ -87,6 +88,7 @@ fun UserSpaceScreen(mid: Long, modifier: Modifier = Modifier) {
             onLoadMore = viewModel::loadMoreUploads,
             onUploadOrderSelected = viewModel::setUploadOrder,
             onLoadMoreCollections = viewModel::loadMoreCollections,
+            onLoadMoreSeries = viewModel::loadMoreSeries,
             onPlayCollection = viewModel::playCollection,
             canManageFavorites = currentUserMid > 0 && currentUserMid == mid,
             canManageFavoritesNow = { loginStorage.isLoggedIn && loginStorage.cookies.dedeUserID == mid },
@@ -103,6 +105,7 @@ private fun UserSpaceContent(
     onLoadMore: () -> Unit,
     onUploadOrderSelected: (UserSpaceUploadOrder) -> Unit,
     onLoadMoreCollections: () -> Unit,
+    onLoadMoreSeries: () -> Unit,
     onPlayCollection: (Long) -> Unit,
     canManageFavorites: Boolean,
     canManageFavoritesNow: () -> Boolean,
@@ -114,6 +117,7 @@ private fun UserSpaceContent(
     val coinsGrid = rememberLazyGridState()
     val favoritesGrid = rememberLazyGridState()
     val collectionsGrid = rememberLazyGridState()
+    val seriesGrid = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     val tabs = state.visibleTabs
     val currentTab = selectedTab.takeIf { it in tabs } ?: tabs.firstOrNull()
@@ -233,6 +237,14 @@ private fun UserSpaceContent(
                                         onRefresh = onRefresh,
                                         onLoadMore = onLoadMoreCollections,
                                         onPlay = onPlayCollection,
+                                        isActive = pager.currentPage == page,
+                                    )
+                                    UserSpaceTab.Series -> UserSeriesContent(
+                                        mid = mid,
+                                        state = state,
+                                        gridState = seriesGrid,
+                                        onRefresh = onRefresh,
+                                        onLoadMore = onLoadMoreSeries,
                                         isActive = pager.currentPage == page,
                                     )
                                 }

@@ -17,6 +17,13 @@ fun openUserCollection(mid: Long, seasonId: Long) {
     if (navigator.backStack.lastOrNull() != route) navigator.navigateTo(route)
 }
 
+fun openUserSeries(mid: Long, seriesId: Long) {
+    if (mid <= 0 || seriesId <= 0) return
+    val navigator: Navigator = KoinPlatformTools.defaultContext().get().get()
+    val route = BoloRoute.User.Series(mid, seriesId)
+    if (navigator.backStack.lastOrNull() != route) navigator.navigateTo(route)
+}
+
 fun openVideo(bvid: String) {
     val navigator: Navigator = KoinPlatformTools.defaultContext().get().get()
     navigator.navigateTo(BoloRoute.View.Video(Vid.BVid(bvid)))

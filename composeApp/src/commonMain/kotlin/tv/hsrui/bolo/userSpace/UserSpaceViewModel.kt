@@ -32,6 +32,7 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
     private var uploadRefreshJob: Job? = null
     private var loadMoreJob: Job? = null
     private var collectionLoadMoreJob: Job? = null
+    private var seriesLoadMoreJob: Job? = null
     private var collectionPlaybackJob: Job? = null
     private var collectionPlaybackGeneration = 0
 
@@ -45,11 +46,13 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
         uploadRefreshJob?.cancel()
         loadMoreJob?.cancel()
         collectionLoadMoreJob?.cancel()
+        seriesLoadMoreJob?.cancel()
         cancelCollectionPlayback()
         _uiState.update {
             it.copy(
                 refreshGeneration = version, isRefreshing = true, isLoadingMore = false, loadMoreError = null,
                 isLoadingMoreCollections = false, collectionLoadMoreError = null,
+                isLoadingMoreSeries = false, seriesLoadMoreError = null,
             )
         }
         refreshJob = viewModelScope.launch {
@@ -57,6 +60,7 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
                 supervisorScope {
                     uploadRefreshJob = launch { loadUploads(uploadVersion, uploadOrder) }
                     launch { loadCollections(version) }
+                    launch { loadSeries(version) }
                     val privacy = loadPrivacy()
                     val isOwner = loginStorage.isLoggedIn && loginStorage.cookies.dedeUserID == mid
                     launch { loadLikes(version, !isOwner && privacy?.showsLikes == false) }
@@ -171,6 +175,49 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
         collectionLoadMoreJob = viewModelScope.launch {
             try { loadCollections(version, state.collectionPage + 1) }
             finally { if (version == requestVersion) _uiState.update { it.copy(isLoadingMoreCollections = false) } }
+        }
+    }
+
+    private suspend fun loadSeries(version: Int, page: Int = 1) {
+        try {
+            var nextPage = page
+            // 系列和合集共用原始分页，过滤后为空仍需继续翻页。
+            while (true) {
+                val result = fetchUserSpaceCollections(mid, nextPage)
+                check(result.isSeriesSuccess) { result.message.ifBlank { "视频系列加载失败" } }
+                if (version != requestVersion) return
+                if (result.series.isNotEmpty() || !result.hasMore) {
+                    _uiState.update {
+                        val previous = if (page == 1) emptyList() else (it.series as? UserSpaceSectionState.Success)?.data.orEmpty()
+                        it.copy(
+                            series = UserSpaceSectionState.Success((previous + result.series).distinctBy { s -> s.seriesId }),
+                            seriesPage = nextPage, canLoadMoreSeries = result.hasMore, seriesLoadMoreError = null,
+                        )
+                    }
+                    return
+                }
+                nextPage++
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (version != requestVersion) return
+            val message = e.message ?: "视频系列加载失败"
+            _uiState.update {
+                if (page == 1) it.copy(series = UserSpaceSectionState.Error(message), canLoadMoreSeries = false)
+                else it.copy(seriesLoadMoreError = message)
+            }
+        }
+    }
+
+    fun loadMoreSeries() {
+        val state = _uiState.value
+        if (state.isRefreshing || state.isLoadingMoreSeries || !state.canLoadMoreSeries || state.series !is UserSpaceSectionState.Success) return
+        val version = requestVersion
+        _uiState.update { it.copy(isLoadingMoreSeries = true, seriesLoadMoreError = null) }
+        seriesLoadMoreJob = viewModelScope.launch {
+            try { loadSeries(version, state.seriesPage + 1) }
+            finally { if (version == requestVersion) _uiState.update { it.copy(isLoadingMoreSeries = false) } }
         }
     }
 

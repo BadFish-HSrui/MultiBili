@@ -16,6 +16,7 @@ import tv.hsrui.bolo.login.LoginScreen
 import tv.hsrui.bolo.login.LoginWebView
 import tv.hsrui.bolo.userSpace.UserSpaceScreen
 import tv.hsrui.bolo.userSpace.collection.UserCollectionScreen
+import tv.hsrui.bolo.userSpace.series.UserSeriesScreen
 import tv.hsrui.bolo.main.MainScreen
 import tv.hsrui.bolo.search.SearchInputScreen
 import tv.hsrui.bolo.search.SearchResultsScreen
@@ -63,6 +64,9 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
             is BoloRoute.User.Space -> NavEntry(key = route) { UserSpaceScreen(mid = route.mid) }
             is BoloRoute.User.Collection -> NavEntry(key = route) {
                 UserCollectionScreen(mid = route.mid, seasonId = route.seasonId)
+            }
+            is BoloRoute.User.Series -> NavEntry(key = route) {
+                UserSeriesScreen(mid = route.mid, seriesId = route.seriesId)
             }
         }
         is BoloRoute.Favorite -> when (route) {

@@ -7,6 +7,7 @@ import kotlinx.serialization.json.intOrNull
 import tv.hsrui.network.model.Owner
 import tv.hsrui.network.model.VideoCard
 import tv.hsrui.network.feature.video.collection.VideoCollectionSummaryData
+import tv.hsrui.network.feature.video.series.VideoSeriesData
 
 @Serializable
 data class UserSpacePrivacyResponse(
@@ -113,6 +114,8 @@ data class UserSpaceCollectionsResponse(
     val total get() = data?.items?.page?.total
     val isSuccess get() = code == 0 && total != null && data?.items?.collections != null
     val collections get() = data?.items?.collections.orEmpty().map { it.collection }.filter { it.seasonId > 0 }
+    val isSeriesSuccess get() = code == 0 && total != null && data?.items?.series != null
+    val series get() = data?.items?.series.orEmpty().map { it.series }.filter { it.seriesId > 0 }
     val hasMore get() = data?.items?.page?.let { it.pageNumber.toLong() * it.pageSize < (it.total ?: 0) } == true
 }
 
@@ -123,6 +126,7 @@ data class UserSpaceCollectionsData(@SerialName("items_lists") val items: UserSp
 data class UserSpaceCollectionListData(
     val page: UserSpaceCollectionPageData? = null,
     @SerialName("seasons_list") val collections: List<UserSpaceCollectionData>? = null,
+    @SerialName("series_list") val series: List<UserSpaceSeriesData>? = null,
 )
 
 @Serializable
@@ -134,3 +138,6 @@ data class UserSpaceCollectionPageData(
 
 @Serializable
 data class UserSpaceCollectionData(@SerialName("meta") val collection: VideoCollectionSummaryData)
+
+@Serializable
+data class UserSpaceSeriesData(@SerialName("meta") val series: VideoSeriesData)

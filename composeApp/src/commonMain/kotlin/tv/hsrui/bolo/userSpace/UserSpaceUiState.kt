@@ -4,6 +4,7 @@ import tv.hsrui.network.feature.favorite.FavoriteFolderInfoData
 import tv.hsrui.network.feature.user.space.UserSpaceUploadOrder
 import tv.hsrui.network.model.VideoCard
 import tv.hsrui.network.feature.video.collection.VideoCollectionSummaryData
+import tv.hsrui.network.feature.video.series.VideoSeriesData
 
 sealed interface UserSpaceSectionState<out T> {
     data object Loading : UserSpaceSectionState<Nothing>
@@ -26,6 +27,7 @@ sealed interface UserSpaceSectionState<out T> {
 data class UserSpaceUiState(
     val uploads: UserSpaceSectionState<List<VideoCard>> = UserSpaceSectionState.Loading,
     val collections: UserSpaceSectionState<List<VideoCollectionSummaryData>> = UserSpaceSectionState.Loading,
+    val series: UserSpaceSectionState<List<VideoSeriesData>> = UserSpaceSectionState.Loading,
     val likes: UserSpaceSectionState<List<VideoCard>> = UserSpaceSectionState.Loading,
     val coins: UserSpaceSectionState<List<VideoCard>> = UserSpaceSectionState.Loading,
     val favorites: UserSpaceSectionState<List<FavoriteFolderInfoData>> = UserSpaceSectionState.Loading,
@@ -41,11 +43,16 @@ data class UserSpaceUiState(
     val isLoadingMoreCollections: Boolean = false,
     val collectionLoadMoreError: String? = null,
     val playingCollectionId: Long? = null,
+    val seriesPage: Int = 0,
+    val canLoadMoreSeries: Boolean = false,
+    val isLoadingMoreSeries: Boolean = false,
+    val seriesLoadMoreError: String? = null,
 ) {
     val visibleTabs get() = UserSpaceTab.entries.filter {
         when (it) {
             UserSpaceTab.Uploads -> uploads.isVisible
             UserSpaceTab.Collections -> collections.isVisible
+            UserSpaceTab.Series -> series.isVisible
             UserSpaceTab.Likes -> likes.isVisible
             UserSpaceTab.Coins -> coins.isVisible
             UserSpaceTab.Favorites -> favorites.isVisible
