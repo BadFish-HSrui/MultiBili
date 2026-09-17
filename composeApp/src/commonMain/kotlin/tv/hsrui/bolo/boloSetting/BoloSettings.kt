@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import eu.anifantakis.lib.ksafe.KSafePlain
+import tv.hsrui.network.feature.player.enumModels.AudioQuality
+import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import kotlin.math.roundToInt
 
 class BoloSettings(settingsKSafe: KSafePlain) {
@@ -35,6 +37,64 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             if (value == currentPlayerAutoEnableDanmakuOnOpenEnabled) return
             storedPlayerAutoEnableDanmakuOnOpenEnabled = value
             currentPlayerAutoEnableDanmakuOnOpenEnabled = value
+        }
+
+    private var storedPlayerDefaultVideoQuality by settingsKSafe(120, key = "player_default_video_quality")
+    private var currentPlayerDefaultVideoQuality by mutableStateOf(
+        VideoQuality.entries.firstOrNull { it.code == storedPlayerDefaultVideoQuality } ?: VideoQuality.UHD,
+    )
+
+    var playerDefaultVideoQuality: VideoQuality
+        get() = currentPlayerDefaultVideoQuality
+        set(value) {
+            if (storedPlayerDefaultVideoQuality == value.code) return
+            storedPlayerDefaultVideoQuality = value.code
+            currentPlayerDefaultVideoQuality = value
+        }
+
+    private var storedPlayerDefaultAudioQuality by settingsKSafe(30280, key = "player_default_audio_quality")
+    private var currentPlayerDefaultAudioQuality by mutableStateOf(
+        normalizeDefaultAudioQuality(AudioQuality.entries.firstOrNull { it.code == storedPlayerDefaultAudioQuality }),
+    )
+
+    var playerDefaultAudioQuality: AudioQuality
+        get() = currentPlayerDefaultAudioQuality
+        set(value) {
+            val normalized = normalizeDefaultAudioQuality(value)
+            if (storedPlayerDefaultAudioQuality == normalized.code) return
+            storedPlayerDefaultAudioQuality = normalized.code
+            currentPlayerDefaultAudioQuality = normalized
+        }
+
+    private fun normalizeDefaultAudioQuality(value: AudioQuality?): AudioQuality = when (value) {
+        AudioQuality.QUALITY_64K, AudioQuality.QUALITY_132K -> value
+        else -> AudioQuality.QUALITY_192K
+    }
+
+    private var storedPlayerHideAudioQualitySelectorEnabled by settingsKSafe(
+        true, key = "player_hide_audio_quality_selector_enabled",
+    )
+    private var currentPlayerHideAudioQualitySelectorEnabled by mutableStateOf(storedPlayerHideAudioQualitySelectorEnabled)
+
+    var playerHideAudioQualitySelectorEnabled: Boolean
+        get() = currentPlayerHideAudioQualitySelectorEnabled
+        set(value) {
+            if (value == currentPlayerHideAudioQualitySelectorEnabled) return
+            storedPlayerHideAudioQualitySelectorEnabled = value
+            currentPlayerHideAudioQualitySelectorEnabled = value
+        }
+
+    private var storedPlayerRecordQualitySelectionEnabled by settingsKSafe(
+        true, key = "player_record_quality_selection_enabled",
+    )
+    private var currentPlayerRecordQualitySelectionEnabled by mutableStateOf(storedPlayerRecordQualitySelectionEnabled)
+
+    var playerRecordQualitySelectionEnabled: Boolean
+        get() = currentPlayerRecordQualitySelectionEnabled
+        set(value) {
+            if (value == currentPlayerRecordQualitySelectionEnabled) return
+            storedPlayerRecordQualitySelectionEnabled = value
+            currentPlayerRecordQualitySelectionEnabled = value
         }
 
     private var storedPlayerLoudnessMode by settingsKSafe("standard", key = "player_loudness_mode")

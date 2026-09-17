@@ -1122,7 +1122,7 @@ fun BoloPlayerControls(
                                 )
                             }
 
-                            if (audioQualities.isNotEmpty()) {
+                            if (!settings.playerHideAudioQualitySelectorEnabled && audioQualities.isNotEmpty()) {
                                 Box(
                                     Modifier.layoutId("audio")
                                         .focusProperties { canFocus = "audio" !in hiddenControls }

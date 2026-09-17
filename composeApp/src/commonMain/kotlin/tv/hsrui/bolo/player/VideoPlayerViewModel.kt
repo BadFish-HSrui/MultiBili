@@ -126,7 +126,11 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
     fun switchMedia(avid: Long, cid: Long, episodeId: Long? = null, forceReload: Boolean = false) {
         if (!forceReload && this.avid == avid && this.cid == cid && this.episodeId == episodeId) return
         val opensNewMedia = sourceGeneration == 0L || this.avid != avid || this.cid != cid || this.episodeId != episodeId
-        if (opensNewMedia) autoPlayOnOpen = settings.playerAutoPlayOnOpenEnabled
+        if (opensNewMedia) {
+            autoPlayOnOpen = settings.playerAutoPlayOnOpenEnabled
+            videoQuality = settings.playerDefaultVideoQuality
+            audioQuality = settings.playerDefaultAudioQuality
+        }
         playbackReportController.beforeReload(controller.state.value, controller.backend.value != null)
         playbackReportController.openMedia(avid, cid)
         sourceLoadJob?.cancel()
@@ -229,6 +233,9 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
     }
 
     fun switchQuality(newVideoQuality: VideoQuality) {
+        val source = (uiState.value as? VideoPlayerUiState.Success)?.videoSource ?: return
+        if (newVideoQuality == currentVideoQuality.value || newVideoQuality !in source.videoQualities) return
+        if (settings.playerRecordQualitySelectionEnabled) settings.playerDefaultVideoQuality = newVideoQuality
         videoQuality = newVideoQuality
         playVideo(controller.state.value.displayPositionMs)
     }
@@ -236,6 +243,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
     fun switchAudioQuality(newAudioQuality: AudioQuality) {
         val source = (uiState.value as? VideoPlayerUiState.Success)?.videoSource ?: return
         if (newAudioQuality == currentAudioQuality.value || newAudioQuality !in source.audioQualities) return
+        if (settings.playerRecordQualitySelectionEnabled) settings.playerDefaultAudioQuality = newAudioQuality
         audioQuality = newAudioQuality
         playVideo(controller.state.value.displayPositionMs)
     }

@@ -52,6 +52,9 @@ import tv.hsrui.bolo.ui.components.slider.ShowSlider
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.utils.calculateWithoutBottom
 import tv.hsrui.bolo.utils.isExpanded
+import tv.hsrui.network.feature.player.enumModels.AudioQuality
+import tv.hsrui.network.feature.player.enumModels.Quality
+import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import kotlin.math.roundToInt
 
 @Composable
@@ -60,6 +63,18 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) {
     var showReportStartInfo by remember { mutableStateOf(false) }
     var showDanmakuAutoEnableInfo by remember { mutableStateOf(false) }
     var showDynamicLoudnessInfo by remember { mutableStateOf(false) }
+    var showRecordQualitySelectionInfo by remember { mutableStateOf(false) }
+
+    if (showRecordQualitySelectionInfo) {
+        ShowInfoDialog(onConfirm = { showRecordQualitySelectionInfo = false }) {
+            Text(
+                text = "开启后修改音画质会同时修改默认项",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
+            )
+        }
+    }
 
     if (showDynamicLoudnessInfo) {
         ShowInfoDialog(onConfirm = { showDynamicLoudnessInfo = false }) {
@@ -163,6 +178,109 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) {
                                     checked = settings.playerAutoEnableDanmakuOnOpenEnabled,
                                     onCheckedChange = null
                                 )
+                            }
+                            val audioQualities = listOf(
+                                AudioQuality.QUALITY_64K,
+                                AudioQuality.QUALITY_132K,
+                                AudioQuality.QUALITY_192K,
+                            )
+                            for (isVideo in listOf(true, false)) {
+                                HorizontalDivider()
+                                val title = if (isVideo) "默认播放画质" else "默认播放音质"
+                                val qualities: List<Quality> = if (isVideo) VideoQuality.entries else audioQualities
+                                val savedQuality = if (isVideo) settings.playerDefaultVideoQuality else settings.playerDefaultAudioQuality
+                                val savedIndex = qualities.indexOfFirst { it.code == savedQuality.code }
+                                var previewIndex by remember(isVideo, savedIndex) { mutableStateOf<Int?>(null) }
+                                val displayedIndex = previewIndex ?: savedIndex
+                                val valueText = qualities[displayedIndex].shortTitle
+                                val saveIndex: (Int) -> Unit = { index ->
+                                    if (isVideo) settings.playerDefaultVideoQuality = VideoQuality.entries[index]
+                                    else settings.playerDefaultAudioQuality = audioQualities[index]
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                    Spacer(Modifier.weight(1f))
+                                    Row(
+                                        modifier = Modifier.widthIn(max = 304.dp).fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text(
+                                            valueText,
+                                            modifier = Modifier.width(64.dp),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            textAlign = TextAlign.End,
+                                            maxLines = 1,
+                                        )
+                                        ShowSlider(
+                                            value = displayedIndex.toFloat(),
+                                            onValueChange = { previewIndex = it.roundToInt().coerceIn(qualities.indices) },
+                                            onValueChangeFinished = {
+                                                previewIndex?.let(saveIndex)
+                                                previewIndex = null
+                                            },
+                                            valueRange = 0f..qualities.lastIndex.toFloat(),
+                                            steps = qualities.size - 2,
+                                            centered = false,
+                                            showStops = true,
+                                            showTicks = true,
+                                            modifier = Modifier.weight(1f).widthIn(max = 200.dp).semantics {
+                                                contentDescription = title
+                                                stateDescription = valueText
+                                            },
+                                        )
+                                        IconButton(
+                                            onClick = {
+                                                previewIndex = null
+                                                saveIndex(qualities.lastIndex)
+                                            },
+                                            enabled = displayedIndex != qualities.lastIndex,
+                                            modifier = Modifier.size(24.dp),
+                                        ) {
+                                            Icon(Icons.Rounded.RestartAlt, contentDescription = "重置$title")
+                                        }
+                                    }
+                                }
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.playerRecordQualitySelectionEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.playerRecordQualitySelectionEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("记录音画质选择", style = MaterialTheme.typography.bodyLarge)
+                                IconButton(
+                                    onClick = { showRecordQualitySelectionInfo = true },
+                                    modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Info,
+                                        contentDescription = "记录音画质选择说明",
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                                Spacer(Modifier.weight(1f))
+                                Switch(checked = settings.playerRecordQualitySelectionEnabled, onCheckedChange = null)
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.playerHideAudioQualitySelectorEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.playerHideAudioQualitySelectorEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("隐藏播放器音质选项", style = MaterialTheme.typography.bodyLarge)
+                                Spacer(Modifier.weight(1f))
+                                Switch(checked = settings.playerHideAudioQualitySelectorEnabled, onCheckedChange = null)
                             }
                         }
                     }
