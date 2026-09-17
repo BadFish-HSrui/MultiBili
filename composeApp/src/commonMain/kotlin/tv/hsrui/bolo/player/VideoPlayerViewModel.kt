@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -32,14 +34,23 @@ import tv.hsrui.bolo.player.subtitle.BoloSubtitleController
 import tv.hsrui.network.feature.danmaku.DanmakuMode
 import tv.hsrui.network.feature.danmaku.fetchDanmakuSegment
 import tv.hsrui.network.feature.player.VideoSource
+import tv.hsrui.network.feature.player.PlayerInfoResponse
+import tv.hsrui.network.feature.player.fetchPlayerInfo
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
 import tv.hsrui.network.feature.player.enumModels.VideoCodec
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.player.fetchVideoPlayInfo
 import tv.hsrui.network.feature.player.fetchMediaPlayInfo
+import tv.hsrui.network.login.storage.LoginStorage
 
-class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : ViewModel() {
+class VideoPlayerViewModel(
+    avid: Long,
+    cid: Long,
+    episodeId: Long? = null,
+    private val initialPlayerInfo: PlayerInfoResponse? = null,
+) : ViewModel() {
     private val settings: BoloSettings = getKoin().get()
+    private val loginStorage: LoginStorage = getKoin().get()
     var avid: Long = avid
         private set
     var cid: Long = cid
@@ -49,6 +60,9 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
     private var sourceLoadJob: Job? = null
     private var sourceGeneration = 0L
     private var autoPlayOnOpen = true
+    private var playerInfo: PlayerInfoResponse? = null
+    private var playbackGeneration = -1L
+    private var lastConfirmedPositionMs: Long? = null
 
     val subtitleController = BoloSubtitleController(viewModelScope)
     val danmakuController = BoloDanmakuController()
@@ -103,6 +117,11 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
         viewModelScope.launch {
             controller.state.collect { playback ->
                 playbackReportController.updatePlayback(playback, controller.backend.value != null)
+                if (playbackGeneration == sourceGeneration && playback.hasConfirmedPosition &&
+                    !playback.isPlaybackSuspended && !playback.isRebuilding && !playback.isSeeking
+                ) {
+                    lastConfirmedPositionMs = playback.currentPositionMs
+                }
                 if (playback.isPlaybackSuspended) {
                     replayJob?.cancel()
                     danmakuController.pause()
@@ -126,7 +145,13 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
     fun switchMedia(avid: Long, cid: Long, episodeId: Long? = null, forceReload: Boolean = false) {
         if (!forceReload && this.avid == avid && this.cid == cid && this.episodeId == episodeId) return
         val opensNewMedia = sourceGeneration == 0L || this.avid != avid || this.cid != cid || this.episodeId != episodeId
+        val retryPositionMs = if (opensNewMedia) null else {
+            controller.state.value.takeIf { it.hasConfirmedPosition && playbackGeneration == sourceGeneration }
+                ?.displayPositionMs ?: lastConfirmedPositionMs
+        }
         if (opensNewMedia) {
+            playerInfo = initialPlayerInfo.takeIf { sourceGeneration == 0L }
+            lastConfirmedPositionMs = null
             autoPlayOnOpen = settings.playerAutoPlayOnOpenEnabled
             videoQuality = settings.playerDefaultVideoQuality
             audioQuality = settings.playerDefaultAudioQuality
@@ -148,7 +173,9 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
         _uiState.value = VideoPlayerUiState.Loading
         sourceLoadJob = viewModelScope.launch {
             loadVideo()
-            if (generation == sourceGeneration) playVideo(autoPlay = autoPlayOnOpen)
+            if (generation == sourceGeneration) {
+                playVideo(startPositionMs = retryPositionMs ?: resumePositionMs(), autoPlay = autoPlayOnOpen)
+            }
         }
     }
 
@@ -200,7 +227,8 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
         awaitingPlaybackReload = true
         danmakuController.pause()
         danmakuMedia = avid to cid
-        subtitleController.loadSubtitleList(avid, cid)
+        val info = playerInfo?.takeIf { it.matchesRequest(avid, cid, loginStorage.cookies.sessData) }
+        subtitleController.loadSubtitleList(avid, cid, info?.subtitles.orEmpty())
         subtitleController.synchronize(startPositionMs)
         playbackLoadJob?.cancel()
         val generation = sourceGeneration
@@ -213,6 +241,7 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
             controller.load(video = video, audio = audio, startPositionMs = startPositionMs, loudness = currentState.videoSource.loudness)
             currentCoroutineContext().ensureActive()
             if (generation != sourceGeneration) return@launch
+            playbackGeneration = generation
             playbackReportController.mediaLoaded()
             if (autoPlay) controller.play()
         }
@@ -252,12 +281,30 @@ class VideoPlayerViewModel(avid: Long, cid: Long, episodeId: Long? = null) : Vie
         return episodeId?.let { fetchMediaPlayInfo(it) } ?: fetchVideoPlayInfo(avid = avid, cid = cid)
     }
 
+    private fun resumePositionMs(): Long {
+        if (!loginStorage.isLoggedIn) return 0L
+        val info = playerInfo?.takeIf { it.matchesRequest(avid, cid, loginStorage.cookies.sessData) } ?: return 0L
+        val source = (uiState.value as? VideoPlayerUiState.Success)?.videoSource ?: return 0L
+        val durationSeconds = maxOf(source.getVideo(videoQuality, videoCodec).duration,
+            source.getAudio(audioQuality)?.duration ?: 0L)
+        val durationMs = durationSeconds.coerceIn(0L, Long.MAX_VALUE / 1000L) * 1000L
+        return info.resumePositionMs(cid, durationMs)
+    }
+
     suspend fun loadVideo() {
         val requestedAvid = avid
         val requestedCid = cid
         val generation = sourceGeneration
         try {
-            val result = fetchPlayInfo()
+            val result = coroutineScope {
+                val infoRequest = async {
+                    playerInfo ?: fetchPlayerInfo(requestedAvid, requestedCid).also {
+                        currentCoroutineContext().ensureActive()
+                        if (generation == sourceGeneration) playerInfo = it
+                    }
+                }
+                fetchPlayInfo().also { infoRequest.await() }
+            }
             currentCoroutineContext().ensureActive()
             if (generation != sourceGeneration || avid != requestedAvid || cid != requestedCid) return
             if (result.isSuccess) {

@@ -43,6 +43,7 @@ class PlaybackReportController {
     private var lastUpdate = TimeSource.Monotonic.markNow()
     private val pendingProgress = mutableSetOf<Pair<Long, Long>>()
     private var lastSuccessfulProgress: Pair<Long, Long>? = null
+    private var immediateReportAccountSession: String? = null
 
     fun openMedia(avid: Long, cid: Long) {
         if (closed || media == (avid to cid)) return
@@ -57,7 +58,9 @@ class PlaybackReportController {
         countingPlayback = false
         playedTime = Duration.ZERO
         lastSuccessfulProgress = null
-        reportProgress(immediately = true)
+        immediateReportAccountSession = loginStorage.cookies.sessData.takeIf {
+            settings.playerReportProgressImmediatelyEnabled && it.isNotEmpty()
+        }
         reportStart()
     }
 
@@ -74,13 +77,18 @@ class PlaybackReportController {
     fun updatePlayback(playback: BoloPlayerState, backendAvailable: Boolean) {
         if (closed) return
         advanceClock()
+        if (immediateReportAccountSession != loginStorage.cookies.sessData) immediateReportAccountSession = null
         // release 会把未确认的恢复目标保存到 state；无后端时保留最后的实际观看位置。
         val canObserve = acceptsPlayback && backendAvailable && pageVisible && foreground &&
-            !playback.isPlaybackSuspended && !playback.isRebuilding && !playback.isSeeking
+            playback.hasConfirmedPosition && !playback.isPlaybackSuspended && !playback.isRebuilding && !playback.isSeeking
         countingPlayback = canObserve && playback.isPlaying && !playback.isBuffering && !playback.isEnded
         if (countingPlayback) hasPlayed = true
         if (canObserve && !playback.isBuffering) {
-            if (hasPlayed) positionMs = playback.currentPositionMs.coerceAtLeast(0L)
+            positionMs = playback.currentPositionMs.coerceAtLeast(0L)
+            if (immediateReportAccountSession != null) {
+                immediateReportAccountSession = null
+                reportProgress(immediately = true)
+            }
             if (playback.isEnded && !wasEnded) reportProgress()
             wasEnded = playback.isEnded
         }
@@ -168,7 +176,7 @@ class PlaybackReportController {
         } else if (!hasPlayed || settings.playerReportProgressMode == PlaybackProgressReportMode.Off) {
             return
         }
-        val progressSeconds = if (immediately) 0L else positionMs / 1_000L
+        val progressSeconds = positionMs / 1_000L
         val key = mediaGeneration to progressSeconds
         if (key == lastSuccessfulProgress || !pendingProgress.add(key)) return
         val accountSession = loginStorage.cookies.sessData

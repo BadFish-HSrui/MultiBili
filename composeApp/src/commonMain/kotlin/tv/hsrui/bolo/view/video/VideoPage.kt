@@ -30,7 +30,7 @@ fun VideoPage(
 ) {
     val videoInfo = uiState.video
     val viewModel = viewModel(key = "video_player") {
-        VideoPlayerViewModel(videoInfo.avid, videoInfo.cid)
+        VideoPlayerViewModel(videoInfo.avid, videoInfo.cid, initialPlayerInfo = uiState.initialPlayerInfo)
     }
     val playerUiState by viewModel.uiState.collectAsState()
     val playerInfo by viewModel.controller.info.collectAsState()

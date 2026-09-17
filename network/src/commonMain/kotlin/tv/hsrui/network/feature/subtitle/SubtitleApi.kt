@@ -1,19 +1,14 @@
 package tv.hsrui.network.feature.subtitle
 
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
-import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.URLProtocol
 import io.ktor.http.Url
 import io.ktor.http.isSuccess
 import kotlinx.serialization.json.Json
-import tv.hsrui.network.client.ApiClient
-import tv.hsrui.network.constant.ApiUrls
 import tv.hsrui.network.utils.toHttpsUrl
-import tv.hsrui.network.wbi.buildWithWbi
 
 private const val SUBTITLE_USER_AGENT =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
@@ -25,20 +20,6 @@ private val subtitleContentClient by lazy { HttpClient() }
 private val subtitleContentJson = Json {
     ignoreUnknownKeys = true
     isLenient = true
-}
-
-suspend fun fetchSubtitleList(avid: Long, cid: Long): SubtitleListResponse {
-    require(avid > 0) { "avid 必须为正数" }
-    require(cid > 0) { "cid 必须为正数" }
-
-    val response = ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.Subtitle.LIST) {
-        buildWithWbi {
-            parameter("aid", avid)
-            parameter("cid", cid)
-        }
-    }
-    check(response.status.isSuccess()) { "字幕列表请求失败：HTTP ${response.status.value}" }
-    return response.body<SubtitleListResponse>()
 }
 
 suspend fun fetchSubtitleContent(url: String): SubtitleContentResponse {

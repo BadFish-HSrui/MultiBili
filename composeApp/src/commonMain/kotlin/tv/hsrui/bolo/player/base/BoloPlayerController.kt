@@ -139,7 +139,7 @@ class BoloPlayerController(
         generation = coordinator.onMediaChanged()
         val expected = generation
         mutableState.value = state.value.copy(isBuffering = true, isPlaying = false, isEnded = false,
-            isSeekable = false, pendingSeekPositionMs = position)
+            isSeekable = false, hasConfirmedPosition = false, pendingSeekPositionMs = position)
         loadJob = scope.launch {
             try {
                 val current = engineMutex.withLock {
@@ -304,7 +304,7 @@ class BoloPlayerController(
                 loadJob?.cancel()
                 val target = state.value.pendingSeekPositionMs ?: state.value.currentPositionMs
                 coordinator.requestSeek(target)
-                mutableState.value = state.value.copy(pendingSeekPositionMs = target)
+                mutableState.value = state.value.copy(pendingSeekPositionMs = target, hasConfirmedPosition = false)
                 submitSeek()
             }
             BoloMpvEvent.Position -> observePosition(event.value, event.request)
@@ -345,13 +345,14 @@ class BoloPlayerController(
 
     private fun observePosition(seconds: Double, request: Long) {
         val position = secondsToMs(seconds) ?: return
-        if (inBackground || debugTimeout) return
+        if (!ready || inBackground || debugTimeout) return
         if (state.value.isSeeking && request != activeSeekRequest) return
         if (!state.value.isSeeking && nativeSeeking) return
         // UI 在 seek/缓冲期间会标为未播放，不能据此忽略原生继续前进的时间。
         if (!coordinator.acceptObservedPosition(position, playWhenReady && !state.value.isEnded, state.value.playbackSpeed)) return
         val wasPending = state.value.isSeeking
-        mutableState.value = state.value.copy(currentPositionMs = position, pendingSeekPositionMs = coordinator.pendingPositionMs)
+        mutableState.value = state.value.copy(currentPositionMs = position,
+            pendingSeekPositionMs = coordinator.pendingPositionMs, hasConfirmedPosition = true)
         if (wasPending && !state.value.isSeeking) {
             seekJob?.cancel()
             restoring = false
@@ -490,7 +491,7 @@ class BoloPlayerController(
             if (disposed || inBackground || state.value.isRebuilding || videoUrls.isEmpty()) return@launch
             val expected = generation
             val lifecycle = lifecycleRevision
-            mutableState.value = state.value.copy(isRebuilding = true)
+            mutableState.value = state.value.copy(isRebuilding = true, hasConfirmedPosition = false)
             rebuildJob = scope.launch(start = CoroutineStart.LAZY) {
                 try {
                     releaseEngine()
@@ -652,7 +653,7 @@ class BoloPlayerController(
                     generation = coordinator.onMediaChanged()
                 }
                 mutableState.value = state.value.copy(currentPositionMs = saved, pendingSeekPositionMs = null,
-                    isPlaybackSuspended = true, isPlaying = false, isBuffering = false)
+                    isPlaybackSuspended = true, isPlaying = false, isBuffering = false, hasConfirmedPosition = false)
                 mutableBackend.value?.let { engine ->
                     withContext(boloMpvDispatcher) { engine.pause(true) }
                     if (lifecycle == lifecycleRevision && inBackground && mutableBackend.value === engine)
@@ -705,7 +706,7 @@ class BoloPlayerController(
         val engine = mutableBackend.value
         mutableBackend.value = null
         mutableState.value = state.value.copy(currentPositionMs = state.value.displayPositionMs,
-            pendingSeekPositionMs = null, isPlaying = false, isBuffering = false)
+            pendingSeekPositionMs = null, isPlaying = false, isBuffering = false, hasConfirmedPosition = false)
         withContext(NonCancellable) {
             engineMutex.withLock {
                 if (engine != null) {
@@ -747,7 +748,7 @@ class BoloPlayerController(
         seekJob?.cancel()
         coordinator.cancelCurrentSeek()
         mutableState.value = state.value.copy(isPlaying = false, isBuffering = false,
-            pendingSeekPositionMs = null, isPlaybackSuspended = inBackground)
+            pendingSeekPositionMs = null, isPlaybackSuspended = inBackground, hasConfirmedPosition = false)
         val expected = generation
         scope.launch {
             if (expected != generation) return@launch

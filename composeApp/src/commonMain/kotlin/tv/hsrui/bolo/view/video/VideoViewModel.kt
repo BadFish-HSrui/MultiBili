@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.model.Vid
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.network.feature.video.VideoInfoData
@@ -15,6 +16,9 @@ import tv.hsrui.network.feature.video.fetchVideoInfo
 import tv.hsrui.network.feature.video.collection.VideoCollectionEpisodeData
 import tv.hsrui.network.feature.video.list.fetchVideoListInfo
 import tv.hsrui.network.feature.video.list.fetchVideoListVideos
+import tv.hsrui.network.feature.player.PlayerInfoResponse
+import tv.hsrui.network.feature.player.fetchPlayerInfo
+import tv.hsrui.network.login.storage.LoginStorage
 
 class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
     constructor(vid: Vid) : this(VideoPlaybackRequest.Single(vid))
@@ -28,6 +32,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
     private var nextJob: Job? = null
     private var listGeneration = 0
     private var listState: VideoListUiState? = null
+    private var hasOpenedVideo = false
 
     init { loadPlayback() }
 
@@ -192,6 +197,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         if (part != null) {
             _uiState.value = current.copy(
                 video = current.video.copy(cid = part),
+                initialPlayerInfo = null,
                 selectedSectionId = current.video.collection?.sections?.firstOrNull { section ->
                     section.episodes.any { it.avid == current.video.avid }
                 }?.sectionId ?: current.selectedSectionId,
@@ -300,10 +306,36 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         } else VideoUiState.Loading
         loadJob = viewModelScope.launch {
             try {
-                val video = loadVideo(vid, episode?.cid)
+                val originalVideo = loadVideo(vid, episode?.cid)
+                if (version != generation) return@launch
+                var video = originalVideo
+                var playerInfo: PlayerInfoResponse? = null
+                if (!hasOpenedVideo) {
+                    val loginStorage = getKoin().get<LoginStorage>()
+                    val accountSession = loginStorage.cookies.sessData
+                    val initialInfo = fetchPlayerInfo(video.avid, video.cid)
+                    if (version != generation) return@launch
+                    playerInfo = initialInfo
+                    if (accountSession.isNotEmpty() && loginStorage.cookies.sessData == accountSession &&
+                        initialInfo.matchesRequest(video.avid, video.cid, accountSession)
+                    ) {
+                        val historyPart = video.parts.firstOrNull { it.cid == initialInfo.lastPlayCid }
+                        if (historyPart != null && historyPart.cid != video.cid) {
+                            video = video.copy(cid = historyPart.cid)
+                            // 字幕属于请求的 CID；只在实际换 P 时加载目标自己的播放器信息。
+                            playerInfo = fetchPlayerInfo(video.avid, video.cid)
+                        }
+                    }
+                    if (loginStorage.cookies.sessData != accountSession) {
+                        video = originalVideo
+                        playerInfo = initialInfo
+                    }
+                }
                 if (version != generation) return@launch
                 val latest = _uiState.value as? VideoUiState.Success
-                _uiState.value = VideoUiState.Success(video = video, isDescending = latest?.isDescending ?: false, videoList = listState)
+                hasOpenedVideo = true
+                _uiState.value = VideoUiState.Success(video = video, isDescending = latest?.isDescending ?: false,
+                    videoList = listState, initialPlayerInfo = playerInfo)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -363,6 +395,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         loadJob?.cancel()
         _uiState.value = current.copy(
             video = if (current.video.cid == cid) current.video else current.video.copy(cid = cid),
+            initialPlayerInfo = current.initialPlayerInfo.takeIf { current.video.cid == cid },
             switchingEpisodeKey = null, isSwitchingEpisode = false, episodeError = null,
             episodeNavigationPrevious = null,
         )

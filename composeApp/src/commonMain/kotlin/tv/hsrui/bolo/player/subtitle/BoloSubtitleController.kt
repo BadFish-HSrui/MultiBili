@@ -9,7 +9,6 @@ import kotlinx.coroutines.launch
 import tv.hsrui.network.feature.subtitle.SubtitleCue
 import tv.hsrui.network.feature.subtitle.SubtitleItem
 import tv.hsrui.network.feature.subtitle.fetchSubtitleContent
-import tv.hsrui.network.feature.subtitle.fetchSubtitleList
 
 data class BoloSubtitleState(
     val subtitles: List<SubtitleItem> = emptyList(),
@@ -24,7 +23,6 @@ class BoloSubtitleController(private val scope: CoroutineScope) {
     private var media: Pair<Long, Long>? = null
     private var generation = 0L
     private var selectionGeneration = 0L
-    private var listJob: Job? = null
     private var contentJob: Job? = null
     private var positionMs = 0L
     private val cache = mutableMapOf<SubtitleItem, List<SubtitleCue>>()
@@ -45,26 +43,14 @@ class BoloSubtitleController(private val scope: CoroutineScope) {
             }
         }
 
-    fun loadSubtitleList(avid: Long, cid: Long) {
+    fun loadSubtitleList(avid: Long, cid: Long, subtitles: List<SubtitleItem>) {
         if (media == (avid to cid)) return
         clear()
         if (avid <= 0L || cid <= 0L) return
         media = avid to cid
-        val requestGeneration = generation
-        listJob = scope.launch {
-            try {
-                val response = fetchSubtitleList(avid, cid)
-                if (generation != requestGeneration) return@launch
-                check(response.isSuccess) { response.message }
-                _state.value = BoloSubtitleState(subtitles = response.subtitles.filter { it.url.isNotBlank() })
-                if (alwaysOn) {
-                    automaticSubtitle?.let { loadSubtitleContent(it) }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (generation == requestGeneration) println("字幕列表加载失败: ${e.message}")
-            }
+        _state.value = BoloSubtitleState(subtitles = subtitles.filter { it.url.isNotBlank() })
+        if (alwaysOn) {
+            automaticSubtitle?.let { loadSubtitleContent(it) }
         }
     }
 
@@ -109,9 +95,7 @@ class BoloSubtitleController(private val scope: CoroutineScope) {
     fun clear() {
         generation++
         selectionGeneration++
-        listJob?.cancel()
         contentJob?.cancel()
-        listJob = null
         contentJob = null
         media = null
         positionMs = 0L

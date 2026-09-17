@@ -72,6 +72,7 @@ object ApiUrls {
     }
 
     object Play {
+        const val INFO = "x/player/wbi/v2" //播放器信息
         const val REPORT_START = "x/click-interface/click/web/h5" //开始播放上报
         const val REPORT_PROGRESS = "x/v2/history/report" //播放进度上报
         const val VIDEO = "x/player/wbi/playurl" //视频播放信息
@@ -80,10 +81,6 @@ object ApiUrls {
 
     object Danmaku {
         const val SEGMENT = "x/v2/dm/wbi/web/seg.so" //分段弹幕
-    }
-
-    object Subtitle {
-        const val LIST = "x/player/wbi/v2" //字幕列表
     }
 
     const val WBI = "x/web-interface/nav" //用于获取WbiKey，实际上是导航栏接口

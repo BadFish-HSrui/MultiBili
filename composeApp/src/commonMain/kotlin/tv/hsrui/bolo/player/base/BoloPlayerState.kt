@@ -12,6 +12,8 @@ data class BoloPlayerState(
     val isPlaying: Boolean = false,
     /** 是否正在缓冲 */
     val isBuffering: Boolean = false,
+    /** 当前媒体已加载，并接受过原生实际位置观测；加载目标和恢复缓存不算确认。 */
+    val hasConfirmedPosition: Boolean = false,
     /** 原生播放器已确认的实际播放位置（毫秒） */
     val currentPositionMs: Long = 0L,
     /** 视频总时长（毫秒），0 表示尚未获取 */

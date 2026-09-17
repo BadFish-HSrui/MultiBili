@@ -1,6 +1,7 @@
 package tv.hsrui.bolo.view.video
 
 import tv.hsrui.network.feature.video.VideoInfoData
+import tv.hsrui.network.feature.player.PlayerInfoResponse
 import tv.hsrui.network.feature.video.collection.VideoCollectionEpisodeData
 import tv.hsrui.network.feature.video.list.VideoListItemData
 
@@ -20,6 +21,7 @@ sealed class VideoUiState {
         val episodeError: String? = null,
         val videoList: VideoListUiState? = null,
         val episodeNavigationPrevious: Boolean? = null,
+        val initialPlayerInfo: PlayerInfoResponse? = null,
     ) : VideoUiState() {
         val selectedSection get() = video.collection?.sections?.firstOrNull { it.sectionId == selectedSectionId }
         val playingEpisodeKey get() = video.collection?.sections?.flatMap { it.episodes }

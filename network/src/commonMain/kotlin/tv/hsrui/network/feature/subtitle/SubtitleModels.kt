@@ -5,25 +5,6 @@ import kotlinx.serialization.Serializable
 import tv.hsrui.network.utils.toHttpsUrl
 
 @Serializable
-data class SubtitleListResponse(
-    val code: Int = -1,
-    val message: String = "",
-    @SerialName("data") private val data: SubtitleListData? = null,
-) {
-    val isSuccess get() = code == 0
-    val needLoginSubtitle: Boolean? get() = data?.needLoginSubtitle
-    val subtitles: List<SubtitleItem> get() = data?.subtitles.orEmpty()
-}
-
-@Serializable
-data class SubtitleListData(
-    @SerialName("need_login_subtitle") val needLoginSubtitle: Boolean? = null,
-    @SerialName("subtitle") private val subtitle: SubtitleData? = null,
-) {
-    val subtitles: List<SubtitleItem> get() = subtitle?.subtitles.orEmpty()
-}
-
-@Serializable
 data class SubtitleData(
     val subtitles: List<SubtitleItem> = emptyList(),
 )

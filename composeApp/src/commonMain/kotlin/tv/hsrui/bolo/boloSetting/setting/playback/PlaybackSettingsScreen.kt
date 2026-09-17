@@ -117,7 +117,7 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
     if (showReportProgressImmediatelyInfo) {
         ShowInfoDialog(onConfirm = { showReportProgressImmediatelyInfo = false }) {
             Text(
-                text = "打开视频后上报0s播放记录。\n\n" +
+                text = "播放视频后立即上报播放记录。\n\n" +
                         "这样可以使视频立刻出现在历史记录中，否则会根据 ‘上报播放进度’ 选项值在退出或一段时间后上报。\n\n" +
                         "官方行为：退出视频后才会上报进度出现在播放记录中。",
                 textAlign = TextAlign.Center,
