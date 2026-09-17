@@ -14,11 +14,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.Card
@@ -26,41 +24,22 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import org.koin.compose.koinInject
-import tv.hsrui.network.login.storage.LoginStorage
 import tv.hsrui.bolo.navigation.openFavoriteFolder
-import tv.hsrui.bolo.ui.components.dialog.ShowDeleteFavoriteFolderDialog
 import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.network.feature.favorite.FavoriteFolderInfoData
 
 @Composable
 internal fun FavoriteFolderCard(
     folder: FavoriteFolderInfoData,
-    onDeleted: () -> Unit,
     modifier: Modifier = Modifier,
-    canManage: Boolean = false,
-    canManageNow: () -> Boolean = { canManage },
 ) {
-    val loginStorage: LoginStorage = koinInject()
-    val currentUserMid by loginStorage.currentUserMidFlow.collectAsState(
-        initial = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L,
-    )
-    val ownsFolder = {
-        canManageNow() && loginStorage.isLoggedIn && folder.mid > 0 && folder.mid == loginStorage.cookies.dedeUserID
-    }
     Card(
         onClick = { openFavoriteFolder(folder.id) },
         enabled = folder.id > 0,
@@ -127,41 +106,7 @@ internal fun FavoriteFolderCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
-                        modifier = Modifier.padding(end = 24.dp),
                     )
-                }
-
-                if (canManage && currentUserMid > 0 && ownsFolder() && folder.id > 0 && !folder.isDefault) {
-                    var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
-
-                    IconButton(
-                        onClick = { showDeleteDialog = true },
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .offset(x = (-4).dp, y = (-4).dp)
-                            .size(24.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.DeleteForever,
-                            contentDescription = "删除收藏夹",
-                            modifier = Modifier
-                                .size(20.dp)
-                                .alpha(0.5F),
-                        )
-                    }
-
-                    if (showDeleteDialog) {
-                        ShowDeleteFavoriteFolderDialog(
-                            canDelete = ownsFolder,
-                            mediaId = folder.id,
-                            folderTitle = folder.title,
-                            onCancel = { showDeleteDialog = false },
-                            onDeleted = {
-                                showDeleteDialog = false
-                                onDeleted()
-                            },
-                        )
-                    }
                 }
             }
             IconButton(

@@ -249,7 +249,6 @@ private fun UserSpaceContent(
                                             else -> FavoriteFoldersUiState.Loading
                                         },
                                         onRefresh = onRefresh,
-                                        onFolderDeleted = { onRefresh() },
                                         canManage = canManageFavorites,
                                         canManageNow = canManageFavoritesNow,
                                         favoriteFoldersGridState = favoritesGrid,

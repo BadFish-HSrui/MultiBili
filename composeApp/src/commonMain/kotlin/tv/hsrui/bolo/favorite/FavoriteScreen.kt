@@ -57,7 +57,6 @@ fun FavoriteScreen(
         FavoriteFoldersContent(
             uiState = uiState,
             onRefresh = viewModel::refreshFolders,
-            onFolderDeleted = viewModel::removeItem,
             canManage = currentUserMid > 0,
             canManageNow = { loginStorage.isLoggedIn },
             modifier = Modifier.padding(innerPadding.calculateWithoutBottom())
