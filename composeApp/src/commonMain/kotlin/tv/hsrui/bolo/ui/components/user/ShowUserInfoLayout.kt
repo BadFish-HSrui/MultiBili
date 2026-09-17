@@ -1,10 +1,12 @@
 package tv.hsrui.bolo.ui.components.user
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
@@ -27,6 +29,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.ui.theme.BiliColor
@@ -43,12 +46,12 @@ internal fun ShowUserInfoLayout(
     vipTypeString: String,
     modifier: Modifier = Modifier,
     shape: Shape = BoloShapes.List.Top,
+    fixedHeight: Dp? = null,
+    signMinLines: Int = 1,
+    onClick: (() -> Unit)? = null,
     statistics: @Composable RowScope.() -> Unit,
 ) {
-    Card(
-        modifier = modifier.wrapContentHeight().fillMaxWidth(),
-        shape = shape,
-    ) {
+    val content: @Composable ColumnScope.() -> Unit = {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -101,6 +104,7 @@ internal fun ShowUserInfoLayout(
                 Text(
                     text = sign.ifEmpty { "这个人很懒，没有签名喵" },
                     style = MaterialTheme.typography.bodyMedium,
+                    minLines = signMinLines,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.alpha(0.75F),
@@ -111,5 +115,13 @@ internal fun ShowUserInfoLayout(
                 }
             }
         }
+    }
+    val cardModifier = modifier
+        .then(if (fixedHeight == null) Modifier.wrapContentHeight() else Modifier.height(fixedHeight))
+        .fillMaxWidth()
+    if (onClick == null) {
+        Card(modifier = cardModifier, shape = shape, content = content)
+    } else {
+        Card(onClick = onClick, modifier = cardModifier, shape = shape, content = content)
     }
 }
