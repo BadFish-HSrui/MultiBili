@@ -1294,8 +1294,8 @@ fun BoloPlayerControls(
                     settingsOpen = false
                     controlsVisible = true
                 },
-                autoReplayEnabled = settings.playerAutoReplayEnabled,
-                onAutoReplayEnabledChange = { settings.playerAutoReplayEnabled = it },
+                singleEpisodeLoopEnabled = viewModel.singleEpisodeLoopEnabled,
+                onSingleEpisodeLoopEnabledChange = { viewModel.singleEpisodeLoopEnabled = it },
                 isOpen = settingsOpen,
                 supportsDeviceGestures = deviceControls.supportsDeviceGestures,
                 desktopDoubleClickPauseEnabled = desktopDoubleClickPauseEnabled,

@@ -121,8 +121,8 @@ fun BoloPlayerSettingsSheet(
     onMergeAudioChannelsEnabledChange: (Boolean) -> Unit,
     rebuildEnabled: Boolean,
     onRebuild: () -> Unit,
-    autoReplayEnabled: Boolean,
-    onAutoReplayEnabledChange: (Boolean) -> Unit,
+    singleEpisodeLoopEnabled: Boolean,
+    onSingleEpisodeLoopEnabledChange: (Boolean) -> Unit,
     seekGestureEnabled: Boolean,
     onSeekGestureEnabledChange: (Boolean) -> Unit,
     brightnessGestureEnabled: Boolean,
@@ -328,21 +328,21 @@ fun BoloPlayerSettingsSheet(
                                                         Row(
                                                             Modifier.fillMaxWidth()
                                                                 .toggleable(
-                                                                    value = autoReplayEnabled,
+                                                                    value = singleEpisodeLoopEnabled,
                                                                     enabled = isOpen,
                                                                     role = Role.Switch,
-                                                                    onValueChange = onAutoReplayEnabledChange,
+                                                                    onValueChange = onSingleEpisodeLoopEnabledChange,
                                                                 )
                                                                 .height(32.dp).padding(horizontal = 8.dp),
                                                             verticalAlignment = Alignment.CenterVertically,
                                                         ) {
                                                             Text(
-                                                                text = "自动重播",
+                                                                text = "单集循环",
                                                                 style = MaterialTheme.typography.bodyMedium,
                                                                 modifier = Modifier.weight(1f),
                                                             )
                                                             Switch(
-                                                                checked = autoReplayEnabled,
+                                                                checked = singleEpisodeLoopEnabled,
                                                                 onCheckedChange = null,
                                                                 enabled = isOpen,
                                                                 modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),

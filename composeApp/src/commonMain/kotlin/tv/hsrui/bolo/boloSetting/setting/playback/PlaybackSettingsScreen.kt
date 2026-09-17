@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.boloSetting.PlaybackEndBehavior
 import tv.hsrui.bolo.boloSetting.PlaybackLoudnessMode
 import tv.hsrui.bolo.boloSetting.PlaybackProgressReportMode
 import tv.hsrui.bolo.ui.components.dialog.ShowInfoDialog
@@ -210,6 +211,32 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     checked = settings.playerResumeFromHistoryEnabled,
                                     onCheckedChange = null
                                 )
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp)
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("播放结束行为", style = MaterialTheme.typography.bodyLarge)
+                                Spacer(Modifier.weight(1f))
+                                SingleChoiceSegmentedButtonRow {
+                                    val behaviors = PlaybackEndBehavior.entries
+                                    behaviors.forEachIndexed { index, behavior ->
+                                        SegmentedButton(
+                                            selected = behavior == settings.playerPlaybackEndBehavior,
+                                            onClick = { settings.playerPlaybackEndBehavior = behavior },
+                                            shape = SegmentedButtonDefaults.itemShape(
+                                                index = index,
+                                                count = behaviors.size,
+                                            ),
+                                            modifier = Modifier.padding(vertical = 8.dp),
+                                        ) {
+                                            Text(behavior.title, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                        }
+                                    }
+                                }
                             }
                             val audioQualities = listOf(
                                 AudioQuality.QUALITY_64K,

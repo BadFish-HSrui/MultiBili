@@ -259,15 +259,21 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentPlayerAutoPlayAfterSeekEnabled = value
         }
 
-    private var storedPlayerAutoReplayEnabled by settingsKSafe(false, key = "player_auto_replay_enabled")
-    private var currentPlayerAutoReplayEnabled by mutableStateOf(storedPlayerAutoReplayEnabled)
+    private val storedPlayerAutoReplayEnabled by settingsKSafe(false, key = "player_auto_replay_enabled")
+    private var storedPlayerPlaybackEndBehavior by settingsKSafe("", key = "player_playback_end_behavior")
+    private var currentPlayerPlaybackEndBehavior by mutableStateOf(
+        PlaybackEndBehavior.entries.firstOrNull { it.storedValue == storedPlayerPlaybackEndBehavior }
+            ?: if (storedPlayerPlaybackEndBehavior.isEmpty() && storedPlayerAutoReplayEnabled) {
+                PlaybackEndBehavior.Replay
+            } else PlaybackEndBehavior.Off,
+    )
 
-    var playerAutoReplayEnabled: Boolean
-        get() = currentPlayerAutoReplayEnabled
+    var playerPlaybackEndBehavior: PlaybackEndBehavior
+        get() = currentPlayerPlaybackEndBehavior
         set(value) {
-            if (value == currentPlayerAutoReplayEnabled) return
-            storedPlayerAutoReplayEnabled = value
-            currentPlayerAutoReplayEnabled = value
+            if (value == currentPlayerPlaybackEndBehavior) return
+            storedPlayerPlaybackEndBehavior = value.storedValue
+            currentPlayerPlaybackEndBehavior = value
         }
 
     private var storedPlayerMergeAudioChannelsEnabled by settingsKSafe(

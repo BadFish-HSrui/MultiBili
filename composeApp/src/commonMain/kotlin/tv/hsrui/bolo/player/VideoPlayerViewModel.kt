@@ -1,5 +1,8 @@
 package tv.hsrui.bolo.player
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.lifecycle.ViewModel
@@ -57,6 +60,7 @@ class VideoPlayerViewModel(
         private set
     var episodeId: Long? = episodeId
         private set
+    var singleEpisodeLoopEnabled by mutableStateOf(false)
     private var sourceLoadJob: Job? = null
     private var sourceGeneration = 0L
     private var autoPlayOnOpen = true
@@ -151,6 +155,7 @@ class VideoPlayerViewModel(
                 ?.displayPositionMs ?: lastConfirmedPositionMs
         }
         if (opensNewMedia) {
+            singleEpisodeLoopEnabled = false
             playerInfo = initialPlayerInfo.takeIf { sourceGeneration == 0L }
             lastConfirmedPositionMs = null
             autoPlayOnOpen = settings.playerAutoPlayOnOpenEnabled
@@ -254,6 +259,7 @@ class VideoPlayerViewModel(
     }
 
     fun onPlaybackPageExited() {
+        singleEpisodeLoopEnabled = false
         playbackReportController.updatePlayback(controller.state.value, controller.backend.value != null)
         playbackReportController.leavePage()
     }
