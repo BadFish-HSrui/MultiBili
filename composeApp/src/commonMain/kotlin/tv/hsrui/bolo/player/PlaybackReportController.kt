@@ -57,6 +57,7 @@ class PlaybackReportController {
         countingPlayback = false
         playedTime = Duration.ZERO
         lastSuccessfulProgress = null
+        reportProgress(immediately = true)
         reportStart()
     }
 
@@ -159,12 +160,15 @@ class PlaybackReportController {
         }
     }
 
-    private fun reportProgress() {
+    private fun reportProgress(immediately: Boolean = false) {
         val target = media ?: return
-        if (closed || !hasPlayed || settings.playerReportProgressMode == PlaybackProgressReportMode.Off ||
-            !loginStorage.isLoggedIn
-        ) return
-        val progressSeconds = positionMs / 1_000L
+        if (closed || !loginStorage.isLoggedIn) return
+        if (immediately) {
+            if (!settings.playerReportProgressImmediatelyEnabled) return
+        } else if (!hasPlayed || settings.playerReportProgressMode == PlaybackProgressReportMode.Off) {
+            return
+        }
+        val progressSeconds = if (immediately) 0L else positionMs / 1_000L
         val key = mediaGeneration to progressSeconds
         if (key == lastSuccessfulProgress || !pendingProgress.add(key)) return
         val accountSession = loginStorage.cookies.sessData
@@ -174,8 +178,12 @@ class PlaybackReportController {
                 withPlaybackReportBackgroundExecution {
                     requestMutex.withLock {
                         repeat(3) { attempt ->
-                            if (settings.playerReportProgressMode == PlaybackProgressReportMode.Off ||
-                                !loginStorage.isLoggedIn || loginStorage.cookies.sessData != accountSession
+                            val enabled = if (immediately) {
+                                settings.playerReportProgressImmediatelyEnabled
+                            } else {
+                                settings.playerReportProgressMode != PlaybackProgressReportMode.Off
+                            }
+                            if (!enabled || !loginStorage.isLoggedIn || loginStorage.cookies.sessData != accountSession
                             ) return@withLock
                             try {
                                 val result = withTimeoutOrNull(10_000L) {

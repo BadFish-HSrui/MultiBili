@@ -63,6 +63,7 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
     // 单双栏切换会移动同一导航内容；保留局部 Lookahead 作用域，避免滑块沿用已失效的对齐线状态。
     val settings: BoloSettings = koinInject()
     var showReportStartInfo by remember { mutableStateOf(false) }
+    var showReportProgressImmediatelyInfo by remember { mutableStateOf(false) }
     var showDanmakuAutoEnableInfo by remember { mutableStateOf(false) }
     var showDynamicLoudnessInfo by remember { mutableStateOf(false) }
     var showRecordQualitySelectionInfo by remember { mutableStateOf(false) }
@@ -106,6 +107,19 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
         ShowInfoDialog(onConfirm = { showReportStartInfo = false }) {
             Text(
                 text = "此选项只影响播放量增加，需要开启上报播放进度才会出现在历史记录中",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
+            )
+        }
+    }
+
+    if (showReportProgressImmediatelyInfo) {
+        ShowInfoDialog(onConfirm = { showReportProgressImmediatelyInfo = false }) {
+            Text(
+                text = "打开视频后上报0s播放记录。\n\n" +
+                        "这样可以使视频立刻出现在历史记录中，否则会根据 ‘上报播放进度’ 选项值在退出或一段时间后上报。\n\n" +
+                        "官方行为：退出视频后才会上报进度出现在播放记录中。",
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
@@ -494,6 +508,32 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                         }
                                     }
                                 }
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.playerReportProgressImmediatelyEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.playerReportProgressImmediatelyEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("立即上报播放进度", style = MaterialTheme.typography.bodyLarge)
+                                IconButton(
+                                    onClick = { showReportProgressImmediatelyInfo = true },
+                                    modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Info,
+                                        contentDescription = "立即上报播放进度说明",
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                                Box(Modifier.weight(1f))
+                                Switch(
+                                    checked = settings.playerReportProgressImmediatelyEnabled,
+                                    onCheckedChange = null
+                                )
                             }
                         }
                     }

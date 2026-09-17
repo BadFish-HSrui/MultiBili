@@ -203,6 +203,20 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentPlayerReportProgressMode = value
         }
 
+    private var storedPlayerReportProgressImmediatelyEnabled by settingsKSafe(
+        false,
+        key = "player_report_progress_immediately_enabled",
+    )
+    private var currentPlayerReportProgressImmediatelyEnabled by mutableStateOf(storedPlayerReportProgressImmediatelyEnabled)
+
+    var playerReportProgressImmediatelyEnabled: Boolean
+        get() = currentPlayerReportProgressImmediatelyEnabled
+        set(value) {
+            if (value == currentPlayerReportProgressImmediatelyEnabled) return
+            storedPlayerReportProgressImmediatelyEnabled = value
+            currentPlayerReportProgressImmediatelyEnabled = value
+        }
+
     private var storedPlayerResumeAfterBackgroundEnabled by settingsKSafe(
         false,
         key = "player_resume_after_background_enabled",
