@@ -1,5 +1,8 @@
 package tv.hsrui.bolo.ui.components.player
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.Orientation
@@ -19,10 +22,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.SwapVert
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
@@ -34,23 +41,41 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.theme.BiliColor
 
 data class PlaybackCollectionGroup(val id: String, val title: String)
+
+data class PlaybackCollectionPart(val id: String, val title: String, val duration: String = "")
 
 data class PlaybackCollectionItem(
     val id: String,
     val title: String,
     val badge: String = "",
     val enabled: Boolean = true,
+    val parts: List<PlaybackCollectionPart> = emptyList(),
+    val duration: String = "",
 )
 
 @Composable
@@ -68,13 +93,31 @@ fun ShowPlaybackCollectionSelector(
     title: String = "选集",
     isLoading: Boolean = false,
     errorMessage: String? = null,
+    playingPartId: String? = null,
+    onPartSelected: (String) -> Unit = {},
+    selectedItemContentColor: Color = Color.Unspecified,
 ) {
     val displayedItems = remember(items, isDescending) { if (isDescending) items.reversed() else items }
     val listState = rememberLazyListState()
     val groupState = rememberLazyListState()
     val playingIndex = displayedItems.indexOfFirst { it.id == playingItemId }
-    LaunchedEffect(selectedGroupId, playingItemId, isDescending, displayedItems) {
+    var partsExpanded by rememberSaveable(playingItemId) { mutableStateOf(true) }
+    val partBounds = remember(selectedGroupId, playingItemId, items) { mutableStateMapOf<String, Pair<Int, Int>>() }
+    LaunchedEffect(selectedGroupId, playingItemId, playingPartId, isDescending, displayedItems, isLoading, errorMessage) {
+        if (isLoading || errorMessage != null) return@LaunchedEffect
         if (displayedItems.isNotEmpty()) listState.scrollToItem(playingIndex.coerceAtLeast(0))
+    }
+    LaunchedEffect(selectedGroupId, playingItemId, playingPartId, isDescending, displayedItems, isLoading, errorMessage, partsExpanded) {
+        if (isLoading || errorMessage != null) return@LaunchedEffect
+        if (partsExpanded && displayedItems.getOrNull(playingIndex)?.parts?.any { it.id == playingPartId } == true) {
+            // 展开动画结束后再定位 P 行；收起不重置列表位置，避免卡片向下跳动。
+            delay(200)
+            val (top, height) = snapshotFlow { partBounds[playingPartId] }.filterNotNull().first()
+            val layout = listState.layoutInfo
+            val visibleHeight = layout.viewportEndOffset - layout.viewportStartOffset - layout.afterContentPadding
+            // 一张视频卡片可能高于整个视口；按内部 P 行定位，仍只滚动外层选集列表。
+            listState.scrollToItem(playingIndex, (top + height - visibleHeight).coerceAtLeast(0))
+        }
     }
     LaunchedEffect(groups, selectedGroupId) {
         val index = groups.indexOfFirst { it.id == selectedGroupId }
@@ -140,6 +183,7 @@ fun ShowPlaybackCollectionSelector(
                 ) {
                     items(displayedItems, key = { it.id }) { item ->
                         val playing = item.id == playingItemId
+                        val hasParts = playing && item.parts.isNotEmpty()
                         val containerColor = if (playing) MaterialTheme.colorScheme.secondaryContainer
                         else MaterialTheme.colorScheme.surface
                         CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
@@ -148,19 +192,24 @@ fun ShowPlaybackCollectionSelector(
                                 enabled = item.enabled,
                                 shape = MaterialTheme.shapes.small,
                                 colors = CardDefaults.cardColors(containerColor = containerColor),
-                                modifier = Modifier.fillMaxWidth().semantics { selected = playing },
+                                modifier = Modifier.fillMaxWidth()
+                                    .animateContentSize(animationSpec = tween(200), alignment = Alignment.TopStart)
+                                    .semantics { selected = playing },
                             ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(
+                                        start = 8.dp,
+                                        end = if (hasParts || item.duration.isNotBlank()) 0.dp else 8.dp,
+                                    ),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
                                         item.title,
-                                        style = MaterialTheme.typography.bodyLarge,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (playing) selectedItemContentColor else Color.Unspecified,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier.weight(1f).padding(vertical = 4.dp),
                                     )
                                     if (item.badge.isNotBlank()) {
                                         val isVipBadge = item.badge.contains("会员")
@@ -174,12 +223,74 @@ fun ShowPlaybackCollectionSelector(
                                             contentColor = if (isVipBadge || isPreviewBadge) Color.White
                                             else MaterialTheme.colorScheme.onTertiaryContainer,
                                             shape = MaterialTheme.shapes.extraSmall,
+                                            modifier = Modifier.padding(start = 8.dp),
                                         ) {
                                             Text(
                                                 item.badge,
                                                 style = MaterialTheme.typography.labelSmall,
                                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                                             )
+                                        }
+                                    }
+                                    if (hasParts) {
+                                        IconButton(
+                                            onClick = { partsExpanded = !partsExpanded },
+                                            modifier = Modifier.padding(horizontal = 8.dp).size(24.dp),
+                                        ) {
+                                            Icon(
+                                                if (partsExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                                contentDescription = if (partsExpanded) "收起分P" else "展开分P",
+                                                modifier = Modifier.size(24.dp),
+                                            )
+                                        }
+                                    } else if (item.duration.isNotBlank()) {
+                                        Text(
+                                            item.duration,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            modifier = Modifier.padding(horizontal = 8.dp).alpha(0.75f),
+                                        )
+                                    }
+                                }
+                                if (hasParts && partsExpanded) {
+                                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                                    item.parts.forEach { part ->
+                                        val playingPart = part.id == playingPartId
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth()
+                                                .clickable(enabled = item.enabled, role = Role.Button) { onPartSelected(part.id) }
+                                                .semantics { selected = playingPart }
+                                                .onGloballyPositioned { coordinates ->
+                                                    partBounds[part.id] = coordinates.positionInParent().y.roundToInt() to coordinates.size.height
+                                                },
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Text(
+                                                    part.title,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = if (playingPart) BiliColor.Blue else MaterialTheme.colorScheme.onSecondaryContainer,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f).padding(
+                                                        start = 12.dp,
+                                                        end = if (part.duration.isBlank()) 8.dp else 0.dp,
+                                                        top = 4.dp,
+                                                        bottom = 4.dp,
+                                                    ),
+                                                )
+                                                if (part.duration.isNotBlank()) {
+                                                    Text(
+                                                        part.duration,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                        maxLines = 1,
+                                                        modifier = Modifier.padding(horizontal = 8.dp).alpha(0.75f),
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
