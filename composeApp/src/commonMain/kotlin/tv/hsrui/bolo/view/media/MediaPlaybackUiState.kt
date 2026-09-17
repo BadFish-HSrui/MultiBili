@@ -20,5 +20,29 @@ sealed interface MediaPlaybackUiState {
         val recommendations: List<MediaCard> = emptyList(),
         val recommendationsLoading: Boolean = true,
         val recommendationsError: String? = null,
-    ) : MediaPlaybackUiState
+        val isNavigatingEpisode: Boolean = false,
+        val episodeNavigationPrevious: Boolean? = null,
+        val emptySeasonIds: Set<Long> = emptySet(),
+    ) : MediaPlaybackUiState {
+        val episodeNavigationEnabled get() = !isNavigatingEpisode && episodeNavigationPrevious == null
+        val hasPreviousEpisode get() = hasAdjacentEpisode(before = true)
+        val hasNextEpisode get() = hasAdjacentEpisode(before = false)
+
+        internal fun adjacentEpisode(before: Boolean): MediaEpisode? {
+            val episodes = media.episodes.let { if (isDescending) it.reversed() else it }
+            val index = episodes.indexOfFirst { it.episodeId == episode?.episodeId }
+            if (index < 0) return null
+            return (if (before) episodes.take(index).asReversed() else episodes.drop(index + 1)).firstOrNull { it.isAvailable }
+        }
+
+        internal fun adjacentSeasons(before: Boolean): List<MediaSeasonSummary> {
+            val index = seasons.indexOfFirst { it.seasonId == media.seasonId }
+            if (index < 0 || episode == null) return emptyList()
+            return (if (before) seasons.take(index).asReversed() else seasons.drop(index + 1))
+                .filter { it.seasonId !in emptySeasonIds }
+        }
+
+        private fun hasAdjacentEpisode(before: Boolean): Boolean =
+            adjacentEpisode(before) != null || adjacentSeasons(before).isNotEmpty()
+    }
 }

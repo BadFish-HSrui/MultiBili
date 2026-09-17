@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import tv.hsrui.bolo.model.Vid
+import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.video.fetchVideoInfo
 import tv.hsrui.network.feature.video.collection.VideoCollectionEpisodeData
@@ -52,7 +53,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         val current = _uiState.value as? VideoUiState.Success
         val anchor = current?.video?.avid
         if (current != null) {
-            _uiState.value = current.copy(isSwitchingEpisode = false, switchingEpisodeKey = null, episodeError = null)
+            _uiState.value = current.copy(isSwitchingEpisode = false, switchingEpisodeKey = null, episodeError = null, episodeNavigationPrevious = null)
             updateList { it.copy(isReloading = true, pendingDescending = descending, reloadError = null,
                 isLoadingPrevious = false, isLoadingNext = false) }
         } else {
@@ -118,20 +119,28 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
     }
 
     fun loadMoreListVideos(before: Boolean = false) {
-        val source = request as? VideoPlaybackRequest.VideoList ?: return
-        val state = listState ?: return
-        if (state.isReloading || state.reloadError != null) return
-        if (before && (!state.hasPrevious || state.isLoadingPrevious) ||
-            !before && (!state.hasNext || state.isLoadingNext)) return
-        val cursor = (if (before) state.headCursor else state.tailCursor) ?: return
+        loadListPage(before)
+    }
+
+    private fun loadListPage(before: Boolean): Job? {
+        val source = request as? VideoPlaybackRequest.VideoList ?: return null
+        val state = listState ?: return null
+        if (state.isReloading || state.reloadError != null) return null
+        if (before && state.isLoadingPrevious || !before && state.isLoadingNext) {
+            return if (before) previousJob else nextJob
+        }
+        if (before && !state.hasPrevious || !before && !state.hasNext) return null
+        val cursor = (if (before) state.headCursor else state.tailCursor) ?: return null
         val version = listGeneration
         updateList { if (before) it.copy(isLoadingPrevious = true, previousError = null)
             else it.copy(isLoadingNext = true, nextError = null) }
         val job = viewModelScope.launch {
             try {
                 check(cursor.id > 0 && cursor.cursorType > 0) { "无效的列表游标" }
-                val page = fetchVideoListVideos(source.type, source.id, source.sort, !state.isDescending,
-                    cursorId = cursor.id, cursorType = cursor.cursorType, withCurrent = false, before = before)
+                val page = withTimeoutOrNull(15_000) {
+                    fetchVideoListVideos(source.type, source.id, source.sort, !state.isDescending,
+                        cursorId = cursor.id, cursorType = cursor.cursorType, withCurrent = false, before = before)
+                } ?: error("列表请求超时")
                 if (version != listGeneration) return@launch
                 val latest = listState ?: return@launch
                 val merged = (if (before) page.items + latest.items else latest.items + page.items).distinctBy { it.key }
@@ -153,6 +162,113 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
             }
         }
         if (before) previousJob = job else nextJob = job
+        return job
+    }
+
+    fun selectPreviousEpisode() = selectAdjacentEpisode(before = true)
+
+    fun selectNextEpisode() = selectAdjacentEpisode(before = false)
+
+    fun cancelEpisodeNavigation() {
+        val current = _uiState.value as? VideoUiState.Success ?: return
+        val navigating = current.isSwitchingEpisode && current.switchingEpisodeKey == null
+        if (navigating) {
+            ++generation
+            loadJob?.cancel()
+        }
+        _uiState.value = current.copy(
+            isSwitchingEpisode = if (navigating) false else current.isSwitchingEpisode,
+            episodeNavigationPrevious = null,
+        )
+    }
+
+    private fun selectAdjacentEpisode(before: Boolean) {
+        val current = _uiState.value as? VideoUiState.Success ?: return
+        if (!current.episodeNavigationEnabled) return
+        if (before && !current.hasPreviousEpisode || !before && !current.hasNextEpisode) return
+        val version = ++generation
+        loadJob?.cancel()
+        val part = current.adjacentPart(before)
+        if (part != null) {
+            _uiState.value = current.copy(
+                video = current.video.copy(cid = part),
+                selectedSectionId = current.video.collection?.sections?.firstOrNull { section ->
+                    section.episodes.any { it.avid == current.video.avid }
+                }?.sectionId ?: current.selectedSectionId,
+                switchingEpisodeKey = null, episodeError = null, episodeNavigationPrevious = before,
+            )
+            return
+        }
+        _uiState.value = current.copy(isSwitchingEpisode = true, switchingEpisodeKey = null, episodeError = null)
+        loadJob = viewModelScope.launch {
+            try {
+                val targetAvid: Long
+                var sectionId: Long? = null
+                if (current.videoList != null) {
+                    var latest = _uiState.value as? VideoUiState.Success ?: return@launch
+                    var target = latest.adjacentListVideo(before)
+                    while (target == null) {
+                        val list = latest.videoList ?: return@launch
+                        if (!(if (before) list.hasPrevious else list.hasNext)) break
+                        val pageJob = checkNotNull(loadListPage(before)) { "无法加载列表" }
+                        pageJob.join()
+                        if (version != generation) return@launch
+                        latest = _uiState.value as? VideoUiState.Success ?: return@launch
+                        val updated = checkNotNull(latest.videoList)
+                        check((if (before) updated.previousError else updated.nextError) == null) { "列表加载失败" }
+                        check(updated.items.size > list.items.size || !(if (before) updated.hasPrevious else updated.hasNext)) {
+                            "列表游标未推进"
+                        }
+                        target = latest.adjacentListVideo(before)
+                    }
+                    if (target == null) {
+                        _uiState.value = latest.copy(isSwitchingEpisode = false)
+                        showSnackbarMessage(if (before) "无法加载上一集" else "无法加载下一集")
+                        return@launch
+                    }
+                    targetAvid = target.id
+                } else {
+                    val target = current.adjacentCollectionEpisode(before)
+                    if (target == null) {
+                        val latest = _uiState.value as? VideoUiState.Success ?: return@launch
+                        _uiState.value = latest.copy(isSwitchingEpisode = false)
+                        return@launch
+                    }
+                    targetAvid = target.avid
+                    sectionId = current.video.collection?.sections?.firstOrNull { section ->
+                        section.episodes.any { it.key == target.key }
+                    }?.sectionId
+                }
+                val loaded = loadVideo(Vid.AVid(targetAvid))
+                if (version != generation) return@launch
+                // 从两个方向进入新稿件都从 P1 开始，不采用合集条目的 CID。
+                val video = loaded.copy(
+                    cid = loaded.parts.firstOrNull()?.cid ?: loaded.cid,
+                    collection = if (current.videoList == null) current.video.collection else loaded.collection,
+                )
+                _uiState.value = VideoUiState.Success(
+                    video = video,
+                    isDescending = current.isDescending,
+                    videoList = listState,
+                    episodeNavigationPrevious = before,
+                ).let { if (sectionId != null) it.copy(selectedSectionId = sectionId) else it }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (version != generation) return@launch
+                val latest = _uiState.value as? VideoUiState.Success ?: return@launch
+                _uiState.value = latest.copy(isSwitchingEpisode = false)
+                showSnackbarMessage(if (before) "无法加载上一集" else "无法加载下一集")
+            }
+        }
+    }
+
+    fun onEpisodePlaybackResult(avid: Long, cid: Long, failed: Boolean) {
+        val current = _uiState.value as? VideoUiState.Success ?: return
+        if (current.video.avid != avid || current.video.cid != cid) return
+        val before = current.episodeNavigationPrevious ?: return
+        _uiState.value = current.copy(episodeNavigationPrevious = null)
+        if (failed) showSnackbarMessage(if (before) "无法加载上一集" else "无法加载下一集")
     }
 
     private suspend fun loadVideo(vid: Vid, cid: Long? = null): VideoInfoData {
@@ -180,7 +296,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         loadJob?.cancel()
         val previous = _uiState.value as? VideoUiState.Success
         _uiState.value = if (episode != null && previous != null) {
-            previous.copy(switchingEpisodeKey = episode.key, isSwitchingEpisode = true, episodeError = null)
+            previous.copy(switchingEpisodeKey = episode.key, isSwitchingEpisode = true, episodeError = null, episodeNavigationPrevious = null)
         } else VideoUiState.Loading
         loadJob = viewModelScope.launch {
             try {
@@ -208,10 +324,10 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         val version = ++generation
         loadJob?.cancel()
         if (item.id == current.video.avid) {
-            _uiState.value = current.copy(switchingEpisodeKey = null, isSwitchingEpisode = false, episodeError = null)
+            _uiState.value = current.copy(switchingEpisodeKey = null, isSwitchingEpisode = false, episodeError = null, episodeNavigationPrevious = null)
             return
         }
-        _uiState.value = current.copy(switchingEpisodeKey = key, isSwitchingEpisode = true, episodeError = null)
+        _uiState.value = current.copy(switchingEpisodeKey = key, isSwitchingEpisode = true, episodeError = null, episodeNavigationPrevious = null)
         loadJob = viewModelScope.launch {
             try {
                 val video = loadVideo(Vid.AVid(item.id))
@@ -234,7 +350,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         if (episode.avid == current.video.avid) {
             ++generation
             loadJob?.cancel()
-            _uiState.value = current.copy(switchingEpisodeKey = null, isSwitchingEpisode = false, episodeError = null)
+            _uiState.value = current.copy(switchingEpisodeKey = null, isSwitchingEpisode = false, episodeError = null, episodeNavigationPrevious = null)
             return
         }
         loadVideoInfo(episode)
@@ -248,6 +364,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         _uiState.value = current.copy(
             video = if (current.video.cid == cid) current.video else current.video.copy(cid = cid),
             switchingEpisodeKey = null, isSwitchingEpisode = false, episodeError = null,
+            episodeNavigationPrevious = null,
         )
     }
 
@@ -264,6 +381,11 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
             if (current.videoList.isReloading || current.videoList.isDescending != descending || current.videoList.reloadError != null) {
                 loadVideoList(descending)
             }
-        } else _uiState.value = current.copy(isDescending = descending)
+        } else {
+            ++generation
+            loadJob?.cancel()
+            _uiState.value = current.copy(isDescending = descending, isSwitchingEpisode = false,
+                switchingEpisodeKey = null, episodeError = null, episodeNavigationPrevious = null)
+        }
     }
 }

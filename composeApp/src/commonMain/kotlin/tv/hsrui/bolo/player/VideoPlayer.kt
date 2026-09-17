@@ -29,7 +29,10 @@ fun VideoPlayer(
     viewModel: VideoPlayerViewModel,
     uiState: VideoPlayerUiState,
     fullscreenState: PlayerFullscreenState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onPreviousEpisode: (() -> Unit)? = null,
+    onNextEpisode: (() -> Unit)? = null,
+    episodeNavigationEnabled: Boolean = true,
 ) {
     val settings: BoloSettings = koinInject()
     DisposableEffect(viewModel) {
@@ -101,6 +104,9 @@ fun VideoPlayer(
                     title = title,
                     viewModel = viewModel,
                     fullscreenState = fullscreenState,
+                    onPreviousEpisode = onPreviousEpisode,
+                    onNextEpisode = onNextEpisode,
+                    episodeNavigationEnabled = episodeNavigationEnabled,
                 )
                 if (uiState.videoSource.isPreview) {
                     Text(

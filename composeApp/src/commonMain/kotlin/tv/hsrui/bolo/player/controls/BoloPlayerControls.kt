@@ -56,6 +56,8 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material3.Card
@@ -162,6 +164,9 @@ fun BoloPlayerControls(
     modifier: Modifier = Modifier,
     navigationOnly: Boolean = false,
     navigationContentColor: Color = Color.White,
+    onPreviousEpisode: (() -> Unit)? = null,
+    onNextEpisode: (() -> Unit)? = null,
+    episodeNavigationEnabled: Boolean = true,
 ) {
     val isFullscreen = fullscreenState.isFullscreen
     val isDesktop = fullscreenState.isDesktop
@@ -969,6 +974,20 @@ fun BoloPlayerControls(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        if (showExtendedControls && onPreviousEpisode != null) {
+                            IconButton(
+                                onClick = onPreviousEpisode,
+                                enabled = episodeNavigationEnabled,
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SkipPrevious,
+                                    contentDescription = "上一集",
+                                    tint = Color.White.copy(alpha = if (episodeNavigationEnabled) 1f else 0.38f),
+                                )
+                            }
+                        }
+
                         // 播放按钮
                         IconButton(
                             onClick = { togglePlayback() },
@@ -979,6 +998,20 @@ fun BoloPlayerControls(
                                 contentDescription = if (playState.isPlaying) "暂停" else "播放",
                                 tint = Color.White
                             )
+                        }
+
+                        if (showExtendedControls && onNextEpisode != null) {
+                            IconButton(
+                                onClick = onNextEpisode,
+                                enabled = episodeNavigationEnabled,
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SkipNext,
+                                    contentDescription = "下一集",
+                                    tint = Color.White.copy(alpha = if (episodeNavigationEnabled) 1f else 0.38f),
+                                )
+                            }
                         }
 
                         // 时间显示

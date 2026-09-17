@@ -49,6 +49,7 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.flow.first
 import tv.hsrui.bolo.navigation.openMedia
 import tv.hsrui.bolo.player.VideoPlayer
 import tv.hsrui.bolo.player.VideoPlayerUiState
@@ -79,8 +80,15 @@ fun MediaPlaybackPage(
     }
     val playerUiState by playerViewModel.uiState.collectAsState()
     val playerInfo by playerViewModel.controller.info.collectAsState()
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.cancelEpisodeNavigation() }
+    }
     LaunchedEffect(episode?.episodeId) {
-        if (episode != null) playerViewModel.switchMedia(episode.avid, episode.cid, episode.episodeId)
+        if (episode != null) {
+            playerViewModel.switchMedia(episode.avid, episode.cid, episode.episodeId)
+            val result = playerViewModel.uiState.first { it !is VideoPlayerUiState.Loading }
+            viewModel.onEpisodePlaybackResult(episode.episodeId, result is VideoPlayerUiState.Error)
+        }
     }
     LaunchedEffect(uiState.media.seasonId) {
         viewModel.loadRecommendations(uiState.media.seasonId)
@@ -131,6 +139,9 @@ fun MediaPlaybackPage(
                 uiState = playerUiState,
                 fullscreenState = fullscreenState,
                 modifier = Modifier.fillMaxSize(),
+                onPreviousEpisode = if (uiState.hasPreviousEpisode) viewModel::selectPreviousEpisode else null,
+                onNextEpisode = if (uiState.hasNextEpisode) viewModel::selectNextEpisode else null,
+                episodeNavigationEnabled = uiState.episodeNavigationEnabled,
             )
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

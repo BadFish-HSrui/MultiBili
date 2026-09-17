@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import kotlinx.coroutines.flow.first
 import tv.hsrui.bolo.player.VideoPlayer
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.player.VideoPlayerViewModel
@@ -33,8 +34,13 @@ fun VideoPage(
     }
     val playerUiState by viewModel.uiState.collectAsState()
     val playerInfo by viewModel.controller.info.collectAsState()
+    DisposableEffect(videoViewModel) {
+        onDispose { videoViewModel.cancelEpisodeNavigation() }
+    }
     LaunchedEffect(videoInfo.avid, videoInfo.cid) {
         viewModel.switchMedia(videoInfo.avid, videoInfo.cid)
+        val result = viewModel.uiState.first { it !is VideoPlayerUiState.Loading }
+        videoViewModel.onEpisodePlaybackResult(videoInfo.avid, videoInfo.cid, result is VideoPlayerUiState.Error)
     }
     // 简介操作、推荐和评论按稿件保留；同视频切 P 复用，换视频或离页时清理。
     val detailOwner = remember(videoInfo.avid) {
@@ -77,6 +83,9 @@ fun VideoPage(
             uiState = playerUiState,
             fullscreenState = fullscreenState,
             modifier = Modifier.fillMaxSize(),
+            onPreviousEpisode = if (uiState.hasPreviousEpisode) videoViewModel::selectPreviousEpisode else null,
+            onNextEpisode = if (uiState.hasNextEpisode) videoViewModel::selectNextEpisode else null,
+            episodeNavigationEnabled = uiState.episodeNavigationEnabled,
         )
     }
 }
