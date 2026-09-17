@@ -76,7 +76,7 @@ private fun UserCollectionContent(
     val scrollStates = rememberSaveableStateHolder()
     PullToRefreshBox(isRefreshing = state.isRefreshing, onRefresh = onRefresh, modifier = modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            if (collection.description.isNotBlank()) {
+            if (collection.description.isNotBlank() && collection.description.trim() != collection.title.trim()) {
                 Text(
                     collection.description,
                     style = MaterialTheme.typography.bodyMedium,

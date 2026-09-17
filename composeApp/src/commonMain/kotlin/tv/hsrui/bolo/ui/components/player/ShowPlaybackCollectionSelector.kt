@@ -174,6 +174,7 @@ fun ShowPlaybackCollectionSelector(
                     }
                 }
             }
+            HorizontalDivider(modifier = Modifier.padding(top = 4.dp))
             if (groups.size > 1) {
                 LazyRow(
                     state = groupState,
