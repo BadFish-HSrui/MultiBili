@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 import tv.hsrui.network.model.Owner
 import tv.hsrui.network.feature.video.collection.VideoCollectionData
 import tv.hsrui.network.utils.formatToDateTime
+import tv.hsrui.network.utils.formatToDuration
 import tv.hsrui.network.utils.toHttpsUrl
 
 enum class CopyrightType(val title: String) {
@@ -70,7 +71,10 @@ data class VideoInfoData(
     @SerialName("is_upower_exclusive") val isUpowerExclusive: Boolean = false, //充电专属视频
     @SerialName("is_season_display") val isSeasonDisplay: Boolean = false,
     @SerialName("ugc_season") val collection: VideoCollectionData? = null,
+    @SerialName("pages") private val rawParts: List<VideoPartData> = emptyList(),
 ) {
+    val parts by lazy { rawParts.filter { it.cid > 0 }.distinctBy { it.cid }.sortedBy { it.pageNumber } }
+
     val copyrightType: CopyrightType
         get() = when (_copyright) {
             1 -> CopyrightType.Original
@@ -109,6 +113,16 @@ data class VideoInfoData(
     data class ArgueInfo(
         @SerialName("argue_msg") val message: String = ""
     )
+}
+
+@Serializable
+data class VideoPartData(
+    @SerialName("cid") val cid: Long = 0,
+    @SerialName("page") val pageNumber: Int = 0,
+    @SerialName("part") val title: String = "",
+    @SerialName("duration") val duration: Int = 0,
+) {
+    val durationString get() = if (duration > 0) duration.formatToDuration() else ""
 }
 
 @Serializable
