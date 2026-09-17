@@ -155,14 +155,6 @@ fun BoloPlayerSettingsSheet(
     onDanmakuTopEnabledChange: (Boolean) -> Unit,
     danmakuBottomEnabled: Boolean,
     onDanmakuBottomEnabledChange: (Boolean) -> Unit,
-    subtitleSmartEnabled: Boolean,
-    onSubtitleSmartEnabledChange: (Boolean) -> Unit,
-    subtitleAlwaysOn: Boolean,
-    onSubtitleAlwaysOnChange: (Boolean) -> Unit,
-    subtitleAutoChineseOnly: Boolean,
-    onSubtitleAutoChineseOnlyChange: (Boolean) -> Unit,
-    subtitleAutoExcludeAi: Boolean,
-    onSubtitleAutoExcludeAiChange: (Boolean) -> Unit,
     subtitleScale: Float,
     onSubtitleScaleChange: (Float) -> Unit,
     onSubtitleScalePreview: (Float?) -> Unit,
@@ -727,101 +719,6 @@ fun BoloPlayerSettingsSheet(
                                             BoloPlayerSettingsTab.Subtitle -> {
                                                 val subtitlePageActive = isOpen && pagerState.currentPage == page &&
                                                     !pagerState.isScrollInProgress
-                                                Card(Modifier.fillMaxWidth()) {
-                                                    Column(Modifier.fillMaxWidth().padding(4.dp).animateContentSize()) {
-                                                        if (!subtitleAlwaysOn) {
-                                                            Row(
-                                                                modifier = Modifier.fillMaxWidth().toggleable(
-                                                                    value = subtitleSmartEnabled,
-                                                                    enabled = subtitlePageActive,
-                                                                    role = Role.Switch,
-                                                                    onValueChange = onSubtitleSmartEnabledChange,
-                                                                ).height(32.dp).padding(horizontal = 8.dp),
-                                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                            ) {
-                                                                Text("智能开启字幕", style = MaterialTheme.typography.bodyMedium)
-                                                                Switch(
-                                                                    checked = subtitleSmartEnabled,
-                                                                    onCheckedChange = null,
-                                                                    enabled = subtitlePageActive,
-                                                                    modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
-                                                                )
-                                                            }
-                                                        }
-                                                        if (!subtitleSmartEnabled) {
-                                                            if (!subtitleAlwaysOn) HorizontalDivider(thickness = 1.dp)
-                                                            Row(
-                                                                modifier = Modifier.fillMaxWidth().toggleable(
-                                                                    value = subtitleAlwaysOn,
-                                                                    enabled = subtitlePageActive,
-                                                                    role = Role.Switch,
-                                                                    onValueChange = onSubtitleAlwaysOnChange,
-                                                                ).height(32.dp).padding(horizontal = 8.dp),
-                                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                            ) {
-                                                                Text("总是显示字幕", style = MaterialTheme.typography.bodyMedium)
-                                                                Switch(
-                                                                    checked = subtitleAlwaysOn,
-                                                                    onCheckedChange = null,
-                                                                    enabled = subtitlePageActive,
-                                                                    modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
-                                                                )
-                                                            }
-                                                        }
-                                                        if (subtitleAlwaysOn) {
-                                                            HorizontalDivider(thickness = 1.dp)
-                                                            Row(
-                                                                modifier = Modifier.fillMaxWidth().toggleable(
-                                                                    value = subtitleAutoChineseOnly,
-                                                                    enabled = subtitlePageActive,
-                                                                    role = Role.Switch,
-                                                                    onValueChange = onSubtitleAutoChineseOnlyChange,
-                                                                ).height(32.dp).padding(horizontal = 8.dp),
-                                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                            ) {
-                                                                Text(
-                                                                    text = "仅自动开启中文字幕",
-                                                                    style = MaterialTheme.typography.bodyMedium,
-                                                                    modifier = Modifier.weight(1f),
-                                                                )
-                                                                Switch(
-                                                                    checked = subtitleAutoChineseOnly,
-                                                                    onCheckedChange = null,
-                                                                    enabled = subtitlePageActive,
-                                                                    modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
-                                                                )
-                                                            }
-                                                        }
-                                                        if (subtitleSmartEnabled || subtitleAlwaysOn) {
-                                                            HorizontalDivider(thickness = 1.dp)
-                                                            Row(
-                                                                modifier = Modifier.fillMaxWidth().toggleable(
-                                                                    value = subtitleAutoExcludeAi,
-                                                                    enabled = subtitlePageActive,
-                                                                    role = Role.Switch,
-                                                                    onValueChange = onSubtitleAutoExcludeAiChange,
-                                                                ).height(32.dp).padding(horizontal = 8.dp),
-                                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                            ) {
-                                                                Text(
-                                                                    text = "不自动开启AI字幕",
-                                                                    style = MaterialTheme.typography.bodyMedium,
-                                                                    modifier = Modifier.weight(1f),
-                                                                )
-                                                                Switch(
-                                                                    checked = subtitleAutoExcludeAi,
-                                                                    onCheckedChange = null,
-                                                                    enabled = subtitlePageActive,
-                                                                    modifier = Modifier.size(39.dp, 24.dp).scale(0.75f),
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
                                                 Card(Modifier.fillMaxWidth()) {
                                                     Column(Modifier.padding(4.dp)) {
                                                         PlayerPercentageSlider(

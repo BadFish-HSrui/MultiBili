@@ -68,6 +68,18 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
     var showDanmakuAutoEnableInfo by remember { mutableStateOf(false) }
     var showDynamicLoudnessInfo by remember { mutableStateOf(false) }
     var showRecordQualitySelectionInfo by remember { mutableStateOf(false) }
+    var showSubtitleAutoEnableInfo by remember { mutableStateOf(false) }
+
+    if (showSubtitleAutoEnableInfo) {
+        ShowInfoDialog(onConfirm = { showSubtitleAutoEnableInfo = false }) {
+            Text(
+                text = "智能模式下，根据官方接口提供的字幕开启建议决定。",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
+            )
+        }
+    }
 
     if (showRecordQualitySelectionInfo) {
         ShowInfoDialog(onConfirm = { showRecordQualitySelectionInfo = false }) {
@@ -340,6 +352,91 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 Text("隐藏播放器音质选项", style = MaterialTheme.typography.bodyLarge)
                                 Spacer(Modifier.weight(1f))
                                 Switch(checked = settings.playerHideAudioQualitySelectorEnabled, onCheckedChange = null)
+                            }
+                        }
+                    }
+                }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "字幕开关",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                        Card(Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("字幕自动开启", style = MaterialTheme.typography.bodyLarge)
+                                IconButton(
+                                    onClick = { showSubtitleAutoEnableInfo = true },
+                                    modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Info,
+                                        contentDescription = "字幕自动开启说明",
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                                Spacer(Modifier.weight(1f))
+                                SingleChoiceSegmentedButtonRow {
+                                    val modes = listOf("关闭", "智能", "总是")
+                                    val selectedIndex = when {
+                                        settings.subtitleAlwaysOn -> 2
+                                        settings.subtitleSmartEnabled -> 1
+                                        else -> 0
+                                    }
+                                    modes.forEachIndexed { index, title ->
+                                        SegmentedButton(
+                                            selected = index == selectedIndex,
+                                            onClick = {
+                                                when (index) {
+                                                    0 -> {
+                                                        settings.subtitleSmartEnabled = false
+                                                        settings.subtitleAlwaysOn = false
+                                                    }
+                                                    1 -> settings.subtitleSmartEnabled = true
+                                                    2 -> settings.subtitleAlwaysOn = true
+                                                }
+                                            },
+                                            shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
+                                            modifier = Modifier.padding(vertical = 8.dp),
+                                        ) {
+                                            Text(title, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                        }
+                                    }
+                                }
+                            }
+                            if (settings.subtitleAlwaysOn) {
+                                HorizontalDivider()
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                        value = settings.subtitleAutoChineseOnly,
+                                        role = Role.Switch,
+                                        onValueChange = { settings.subtitleAutoChineseOnly = it },
+                                    ).padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("仅自动开启中文字幕", style = MaterialTheme.typography.bodyLarge)
+                                    Spacer(Modifier.weight(1f))
+                                    Switch(checked = settings.subtitleAutoChineseOnly, onCheckedChange = null)
+                                }
+                            }
+                            if (settings.subtitleSmartEnabled || settings.subtitleAlwaysOn) {
+                                HorizontalDivider()
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                        value = settings.subtitleAutoExcludeAi,
+                                        role = Role.Switch,
+                                        onValueChange = { settings.subtitleAutoExcludeAi = it },
+                                    ).padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("不自动开启AI字幕", style = MaterialTheme.typography.bodyLarge)
+                                    Spacer(Modifier.weight(1f))
+                                    Switch(checked = settings.subtitleAutoExcludeAi, onCheckedChange = null)
+                                }
                             }
                         }
                     }
