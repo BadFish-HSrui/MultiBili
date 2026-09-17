@@ -1,5 +1,12 @@
 package tv.hsrui.bolo.userSpace
 
+import tv.hsrui.bolo.navigation.openVideoList
+import tv.hsrui.bolo.view.video.VideoPlaybackRequest
+import tv.hsrui.network.feature.video.list.VideoListType
+import tv.hsrui.network.feature.video.list.VideoListSort
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.foundation.gestures.scrollable
@@ -14,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -178,21 +186,38 @@ private fun UserSpaceContent(
                                         }
                                         Column(Modifier.fillMaxSize()) {
                                             if (tab == UserSpaceTab.Uploads) {
-                                                LazyRow(
-                                                    contentPadding = PaddingValues(horizontal = 12.dp),
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                ) {
-                                                    items(UserSpaceUploadOrder.entries, key = { it.name }) { order ->
-                                                        FilterChip(
-                                                            selected = order == state.uploadOrder,
-                                                            onClick = {
-                                                                if (order != state.uploadOrder) {
-                                                                    uploadGrid.requestScrollToItem(0)
-                                                                    onUploadOrderSelected(order)
-                                                                }
-                                                            },
-                                                            label = { Text(order.title, maxLines = 1) },
-                                                        )
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    LazyRow(
+                                                        modifier = Modifier.weight(1f),
+                                                        contentPadding = PaddingValues(horizontal = 12.dp),
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    ) {
+                                                        items(UserSpaceUploadOrder.entries, key = { it.name }) { order ->
+                                                            FilterChip(
+                                                                selected = order == state.uploadOrder,
+                                                                onClick = {
+                                                                    if (order != state.uploadOrder) {
+                                                                        uploadGrid.requestScrollToItem(0)
+                                                                        onUploadOrderSelected(order)
+                                                                    }
+                                                                },
+                                                                label = { Text(order.title, maxLines = 1) },
+                                                            )
+                                                        }
+                                                    }
+                                                    TextButton(
+                                                        onClick = {
+                                                            val sort = when (state.uploadOrder) {
+                                                                UserSpaceUploadOrder.Latest -> VideoListSort.Default
+                                                                UserSpaceUploadOrder.MostPlayed -> VideoListSort.MostPlayed
+                                                                UserSpaceUploadOrder.MostFavorited -> VideoListSort.MostFavorited
+                                                            }
+                                                            openVideoList(VideoPlaybackRequest.VideoList(VideoListType.Uploads, mid, sort))
+                                                        },
+                                                        enabled = mid > 0 && !(section is UserSpaceSectionState.Success && section.data.isEmpty()),
+                                                    ) {
+                                                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.padding(end = 4.dp).size(20.dp))
+                                                        Text("播放全部")
                                                     }
                                                 }
                                             }

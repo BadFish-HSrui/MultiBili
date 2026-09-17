@@ -1,5 +1,6 @@
 package tv.hsrui.bolo.ui.components.topBar
 
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.size
@@ -26,12 +27,14 @@ import tv.hsrui.bolo.navigation.Navigator
 fun ShowTopBarWithNavigationButton(
     modifier: Modifier = Modifier,
     goBackBefore: BoloRoute? = null,
+    actions: @Composable RowScope.() -> Unit = {},
     title: @Composable () -> Unit = { Text(stringResource(Res.string.app_name)) }
 ) {
     val navigator: Navigator = koinInject()
 
     CenterAlignedTopAppBar(
         title = title,
+        actions = actions,
         navigationIcon = {
             Row {
                 IconButton(

@@ -1,6 +1,15 @@
 package tv.hsrui.bolo.favorite.videos
 
+import tv.hsrui.bolo.navigation.openVideoList
+import tv.hsrui.bolo.view.video.VideoPlaybackRequest
+import tv.hsrui.network.feature.video.list.VideoListType
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -10,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import org.koin.compose.koinInject
@@ -51,7 +61,18 @@ fun FavoriteVideosScreen(
     Scaffold(
         modifier = modifier,
         topBar = {
-            ShowTopBarWithNavigationButton(title = { Text(folderTitle) })
+            ShowTopBarWithNavigationButton(
+                actions = {
+                    if (successState != null) TextButton(
+                        onClick = { openVideoList(VideoPlaybackRequest.VideoList(VideoListType.Favorite, mediaId)) },
+                        enabled = mediaId > 0 && successState.videos.isNotEmpty(),
+                    ) {
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.padding(end = 4.dp).size(20.dp))
+                        Text("播放全部")
+                    }
+                },
+                title = { Text(folderTitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            )
         }
     ) { innerPadding ->
         FavoriteVideosContent(

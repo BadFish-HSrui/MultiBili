@@ -1,5 +1,8 @@
 package tv.hsrui.bolo.userSpace.series
 
+import tv.hsrui.bolo.navigation.openVideoList
+import tv.hsrui.bolo.view.video.VideoPlaybackRequest
+import tv.hsrui.network.feature.video.list.VideoListType
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.foundation.gestures.scrollable
@@ -10,6 +13,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +44,17 @@ fun UserSeriesScreen(mid: Long, seriesId: Long, modifier: Modifier = Modifier) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            ShowTopBarWithNavigationButton(title = {
+            ShowTopBarWithNavigationButton(actions = {
+                (state as? UserSeriesUiState.Success)?.let { current ->
+                    TextButton(
+                        onClick = { openVideoList(VideoPlaybackRequest.VideoList(VideoListType.Series, seriesId)) },
+                        enabled = seriesId > 0 && current.series.total > 0,
+                    ) {
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.padding(end = 4.dp).size(20.dp))
+                        Text("播放全部")
+                    }
+                }
+            }, title = {
                 Text((state as? UserSeriesUiState.Success)?.series?.title ?: "视频系列", maxLines = 1, overflow = TextOverflow.Ellipsis)
             })
         },

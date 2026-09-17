@@ -1,5 +1,8 @@
 package tv.hsrui.bolo.userSpace.series
 
+import tv.hsrui.bolo.navigation.openVideoList
+import tv.hsrui.bolo.view.video.VideoPlaybackRequest
+import tv.hsrui.network.feature.video.list.VideoListType
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.foundation.gestures.scrollable
@@ -73,7 +76,8 @@ fun UserSeriesContent(
                         coverDescription = "系列封面",
                         playDescription = "开始播放系列",
                         onOpen = { openUserSeries(series.mid.takeIf { it > 0 } ?: mid, series.seriesId) },
-                        onPlay = {},
+                        onPlay = { openVideoList(VideoPlaybackRequest.VideoList(VideoListType.Series, series.seriesId)) },
+                        canPlay = series.seriesId > 0 && series.total > 0,
                     )
                 }
                 ShowGridFABMenu(

@@ -1,5 +1,9 @@
 package tv.hsrui.bolo.favorite
 
+import tv.hsrui.bolo.navigation.openVideoList
+import tv.hsrui.bolo.view.video.VideoPlaybackRequest
+import tv.hsrui.network.feature.video.list.VideoListType
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -159,6 +163,13 @@ internal fun FavoriteFolderCard(
                         )
                     }
                 }
+            }
+            IconButton(
+                onClick = { openVideoList(VideoPlaybackRequest.VideoList(VideoListType.Favorite, folder.id)) },
+                enabled = folder.id > 0 && folder.mediaCount > 0,
+                modifier = Modifier.align(Alignment.CenterVertically),
+            ) {
+                Icon(Icons.Rounded.PlayArrow, contentDescription = "播放收藏夹", modifier = Modifier.size(24.dp))
             }
         }
     }
