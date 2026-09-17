@@ -101,10 +101,10 @@ fun FavoriteVideosScreen(
                 try {
                     val result = removeFavoriteVideo(
                         mediaId = mediaId,
-                        avid = video.avid
+                        video = video
                     )
                     if (result.isSuccess) {
-                        viewModel.removeItem(video.avid)
+                        viewModel.removeItem(video.resourceKey)
                     } else {
                         snackbarManager.showMessage(result.message.ifEmpty { "取消收藏失败" })
                     }

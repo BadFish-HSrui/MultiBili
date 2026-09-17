@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
+import tv.hsrui.bolo.navigation.openMedia
 import tv.hsrui.bolo.navigation.openVideo
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.theme.BiliColor
@@ -68,8 +69,14 @@ fun ShowHistoryVideoCard(
         modifier = modifier
             .widthIn(max = 512.dp)
             .combinedClickable(
+                enabled = if (videoInfo.isMedia) videoInfo.episodeId > 0 || videoInfo.seasonId > 0
+                    else videoInfo.bvid.isNotBlank() || videoInfo.avid > 0,
                 onClick = {
-                    openVideo(bvid = videoInfo.bvid)
+                    when {
+                        videoInfo.isMedia -> openMedia(seasonId = videoInfo.seasonId, episodeId = videoInfo.episodeId)
+                        videoInfo.bvid.isNotBlank() -> openVideo(bvid = videoInfo.bvid)
+                        else -> openVideo(avid = videoInfo.avid)
+                    }
                 }
             )
     ) {
@@ -152,20 +159,24 @@ fun ShowHistoryVideoCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.align(Alignment.BottomStart).alpha(0.75F)
                 ) {
-                    AsyncImage(
-                        model = videoInfo.upAvatarUrl + "@64w_64h.webp",
-                        contentDescription = null,
-                        modifier = Modifier.clip(CircleShape).size(32.dp)
-                            .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
-                        contentScale = ContentScale.Crop
-                    )
-                    Column(modifier = Modifier.padding(start = 4.dp)) {
-                        Text(
-                            text = videoInfo.upName,
-                            modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1
+                    if (!videoInfo.isMedia) {
+                        AsyncImage(
+                            model = videoInfo.upAvatarUrl + "@64w_64h.webp",
+                            contentDescription = null,
+                            modifier = Modifier.clip(CircleShape).size(32.dp)
+                                .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
+                            contentScale = ContentScale.Crop
                         )
+                    }
+                    Column(modifier = Modifier.padding(start = if (videoInfo.isMedia) 0.dp else 4.dp)) {
+                        if (!videoInfo.isMedia) {
+                            Text(
+                                text = videoInfo.upName,
+                                modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1
+                            )
+                        }
                         Text(
                             text = videoInfo.addTime.formatToDateTime(),
                             style = MaterialTheme.typography.labelSmall,
@@ -178,6 +189,7 @@ fun ShowHistoryVideoCard(
                 val scope = rememberCoroutineScope()
                 IconButton(
                     onClick = { showDialog = true },
+                    enabled = videoInfo.recordId > 0,
                     modifier = Modifier.size(24.dp).align(Alignment.BottomEnd)
                 ) {
                     Icon(

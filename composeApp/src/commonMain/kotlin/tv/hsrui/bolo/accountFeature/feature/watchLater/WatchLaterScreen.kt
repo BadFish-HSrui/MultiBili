@@ -100,7 +100,7 @@ fun WatchLaterScreen(
                                     try {
                                         val result = deleteWatchLater(video.avid)
                                         if (result.isSuccess) {
-                                            viewModel.removeItem(video.avid)
+                                            viewModel.removeItem(video.recordKey)
                                         } else {
                                             snackbarManager.showMessage(result.message)
                                         }

@@ -33,15 +33,26 @@ suspend fun fetchHistoryVideos(
     loadParams: HistoryLoadParams = HistoryLoadParams(),
     ps: Int = 30
 ): HistoryVideosResponse {
-    val response = fetchHistoryRaw(
-        loadParams = loadParams,
-        typeString = "archive",
-        ps = ps
-    )
-    return HistoryVideosResponse(
-        raw = response,
-        canLoadMore = (response.data.list.size == ps)
-    )
+    require(ps in 1..30)
+    var cursor = loadParams
+    val visitedCursors = mutableSetOf<HistoryLoadParams>()
+    while (true) {
+        visitedCursors += cursor
+        val response = fetchHistoryRaw(loadParams = cursor, typeString = "all", ps = ps)
+        val nextCursor = HistoryLoadParams(
+            max = response.data.cursor.max,
+            viewAt = response.data.cursor.viewAt,
+            business = response.data.cursor.business,
+        )
+        val result = HistoryVideosResponse(
+            raw = response,
+            canLoadMore = response.data.list.size == ps && nextCursor !in visitedCursors,
+        )
+        if (!result.isSuccess || result.validData.list.isNotEmpty() || !result.validData.canLoadMore) {
+            return result
+        }
+        cursor = nextCursor
+    }
 }
 
 suspend fun searchHistoryVideos(keyword: String, pageNumber: Int = 1): HistorySearchResponse {

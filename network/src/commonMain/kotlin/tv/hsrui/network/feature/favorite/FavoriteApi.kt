@@ -134,14 +134,14 @@ suspend fun fetchFavoriteFolderContent(
     return response.body()
 }
 
-suspend fun removeFavoriteVideo(mediaId: Long, avid: Long): ModifyFavoriteResponse {
+suspend fun removeFavoriteVideo(mediaId: Long, video: FavoriteVideoCard): ModifyFavoriteResponse {
     val loginStorage: LoginStorage = getKoin().get()
 
     val response = ApiClient.httpClient.post(ApiUrls.BASE + ApiUrls.Favorite.REMOVE_RESOURCE) {
         setBody(
             FormDataContent(
                 Parameters.build {
-                    append("resources", "$avid:2")
+                    append("resources", video.resourceKey)
                     append("media_id", mediaId.toString())
                     append("platform", "web")
                     append("csrf", loginStorage.cookies.csrf)

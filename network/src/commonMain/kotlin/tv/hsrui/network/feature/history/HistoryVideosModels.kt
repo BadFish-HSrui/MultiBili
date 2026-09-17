@@ -12,6 +12,7 @@ data class HistoryVideosResponse(
         isSuccess = (raw.code == 0),
         message = raw.message,
         validData = raw.data.list
+            .filter { it.typeString == "archive" || it.typeString == "pgc" }
             .map { it.toHistoryVideoCard() }
             .let { list ->
                 ValidHistoryVideos(
@@ -60,8 +61,19 @@ data class HistoryVideoCard(
     val watchProgress: Int = 0,
     val duration: Int = 0,
     val regionString: String = "",
-    val typeString: String = ""
+    val typeString: String = "",
+    val seasonId: Long = 0,
+    val episodeId: Long = 0,
 ) {
+    val isMedia: Boolean get() = typeString == "pgc"
+    val recordId: Long get() = if (isMedia) seasonId else avid
+    val recordKey: String
+        get() = when {
+            !isMedia -> "${typeString.ifEmpty { "archive" }}_$avid"
+            seasonId > 0 -> "pgc_$seasonId"
+            episodeId > 0 -> "pgc_ep_$episodeId"
+            else -> "pgc_av_$avid"
+        }
     val isFullyWatched get() = (watchProgress == -1)
 }
 
@@ -79,7 +91,9 @@ internal fun HistoryRawItem.toHistoryVideoCard(): HistoryVideoCard {
         watchProgress = watchProgress,
         duration = duration,
         regionString = regionString,
-        typeString = typeString
+        typeString = typeString,
+        seasonId = seasonId,
+        episodeId = episodeId,
     )
 }
 

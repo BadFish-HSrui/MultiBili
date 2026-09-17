@@ -145,7 +145,7 @@ fun HistorySearchScreen(
                     } else {
                         ShowHorizontalCardGrid(
                             cards = state.videos,
-                            keySelector = { it.avid },
+                            keySelector = { it.recordKey },
                             gridState = gridState,
                             bottomContent = if (state.isLoadingMore || state.loadMoreError != null) {
                                 {
@@ -171,9 +171,9 @@ fun HistorySearchScreen(
                                     if (!viewModel.canManageNow() || loginStorage.cookies.dedeUserID != resultIdentity) return@action
                                     val identity = resultIdentity
                                     try {
-                                        val result = deleteHistory(video.typeString, video.avid)
+                                        val result = deleteHistory(video.typeString, video.recordId)
                                         if (!loginStorage.isLoggedIn || loginStorage.cookies.dedeUserID != identity) return@action
-                                        if (result.isSuccess) viewModel.removeItem(video.avid)
+                                        if (result.isSuccess) viewModel.removeItem(video.recordKey)
                                         else snackbarManager.showMessage(result.message.ifBlank { "删除历史记录失败" })
                                     } catch (e: CancellationException) {
                                         throw e

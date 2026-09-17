@@ -78,5 +78,5 @@ data class FavoriteFolderContentData(
     @SerialName("medias") private val medias: List<FavoriteVideoCard>? = null,
     @SerialName("has_more") val hasMore: Boolean = false
 ) {
-    val videos: List<FavoriteVideoCard> get() = medias.orEmpty().filter { it.isVideo }
+    val videos: List<FavoriteVideoCard> get() = medias.orEmpty().filter { it.isVideo || it.isMedia }
 }

@@ -28,7 +28,7 @@ data class HistorySearchData(
     @SerialName("has_more") val hasMore: Boolean = false,
 ) {
     val videos: List<HistoryVideoCard> get() = items.orEmpty()
-        .filter { it.typeString == "archive" && it.id > 0 && it.bvid.isNotBlank() }
+        .filter { (it.typeString == "archive" && it.id > 0 && it.bvid.isNotBlank()) || it.typeString == "pgc" }
         .map { it.toHistoryVideoCard() }
 }
 
@@ -50,6 +50,8 @@ data class HistoryRawItem(
     @SerialName("title") val title: String = "",
     @SerialName("long_title") private val _longTitle: String = "",
     @SerialName("cover") private val _coverUrl: String = "",
+    @SerialName("kid") private val targetId: Long = 0,
+    @SerialName("uri") private val uri: String = "",
     @SerialName("history") private val info: HistoryRawItemInfo = HistoryRawItemInfo(),
     @SerialName("author_name") val upName: String = "",
     @SerialName("author_face") private val _upAvatarUrl: String = "",
@@ -63,6 +65,13 @@ data class HistoryRawItem(
 ) {
     val id by info::id
     val bvid by info::bvid
+    val episodeId by info::episodeId
+    val seasonId: Long
+        get() = if (typeString == "pgc") {
+            targetId.takeIf { it > 0 }
+                ?: Regex("/bangumi/play/ss([0-9]+)(?:[/?#]|$)").find(uri)
+                    ?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+        } else 0L
 
     val typeString by info::typeString
     val coverUrl by lazy { _coverUrl.toHttpsUrl() }
@@ -74,6 +83,7 @@ data class HistoryRawItem(
 @Serializable
 data class HistoryRawItemInfo(
     @SerialName("oid") val id: Long = 0,
+    @SerialName("epid") val episodeId: Long = 0,
     @SerialName("bvid") val bvid: String = "",
     @SerialName("business") val typeString: String = ""
 )

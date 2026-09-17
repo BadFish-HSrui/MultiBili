@@ -7,7 +7,7 @@ import tv.hsrui.network.utils.toHttpsUrl
 
 @Serializable
 data class FavoriteVideoCard(
-    @SerialName("id") val avid: Long = 0,
+    @SerialName("id") val resourceId: Long = 0,
     @SerialName("type") private val typeCode: Int = 0,
     val bvid: String = "",
     val title: String = "",
@@ -18,6 +18,9 @@ data class FavoriteVideoCard(
     @SerialName("fav_time") val favoriteTime: Long = 0
 ) {
     val isVideo: Boolean get() = (typeCode == 2)
+    val isMedia: Boolean get() = (typeCode == 24)
+    val episodeId: Long get() = if (isMedia) resourceId else 0L
+    val resourceKey: String get() = "$resourceId:$typeCode"
     val isAvailable: Boolean get() = (attributeCode == 0)
     val upMid get() = owner?.mid ?: 0L
     val upName get() = owner?.name.orEmpty()

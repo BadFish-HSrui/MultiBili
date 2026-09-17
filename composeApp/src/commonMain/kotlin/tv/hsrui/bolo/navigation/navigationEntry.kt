@@ -112,7 +112,7 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
                 VideoScreen(request = route.request)
             }
             is BoloRoute.View.Media -> NavEntry(key = route) {
-                MediaPlaybackScreen(seasonId = route.seasonId)
+                MediaPlaybackScreen(seasonId = route.seasonId, episodeId = route.episodeId)
             }
         }
     }

@@ -33,7 +33,7 @@ open class HistoryVideosViewModel : ViewModel() {
                 val result = firstLoad()
                 if (result.isSuccess) {
                     loadParams = result.validData.loadParams
-                    _uiState.value = HistoryVideosUiState.Success(result.validData.list)
+                    _uiState.value = HistoryVideosUiState.Success(result.validData.list.distinctBy { it.recordKey })
                     canLoadMore = result.validData.canLoadMore
                 } else {
                     _uiState.value = HistoryVideosUiState.Error("[Api请求错误0]: " + result.message)
@@ -53,10 +53,11 @@ open class HistoryVideosViewModel : ViewModel() {
                 val result = fetchHistoryVideos(loadParams = loadParams)
                 if (result.isSuccess) {
                     loadParams = result.validData.loadParams
+                    canLoadMore = result.validData.canLoadMore
                     _uiState.value =
                         HistoryVideosUiState.Success(
                             ((_uiState.value as HistoryVideosUiState.Success).videos
-                                    + result.validData.list).distinctBy { it.avid })
+                                    + result.validData.list).distinctBy { it.recordKey })
                 } else {
                     _uiState.value = HistoryVideosUiState.Error("[Api请求错误1]: " + result.message)
                 }
@@ -74,11 +75,11 @@ open class HistoryVideosViewModel : ViewModel() {
         loadVideos()
     }
 
-    fun removeItem(id: Long) {
+    fun removeItem(recordKey: String) {
         if (_uiState.value is HistoryVideosUiState.Success) {
             _uiState.value = HistoryVideosUiState.Success(
                 (_uiState.value as HistoryVideosUiState.Success).videos.filter {
-                    it.avid != id
+                    it.recordKey != recordKey
                 }
             )
         }

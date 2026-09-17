@@ -47,7 +47,8 @@ fun openFavoriteFolder(mediaId: Long) {
     navigator.navigateTo(BoloRoute.Favorite.Folder(mediaId))
 }
 
-fun openMedia(seasonId: Long) {
+fun openMedia(seasonId: Long = 0, episodeId: Long = 0) {
+    if (seasonId <= 0 && episodeId <= 0) return
     val navigator: Navigator = KoinPlatformTools.defaultContext().get().get()
-    navigator.navigateTo(BoloRoute.View.Media(seasonId))
+    navigator.navigateTo(BoloRoute.View.Media(seasonId, episodeId))
 }

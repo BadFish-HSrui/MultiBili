@@ -88,7 +88,7 @@ fun HistoryGridContent(
                 Box {
                     ShowHorizontalCardGrid(
                         cards = (uiState as HistoryVideosUiState.Success).videos,
-                        keySelector = { it.avid },
+                        keySelector = { it.recordKey },
                         gridState = historyGridState
                     ) { video ->
                         ShowHistoryVideoCard(
@@ -97,10 +97,10 @@ fun HistoryGridContent(
                                 try {
                                     val result = deleteHistory(
                                         typeString = video.typeString,
-                                        id = video.avid
+                                        id = video.recordId
                                     )
                                     if (result.isSuccess) {
-                                        viewModel.removeItem(video.avid)
+                                        viewModel.removeItem(video.recordKey)
                                     } else {
                                         snackbarManager.showMessage(result.message)
                                     }

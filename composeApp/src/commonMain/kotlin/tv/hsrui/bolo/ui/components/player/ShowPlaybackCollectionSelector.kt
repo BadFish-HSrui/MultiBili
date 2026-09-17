@@ -248,15 +248,9 @@ fun ShowPlaybackCollectionSelector(
                                     )
                                     if (item.badge.isNotBlank()) {
                                         val isVipBadge = item.badge.contains("会员")
-                                        val isPreviewBadge = item.badge.contains("预告")
                                         Surface(
-                                            color = when {
-                                                isVipBadge -> BiliColor.ThemeColor
-                                                isPreviewBadge -> BiliColor.Blue
-                                                else -> MaterialTheme.colorScheme.tertiaryContainer
-                                            },
-                                            contentColor = if (isVipBadge || isPreviewBadge) Color.White
-                                            else MaterialTheme.colorScheme.onTertiaryContainer,
+                                            color = if (isVipBadge) BiliColor.ThemeColor else BiliColor.Blue,
+                                            contentColor = Color.White,
                                             shape = MaterialTheme.shapes.extraSmall,
                                             modifier = Modifier.padding(start = 8.dp),
                                         ) {

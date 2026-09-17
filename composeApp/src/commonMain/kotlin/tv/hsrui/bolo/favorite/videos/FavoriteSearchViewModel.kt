@@ -34,7 +34,7 @@ class FavoriteSearchViewModel(private val mediaId: Long, private val loginStorag
     private var pageNumber = 0
     private var requestVersion = 0
     private var requestJob: Job? = null
-    private val removedIds = mutableSetOf<Long>()
+    private val removedIds = mutableSetOf<String>()
 
     init {
         viewModelScope.launch {
@@ -99,10 +99,10 @@ class FavoriteSearchViewModel(private val mediaId: Long, private val loginStorag
                     } ?: error("搜索请求超时")
                     if (version != requestVersion || identity != readCurrentUserMid()) return@launch
                     check(result.isSuccess) { result.message.ifBlank { "搜索失败" } }
-                    val videos = result.videos.filter { it.avid !in removedIds }
+                    val videos = result.videos.filter { it.resourceKey !in removedIds }
                     pageNumber = nextPage
                     _uiState.value = _uiState.value.copy(
-                        videos = (_uiState.value.videos + videos).filter { it.avid !in removedIds }.distinctBy { it.avid },
+                        videos = (_uiState.value.videos + videos).filter { it.resourceKey !in removedIds }.distinctBy { it.resourceKey },
                         hasMore = result.hasMore,
                         ownerMid = result.folderInfo?.mid ?: 0L,
                     )
@@ -123,8 +123,8 @@ class FavoriteSearchViewModel(private val mediaId: Long, private val loginStorag
         }
     }
 
-    fun removeItem(avid: Long) {
-        removedIds += avid
-        _uiState.value = _uiState.value.copy(videos = _uiState.value.videos.filter { it.avid != avid })
+    fun removeItem(resourceKey: String) {
+        removedIds += resourceKey
+        _uiState.value = _uiState.value.copy(videos = _uiState.value.videos.filter { it.resourceKey != resourceKey })
     }
 }

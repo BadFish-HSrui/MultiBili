@@ -27,9 +27,11 @@ suspend fun fetchMediaConditions(seasonType: Int): MediaConditionsResponse {
     }.body()
 }
 
-suspend fun fetchMediaSeason(seasonId: Long): MediaSeasonResponse {
+suspend fun fetchMediaSeason(seasonId: Long = 0, episodeId: Long = 0): MediaSeasonResponse {
+    require(seasonId > 0 || episodeId > 0) { "缺少有效的媒体标识" }
     return ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.MEDIA_SEASON) {
-        parameter("season_id", seasonId)
+        if (episodeId > 0) parameter("ep_id", episodeId)
+        else parameter("season_id", seasonId)
     }.body()
 }
 

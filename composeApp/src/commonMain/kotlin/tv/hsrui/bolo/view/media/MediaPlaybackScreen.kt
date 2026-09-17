@@ -16,9 +16,12 @@ import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 
 @Composable
 fun MediaPlaybackScreen(
-    seasonId: Long,
+    seasonId: Long = 0,
     modifier: Modifier = Modifier,
-    viewModel: MediaPlaybackViewModel = viewModel(key = "media_$seasonId") { MediaPlaybackViewModel(seasonId) },
+    episodeId: Long = 0,
+    viewModel: MediaPlaybackViewModel = viewModel(key = "media_${seasonId}_$episodeId") {
+        MediaPlaybackViewModel(seasonId, episodeId)
+    },
 ) {
     val uiState by viewModel.uiState.collectAsState()
     Surface(modifier = modifier.fillMaxSize()) {

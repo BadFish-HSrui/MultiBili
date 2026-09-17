@@ -33,7 +33,7 @@ class HistorySearchViewModel(private val loginStorage: LoginStorage = getKoin().
     private var pageNumber = 0
     private var requestVersion = 0
     private var requestJob: Job? = null
-    private val removedIds = mutableSetOf<Long>()
+    private val removedIds = mutableSetOf<String>()
 
     init {
         viewModelScope.launch {
@@ -101,10 +101,10 @@ class HistorySearchViewModel(private val loginStorage: LoginStorage = getKoin().
                     } ?: error("搜索请求超时")
                     if (version != requestVersion || identity != readCurrentUserMid()) return@launch
                     check(result.isSuccess) { result.message.ifBlank { "搜索失败" } }
-                    val videos = result.videos.filter { it.avid !in removedIds }
+                    val videos = result.videos.filter { it.recordKey !in removedIds }
                     pageNumber = nextPage
                     _uiState.value = _uiState.value.copy(
-                        videos = (_uiState.value.videos + videos).filter { it.avid !in removedIds }.distinctBy { it.avid },
+                        videos = (_uiState.value.videos + videos).filter { it.recordKey !in removedIds }.distinctBy { it.recordKey },
                         hasMore = result.hasMore,
                     )
                 } while (videos.isEmpty() && result.hasMore)
@@ -124,8 +124,8 @@ class HistorySearchViewModel(private val loginStorage: LoginStorage = getKoin().
         }
     }
 
-    fun removeItem(avid: Long) {
-        removedIds += avid
-        _uiState.value = _uiState.value.copy(videos = _uiState.value.videos.filter { it.avid != avid })
+    fun removeItem(recordKey: String) {
+        removedIds += recordKey
+        _uiState.value = _uiState.value.copy(videos = _uiState.value.videos.filter { it.recordKey != recordKey })
     }
 }

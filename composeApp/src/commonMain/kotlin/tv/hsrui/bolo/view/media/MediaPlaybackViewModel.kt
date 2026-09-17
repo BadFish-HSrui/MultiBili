@@ -15,7 +15,10 @@ import tv.hsrui.network.feature.media.MediaSeasonData
 import tv.hsrui.network.feature.media.fetchMediaSeason
 import tv.hsrui.network.feature.media.fetchRelatedMedia
 
-class MediaPlaybackViewModel(private val seasonId: Long) : ViewModel() {
+class MediaPlaybackViewModel(
+    private val seasonId: Long = 0,
+    private val episodeId: Long = 0,
+) : ViewModel() {
     private val _uiState = MutableStateFlow<MediaPlaybackUiState>(MediaPlaybackUiState.Loading)
     val uiState = _uiState.asStateFlow()
     private val seasons = mutableMapOf<Long, MediaSeasonData>()
@@ -44,17 +47,21 @@ class MediaPlaybackViewModel(private val seasonId: Long) : ViewModel() {
         _uiState.value = MediaPlaybackUiState.Loading
         mediaJob = viewModelScope.launch {
             try {
-                val response = fetchMediaSeason(seasonId)
+                val response = fetchMediaSeason(seasonId = seasonId, episodeId = episodeId)
                 if (generation != mediaGeneration) return@launch
                 val media = response.season
                 if (!response.isSuccess || media == null) {
                     _uiState.value = MediaPlaybackUiState.Error(response.message)
                     return@launch
                 }
+                val episode = if (episodeId > 0) {
+                    media.episodes.firstOrNull { it.episodeId == episodeId && it.isAvailable }
+                        ?: error("指定剧集不存在或不可播放")
+                } else media.episodes.firstOrNull { it.isAvailable }
                 seasons[media.seasonId] = media
                 _uiState.value = MediaPlaybackUiState.Success(
                     media = media,
-                    episode = media.episodes.firstOrNull { it.isAvailable },
+                    episode = episode,
                     selectedSeasonId = media.seasonId,
                     browsedSeason = media,
                 )

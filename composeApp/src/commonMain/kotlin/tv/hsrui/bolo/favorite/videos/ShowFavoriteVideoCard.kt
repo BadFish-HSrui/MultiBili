@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
+import tv.hsrui.bolo.navigation.openMedia
 import tv.hsrui.bolo.navigation.openVideo
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.theme.BoloShapes
@@ -54,7 +55,11 @@ fun ShowFavoriteVideoCard(
     modifier: Modifier = Modifier,
     canManage: Boolean = false,
 ) {
-    val canOpenVideo = videoInfo.isAvailable && (videoInfo.bvid.isNotEmpty() || videoInfo.avid > 0)
+    val canOpenVideo = videoInfo.isAvailable && when {
+        videoInfo.isMedia -> videoInfo.episodeId > 0
+        videoInfo.isVideo -> videoInfo.bvid.isNotEmpty() || videoInfo.resourceId > 0
+        else -> false
+    }
 
     Card(
         shape = BoloShapes.InfoCard.Default,
@@ -66,10 +71,12 @@ fun ShowFavoriteVideoCard(
             .combinedClickable(
                 enabled = canOpenVideo,
                 onClick = {
-                    if (videoInfo.bvid.isNotEmpty()) {
+                    if (videoInfo.isMedia) {
+                        openMedia(episodeId = videoInfo.episodeId)
+                    } else if (videoInfo.bvid.isNotEmpty()) {
                         openVideo(bvid = videoInfo.bvid)
                     } else {
-                        openVideo(avid = videoInfo.avid)
+                        openVideo(avid = videoInfo.resourceId)
                     }
                 }
             )
@@ -126,34 +133,38 @@ fun ShowFavoriteVideoCard(
                         .align(Alignment.BottomStart)
                         .padding(start = 8.dp, end = 36.dp, bottom = 8.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .size(28.dp)
-                            .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) }
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        AsyncImage(
-                            model = videoInfo.upAvatarUrl
-                                .takeIf { it.isNotEmpty() }
-                                ?.plus("@64w_64h.webp"),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                    if (!videoInfo.isMedia) {
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .size(28.dp)
+                                .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) }
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            AsyncImage(
+                                model = videoInfo.upAvatarUrl
+                                    .takeIf { it.isNotEmpty() }
+                                    ?.plus("@64w_64h.webp"),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     }
                     Column(
                         modifier = Modifier
                             .weight(1F)
-                            .padding(start = 4.dp)
+                            .padding(start = if (videoInfo.isMedia) 0.dp else 4.dp)
                     ) {
-                        Text(
-                            text = videoInfo.upName.ifEmpty { "未知UP主" },
-                            modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        if (!videoInfo.isMedia) {
+                            Text(
+                                text = videoInfo.upName.ifEmpty { "未知UP主" },
+                                modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                         Text(
                             text = if (videoInfo.favoriteTime > 0) {
                                 "收藏于 ${videoInfo.favoriteTime.formatToDateTime()}"
@@ -172,7 +183,7 @@ fun ShowFavoriteVideoCard(
                     val scope = rememberCoroutineScope()
                     IconButton(
                         onClick = { showDialog = true },
-                        enabled = videoInfo.avid > 0,
+                        enabled = videoInfo.resourceId > 0,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .offset(x = (-4).dp, y = (-4).dp)

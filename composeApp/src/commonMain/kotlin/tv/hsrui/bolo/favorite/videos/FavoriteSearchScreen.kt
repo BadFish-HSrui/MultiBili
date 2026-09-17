@@ -144,7 +144,7 @@ fun FavoriteSearchScreen(
                     } else {
                         ShowHorizontalCardGrid(
                             cards = state.videos,
-                            keySelector = { it.avid },
+                            keySelector = { it.resourceKey },
                             gridState = gridState,
                             bottomContent = if (state.isLoadingMore || state.loadMoreError != null) {
                                 {
@@ -169,9 +169,9 @@ fun FavoriteSearchScreen(
                                     if (!viewModel.canManageNow() || loginStorage.cookies.dedeUserID != resultIdentity) return@action
                                     val identity = resultIdentity
                                     try {
-                                        val result = removeFavoriteVideo(mediaId, video.avid)
+                                        val result = removeFavoriteVideo(mediaId, video)
                                         if (!loginStorage.isLoggedIn || loginStorage.cookies.dedeUserID != identity) return@action
-                                        if (result.isSuccess) viewModel.removeItem(video.avid)
+                                        if (result.isSuccess) viewModel.removeItem(video.resourceKey)
                                         else snackbarManager.showMessage(result.message.ifBlank { "取消收藏失败" })
                                     } catch (e: CancellationException) {
                                         throw e

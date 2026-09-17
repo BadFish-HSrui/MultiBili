@@ -84,7 +84,7 @@ fun FavoriteVideosContent(
 
                         ShowHorizontalCardGrid(
                             cards = uiState.videos,
-                            keySelector = { it.avid },
+                            keySelector = { it.resourceKey },
                             gridState = gridState
                         ) { video ->
                             ShowFavoriteVideoCard(

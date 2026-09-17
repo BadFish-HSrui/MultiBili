@@ -70,7 +70,7 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                 _uiState.value = FavoriteVideosUiState.Success(
                     folderTitle = folderTitle,
                     isDefault = isDefault,
-                    videos = videos.distinctBy { it.avid },
+                    videos = videos.distinctBy { it.resourceKey },
                     ownerMid = ownerMid,
                 )
             } catch (e: CancellationException) {
@@ -126,7 +126,7 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                 _uiState.value = FavoriteVideosUiState.Success(
                     folderTitle = folderTitle,
                     isDefault = isDefault,
-                    videos = (currentState.videos + videos).distinctBy { it.avid },
+                    videos = (currentState.videos + videos).distinctBy { it.resourceKey },
                     ownerMid = ownerMid,
                 )
             } catch (e: CancellationException) {
@@ -143,10 +143,10 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
         }
     }
 
-    fun removeItem(id: Long) {
+    fun removeItem(resourceKey: String) {
         val currentState = _uiState.value as? FavoriteVideosUiState.Success ?: return
         _uiState.value = currentState.copy(
-            videos = currentState.videos.filter { it.avid != id }
+            videos = currentState.videos.filter { it.resourceKey != resourceKey }
         )
     }
 }
