@@ -60,6 +60,7 @@ class VideoPlayerViewModel(
     private var sourceLoadJob: Job? = null
     private var sourceGeneration = 0L
     private var autoPlayOnOpen = true
+    private var resumeFromHistoryOnOpen = true
     private var playerInfo: PlayerInfoResponse? = null
     private var playbackGeneration = -1L
     private var lastConfirmedPositionMs: Long? = null
@@ -153,6 +154,7 @@ class VideoPlayerViewModel(
             playerInfo = initialPlayerInfo.takeIf { sourceGeneration == 0L }
             lastConfirmedPositionMs = null
             autoPlayOnOpen = settings.playerAutoPlayOnOpenEnabled
+            resumeFromHistoryOnOpen = settings.playerResumeFromHistoryEnabled
             videoQuality = settings.playerDefaultVideoQuality
             audioQuality = settings.playerDefaultAudioQuality
         }
@@ -282,7 +284,7 @@ class VideoPlayerViewModel(
     }
 
     private fun resumePositionMs(): Long {
-        if (!loginStorage.isLoggedIn) return 0L
+        if (!resumeFromHistoryOnOpen || !loginStorage.isLoggedIn) return 0L
         val info = playerInfo?.takeIf { it.matchesRequest(avid, cid, loginStorage.cookies.sessData) } ?: return 0L
         val source = (uiState.value as? VideoPlayerUiState.Success)?.videoSource ?: return 0L
         val durationSeconds = maxOf(source.getVideo(videoQuality, videoCodec).duration,

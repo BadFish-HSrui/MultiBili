@@ -39,6 +39,20 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentPlayerAutoEnableDanmakuOnOpenEnabled = value
         }
 
+    private var storedPlayerResumeFromHistoryEnabled by settingsKSafe(
+        true,
+        key = "player_resume_from_history_enabled",
+    )
+    private var currentPlayerResumeFromHistoryEnabled by mutableStateOf(storedPlayerResumeFromHistoryEnabled)
+
+    var playerResumeFromHistoryEnabled: Boolean
+        get() = currentPlayerResumeFromHistoryEnabled
+        set(value) {
+            if (value == currentPlayerResumeFromHistoryEnabled) return
+            storedPlayerResumeFromHistoryEnabled = value
+            currentPlayerResumeFromHistoryEnabled = value
+        }
+
     private var storedPlayerDefaultVideoQuality by settingsKSafe(120, key = "player_default_video_quality")
     private var currentPlayerDefaultVideoQuality by mutableStateOf(
         VideoQuality.entries.firstOrNull { it.code == storedPlayerDefaultVideoQuality } ?: VideoQuality.UHD,

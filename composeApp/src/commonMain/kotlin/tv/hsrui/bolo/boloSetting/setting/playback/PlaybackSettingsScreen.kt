@@ -195,6 +195,22 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     onCheckedChange = null
                                 )
                             }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.playerResumeFromHistoryEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.playerResumeFromHistoryEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("从播放记录继续", style = MaterialTheme.typography.bodyLarge)
+                                Spacer(Modifier.weight(1f))
+                                Switch(
+                                    checked = settings.playerResumeFromHistoryEnabled,
+                                    onCheckedChange = null
+                                )
+                            }
                             val audioQualities = listOf(
                                 AudioQuality.QUALITY_64K,
                                 AudioQuality.QUALITY_132K,

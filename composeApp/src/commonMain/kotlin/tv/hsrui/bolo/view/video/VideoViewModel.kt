@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.mp.KoinPlatform.getKoin
+import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.model.Vid
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.network.feature.video.VideoInfoData
@@ -311,12 +312,14 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
                 var video = originalVideo
                 var playerInfo: PlayerInfoResponse? = null
                 if (!hasOpenedVideo) {
+                    val settings = getKoin().get<BoloSettings>()
                     val loginStorage = getKoin().get<LoginStorage>()
                     val accountSession = loginStorage.cookies.sessData
                     val initialInfo = fetchPlayerInfo(video.avid, video.cid)
                     if (version != generation) return@launch
                     playerInfo = initialInfo
-                    if (accountSession.isNotEmpty() && loginStorage.cookies.sessData == accountSession &&
+                    if (settings.playerResumeFromHistoryEnabled &&
+                        accountSession.isNotEmpty() && loginStorage.cookies.sessData == accountSession &&
                         initialInfo.matchesRequest(video.avid, video.cid, accountSession)
                     ) {
                         val historyPart = video.parts.firstOrNull { it.cid == initialInfo.lastPlayCid }
@@ -326,7 +329,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
                             playerInfo = fetchPlayerInfo(video.avid, video.cid)
                         }
                     }
-                    if (loginStorage.cookies.sessData != accountSession) {
+                    if (!settings.playerResumeFromHistoryEnabled || loginStorage.cookies.sessData != accountSession) {
                         video = originalVideo
                         playerInfo = initialInfo
                     }
