@@ -59,13 +59,26 @@ class VideoViewModel(private val vid: Vid) : ViewModel() {
     fun selectCollectionEpisode(key: String) {
         val current = _uiState.value as? VideoUiState.Success ?: return
         val episode = current.video.collection?.sections?.flatMap { it.episodes }?.firstOrNull { it.key == key && it.isAvailable } ?: return
-        if (episode.avid == current.video.avid && episode.cid == current.video.cid) {
+        if (episode.avid == current.video.avid) {
             ++generation
             loadJob?.cancel()
             _uiState.value = current.copy(switchingEpisodeKey = null, isSwitchingEpisode = false, episodeError = null)
             return
         }
         loadVideoInfo(episode)
+    }
+
+    fun selectVideoPart(cid: Long) {
+        val current = _uiState.value as? VideoUiState.Success ?: return
+        if (current.video.parts.none { it.cid == cid }) return
+        ++generation
+        loadJob?.cancel()
+        _uiState.value = current.copy(
+            video = if (current.video.cid == cid) current.video else current.video.copy(cid = cid),
+            switchingEpisodeKey = null,
+            isSwitchingEpisode = false,
+            episodeError = null,
+        )
     }
 
     fun selectSection(sectionId: Long) {

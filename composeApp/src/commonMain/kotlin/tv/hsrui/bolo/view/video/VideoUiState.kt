@@ -18,7 +18,7 @@ sealed class VideoUiState {
     ) : VideoUiState() {
         val selectedSection get() = video.collection?.sections?.firstOrNull { it.sectionId == selectedSectionId }
         val playingEpisodeKey get() = video.collection?.sections?.flatMap { it.episodes }
-            ?.firstOrNull { it.avid == video.avid && it.cid == video.cid }?.key
+            ?.firstOrNull { it.avid == video.avid }?.key
     }
     data class  Error(val message: String): VideoUiState()
 }

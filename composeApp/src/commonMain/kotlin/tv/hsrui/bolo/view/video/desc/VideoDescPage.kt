@@ -24,7 +24,9 @@ import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.bolo.view.video.VideoUiState
 import tv.hsrui.bolo.ui.components.player.PlaybackCollectionGroup
 import tv.hsrui.bolo.ui.components.player.PlaybackCollectionItem
+import tv.hsrui.bolo.ui.components.player.PlaybackCollectionPart
 import tv.hsrui.bolo.ui.components.player.ShowPlaybackCollectionSelector
+import tv.hsrui.bolo.ui.theme.BiliColor
 
 @Composable
 fun VideoDescPage(
@@ -32,12 +34,15 @@ fun VideoDescPage(
     collectionState: VideoUiState.Success,
     onSectionSelected: (Long) -> Unit,
     onEpisodeSelected: (String) -> Unit,
+    onPartSelected: (Long) -> Unit,
     onDescendingChange: (Boolean) -> Unit,
     viewModel: RelatedViewModel = viewModel(key = "desc_${videoInfo.bvid}") { RelatedViewModel(videoInfo.avid) },
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val columns = if (isMedium()) 2 else 1
+    val collection = videoInfo.collection?.takeIf { it.seasonId > 0 }
+    val parts = videoInfo.parts.takeIf { it.size > 1 }.orEmpty()
     LazyColumn(
         contentPadding = PaddingValues(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -45,7 +50,7 @@ fun VideoDescPage(
         modifier = if (columns == 2) modifier.fillMaxWidth() else modifier.widthIn(max = 512.dp)
     ) {
         item(key = "desc") { VideoDescContent(videoInfo) }
-        videoInfo.collection?.takeIf { it.seasonId > 0 }?.let { collection ->
+        if (collection != null) {
             item(key = "collection") {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (collectionState.isSwitchingEpisode) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -61,7 +66,15 @@ fun VideoDescPage(
                         groups = collection.sections.map { PlaybackCollectionGroup(it.sectionId.toString(), it.title) },
                         selectedGroupId = collectionState.selectedSectionId?.toString().orEmpty(),
                         items = collectionState.selectedSection?.episodes.orEmpty().distinctBy { it.key }.map {
-                            PlaybackCollectionItem(id = it.key, title = it.displayTitle, enabled = it.isAvailable)
+                            PlaybackCollectionItem(
+                                id = it.key,
+                                title = it.displayTitle,
+                                enabled = it.isAvailable,
+                                parts = if (it.key == collectionState.playingEpisodeKey) {
+                                    parts.map { part -> PlaybackCollectionPart(part.cid.toString(), part.title, part.durationString) }
+                                } else emptyList(),
+                                duration = it.videoCard.takeIf { card -> card.duration > 0 }?.durationString.orEmpty(),
+                            )
                         },
                         playingItemId = collectionState.playingEpisodeKey,
                         isDescending = collectionState.isDescending,
@@ -70,8 +83,26 @@ fun VideoDescPage(
                         onDescendingChange = onDescendingChange,
                         onRetry = { collectionState.switchingEpisodeKey?.let(onEpisodeSelected) },
                         title = collection.title,
+                        playingPartId = videoInfo.cid.toString(),
+                        onPartSelected = { it.toLongOrNull()?.let(onPartSelected) },
                     )
                 }
+            }
+        } else if (parts.isNotEmpty()) {
+            item(key = "parts") {
+                ShowPlaybackCollectionSelector(
+                    groups = emptyList(),
+                    selectedGroupId = "",
+                    items = parts.map { PlaybackCollectionItem(it.cid.toString(), it.title, duration = it.durationString) },
+                    playingItemId = videoInfo.cid.toString(),
+                    isDescending = collectionState.isDescending,
+                    onGroupSelected = {},
+                    onItemSelected = { it.toLongOrNull()?.let(onPartSelected) },
+                    onDescendingChange = onDescendingChange,
+                    onRetry = {},
+                    title = "视频分集",
+                    selectedItemContentColor = BiliColor.Blue,
+                )
             }
         }
         item(key = "recommendations_title") {

@@ -36,20 +36,21 @@ fun VideoPage(
     LaunchedEffect(videoInfo.avid, videoInfo.cid) {
         viewModel.switchMedia(videoInfo.avid, videoInfo.cid)
     }
-    // 简介操作、推荐和评论仅属于当前视频；切集即清理，播放器与全屏布局继续复用。
-    val detailOwner = remember(videoInfo.avid, videoInfo.cid) {
+    // 简介操作、推荐和评论按稿件保留；同视频切 P 复用，换视频或离页时清理。
+    val detailOwner = remember(videoInfo.avid) {
         object : ViewModelStoreOwner { override val viewModelStore = ViewModelStore() }
     }
     DisposableEffect(detailOwner) { onDispose { detailOwner.viewModelStore.clear() } }
     PlayerPageLayout(
         descContent = {
             CompositionLocalProvider(LocalViewModelStoreOwner provides detailOwner) {
-                key(videoInfo.avid, videoInfo.cid) {
+                key(videoInfo.avid) {
                     VideoDescPage(
                         videoInfo = videoInfo,
                         collectionState = uiState,
                         onSectionSelected = videoViewModel::selectSection,
                         onEpisodeSelected = videoViewModel::selectCollectionEpisode,
+                        onPartSelected = videoViewModel::selectVideoPart,
                         onDescendingChange = videoViewModel::setDescending,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -58,7 +59,7 @@ fun VideoPage(
         },
         replyContent = {
             CompositionLocalProvider(LocalViewModelStoreOwner provides detailOwner) {
-                key(videoInfo.avid, videoInfo.cid) {
+                key(videoInfo.avid) {
                     VideoReplyPage(videoInfo = videoInfo, modifier = Modifier.fillMaxSize())
                 }
             }
