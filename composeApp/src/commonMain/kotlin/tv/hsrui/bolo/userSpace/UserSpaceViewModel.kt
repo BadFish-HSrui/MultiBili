@@ -12,6 +12,7 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withTimeoutOrNull
 import tv.hsrui.network.feature.favorite.fetchFavoriteFolders
 import tv.hsrui.network.feature.user.space.UserSpacePrivacyData
+import tv.hsrui.network.feature.user.space.UserSpaceUploadOrder
 import tv.hsrui.network.feature.user.space.fetchUserSpaceCollections
 import tv.hsrui.network.feature.user.space.fetchUserSpaceCoins
 import tv.hsrui.network.feature.user.space.fetchUserSpaceLikes
@@ -26,7 +27,9 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
     private val _uiState = MutableStateFlow(UserSpaceUiState())
     val uiState = _uiState.asStateFlow()
     private var requestVersion = 0
+    private var uploadRequestVersion = 0
     private var refreshJob: Job? = null
+    private var uploadRefreshJob: Job? = null
     private var loadMoreJob: Job? = null
     private var collectionLoadMoreJob: Job? = null
     private var collectionPlaybackJob: Job? = null
@@ -36,7 +39,10 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
 
     fun refreshSpace() {
         val version = ++requestVersion
+        val uploadVersion = ++uploadRequestVersion
+        val uploadOrder = _uiState.value.uploadOrder
         refreshJob?.cancel()
+        uploadRefreshJob?.cancel()
         loadMoreJob?.cancel()
         collectionLoadMoreJob?.cancel()
         cancelCollectionPlayback()
@@ -49,7 +55,7 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
         refreshJob = viewModelScope.launch {
             try {
                 supervisorScope {
-                    launch { loadUploads(version) }
+                    uploadRefreshJob = launch { loadUploads(uploadVersion, uploadOrder) }
                     launch { loadCollections(version) }
                     val privacy = loadPrivacy()
                     val isOwner = loginStorage.isLoggedIn && loginStorage.cookies.dedeUserID == mid
@@ -65,6 +71,21 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
 
     fun refreshTab() = refreshSpace()
 
+    fun setUploadOrder(order: UserSpaceUploadOrder) {
+        if (order == _uiState.value.uploadOrder) return
+        // 投稿独立换代，不使其他栏目正在进行的刷新失效。
+        val version = ++uploadRequestVersion
+        uploadRefreshJob?.cancel()
+        loadMoreJob?.cancel()
+        _uiState.update {
+            it.copy(
+                uploadOrder = order, uploads = UserSpaceSectionState.Loading,
+                uploadPage = 0, canLoadMore = false, isLoadingMore = false, loadMoreError = null,
+            )
+        }
+        uploadRefreshJob = viewModelScope.launch { loadUploads(version, order) }
+    }
+
     private suspend fun loadPrivacy(): UserSpacePrivacyData? = try {
         fetchUserSpacePrivacy(mid).privacy
     } catch (e: CancellationException) {
@@ -73,13 +94,13 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
         null // 权限未知时由各内容接口判定，不将请求失败视为隐藏。
     }
 
-    private suspend fun loadUploads(version: Int, page: Int = 1) {
+    private suspend fun loadUploads(version: Int, order: UserSpaceUploadOrder, page: Int = 1) {
         try {
-            val result = fetchUserSpaceUploads(mid, page)
+            val result = fetchUserSpaceUploads(mid, page, order)
             check(result.isSuccess) { result.message.ifBlank { "视频投稿加载失败（${result.code}）" } }
             val videos = result.videos.filter { it.avid > 0 }.distinctBy { it.avid }
             check(videos.isNotEmpty() || result.total == 0) { "投稿列表为空，但接口总数不为零，请重试" }
-            if (version != requestVersion) return
+            if (version != uploadRequestVersion) return
             _uiState.update {
                 val previous = (it.uploads as? UserSpaceSectionState.Success)?.data.orEmpty()
                 it.copy(
@@ -90,7 +111,7 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (version != requestVersion) return
+            if (version != uploadRequestVersion) return
             val message = e.message ?: "视频投稿加载失败"
             _uiState.update {
                 if (page == 1) it.copy(uploads = UserSpaceSectionState.Error(message), canLoadMore = false)
@@ -102,11 +123,11 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
     fun loadMoreUploads() {
         val state = _uiState.value
         if (state.isRefreshing || state.isLoadingMore || !state.canLoadMore || state.uploads !is UserSpaceSectionState.Success) return
-        val version = requestVersion
+        val version = uploadRequestVersion
         _uiState.update { it.copy(isLoadingMore = true, loadMoreError = null) }
         loadMoreJob = viewModelScope.launch {
-            try { loadUploads(version, state.uploadPage + 1) }
-            finally { if (version == requestVersion) _uiState.update { it.copy(isLoadingMore = false) } }
+            try { loadUploads(version, state.uploadOrder, state.uploadPage + 1) }
+            finally { if (version == uploadRequestVersion) _uiState.update { it.copy(isLoadingMore = false) } }
         }
     }
 

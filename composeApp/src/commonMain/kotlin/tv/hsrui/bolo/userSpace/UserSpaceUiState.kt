@@ -1,6 +1,7 @@
 package tv.hsrui.bolo.userSpace
 
 import tv.hsrui.network.feature.favorite.FavoriteFolderInfoData
+import tv.hsrui.network.feature.user.space.UserSpaceUploadOrder
 import tv.hsrui.network.model.VideoCard
 import tv.hsrui.network.feature.video.collection.VideoCollectionSummaryData
 
@@ -30,6 +31,7 @@ data class UserSpaceUiState(
     val favorites: UserSpaceSectionState<List<FavoriteFolderInfoData>> = UserSpaceSectionState.Loading,
     val refreshGeneration: Int = 0,
     val isRefreshing: Boolean = false,
+    val uploadOrder: UserSpaceUploadOrder = UserSpaceUploadOrder.Latest,
     val isLoadingMore: Boolean = false,
     val canLoadMore: Boolean = false,
     val uploadPage: Int = 0,

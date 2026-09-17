@@ -4,8 +4,10 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,9 +15,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Surface
@@ -50,6 +55,7 @@ import tv.hsrui.bolo.userSpace.collection.UserCollectionsContent
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.ui.components.user.ShowUserInfoBar
 import tv.hsrui.network.login.storage.LoginStorage
+import tv.hsrui.network.feature.user.space.UserSpaceUploadOrder
 
 @Composable
 fun UserSpaceScreen(mid: Long, modifier: Modifier = Modifier) {
@@ -79,6 +85,7 @@ fun UserSpaceScreen(mid: Long, modifier: Modifier = Modifier) {
             state = state,
             onRefresh = viewModel::refreshTab,
             onLoadMore = viewModel::loadMoreUploads,
+            onUploadOrderSelected = viewModel::setUploadOrder,
             onLoadMoreCollections = viewModel::loadMoreCollections,
             onPlayCollection = viewModel::playCollection,
             canManageFavorites = currentUserMid > 0 && currentUserMid == mid,
@@ -94,6 +101,7 @@ private fun UserSpaceContent(
     state: UserSpaceUiState,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
+    onUploadOrderSelected: (UserSpaceUploadOrder) -> Unit,
     onLoadMoreCollections: () -> Unit,
     onPlayCollection: (Long) -> Unit,
     canManageFavorites: Boolean,
@@ -165,6 +173,25 @@ private fun UserSpaceContent(
                                             else -> VideosUiState.Loading
                                         }
                                         Column(Modifier.fillMaxSize()) {
+                                            if (tab == UserSpaceTab.Uploads) {
+                                                LazyRow(
+                                                    contentPadding = PaddingValues(horizontal = 12.dp),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                ) {
+                                                    items(UserSpaceUploadOrder.entries, key = { it.name }) { order ->
+                                                        FilterChip(
+                                                            selected = order == state.uploadOrder,
+                                                            onClick = {
+                                                                if (order != state.uploadOrder) {
+                                                                    uploadGrid.requestScrollToItem(0)
+                                                                    onUploadOrderSelected(order)
+                                                                }
+                                                            },
+                                                            label = { Text(order.title, maxLines = 1) },
+                                                        )
+                                                    }
+                                                }
+                                            }
                                             VideosGridPage(
                                                 uiState = videoState,
                                                 isLoading = tab != UserSpaceTab.Uploads || state.isRefreshing || state.isLoadingMore || !state.canLoadMore || state.loadMoreError != null || pager.currentPage != page,

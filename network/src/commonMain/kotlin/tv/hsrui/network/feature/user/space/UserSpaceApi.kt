@@ -14,13 +14,17 @@ suspend fun fetchUserSpacePrivacy(mid: Long): UserSpacePrivacyResponse = withTim
     }.body<UserSpacePrivacyResponse>()
 } ?: error("空间权限请求超时")
 
-suspend fun fetchUserSpaceUploads(mid: Long, pageNumber: Int = 1): UserSpaceUploadsResponse = withTimeoutOrNull(15_000) {
+suspend fun fetchUserSpaceUploads(
+    mid: Long,
+    pageNumber: Int = 1,
+    order: UserSpaceUploadOrder = UserSpaceUploadOrder.Latest,
+): UserSpaceUploadsResponse = withTimeoutOrNull(15_000) {
     ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.UserSpace.UPLOADS) {
         buildWithWbi {
             parameter("mid", mid)
             parameter("pn", pageNumber)
             parameter("ps", 30)
-            parameter("order", "pubdate")
+            parameter("order", order.value)
         }
     }.body<UserSpaceUploadsResponse>()
 } ?: error("视频投稿请求超时")
