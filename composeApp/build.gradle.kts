@@ -75,6 +75,9 @@ kotlin {
     applyDefaultHierarchyTemplate()
 
     sourceSets {
+        val skiaMain by creating { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(skiaMain)
+        iosMain.get().dependsOn(skiaMain)
         val jvmAndAndroidMain by creating { dependsOn(commonMain.get()) }
         androidMain.get().dependsOn(jvmAndAndroidMain)
         jvmMain.get().dependsOn(jvmAndAndroidMain)
@@ -87,6 +90,7 @@ kotlin {
         androidMain.get().dependsOn(mobileMain)
         iosMain.get().dependsOn(mobileMain)
         androidMain.dependencies {
+            implementation(libs.coil.gif)
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.activity.compose)
         }

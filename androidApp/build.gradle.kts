@@ -32,6 +32,9 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            merges -= "/META-INF/services/**"
+            merges += "/META-INF/services/{coil3.util.FetcherServiceLoaderTarget,io.ktor.*,kotlinx.*}"
+            excludes += "META-INF/services/coil3.util.DecoderServiceLoaderTarget"
         }
     }
     buildTypes {

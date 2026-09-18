@@ -62,6 +62,7 @@ androidx-core = { module = "androidx.test:core", version = "1.7.0" }
 androidx-runner = { module = "androidx.test:runner", version = "1.7.0" }
 materialKolor = { module = "com.materialkolor:material-kolor", version.ref = "materialKolor" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil" }
 coil-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
 material-icons = { module = "org.jetbrains.compose.material:material-icons-extended", version = "1.7.3" }
 material3-adaptive = { module = "org.jetbrains.compose.material3.adaptive:adaptive", version.ref = "compose-multiplatform-adaptive" }
