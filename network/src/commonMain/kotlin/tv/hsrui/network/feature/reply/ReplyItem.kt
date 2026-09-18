@@ -66,8 +66,22 @@ data class ReplyItem(
     data class ReplyContent(
         @SerialName("message") val text: String = "",
         @SerialName("emote") val emote: Map<String, EmoteItem> = emptyMap(),
-        @SerialName("jump_url") val jump: Map<String, JumpUrlItem> = emptyMap()
+        @SerialName("jump_url") val jump: Map<String, JumpUrlItem> = emptyMap(),
+        @SerialName("pictures") private val rawPictures: List<ReplyPicture>? = null,
     ) {
+        val pictures: List<ReplyPicture> by lazy {
+            rawPictures.orEmpty().filter { it.url.isNotBlank() }
+        }
+
+        @Serializable
+        data class ReplyPicture(
+            @SerialName("img_src") private val sourceUrl: String = "",
+            @SerialName("img_width") val width: Int = 0,
+            @SerialName("img_height") val height: Int = 0,
+        ) {
+            val url: String get() = sourceUrl.trim().toHttpsUrl()
+        }
+
         val hasExternalLink get() = jumpAppsName.isNotEmpty()
 
         val jumpAppsName: List<String> =
@@ -99,4 +113,3 @@ data class ReplyItem(
         }
     }
 }
-

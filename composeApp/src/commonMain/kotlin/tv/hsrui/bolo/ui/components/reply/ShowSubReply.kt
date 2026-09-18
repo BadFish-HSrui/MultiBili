@@ -30,6 +30,7 @@ import tv.hsrui.bolo.ui.components.reply.actionsBar.ReplyActionsBar
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.theme.BiliColor.getLevelColor
 import tv.hsrui.network.feature.reply.ReplyItem
+import tv.hsrui.network.feature.reply.ReplyItem.ReplyContent.ReplyPicture
 import tv.hsrui.network.feature.reply.ReplyResponse
 
 @Composable
@@ -39,7 +40,9 @@ fun ShowSubReply(
     sendReply: () -> Unit,
     updateReply: (ReplyItem) -> Unit,
     modifier: Modifier = Modifier,
-    isTop: Boolean = false
+    isTop: Boolean = false,
+    imageAnimationEnabled: Boolean = true,
+    onImageClick: (List<ReplyPicture>, Int) -> Unit = { _, _ -> },
 ) {
     val scope = rememberCoroutineScope()
 
@@ -104,6 +107,13 @@ fun ShowSubReply(
                 inlineContent = inlineContentMap,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 12.dp)
+            )
+
+            ShowReplyPictures(
+                pictures = replyInfo.content.pictures,
+                onImageClick = { onImageClick(replyInfo.content.pictures, it) },
+                animationEnabled = imageAnimationEnabled,
+                modifier = Modifier.padding(top = 8.dp),
             )
 
             ReplyActionsBar(

@@ -48,6 +48,7 @@ import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
+import tv.hsrui.bolo.ui.components.image.ShowImageViewer
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
 import tv.hsrui.bolo.ui.components.reply.ShowReplyCard
@@ -55,6 +56,7 @@ import tv.hsrui.bolo.ui.components.reply.ShowReplyInput
 import tv.hsrui.bolo.utils.OnGridBottomReached
 import tv.hsrui.bolo.utils.isMedium
 import tv.hsrui.network.feature.reply.ReplyItem
+import tv.hsrui.network.feature.reply.ReplyItem.ReplyContent.ReplyPicture
 import tv.hsrui.network.feature.reply.ReplySort
 import tv.hsrui.network.feature.reply.send.sendRootReply
 import tv.hsrui.network.feature.reply.send.sendSubReply
@@ -69,6 +71,12 @@ fun RepliesGridPage(
     modifier: Modifier = Modifier,
     upMid: Long = 0L
 ) {
+    var viewingImageUrls by remember(viewModel) { mutableStateOf<List<String>>(emptyList()) }
+    var viewingImageIndex by remember(viewModel) { mutableStateOf(0) }
+    val onImageClick: (List<ReplyPicture>, Int) -> Unit = { pictures, index ->
+        viewingImageIndex = index
+        viewingImageUrls = pictures.map { it.url }
+    }
     val sortType by viewModel.sortType.collectAsState()
     val repliesGridState = rememberLazyGridState()
     val staggeredGridState = rememberLazyStaggeredGridState()
@@ -130,7 +138,7 @@ fun RepliesGridPage(
 
                 NavigationBackHandler(
                     state = subRepliesBackState,
-                    isBackEnabled = subRepliesSurfaceState.isVisible,
+                    isBackEnabled = subRepliesSurfaceState.isVisible && viewingImageUrls.isEmpty(),
                     onBackCancelled = {
                         val progress = latestPredictiveBackProgress[0]
                         latestPredictiveBackProgress[0] = 0f
@@ -190,7 +198,9 @@ fun RepliesGridPage(
                                                         subRepliesSurfaceState.show(topReply)
                                                     }
                                                 },
-                                                isTop = true
+                                                isTop = true,
+                                                imageAnimationEnabled = viewingImageUrls.isEmpty() && !subRepliesSurfaceState.isVisible,
+                                                onImageClick = onImageClick,
                                             )
                                         }
                                     }
@@ -219,7 +229,9 @@ fun RepliesGridPage(
                                             subRepliesSurfaceState.show(reply)
                                         }
                                     },
-                                    updateReply = { viewModel.updateReply(it) }
+                                    updateReply = { viewModel.updateReply(it) },
+                                    imageAnimationEnabled = viewingImageUrls.isEmpty() && !subRepliesSurfaceState.isVisible,
+                                    onImageClick = onImageClick,
                                 )
                             }
                             ShowGridFABMenu(
@@ -287,7 +299,9 @@ fun RepliesGridPage(
                             viewModel = subRepliesViewModel,
                             uiState = subRepliesUiState,
                             upMid = upMid,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            imageAnimationEnabled = viewingImageUrls.isEmpty(),
+                            onImageClick = onImageClick,
                         )
                     }
                 }
@@ -358,5 +372,13 @@ fun RepliesGridPage(
                 }
             }
         }
+    }
+
+    if (viewingImageUrls.isNotEmpty()) {
+        ShowImageViewer(
+            urls = viewingImageUrls,
+            initialIndex = viewingImageIndex,
+            onDismissRequest = { viewingImageUrls = emptyList() },
+        )
     }
 }

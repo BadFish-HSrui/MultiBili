@@ -32,6 +32,7 @@ import tv.hsrui.bolo.ui.components.reply.ShowSubReply
 import tv.hsrui.bolo.utils.OnGridBottomReached
 import tv.hsrui.bolo.utils.isMedium
 import tv.hsrui.network.feature.reply.ReplyItem
+import tv.hsrui.network.feature.reply.ReplyItem.ReplyContent.ReplyPicture
 import tv.hsrui.network.feature.reply.send.sendSubReply
 import tv.hsrui.network.login.storage.LoginStorage
 import kotlin.time.Duration.Companion.milliseconds
@@ -41,7 +42,9 @@ fun SubRepliesGridPage(
     viewModel: SubRepliesViewModel,
     uiState: SubRepliesUiState,
     upMid: Long,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    imageAnimationEnabled: Boolean = true,
+    onImageClick: (List<ReplyPicture>, Int) -> Unit = { _, _ -> },
 ) {
     val subRepliesGridState = rememberLazyGridState()
     val staggeredGridState = rememberLazyStaggeredGridState()
@@ -99,7 +102,9 @@ fun SubRepliesGridPage(
                                 isUpReply = (uiState.rootReply.userMid == upMid),
                                 sendReply = { replyTarget = uiState.rootReply },
                                 updateReply = { viewModel.updateReply(it) },
-                                isTop = true
+                                isTop = true,
+                                imageAnimationEnabled = imageAnimationEnabled,
+                                onImageClick = onImageClick,
                             )
                         },
                         bottomContent = if (!loginStorage.isLoggedIn) {
@@ -120,7 +125,9 @@ fun SubRepliesGridPage(
                             replyInfo = subReply,
                             isUpReply = (subReply.userMid == upMid),
                             sendReply = { replyTarget = subReply },
-                            updateReply = { viewModel.updateReply(it) }
+                            updateReply = { viewModel.updateReply(it) },
+                            imageAnimationEnabled = imageAnimationEnabled,
+                            onImageClick = onImageClick,
                         )
                     }
 
