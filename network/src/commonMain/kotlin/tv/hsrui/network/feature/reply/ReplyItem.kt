@@ -67,6 +67,7 @@ data class ReplyItem(
         @SerialName("message") val text: String = "",
         @SerialName("emote") val emote: Map<String, EmoteItem> = emptyMap(),
         @SerialName("jump_url") val jump: Map<String, JumpUrlItem> = emptyMap(),
+        @SerialName("at_name_to_mid") val atNameToMid: Map<String, Long> = emptyMap(),
         @SerialName("pictures") private val rawPictures: List<ReplyPicture>? = null,
     ) {
         val pictures: List<ReplyPicture> by lazy {

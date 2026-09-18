@@ -135,7 +135,7 @@ fun ShowReplyCard(
             }
 
             val (annotatedString, inlineContentMap) =
-                remember { replyInfo.content.toRichString(scope) }
+                remember(replyInfo.content, scope) { replyInfo.content.toRichString(scope) }
             var expanded by rememberSaveable(replyInfo.rpid, replyInfo.content.text) { mutableStateOf(false) }
             var hasOverflow by remember(replyInfo.rpid, replyInfo.content.text) { mutableStateOf(false) }
             Column(
@@ -191,7 +191,7 @@ fun ShowReplyCard(
                     Column(Modifier.padding(4.dp)) {
                         replyInfo.previewReplies?.forEach { preReply ->
                             val (annotatedString, inlineContentMap) =
-                                remember { preReply.content.toRichString(scope) }
+                                remember(preReply.content, scope) { preReply.content.toRichString(scope) }
 
                             Text(
                                 text = buildAnnotatedString {

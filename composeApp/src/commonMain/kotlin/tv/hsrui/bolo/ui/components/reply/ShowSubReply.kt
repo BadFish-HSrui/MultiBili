@@ -113,7 +113,7 @@ fun ShowSubReply(
             }
 
             val (annotatedString, inlineContentMap) =
-                remember(replyInfo.rpid) { replyInfo.content.toRichString(scope) }
+                remember(replyInfo.content, scope) { replyInfo.content.toRichString(scope) }
 
             var expanded by rememberSaveable(replyInfo.rpid, replyInfo.content.text) { mutableStateOf(false) }
             var hasOverflow by remember(replyInfo.rpid, replyInfo.content.text) { mutableStateOf(false) }
