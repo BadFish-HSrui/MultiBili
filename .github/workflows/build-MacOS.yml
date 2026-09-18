@@ -1,0 +1,235 @@
+name: 构建 macOS 版本
+
+on:
+  workflow_call:
+    inputs:
+      clean_cache:
+        required: true
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      clean_cache:
+        description: 清理 Gradle 构建缓存
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+
+      - name: 配置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '21'
+
+      - name: 切换 Xcode 26.3
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+
+      - name: 安装原生播放器工具链
+        run: brew install meson ninja cmake pkgconf nasm jinja2-cli
+
+      - name: 配置原生播放器缓存
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/bolo-native
+          key: ${{ runner.os }}-${{ runner.arch }}-macos-native-${{ hashFiles('buildSrc/src/main/kotlin/tv/hsrui/bolo/buildlogic/NativePlayer*.kt', 'buildSrc/build.gradle.kts', 'nativePlayer/build.gradle.kts', 'nativePlayer/dependencies.lock.json', 'nativePlayer/src/**', '.gitmodules') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-macos-native-
+
+      - name: 配置缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.konan
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: 清理构建缓存（可选）
+        if: ${{ inputs.clean_cache }}
+        run: ./gradlew clean :nativePlayer:cleanNativeCache
+
+      - name: 编译 macOS 产物
+        run: |
+          set -euo pipefail
+          ./gradlew :composeApp:packageDmg
+
+      - name: 收集并校验构建产物
+        id: collect
+        shell: bash
+        env:
+          METADATA_FILE: build/version/build-metadata.json
+        run: |
+          set -euo pipefail
+          if [[ ! -s "$METADATA_FILE" ]]; then
+            echo "缺少本地构建元数据 ${METADATA_FILE}，请通过 Gradle 构建任务生成" >&2
+            exit 1
+          fi
+          ARTIFACT_VERSION="$(jq -r '.artifactVersion' "$METADATA_FILE")"
+          VERSION_CORE="$(jq -r '.coreVersion' "$METADATA_FILE")"
+          BUILD_NUMBER="$(jq -r '.buildNumber' "$METADATA_FILE")"
+          export ARTIFACT_VERSION VERSION_CORE BUILD_NUMBER
+          echo "artifact_version=$ARTIFACT_VERSION" >> "$GITHUB_OUTPUT"
+          shopt -s nullglob
+          dmg_files=(composeApp/build/compose/binaries/main/dmg/*.dmg)
+          if [[ "${#dmg_files[@]}" -ne 1 ]]; then
+            echo "期望恰好一个 DMG，实际为 ${#dmg_files[@]}" >&2
+            exit 1
+          fi
+
+          case "$(uname -m)" in
+            x86_64|amd64)
+              desktop_arch='x64'
+              ;;
+            arm64|aarch64)
+              desktop_arch='arm64'
+              ;;
+            *)
+              echo "不支持的 macOS runner 架构：$(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+          echo "desktop_arch=$desktop_arch" >> "$GITHUB_OUTPUT"
+
+          mkdir -p staging/macos
+          dmg_target="staging/macos/multi-bili-macos-${ARTIFACT_VERSION}-${desktop_arch}.dmg"
+          cp "${dmg_files[0]}" "$dmg_target"
+          cp "$METADATA_FILE" staging/macos/
+
+          dmg_mount="$(mktemp -d)"
+          dmg_attached='false'
+          cleanup_dmg() {
+            if [[ "$dmg_attached" == 'true' ]]; then
+              hdiutil detach -quiet "$dmg_mount"
+            fi
+          }
+          trap cleanup_dmg EXIT
+          hdiutil attach -quiet -readonly -nobrowse -mountpoint "$dmg_mount" "$dmg_target"
+          dmg_attached='true'
+          dmg_apps=("$dmg_mount"/*.app)
+          if [[ "${#dmg_apps[@]}" -ne 1 || ! -f "${dmg_apps[0]}/Contents/Info.plist" ]]; then
+            echo "DMG 中期望恰好一个带 Info.plist 的 App，实际为 ${#dmg_apps[@]}" >&2
+            exit 1
+          fi
+          dmg_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${dmg_apps[0]}/Contents/Info.plist")"
+          dmg_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${dmg_apps[0]}/Contents/Info.plist")"
+          hdiutil detach -quiet "$dmg_mount"
+          dmg_attached='false'
+          trap - EXIT
+          if [[ "$dmg_version" != "$VERSION_CORE" || "$dmg_build" != "$BUILD_NUMBER" ]]; then
+            echo "DMG 内 App 的 CFBundleShortVersionString/CFBundleVersion 不一致：expected=$VERSION_CORE/$BUILD_NUMBER actual=$dmg_version/$dmg_build" >&2
+            exit 1
+          fi
+
+          write_native_version_metadata() {
+            local file="$1"
+            local native_version="$2"
+            local native_build_version="$3"
+            local native_version_fields="$4"
+            jq -n \
+              --arg fileName "$(basename "$file")" \
+              --arg nativeVersion "$native_version" \
+              --arg nativeBuildVersion "$native_build_version" \
+              --argjson nativeVersionFields "$native_version_fields" \
+              '{fileName: $fileName, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+              > "$file.native-version.json"
+          }
+          dmg_fields="$(jq -n --arg CFBundleShortVersionString "$dmg_version" --arg CFBundleVersion "$dmg_build" '{CFBundleShortVersionString: $CFBundleShortVersionString, CFBundleVersion: $CFBundleVersion}')"
+          write_native_version_metadata "$dmg_target" "$dmg_version" "$dmg_build" "$dmg_fields"
+
+          for file in staging/macos/*.dmg; do
+            directory="$(dirname "$file")"
+            filename="$(basename "$file")"
+            (cd "$directory" && shasum -a 256 "$filename" > "$filename.sha256")
+          done
+
+          write_group_build_metadata() {
+            local output="$1"
+            local platform="$2"
+            local arch="$3"
+            shift 3
+            local expected_count="$#"
+            local group_ndjson
+            local group_json
+            group_ndjson="$(mktemp)"
+            group_json="$(mktemp)"
+            : > "$group_ndjson"
+            for file in "$@"; do
+              local filename
+              local hash
+              local size_bytes
+              local native_version
+              local native_build_version
+              local native_version_fields
+              filename="$(basename "$file")"
+              hash="$(shasum -a 256 "$file" | awk '{ print $1 }')"
+              size_bytes="$(stat -f '%z' "$file")"
+              native_version="$(jq -r '.nativeVersion' "$file.native-version.json")"
+              native_build_version="$(jq -r '.nativeBuildVersion' "$file.native-version.json")"
+              native_version_fields="$(jq -c '.nativeVersionFields' "$file.native-version.json")"
+              jq -n \
+                --arg platform "$platform" \
+                --arg arch "$arch" \
+                --arg fileName "$filename" \
+                --argjson sizeBytes "$size_bytes" \
+                --arg sha256 "$hash" \
+                --arg signingStatus 'unsigned' \
+                --arg nativeVersion "$native_version" \
+                --arg nativeBuildVersion "$native_build_version" \
+                --argjson nativeVersionFields "$native_version_fields" \
+                '{platform: $platform, arch: $arch, fileName: $fileName, sizeBytes: $sizeBytes, sha256: $sha256, signingStatus: $signingStatus, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+                >> "$group_ndjson"
+            done
+            jq -s '.' "$group_ndjson" > "$group_json"
+            jq --slurpfile artifacts "$group_json" '. + {artifacts: $artifacts[0]}' \
+              "$METADATA_FILE" > "$output"
+            jq -e \
+              --argjson expectedCount "$expected_count" \
+              --arg platform "$platform" \
+              --arg arch "$arch" '
+              (.artifacts | type == "array" and length == $expectedCount) and
+              all(.artifacts[];
+                .platform == $platform and
+                .arch == $arch and
+                (.fileName | type == "string" and length > 0) and
+                (.sizeBytes | type == "number" and . > 0) and
+                (.sha256 | test("^[0-9a-f]{64}$")) and
+                .signingStatus == "unsigned" and
+                (.nativeVersion | type == "string" and length > 0) and
+                (.nativeBuildVersion | type == "string" and length > 0) and
+                (.nativeVersionFields | type == "object" and length > 0)
+              )
+            ' "$output" > /dev/null
+          }
+          write_group_build_metadata staging/macos/build-metadata.json macos "$desktop_arch" "$dmg_target"
+
+      - name: 确认构建未修改受控文件
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: 上传 macOS 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-bili-macos-${{ steps.collect.outputs.artifact_version }}-${{ steps.collect.outputs.desktop_arch }}
+          path: staging/macos/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: 停止 Gradle Daemon
+        if: always()
+        run: ./gradlew --stop

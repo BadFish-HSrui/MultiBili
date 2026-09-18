@@ -84,7 +84,7 @@ internal class NativePlayerToolchain(val target: String, val host: NativePlayerE
         identity["environment"] = listOf("JAVA_HOME", "CFLAGS", "CXXFLAGS", "LDFLAGS", "CPATH", "LIBRARY_PATH", "SOURCE_DATE_EPOCH")
             .associateWith { environment[it].orEmpty() }
         if (system == "linux") identity["systemDependencies"] =
-            host.run("pkg-config", "--modversion", "libpulse", "alsa", "libva", "libva-drm", capture = true).trim()
+            host.run("pkg-config", "--modversion", "libpulse", "alsa", "libdrm", "libdisplay-info", "libva", "libva-drm", capture = true).trim()
     }
 
     fun crossFile(file: File, compileFlags: List<String>) {

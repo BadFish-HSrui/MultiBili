@@ -1,0 +1,216 @@
+name: 构建 Android 版本
+
+on:
+  workflow_call:
+    inputs:
+      clean_cache:
+        required: true
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      clean_cache:
+        description: 清理 Gradle 构建缓存
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+
+      - name: 配置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '21'
+
+      - name: 安装 Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: 安装原生播放器工具链
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config nasm meson ninja-build cmake \
+            python3 python3-jinja2 python3-markupsafe
+          sdkmanager "ndk;28.2.13676358"
+
+      - name: 配置原生播放器缓存
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/bolo-native
+          key: ${{ runner.os }}-${{ runner.arch }}-android-native-${{ hashFiles('buildSrc/src/main/kotlin/tv/hsrui/bolo/buildlogic/NativePlayer*.kt', 'buildSrc/build.gradle.kts', 'nativePlayer/build.gradle.kts', 'nativePlayer/dependencies.lock.json', 'nativePlayer/src/**', '.gitmodules') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-android-native-
+
+      - name: 配置缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: 清理构建缓存（可选）
+        if: ${{ inputs.clean_cache }}
+        run: ./gradlew clean :nativePlayer:cleanNativeCache
+
+      - name: 编译 Android 产物
+        run: |
+          set -euo pipefail
+          ./gradlew :androidApp:assembleRelease
+
+      - name: 确认构建未修改受控文件
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: 收集并校验构建产物
+        id: collect
+        shell: bash
+        env:
+          METADATA_FILE: build/version/build-metadata.json
+        run: |
+          set -euo pipefail
+          if [[ ! -s "$METADATA_FILE" ]]; then
+            echo "缺少本地构建元数据 ${METADATA_FILE}，请通过 Gradle 构建任务生成" >&2
+            exit 1
+          fi
+          ARTIFACT_VERSION="$(jq -r '.artifactVersion' "$METADATA_FILE")"
+          DISPLAY_VERSION="$(jq -r '.appDisplayVersion' "$METADATA_FILE")"
+          BUILD_NUMBER="$(jq -r '.buildNumber' "$METADATA_FILE")"
+          export ARTIFACT_VERSION DISPLAY_VERSION BUILD_NUMBER
+          echo "artifact_version=$ARTIFACT_VERSION" >> "$GITHUB_OUTPUT"
+          shopt -s nullglob
+          apk_files=(androidApp/build/outputs/apk/release/*.apk)
+          if [[ "${#apk_files[@]}" -ne 1 ]]; then
+            echo "期望恰好一个 APK，实际为 ${#apk_files[@]}" >&2
+            exit 1
+          fi
+
+          if command -v apkanalyzer >/dev/null 2>&1; then
+            apkanalyzer_bin="$(command -v apkanalyzer)"
+          else
+            apkanalyzer_candidates=("${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"/cmdline-tools/*/bin/apkanalyzer)
+            if [[ "${#apkanalyzer_candidates[@]}" -eq 0 ]]; then
+              echo '找不到 apkanalyzer，无法反查 APK 原生版本' >&2
+              exit 1
+            fi
+            apkanalyzer_bin="${apkanalyzer_candidates[$((${#apkanalyzer_candidates[@]} - 1))]}"
+          fi
+          apk_version_name="$("$apkanalyzer_bin" manifest version-name "${apk_files[0]}")"
+          apk_version_code="$("$apkanalyzer_bin" manifest version-code "${apk_files[0]}")"
+          if [[ "$apk_version_name" != "$DISPLAY_VERSION" || "$apk_version_code" != "$BUILD_NUMBER" ]]; then
+            echo "APK versionName/versionCode 不一致：expected=$DISPLAY_VERSION/$BUILD_NUMBER actual=$apk_version_name/$apk_version_code" >&2
+            exit 1
+          fi
+
+          mkdir -p staging/android
+          apk_target="staging/android/multi-bili-android-${ARTIFACT_VERSION}-universal.apk"
+          cp "${apk_files[0]}" "$apk_target"
+          cp "$METADATA_FILE" staging/android/
+
+          write_native_version_metadata() {
+            local file="$1"
+            local native_version="$2"
+            local native_build_version="$3"
+            local native_version_fields="$4"
+            jq -n \
+              --arg fileName "$(basename "$file")" \
+              --arg nativeVersion "$native_version" \
+              --arg nativeBuildVersion "$native_build_version" \
+              --argjson nativeVersionFields "$native_version_fields" \
+              '{fileName: $fileName, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+              > "$file.native-version.json"
+          }
+          apk_fields="$(jq -n --arg versionName "$apk_version_name" --arg versionCode "$apk_version_code" '{versionName: $versionName, versionCode: $versionCode}')"
+          write_native_version_metadata "$apk_target" "$apk_version_name" "$apk_version_code" "$apk_fields"
+
+          for file in staging/android/*.apk; do
+            directory="$(dirname "$file")"
+            filename="$(basename "$file")"
+            (cd "$directory" && sha256sum "$filename" > "$filename.sha256")
+          done
+
+          write_group_build_metadata() {
+            local output="$1"
+            local platform="$2"
+            local arch="$3"
+            shift 3
+            local expected_count="$#"
+            local group_ndjson
+            local group_json
+            group_ndjson="$(mktemp)"
+            group_json="$(mktemp)"
+            : > "$group_ndjson"
+            for file in "$@"; do
+              local filename
+              local hash
+              local size_bytes
+              local native_version
+              local native_build_version
+              local native_version_fields
+              filename="$(basename "$file")"
+              hash="$(sha256sum "$file" | awk '{ print $1 }')"
+              size_bytes="$(stat --printf='%s' "$file")"
+              native_version="$(jq -r '.nativeVersion' "$file.native-version.json")"
+              native_build_version="$(jq -r '.nativeBuildVersion' "$file.native-version.json")"
+              native_version_fields="$(jq -c '.nativeVersionFields' "$file.native-version.json")"
+              jq -n \
+                --arg platform "$platform" \
+                --arg arch "$arch" \
+                --arg fileName "$filename" \
+                --argjson sizeBytes "$size_bytes" \
+                --arg sha256 "$hash" \
+                --arg signingStatus 'unsigned' \
+                --arg nativeVersion "$native_version" \
+                --arg nativeBuildVersion "$native_build_version" \
+                --argjson nativeVersionFields "$native_version_fields" \
+                '{platform: $platform, arch: $arch, fileName: $fileName, sizeBytes: $sizeBytes, sha256: $sha256, signingStatus: $signingStatus, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+                >> "$group_ndjson"
+            done
+            jq -s '.' "$group_ndjson" > "$group_json"
+            jq --slurpfile artifacts "$group_json" '. + {artifacts: $artifacts[0]}' \
+              "$METADATA_FILE" > "$output"
+            jq -e \
+              --argjson expectedCount "$expected_count" \
+              --arg platform "$platform" \
+              --arg arch "$arch" '
+              (.artifacts | type == "array" and length == $expectedCount) and
+              all(.artifacts[];
+                .platform == $platform and
+                .arch == $arch and
+                (.fileName | type == "string" and length > 0) and
+                (.sizeBytes | type == "number" and . > 0) and
+                (.sha256 | test("^[0-9a-f]{64}$")) and
+                .signingStatus == "unsigned" and
+                (.nativeVersion | type == "string" and length > 0) and
+                (.nativeBuildVersion | type == "string" and length > 0) and
+                (.nativeVersionFields | type == "object" and length > 0)
+              )
+            ' "$output" > /dev/null
+          }
+          write_group_build_metadata staging/android/build-metadata.json android universal "$apk_target"
+
+      - name: 上传 Android 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-bili-android-${{ steps.collect.outputs.artifact_version }}-universal
+          path: staging/android/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: 停止 Gradle Daemon
+        if: always()
+        run: ./gradlew --stop

@@ -80,11 +80,29 @@ internal fun nativeCopyTree(source: File, target: File) {
         else nativeCopyFile(file, destination)
     }
 }
+
 internal fun nativeDelete(file: File) {
-    if (Files.exists(file.toPath(), NOFOLLOW_LINKS) && !file.deleteRecursively()) {
-        throw GradleException("Cannot remove native build directory: $file")
+    // deleteRecursively 在被外部进程打断时只返回 false 并静默中止；Finder 重建 .DS_Store 就会造成这种中断，因此重试。
+    for (attempt in 0 until 5) {
+        if (!Files.exists(file.toPath(), NOFOLLOW_LINKS) || file.deleteRecursively()) return
+        Thread.sleep(100L * (attempt + 1))
+    }
+    throw GradleException("Cannot remove native build directory: $file")
+}
+
+// 构建产物发布之后的清理只影响磁盘占用，不能因为外部进程干扰而让已成功的构建失败。
+internal fun nativeDeleteBestEffort(file: File, logger: Logger) {
+    try {
+        nativeDelete(file)
+    } catch (error: Exception) {
+        logger.warn("Cannot remove native build directory, leaving it for the next build: {}", file, error)
     }
 }
+
+// macOS 的 Finder、归档工具与清理脚本会把 .DS_Store、__MACOSX 和 AppleDouble 文件写进它们浏览过的目录。
+// 这些元数据既可能出现在源码归档内部，也可能在解压期间由外部进程写入。
+internal fun nativeMetadataEntry(name: String): Boolean =
+    name == ".DS_Store" || name == "__MACOSX" || name.startsWith("._")
 
 internal fun nativeManifest(directory: File): Map<String, String> = nativeFiles(directory)
     .filter { it.isFile && it != directory.resolve("manifest.json") }
@@ -118,13 +136,19 @@ internal fun nativePublish(source: File, destination: File, fingerprint: String)
 }
 
 internal fun nativeUnpack(archive: File, destination: File) {
+    if (destination.exists() && !destination.deleteRecursively()) {
+        throw GradleException("Cannot remove stale source archive directory: $destination")
+    }
     destination.mkdirs()
     val root = destination.toPath().toAbsolutePath().normalize()
     val links = mutableListOf<Triple<File, String, Boolean>>()
     TarArchiveInputStream(GZIPInputStream(archive.inputStream().buffered())).use { tar ->
         while (true) {
             val entry = tar.nextEntry ?: break
-            val path = root.resolve(entry.name).normalize()
+            // macOS 的 Finder、归档工具和清理脚本会在被浏览过的目录里创建元数据；这些条目不属于源码归档。
+            val name = entry.name.trimStart('/')
+            if (name.isEmpty() || name.split('/').any(::nativeMetadataEntry)) continue
+            val path = root.resolve(name).normalize()
             require(path.startsWith(root) && !entry.name.contains('\\')) { "Unsafe archive entry: ${entry.name}" }
             when {
                 entry.isDirectory -> Files.createDirectories(path)
@@ -184,6 +208,8 @@ internal class NativePlayerEnvironment(
     val windows = System.getProperty("os.name").startsWith("Windows")
     val mac = System.getProperty("os.name").startsWith("Mac")
     val environment: MutableMap<String, String> = System.getenv().toMutableMap()
+    // Windows 的规范键名是 Path，而复制后的 map 大小写敏感，需按原键读写。
+    private val pathKey = environment.keys.firstOrNull { it.equals("PATH", ignoreCase = true) } ?: "PATH"
     private val brew = if (System.getProperty("os.arch") in listOf("aarch64", "arm64")) "/opt/homebrew" else "/usr/local"
     val tools = linkedMapOf<String, File>()
     val identity = linkedMapOf<String, Any?>()
@@ -191,8 +217,8 @@ internal class NativePlayerEnvironment(
     init {
         val search = mutableListOf<String>()
         if (mac) search += listOf("$brew/bin", "$brew/sbin")
-        search += environment["PATH"].orEmpty().split(File.pathSeparator).filter(String::isNotBlank)
-        environment["PATH"] = search.distinct().joinToString(File.pathSeparator)
+        search += environment[pathKey].orEmpty().split(File.pathSeparator).filter(String::isNotBlank)
+        environment[pathKey] = search.distinct().joinToString(File.pathSeparator)
         environment["LC_ALL"] = "C"
         environment["PYTHONHASHSEED"] = "0"
         environment["SOURCE_DATE_EPOCH"] = "1750000000"
@@ -201,7 +227,7 @@ internal class NativePlayerEnvironment(
 
     private fun find(name: String): File? {
         val suffixes = if (windows) listOf(".exe", "", ".cmd", ".bat") else listOf("")
-        return environment["PATH"].orEmpty().split(File.pathSeparator).asSequence().flatMap { folder ->
+        return environment[pathKey].orEmpty().split(File.pathSeparator).asSequence().flatMap { folder ->
             suffixes.asSequence().map { File(folder, name + it) }
         }.firstOrNull { it.isFile && (windows || it.canExecute()) }
     }
@@ -218,7 +244,9 @@ internal class NativePlayerEnvironment(
         val command = args.map { if (it is File) nativePath(it) else it.toString() }.toMutableList()
         if (!File(command[0]).isAbsolute) command[0] = nativePath(tool(command[0]))
         logger.info("+ {}", command.joinToString(" ") { nativeQuote(it) })
-        val process = ProcessBuilder(command).directory(cwd).redirectErrorStream(true).apply {
+        val process = ProcessBuilder(command).directory(cwd).apply {
+            // 捕获模式下 stderr 不并入结果：Xcode 工具链警告会污染解析出的 SDK 路径。
+            if (capture) redirectError(ProcessBuilder.Redirect.INHERIT) else redirectErrorStream(true)
             environment().clear()
             environment().putAll(env)
         }.start()
@@ -242,8 +270,8 @@ internal class NativePlayerEnvironment(
     }
 
     fun prepare(targets: List<String>) {
-        val requirements = linkedMapOf("meson" to "1.8.3", "ninja" to "1.11.1", "pkg-config" to "0.29", "python3" to "3.10")
-        if (targets.any { it.startsWith("android-") || it.startsWith("linux-") }) requirements["cmake"] = "3.31"
+        val requirements = linkedMapOf("meson" to "1.3.0", "ninja" to "1.11.1", "pkg-config" to "0.29", "python3" to "3.10")
+        if (targets.any { it.startsWith("android-") || it.startsWith("linux-") }) requirements["cmake"] = "3.16"
         if (targets.any { it.endsWith("-x64") || it.endsWith("-x86") }) requirements["nasm"] = "2.16"
         for (name in listOf("git", "curl", "make", "bash") + requirements.keys) tool(name)
         for ((name, minimum) in requirements) {

@@ -19,10 +19,7 @@
 - :100: 无BUG
 
 ### 调试与构建
-需要使用安装了[Kotlin Multiplatform 插件](https://plugins.jetbrains.com/plugin/14936-kotlin-multiplatform)的[Android Studio](https://developer.android.com/studio)加载本项目进行调试与构建
-> 也可以使用安装了此插件的[IDEA](https://www.jetbrains.com/idea/),但IDEA的AGP版本支持相较于Android Studio滞后
-
-通过命令行构建参考[构建指南](docs/build-guide.md)
+参考[构建指南](docs/build-guide.md)
 
 ### 鸣谢
 - [SocialSisterYi/bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect): 提供B站Api信息

@@ -1,0 +1,228 @@
+name: 构建 iOS 版本
+
+on:
+  workflow_call:
+    inputs:
+      clean_cache:
+        required: true
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      clean_cache:
+        description: 清理 Gradle 构建缓存
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+
+      - name: 配置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '21'
+
+      - name: 切换 Xcode 26.3
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+
+      - name: 安装原生播放器工具链
+        run: brew install meson ninja cmake pkgconf nasm jinja2-cli
+
+      - name: 配置原生播放器缓存
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/bolo-native
+          key: ${{ runner.os }}-${{ runner.arch }}-ios-native-${{ hashFiles('buildSrc/src/main/kotlin/tv/hsrui/bolo/buildlogic/NativePlayer*.kt', 'buildSrc/build.gradle.kts', 'nativePlayer/build.gradle.kts', 'nativePlayer/dependencies.lock.json', 'nativePlayer/src/**', '.gitmodules') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-ios-native-
+
+      - name: 配置缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.konan
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: 清理构建缓存（可选）
+        if: ${{ inputs.clean_cache }}
+        run: ./gradlew clean :nativePlayer:cleanNativeCache
+
+      - name: 编译 CocoaPods 产物
+        run: |
+          set -euo pipefail
+          ./gradlew :composeApp:podInstall
+
+      - name: 编译无签名 iOS App
+        working-directory: iosApp
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -workspace iosApp.xcworkspace \
+            -scheme iosApp \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+      - name: 收集并校验构建产物
+        id: collect
+        shell: bash
+        env:
+          METADATA_FILE: build/version/build-metadata.json
+        run: |
+          set -euo pipefail
+          if [[ ! -s "$METADATA_FILE" ]]; then
+            echo "缺少本地构建元数据 ${METADATA_FILE}，请通过 Gradle 构建任务生成" >&2
+            exit 1
+          fi
+          ARTIFACT_VERSION="$(jq -r '.artifactVersion' "$METADATA_FILE")"
+          VERSION_CORE="$(jq -r '.coreVersion' "$METADATA_FILE")"
+          BUILD_NUMBER="$(jq -r '.buildNumber' "$METADATA_FILE")"
+          export ARTIFACT_VERSION VERSION_CORE BUILD_NUMBER
+          echo "artifact_version=$ARTIFACT_VERSION" >> "$GITHUB_OUTPUT"
+          shopt -s nullglob
+          app_files=(iosApp/build/Build/Products/Release-iphoneos/*.app)
+          if [[ "${#app_files[@]}" -ne 1 ]]; then
+            echo "期望恰好一个 iOS App，实际为 ${#app_files[@]}" >&2
+            exit 1
+          fi
+
+          mkdir -p staging/ios
+          ipa_target="staging/ios/multi-bili-ios-${ARTIFACT_VERSION}-arm64.ipa"
+          ipa_root="$(mktemp -d)"
+          mkdir -p "$ipa_root/Payload"
+          cp -R "${app_files[0]}" "$ipa_root/Payload/"
+          (cd "$ipa_root" && ditto -c -k --sequesterRsrc --keepParent Payload "$GITHUB_WORKSPACE/$ipa_target")
+          cp "$METADATA_FILE" staging/ios/
+
+          ipa_inspect="$(mktemp -d)"
+          ditto -x -k "$ipa_target" "$ipa_inspect"
+          ipa_apps=("$ipa_inspect"/Payload/*.app)
+          if [[ "${#ipa_apps[@]}" -ne 1 || ! -f "${ipa_apps[0]}/Info.plist" ]]; then
+            echo "IPA 中期望恰好一个带 Info.plist 的 App，实际为 ${#ipa_apps[@]}" >&2
+            exit 1
+          fi
+          ios_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${ipa_apps[0]}/Info.plist")"
+          ios_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${ipa_apps[0]}/Info.plist")"
+          if [[ "$ios_version" != "$VERSION_CORE" || "$ios_build" != "$BUILD_NUMBER" ]]; then
+            echo "IPA 内 App 的 CFBundleShortVersionString/CFBundleVersion 不一致：expected=$VERSION_CORE/$BUILD_NUMBER actual=$ios_version/$ios_build" >&2
+            exit 1
+          fi
+
+          write_native_version_metadata() {
+            local file="$1"
+            local native_version="$2"
+            local native_build_version="$3"
+            local native_version_fields="$4"
+            jq -n \
+              --arg fileName "$(basename "$file")" \
+              --arg nativeVersion "$native_version" \
+              --arg nativeBuildVersion "$native_build_version" \
+              --argjson nativeVersionFields "$native_version_fields" \
+              '{fileName: $fileName, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+              > "$file.native-version.json"
+          }
+          ipa_fields="$(jq -n --arg CFBundleShortVersionString "$ios_version" --arg CFBundleVersion "$ios_build" '{CFBundleShortVersionString: $CFBundleShortVersionString, CFBundleVersion: $CFBundleVersion}')"
+          write_native_version_metadata "$ipa_target" "$ios_version" "$ios_build" "$ipa_fields"
+
+          for file in staging/ios/*.ipa; do
+            directory="$(dirname "$file")"
+            filename="$(basename "$file")"
+            (cd "$directory" && shasum -a 256 "$filename" > "$filename.sha256")
+          done
+
+          write_group_build_metadata() {
+            local output="$1"
+            local platform="$2"
+            local arch="$3"
+            shift 3
+            local expected_count="$#"
+            local group_ndjson
+            local group_json
+            group_ndjson="$(mktemp)"
+            group_json="$(mktemp)"
+            : > "$group_ndjson"
+            for file in "$@"; do
+              local filename
+              local hash
+              local size_bytes
+              local native_version
+              local native_build_version
+              local native_version_fields
+              filename="$(basename "$file")"
+              hash="$(shasum -a 256 "$file" | awk '{ print $1 }')"
+              size_bytes="$(stat -f '%z' "$file")"
+              native_version="$(jq -r '.nativeVersion' "$file.native-version.json")"
+              native_build_version="$(jq -r '.nativeBuildVersion' "$file.native-version.json")"
+              native_version_fields="$(jq -c '.nativeVersionFields' "$file.native-version.json")"
+              jq -n \
+                --arg platform "$platform" \
+                --arg arch "$arch" \
+                --arg fileName "$filename" \
+                --argjson sizeBytes "$size_bytes" \
+                --arg sha256 "$hash" \
+                --arg signingStatus 'unsigned' \
+                --arg nativeVersion "$native_version" \
+                --arg nativeBuildVersion "$native_build_version" \
+                --argjson nativeVersionFields "$native_version_fields" \
+                '{platform: $platform, arch: $arch, fileName: $fileName, sizeBytes: $sizeBytes, sha256: $sha256, signingStatus: $signingStatus, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+                >> "$group_ndjson"
+            done
+            jq -s '.' "$group_ndjson" > "$group_json"
+            jq --slurpfile artifacts "$group_json" '. + {artifacts: $artifacts[0]}' \
+              "$METADATA_FILE" > "$output"
+            jq -e \
+              --argjson expectedCount "$expected_count" \
+              --arg platform "$platform" \
+              --arg arch "$arch" '
+              (.artifacts | type == "array" and length == $expectedCount) and
+              all(.artifacts[];
+                .platform == $platform and
+                .arch == $arch and
+                (.fileName | type == "string" and length > 0) and
+                (.sizeBytes | type == "number" and . > 0) and
+                (.sha256 | test("^[0-9a-f]{64}$")) and
+                .signingStatus == "unsigned" and
+                (.nativeVersion | type == "string" and length > 0) and
+                (.nativeBuildVersion | type == "string" and length > 0) and
+                (.nativeVersionFields | type == "object" and length > 0)
+              )
+            ' "$output" > /dev/null
+          }
+          write_group_build_metadata staging/ios/build-metadata.json ios arm64 "$ipa_target"
+
+      - name: 确认构建未修改受控文件
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: 上传 iOS 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-bili-ios-${{ steps.collect.outputs.artifact_version }}-arm64
+          path: staging/ios/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: 停止 Gradle Daemon
+        if: always()
+        run: ./gradlew --stop

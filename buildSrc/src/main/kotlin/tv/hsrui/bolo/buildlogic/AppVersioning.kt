@@ -305,15 +305,6 @@ abstract class AppVersionMetadataTask : DefaultTask() {
     @get:Input
     abstract val gitDirty: Property<Boolean>
 
-    @get:Input
-    abstract val buildOrigin: Property<String>
-
-    @get:Input
-    abstract val officialBuild: Property<Boolean>
-
-    @get:Input
-    abstract val sourceRef: Property<String>
-
     protected fun resolvedMetadata(): ResolvedVersionMetadata = ResolvedVersionMetadata(
         releaseVersion = releaseVersion.get(),
         appDisplayVersion = appDisplayVersion.get(),
@@ -331,29 +322,6 @@ abstract class AppVersionMetadataTask : DefaultTask() {
     ).also(::validateVersionMetadata)
 }
 
-@DisableCachingByDefault(because = "Validation tasks have no outputs")
-abstract class VerifyAppVersionMetadataTask : AppVersionMetadataTask() {
-    @TaskAction
-    fun verify() {
-        val metadata = resolvedMetadata()
-        require(Regex("^[A-Za-z0-9._-]+$").matches(buildOrigin.get())) {
-            "appBuildOrigin may contain only letters, digits, dot, underscore, and hyphen"
-        }
-        if (officialBuild.get()) {
-            require(buildOrigin.get() == "ci") {
-                "Official builds require appBuildOrigin=ci"
-            }
-            require(!metadata.isDirty) {
-                "Official builds require a clean Git work tree"
-            }
-            val expectedSourceRef = "refs/tags/v${metadata.releaseVersion}"
-            require(sourceRef.get() == expectedSourceRef) {
-                "Official builds require source ref $expectedSourceRef, but was ${sourceRef.get().ifEmpty { "unset" }}"
-            }
-        }
-    }
-}
-
 @CacheableTask
 abstract class WriteBuildMetadataTask : AppVersionMetadataTask() {
     @get:OutputFile
@@ -367,18 +335,11 @@ abstract class WriteBuildMetadataTask : AppVersionMetadataTask() {
             """
             {
               "coreVersion": "${metadata.coreVersion}",
-              "releaseChannel": "${metadata.releaseChannel.name.lowercase(Locale.ROOT)}",
-              "prereleaseNumber": ${metadata.prereleaseNumber},
               "releaseVersion": "${metadata.releaseVersion}",
               "appDisplayVersion": "${metadata.appDisplayVersion}",
               "buildNumber": ${metadata.buildNumber},
               "commitSha": "${metadata.commitSha}",
-              "commitSha7": "${metadata.commitSha7}",
-              "commitSha12": "${metadata.commitSha12}",
-              "artifactVersion": "${metadata.artifactVersion}",
-              "gitDirty": ${metadata.isDirty},
-              "buildOrigin": "${buildOrigin.get()}",
-              "officialBuild": ${officialBuild.get()}
+              "artifactVersion": "${metadata.artifactVersion}"
             }
             """.trimIndent() + "\n",
         )

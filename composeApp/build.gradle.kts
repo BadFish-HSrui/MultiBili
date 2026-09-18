@@ -20,8 +20,6 @@ plugins {
 }
 
 val appVersionMetadata = rootProject.extra["appVersionMetadata"] as ResolvedVersionMetadata
-val appBuildOrigin = rootProject.extra["appBuildOrigin"] as String
-val appOfficialBuild = rootProject.extra["appOfficialBuild"] as Boolean
 val iosDeploymentTarget = "16.0"
 val (appVersionMajor, appVersionMinor) = appVersionMetadata.coreVersion.split('.')
 val windowsPackageVersion =
@@ -195,8 +193,6 @@ buildkonfig {
         buildConfigField(STRING, "gitCommitSha7", appVersionMetadata.commitSha7)
         buildConfigField(STRING, "gitCommitSha12", appVersionMetadata.commitSha12)
         buildConfigField(BOOLEAN, "isGitDirty", appVersionMetadata.isDirty.toString())
-        buildConfigField(STRING, "buildOrigin", appBuildOrigin)
-        buildConfigField(BOOLEAN, "isOfficialBuild", appOfficialBuild.toString())
         buildConfigField(STRING, "artifactVersion", appVersionMetadata.artifactVersion)
     }
 }

@@ -1,0 +1,233 @@
+name: 构建 Linux 版本
+
+on:
+  workflow_call:
+    inputs:
+      clean_cache:
+        required: true
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      clean_cache:
+        description: 清理 Gradle 构建缓存
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+
+      - name: 配置 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '21'
+
+      - name: 安装 Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: 安装原生播放器工具链
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config nasm meson ninja-build cmake \
+            python3 python3-jinja2 python3-markupsafe fakeroot rpm \
+            libpulse-dev libasound2-dev libva-dev libgl-dev libdrm-dev libdisplay-info-dev
+          sdkmanager "ndk;28.2.13676358"
+
+      - name: 配置原生播放器缓存
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/bolo-native
+          key: ${{ runner.os }}-${{ runner.arch }}-linux-native-${{ hashFiles('buildSrc/src/main/kotlin/tv/hsrui/bolo/buildlogic/NativePlayer*.kt', 'buildSrc/build.gradle.kts', 'nativePlayer/build.gradle.kts', 'nativePlayer/dependencies.lock.json', 'nativePlayer/src/**', '.gitmodules') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-linux-native-
+
+      - name: 配置缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: 清理构建缓存（可选）
+        if: ${{ inputs.clean_cache }}
+        run: ./gradlew clean :nativePlayer:cleanNativeCache
+
+      - name: 编译 Linux 产物
+        run: |
+          set -euo pipefail
+          ./gradlew \
+            :composeApp:packageDeb \
+            :composeApp:packageRpm
+
+      - name: 确认构建未修改受控文件
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: 收集并校验构建产物
+        id: collect
+        shell: bash
+        env:
+          METADATA_FILE: build/version/build-metadata.json
+        run: |
+          set -euo pipefail
+          if [[ ! -s "$METADATA_FILE" ]]; then
+            echo "缺少本地构建元数据 ${METADATA_FILE}，请通过 Gradle 构建任务生成" >&2
+            exit 1
+          fi
+          ARTIFACT_VERSION="$(jq -r '.artifactVersion' "$METADATA_FILE")"
+          VERSION_CORE="$(jq -r '.coreVersion' "$METADATA_FILE")"
+          BUILD_NUMBER="$(jq -r '.buildNumber' "$METADATA_FILE")"
+          export ARTIFACT_VERSION VERSION_CORE BUILD_NUMBER
+          echo "artifact_version=$ARTIFACT_VERSION" >> "$GITHUB_OUTPUT"
+          shopt -s nullglob
+          deb_files=(composeApp/build/compose/binaries/main/deb/*.deb)
+          rpm_files=(composeApp/build/compose/binaries/main/rpm/*.rpm)
+          if [[ "${#deb_files[@]}" -ne 1 || "${#rpm_files[@]}" -ne 1 ]]; then
+            echo "期望恰好一个 DEB 和 RPM，实际为 ${#deb_files[@]}/${#rpm_files[@]}" >&2
+            exit 1
+          fi
+
+          case "$(uname -m)" in
+            x86_64|amd64)
+              desktop_arch='x64'
+              ;;
+            arm64|aarch64)
+              desktop_arch='arm64'
+              ;;
+            *)
+              echo "不支持的 Linux runner 架构：$(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+          echo "desktop_arch=$desktop_arch" >> "$GITHUB_OUTPUT"
+
+          deb_version="$(dpkg-deb --field "${deb_files[0]}" Version)"
+          rpm_version="$(rpm -qp --queryformat '%{VERSION}' "${rpm_files[0]}")"
+          rpm_release="$(rpm -qp --queryformat '%{RELEASE}' "${rpm_files[0]}")"
+          if [[ "$deb_version" != "${VERSION_CORE}-${BUILD_NUMBER}" ]]; then
+            echo "DEB Version 不一致：expected=${VERSION_CORE}-${BUILD_NUMBER} actual=$deb_version" >&2
+            exit 1
+          fi
+          if [[ "$rpm_version" != "$VERSION_CORE" || "$rpm_release" != "$BUILD_NUMBER" ]]; then
+            echo "RPM Version/Release 不一致：expected=$VERSION_CORE/$BUILD_NUMBER actual=$rpm_version/$rpm_release" >&2
+            exit 1
+          fi
+
+          mkdir -p staging/linux
+          deb_target="staging/linux/multi-bili-linux-${ARTIFACT_VERSION}-${desktop_arch}.deb"
+          rpm_target="staging/linux/multi-bili-linux-${ARTIFACT_VERSION}-${desktop_arch}.rpm"
+          cp "${deb_files[0]}" "$deb_target"
+          cp "${rpm_files[0]}" "$rpm_target"
+          cp "$METADATA_FILE" staging/linux/
+
+          write_native_version_metadata() {
+            local file="$1"
+            local native_version="$2"
+            local native_build_version="$3"
+            local native_version_fields="$4"
+            jq -n \
+              --arg fileName "$(basename "$file")" \
+              --arg nativeVersion "$native_version" \
+              --arg nativeBuildVersion "$native_build_version" \
+              --argjson nativeVersionFields "$native_version_fields" \
+              '{fileName: $fileName, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+              > "$file.native-version.json"
+          }
+          deb_fields="$(jq -n --arg Version "$deb_version" '{Version: $Version}')"
+          rpm_fields="$(jq -n --arg Version "$rpm_version" --arg Release "$rpm_release" '{Version: $Version, Release: $Release}')"
+          write_native_version_metadata "$deb_target" "$deb_version" "$BUILD_NUMBER" "$deb_fields"
+          write_native_version_metadata "$rpm_target" "${rpm_version}-${rpm_release}" "$rpm_release" "$rpm_fields"
+
+          for file in staging/linux/*.deb staging/linux/*.rpm; do
+            directory="$(dirname "$file")"
+            filename="$(basename "$file")"
+            (cd "$directory" && sha256sum "$filename" > "$filename.sha256")
+          done
+
+          write_group_build_metadata() {
+            local output="$1"
+            local platform="$2"
+            local arch="$3"
+            shift 3
+            local expected_count="$#"
+            local group_ndjson
+            local group_json
+            group_ndjson="$(mktemp)"
+            group_json="$(mktemp)"
+            : > "$group_ndjson"
+            for file in "$@"; do
+              local filename
+              local hash
+              local size_bytes
+              local native_version
+              local native_build_version
+              local native_version_fields
+              filename="$(basename "$file")"
+              hash="$(sha256sum "$file" | awk '{ print $1 }')"
+              size_bytes="$(stat --printf='%s' "$file")"
+              native_version="$(jq -r '.nativeVersion' "$file.native-version.json")"
+              native_build_version="$(jq -r '.nativeBuildVersion' "$file.native-version.json")"
+              native_version_fields="$(jq -c '.nativeVersionFields' "$file.native-version.json")"
+              jq -n \
+                --arg platform "$platform" \
+                --arg arch "$arch" \
+                --arg fileName "$filename" \
+                --argjson sizeBytes "$size_bytes" \
+                --arg sha256 "$hash" \
+                --arg signingStatus 'unsigned' \
+                --arg nativeVersion "$native_version" \
+                --arg nativeBuildVersion "$native_build_version" \
+                --argjson nativeVersionFields "$native_version_fields" \
+                '{platform: $platform, arch: $arch, fileName: $fileName, sizeBytes: $sizeBytes, sha256: $sha256, signingStatus: $signingStatus, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+                >> "$group_ndjson"
+            done
+            jq -s '.' "$group_ndjson" > "$group_json"
+            jq --slurpfile artifacts "$group_json" '. + {artifacts: $artifacts[0]}' \
+              "$METADATA_FILE" > "$output"
+            jq -e \
+              --argjson expectedCount "$expected_count" \
+              --arg platform "$platform" \
+              --arg arch "$arch" '
+              (.artifacts | type == "array" and length == $expectedCount) and
+              all(.artifacts[];
+                .platform == $platform and
+                .arch == $arch and
+                (.fileName | type == "string" and length > 0) and
+                (.sizeBytes | type == "number" and . > 0) and
+                (.sha256 | test("^[0-9a-f]{64}$")) and
+                .signingStatus == "unsigned" and
+                (.nativeVersion | type == "string" and length > 0) and
+                (.nativeBuildVersion | type == "string" and length > 0) and
+                (.nativeVersionFields | type == "object" and length > 0)
+              )
+            ' "$output" > /dev/null
+          }
+          write_group_build_metadata staging/linux/build-metadata.json linux "$desktop_arch" "$deb_target" "$rpm_target"
+
+      - name: 上传 Linux 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-bili-linux-${{ steps.collect.outputs.artifact_version }}-${{ steps.collect.outputs.desktop_arch }}
+          path: staging/linux/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: 停止 Gradle Daemon
+        if: always()
+        run: ./gradlew --stop

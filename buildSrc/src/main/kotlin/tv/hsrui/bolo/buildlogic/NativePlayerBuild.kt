@@ -100,11 +100,17 @@ internal class NativePlayerBuild(
             }
         }
         val unpack = destination.resolveSibling("$name-unpack")
-        nativeUnpack(archive, unpack)
-        val entries = unpack.listFiles().orEmpty()
-        if (entries.size != 1 || !entries[0].isDirectory) throw GradleException("Invalid source archive: $name")
-        Files.move(entries[0].toPath(), destination.toPath())
-        nativeDelete(unpack)
+        try {
+            nativeUnpack(archive, unpack)
+            // 解压期间选择解压目录的 Finder 窗口会写入 .DS_Store；归档内容本身仍然完整，只需清掉这些元数据。
+            nativeFiles(unpack).filter { nativeMetadataEntry(it.name) }.forEach(::nativeDelete)
+            val entries = unpack.listFiles().orEmpty()
+            if (entries.size != 1 || !entries[0].isDirectory) throw GradleException("Invalid source archive: $name")
+            Files.move(entries[0].toPath(), destination.toPath())
+        } finally {
+            // 校验失败也必须清理解压目录，否则残留的目录会让每次重试都停在同一处。
+            nativeDelete(unpack)
+        }
     }
 
     private fun build(target: String): File {
@@ -170,7 +176,8 @@ internal class NativePlayerBuild(
             nativeWriteJson(packaged.resolve("build-info.json"), identity)
             nativePublish(packaged, bundle, fingerprint)
             // 成功产物已原子发布到缓存，移除工作副本，避免每个新指纹留下整份 FFmpeg 源码和对象。
-            nativeDelete(work)
+            // 清理失败只是残留磁盘空间，不能否决已经发布的产物。
+            nativeDeleteBestEffort(work, logger)
             bundle
         }
     }
@@ -282,7 +289,7 @@ internal class NativePlayerBuild(
                 }
             }
             nativePublish(stage, output, key)
-        } finally { nativeDelete(stage) }
+        } finally { nativeDeleteBestEffort(stage, logger) }
     }
 }
 

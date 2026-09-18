@@ -103,7 +103,7 @@ internal class NativePlayerLibraries(
                 "ios", "iossim" -> listOf("-Dios-gl=enabled", "-Daudiounit=enabled")
                 "macos" -> listOf("-Dcocoa=enabled", "-Dgl-cocoa=enabled", "-Dvideotoolbox-gl=enabled", "-Dcoreaudio=enabled", "-Dswift-build=disabled")
                 "windows" -> listOf("-Dwasapi=enabled", "-Dd3d-hwaccel=enabled", "-Dwin32-threads=enabled")
-                else -> listOf("-Dpulse=enabled", "-Dalsa=enabled", "-Dvaapi=enabled", "-Dvaapi-drm=enabled")
+                else -> listOf("-Dpulse=enabled", "-Dalsa=enabled", "-Ddrm=enabled", "-Dvaapi=enabled", "-Dvaapi-drm=enabled")
             }
         meson("mpv", mpv)
         nativeCopyFile(directory.resolve("config.h"), prefix.resolve("ffmpeg-config.h"))
