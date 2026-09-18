@@ -27,11 +27,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import coil3.Image
+import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.LocalPlatformContext
 import coil3.decode.Decoder
 import coil3.request.ImageRequest
+import com.github.panpf.zoomimage.CoilZoomAsyncImage
+import com.github.panpf.zoomimage.CoilZoomState
 import kotlinx.coroutines.CoroutineScope
 
 @Composable
@@ -41,6 +44,7 @@ expect fun ShowImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
     animationEnabled: Boolean = true,
+    zoomState: CoilZoomState? = null,
 )
 
 internal interface ImageAnimation {
@@ -57,6 +61,7 @@ internal fun ShowImage(
     modifier: Modifier,
     contentScale: ContentScale,
     animationEnabled: Boolean,
+    zoomState: CoilZoomState? = null,
     decoderFactory: Decoder.Factory,
     createAnimation: (Image, Painter, CoroutineScope) -> ImageAnimation?,
 ) {
@@ -79,33 +84,55 @@ internal fun ShowImage(
                 .decoderFactory(decoderFactory)
                 .build()
         }
+        val transform: (AsyncImagePainter.State) -> AsyncImagePainter.State = { incoming ->
+            if (incoming is AsyncImagePainter.State.Success) {
+                val controller = createAnimation(incoming.result.image, incoming.painter, scope)
+                animation = controller
+                incoming.copy(painter = controller?.painter ?: incoming.painter)
+            } else incoming
+        }
+        val onState: (AsyncImagePainter.State) -> Unit = {
+            state = it
+            animation?.setPlaying(playing)
+        }
         DisposableEffect(animation) {
             val current = animation
             onDispose { current?.dispose() }
         }
-        SideEffect { animation?.setPlaying(playing) }
+        SideEffect {
+            animation?.setPlaying(playing)
+            val zoom = zoomState ?: return@SideEffect
+            // 库的动图过滤只覆盖 Android，桌面与 iOS 的自定义 Skia 动图按实际解码结果排除子采样
+            if (animation != null) zoom.subsampling.setDisabled(true)
+            zoom.subsampling.setStopped(!playing)
+        }
 
         Box(
             modifier = modifier.onGloballyPositioned { visible = !it.boundsInWindow().isEmpty },
             contentAlignment = Alignment.Center,
         ) {
-            AsyncImage(
-                model = request,
-                contentDescription = contentDescription,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale,
-                transform = { incoming ->
-                    if (incoming is AsyncImagePainter.State.Success) {
-                        val controller = createAnimation(incoming.result.image, incoming.painter, scope)
-                        animation = controller
-                        incoming.copy(painter = controller?.painter ?: incoming.painter)
-                    } else incoming
-                },
-                onState = {
-                    state = it
-                    animation?.setPlaying(playing)
-                },
-            )
+            if (zoomState != null) {
+                CoilZoomAsyncImage(
+                    model = request,
+                    contentDescription = contentDescription,
+                    imageLoader = SingletonImageLoader.get(context),
+                    modifier = Modifier.fillMaxSize(),
+                    transform = transform,
+                    onState = onState,
+                    contentScale = contentScale,
+                    zoomState = zoomState,
+                    scrollBar = null,
+                )
+            } else {
+                AsyncImage(
+                    model = request,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = contentScale,
+                    transform = transform,
+                    onState = onState,
+                )
+            }
             when {
                 animation?.failed == true -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("图片加载失败")

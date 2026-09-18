@@ -9,6 +9,7 @@ import androidx.compose.ui.layout.ContentScale
 import coil3.DrawableImage
 import coil3.gif.AnimatedImageDecoder
 import coil3.gif.GifDecoder
+import com.github.panpf.zoomimage.CoilZoomState
 
 @Composable
 actual fun ShowImage(
@@ -17,11 +18,20 @@ actual fun ShowImage(
     modifier: Modifier,
     contentScale: ContentScale,
     animationEnabled: Boolean,
+    zoomState: CoilZoomState?,
 ) {
     val factory = remember {
         if (Build.VERSION.SDK_INT >= 28) AnimatedImageDecoder.Factory() else GifDecoder.Factory()
     }
-    ShowImage(url, contentDescription, modifier, contentScale, animationEnabled, factory) { image, painter, _ ->
+    ShowImage(
+        url = url,
+        contentDescription = contentDescription,
+        modifier = modifier,
+        contentScale = contentScale,
+        animationEnabled = animationEnabled,
+        zoomState = zoomState,
+        decoderFactory = factory,
+    ) { image, painter, _ ->
         val drawable = (image as? DrawableImage)?.drawable as? Animatable
         drawable?.let {
             object : ImageAnimation {

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import com.github.panpf.zoomimage.CoilZoomState
 
 @Composable
 actual fun ShowImage(
@@ -12,9 +13,18 @@ actual fun ShowImage(
     modifier: Modifier,
     contentScale: ContentScale,
     animationEnabled: Boolean,
+    zoomState: CoilZoomState?,
 ) {
     val factory = remember { SkiaAnimatedImageDecoder.Factory() }
-    ShowImage(url, contentDescription, modifier, contentScale, animationEnabled, factory) { image, _, scope ->
+    ShowImage(
+        url = url,
+        contentDescription = contentDescription,
+        modifier = modifier,
+        contentScale = contentScale,
+        animationEnabled = animationEnabled,
+        zoomState = zoomState,
+        decoderFactory = factory,
+    ) { image, _, scope ->
         (image as? SkiaAnimatedImage)?.let { SkiaAnimatedImagePainter(it, scope) }
     }
 }

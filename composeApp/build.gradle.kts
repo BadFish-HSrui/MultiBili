@@ -108,6 +108,7 @@ kotlin {
             implementation(libs.materialKolor)
             implementation(libs.coil.compose)
             implementation(libs.coil.network.ktor3)
+            implementation(libs.zoomimage.compose.coil3.core)
             implementation(libs.material.icons)
             implementation(libs.material3.adaptive)
             implementation(libs.qrose)
