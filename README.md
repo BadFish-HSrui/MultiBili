@@ -30,6 +30,7 @@
 - [KevinnZou/compose-webview-multiplatform](https://github.com/KevinnZou/compose-webview-multiplatform): 用于加载ios与安卓的网页登录页面 
 - [ioannisa/KSafe](https://github.com/ioannisa/KSafe): 加密存储登录Cookie等敏感信息
 - [FFmpeg](https://ffmpeg.org/) / [libmpv](https://github.com/mpv-player/mpv): 底层播放器平台实现
+- [panpf/zoomimage](https://github.com/panpf/zoomimage): 处理评论图片查看器的缩放与手势交互，以及通过子采样优化大图显示
 
 ### 开源协议
 - 本项目自有代码使用 [GPL-3.0 license](LICENSE) 开源
