@@ -171,6 +171,9 @@ compose.desktop {
             windows {
                 packageVersion = windowsPackageVersion
                 upgradeUuid = "CF9BD107-DCB2-5E72-9378-280860754B39"
+                menu = true
+                menuGroup = ""
+                shortcut = true
                 iconFile.set(project.file("src/jvmMain/icons/windows_icon.ico"))
             }
         }
