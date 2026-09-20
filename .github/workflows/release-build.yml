@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       clean_cache:
-        description: 清理各平台 Gradle 构建缓存
+        description: 清理缓存
         required: false
         type: boolean
         default: false
@@ -63,13 +63,15 @@ jobs:
       - name: 校验并汇总 SHA-256
         id: checksum
         shell: bash
+        env:
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          shopt -s nullglob
+
           mapfile -d '' binary_files < <(find collected -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.apk' -o -name '*.dmg' -o -name '*.ipa' -o -name '*.msi' -o -name '*.exe' \) -print0 | sort -z)
-          mapfile -d '' sidecar_files < <(find collected -type f -name '*.sha256' -print0 | sort -z)
-          mapfile -d '' native_version_files < <(find collected -type f -name '*.native-version.json' -print0 | sort -z)
-          if [[ "${#binary_files[@]}" -ne 7 || "${#sidecar_files[@]}" -ne 7 || "${#native_version_files[@]}" -ne 7 ]]; then
-            echo "期望七个二进制产物、七个校验文件及七个原生版本文件，实际为 ${#binary_files[@]}/${#sidecar_files[@]}/${#native_version_files[@]}" >&2
+          if [[ "${#binary_files[@]}" -ne 7 ]]; then
+            echo "期望七个二进制产物，实际为 ${#binary_files[@]}" >&2
             exit 1
           fi
           for extension in deb rpm apk dmg ipa msi exe; do
@@ -84,18 +86,24 @@ jobs:
               exit 1
             fi
           done
-          for sidecar in "${sidecar_files[@]}"; do
-            (cd "$(dirname "$sidecar")" && sha256sum --check "$(basename "$sidecar")")
+          for file in "${binary_files[@]}"; do
+            if [[ ! -s "$file.sha256" ]]; then
+              echo "缺少产物 SHA-256 sidecar：$file" >&2
+              exit 1
+            fi
+            if [[ ! -s "$file.native-version.json" ]]; then
+              echo "缺少产物原生版本元数据：$file" >&2
+              exit 1
+            fi
           done
 
-          mkdir -p summary
-          mapfile -d '' group_metadata_files < <(
-            find collected -type f -name 'build-metadata.json' -print0 | sort -z
-          )
+          mapfile -d '' group_metadata_files < <(find collected -type f -name 'build-metadata.json' -print0 | sort -z)
           if [[ "${#group_metadata_files[@]}" -ne 5 ]]; then
             echo "期望 Linux、Android、macOS、iOS、Windows 五份上传组 metadata，实际为 ${#group_metadata_files[@]}" >&2
             exit 1
           fi
+
+          mkdir -p summary
           base_metadata="${group_metadata_files[0]}"
           ARTIFACT_VERSION="$(jq -r '.artifactVersion' "$base_metadata")"
           release_version="$(jq -r '.releaseVersion' "$base_metadata")"
@@ -103,37 +111,24 @@ jobs:
           commit_sha="$(jq -r '.commitSha' "$base_metadata")"
           echo "artifact_version=$ARTIFACT_VERSION" >> "$GITHUB_OUTPUT"
           for group_metadata_path in "${group_metadata_files[@]}"; do
-            group_directory="$(dirname "$group_metadata_path")"
-            mapfile -d '' group_binary_files < <(
-              find "$group_directory" -maxdepth 1 -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.apk' -o -name '*.dmg' -o -name '*.ipa' -o -name '*.msi' -o -name '*.exe' \) -print0 | sort -z
-            )
-            if [[ "${#group_binary_files[@]}" -lt 1 ]]; then
-              echo "上传组 metadata 没有对应二进制：$group_metadata_path" >&2
-              exit 1
-            fi
-            expected_group_names="$(
-              printf '%s\n' "${group_binary_files[@]##*/}" | jq -R . | jq -s 'sort'
-            )"
             if ! jq -e \
               --slurpfile base "$base_metadata" \
-              --argjson expectedNames "$expected_group_names" '
-                (del(.artifacts) == ($base[0] | del(.artifacts))) and
-                (.artifacts | type == "array") and
-                (([.artifacts[].fileName] | sort) == $expectedNames) and
-                (([.artifacts[].fileName] | length) == ([.artifacts[].fileName] | unique | length))
+              --arg commitSha "$COMMIT_SHA" '
+                .commitSha == $commitSha and
+                (del(.artifacts) == ($base[0] | del(.artifacts)))
               ' "$group_metadata_path" > /dev/null; then
-              echo "上传组 build-metadata.json 与统一元数据或本组二进制集合不一致：$group_metadata_path" >&2
+              echo "上传组 build-metadata.json 的提交或版本字段与本次运行不一致：$group_metadata_path" >&2
               exit 1
             fi
           done
-          : > summary/SHA256SUMS
+
           artifacts_ndjson="$RUNNER_TEMP/multi-bili-artifacts.ndjson"
-          artifacts_json="$RUNNER_TEMP/multi-bili-artifacts.json"
           : > "$artifacts_ndjson"
+          : > summary/SHA256SUMS
           declare -A seen_names
           for file in "${binary_files[@]}"; do
             filename="$(basename "$file")"
-            if [[ "$filename" != multi-bili-*-${ARTIFACT_VERSION}-* ]]; then
+            if [[ "$filename" != multi-bili-*-"${ARTIFACT_VERSION}"-* ]]; then
               echo "产物文件名未使用统一 APP_ARTIFACT_VERSION：$filename" >&2
               exit 1
             fi
@@ -142,19 +137,21 @@ jobs:
               exit 1
             fi
             seen_names[$filename]=1
-            hash="$(sha256sum "$file" | awk '{ print $1 }')"
+
+            sidecar_path="$file.sha256"
+            sidecar_directory="$(dirname "$sidecar_path")"
+            sidecar_name="$(basename "$sidecar_path")"
+            (cd "$sidecar_directory" && sha256sum --check "$sidecar_name") > /dev/null
+            mapfile -t sidecar_fields < <(awk 'NR == 1 { print $1; print $2 }' "$sidecar_path")
+            if [[ "${#sidecar_fields[@]}" -ne 2 ]] || [[ ! "${sidecar_fields[0]}" =~ ^[0-9a-f]{64}$ ]] || [[ "${sidecar_fields[1]}" != "$filename" ]]; then
+              echo "产物 SHA-256 sidecar 格式无效：$sidecar_path" >&2
+              exit 1
+            fi
+            hash="${sidecar_fields[0]}"
             size_bytes="$(stat --printf='%s' "$file")"
             printf '%s  %s\n' "$hash" "$filename" >> summary/SHA256SUMS
-            sidecar_path="$file.sha256"
-            if [[ ! -s "$sidecar_path" ]]; then
-              echo "缺少产物 SHA-256 sidecar：$filename" >&2
-              exit 1
-            fi
+
             native_version_path="$file.native-version.json"
-            if [[ ! -s "$native_version_path" ]]; then
-              echo "缺少产物原生版本元数据：$filename" >&2
-              exit 1
-            fi
             if ! jq -e --arg fileName "$filename" '
               .fileName == $fileName and
               (.nativeVersion | type == "string" and length > 0) and
@@ -167,58 +164,21 @@ jobs:
             native_version="$(jq -r '.nativeVersion' "$native_version_path")"
             native_build_version="$(jq -r '.nativeBuildVersion' "$native_version_path")"
             native_version_fields="$(jq -c '.nativeVersionFields' "$native_version_path")"
-            case "$filename" in
-              "multi-bili-linux-${ARTIFACT_VERSION}-x64.deb"|"multi-bili-linux-${ARTIFACT_VERSION}-x64.rpm")
-                platform='linux'
-                arch='x64'
-                ;;
-              "multi-bili-linux-${ARTIFACT_VERSION}-arm64.deb"|"multi-bili-linux-${ARTIFACT_VERSION}-arm64.rpm")
-                platform='linux'
-                arch='arm64'
-                ;;
-              "multi-bili-android-${ARTIFACT_VERSION}-universal.apk")
-                platform='android'
-                arch='universal'
-                ;;
-              "multi-bili-macos-${ARTIFACT_VERSION}-x64.dmg")
-                platform='macos'
-                arch='x64'
-                ;;
-              "multi-bili-macos-${ARTIFACT_VERSION}-arm64.dmg")
-                platform='macos'
-                arch='arm64'
-                ;;
-              "multi-bili-ios-${ARTIFACT_VERSION}-arm64.ipa")
-                platform='ios'
-                arch='arm64'
-                ;;
-              "multi-bili-windows-${ARTIFACT_VERSION}-x64.msi"|"multi-bili-windows-${ARTIFACT_VERSION}-x64.exe")
-                platform='windows'
-                arch='x64'
-                ;;
-              "multi-bili-windows-${ARTIFACT_VERSION}-arm64.msi"|"multi-bili-windows-${ARTIFACT_VERSION}-arm64.exe")
-                platform='windows'
-                arch='arm64'
-                ;;
-              *)
-                echo "无法识别产物平台：$filename" >&2
-                exit 1
-                ;;
-            esac
+            arch="${filename#multi-bili-*-"${ARTIFACT_VERSION}"-}"
+            arch="${arch%.*}"
+
             group_metadata_path="$(dirname "$file")/build-metadata.json"
             if [[ ! -s "$group_metadata_path" ]] || ! jq -e \
-              --arg platform "$platform" \
-              --arg arch "$arch" \
               --arg fileName "$filename" \
+              --arg arch "$arch" \
               --argjson sizeBytes "$size_bytes" \
               --arg sha256 "$hash" \
               --arg nativeVersion "$native_version" \
               --arg nativeBuildVersion "$native_build_version" \
               --argjson nativeVersionFields "$native_version_fields" '
                 any(.artifacts[];
-                  .platform == $platform and
-                  .arch == $arch and
                   .fileName == $fileName and
+                  .arch == $arch and
                   .sizeBytes == $sizeBytes and
                   .sha256 == $sha256 and
                   .signingStatus == "unsigned" and
@@ -230,25 +190,24 @@ jobs:
               echo "上传组 build-metadata.json 未准确记录产物：$filename" >&2
               exit 1
             fi
-            jq -n \
-              --arg platform "$platform" \
-              --arg arch "$arch" \
+            jq -c \
               --arg fileName "$filename" \
               --argjson sizeBytes "$size_bytes" \
               --arg sha256 "$hash" \
-              --arg signingStatus 'unsigned' \
               --arg nativeVersion "$native_version" \
               --arg nativeBuildVersion "$native_build_version" \
               --argjson nativeVersionFields "$native_version_fields" \
-              '{platform: $platform, arch: $arch, fileName: $fileName, sizeBytes: $sizeBytes, sha256: $sha256, signingStatus: $signingStatus, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
-              >> "$artifacts_ndjson"
+              '.artifacts[]
+               | select(.fileName == $fileName and .sizeBytes == $sizeBytes and .sha256 == $sha256)
+               | {platform: .platform, arch: .arch, fileName: .fileName, sizeBytes: .sizeBytes, sha256: .sha256, signingStatus: "unsigned", nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
+              "$group_metadata_path" >> "$artifacts_ndjson"
           done
-          jq -s '.' "$artifacts_ndjson" > "$artifacts_json"
-          jq --slurpfile artifacts "$artifacts_json" '. + {artifacts: $artifacts[0]}' \
-            "$base_metadata" > summary/build-metadata.json
+
           jq -e '
-            (.artifacts | length == 7) and
-            all(.artifacts[];
+            (length == 7) and
+            (([.[].fileName] | length) == ([.[].fileName] | unique | length)) and
+            (([.[].platform] | sort) == ["android", "ios", "linux", "linux", "macos", "windows", "windows"]) and
+            all(.[];
               (.platform | type == "string" and length > 0) and
               (.arch | type == "string" and length > 0) and
               (.fileName | type == "string" and length > 0) and
@@ -259,7 +218,10 @@ jobs:
               (.nativeBuildVersion | type == "string" and length > 0) and
               (.nativeVersionFields | type == "object" and length > 0)
             )
-          ' summary/build-metadata.json > /dev/null
+          ' <(jq -s '.' "$artifacts_ndjson") > /dev/null
+          jq -s --slurpfile base "$base_metadata" \
+            '. as $artifacts | $base[0] + {artifacts: ($artifacts | sort_by(.fileName))}' \
+            "$artifacts_ndjson" > summary/build-metadata.json
 
           {
             echo "## 全平台构建完成"
