@@ -1053,7 +1053,7 @@ fun BoloPlayerControls(
                                     danmakuState.isVisible -> "弹幕 - 开"
                                     else -> "弹幕 - 关"
                                 },
-                                style = MaterialTheme.typography.labelLarge,
+                                style = MaterialTheme.typography.labelMedium,
                                 maxLines = 1,
                             )
                         }

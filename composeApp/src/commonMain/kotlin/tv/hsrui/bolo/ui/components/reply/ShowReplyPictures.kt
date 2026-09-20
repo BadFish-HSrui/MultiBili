@@ -26,17 +26,21 @@ fun ShowReplyPictures(
     if (pictures.isEmpty()) return
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val availableWidth = maxWidth
+        // 多图时收窄每张预览，保留横向可滑动的视觉线索；单图仍可铺满内容宽度。
+        val multiPictureMaxWidthRatio = 0.8f
+        val maxItemWidth = if (pictures.size > 1) availableWidth * multiPictureMaxWidthRatio else availableWidth
         LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             itemsIndexed(pictures) { index, picture ->
                 val ratio = if (picture.width > 0 && picture.height > 0) {
                     picture.width.toFloat() / picture.height
                 } else 1f
                 val previewRatio = ratio.coerceAtMost(16f / 9f)
-                val height = minOf(300.dp, availableWidth / previewRatio)
+                val height = minOf(240.dp, maxItemWidth / previewRatio)
+                val itemWidth = height * previewRatio
                 Surface(
                     onClick = { onImageClick(index) },
                     shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.size(width = height * previewRatio, height = height),
+                    modifier = Modifier.size(width = itemWidth, height = height),
                 ) {
                     ShowImage(
                         url = picture.url,

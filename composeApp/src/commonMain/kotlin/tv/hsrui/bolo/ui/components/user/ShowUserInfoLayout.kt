@@ -69,7 +69,7 @@ internal fun ShowUserInfoLayout(
                     Surface(
                         shape = CircleShape,
                         color = BiliColor.ThemeColor,
-                        modifier = Modifier.width(68.dp),
+                        modifier = Modifier.width(64.dp),
                     ) {
                         Text(
                             text = vipTypeString,
@@ -77,7 +77,6 @@ internal fun ShowUserInfoLayout(
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 4.dp),
                         )
                     }
                 }
