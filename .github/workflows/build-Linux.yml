@@ -168,97 +168,20 @@ jobs:
           rpm_target="staging/linux/multi-bili-linux-${ARTIFACT_VERSION}-${desktop_arch}.rpm"
           cp "${deb_files[0]}" "$deb_target"
           cp "${rpm_files[0]}" "$rpm_target"
-          cp "$METADATA_FILE" staging/linux/
 
-          write_native_version_metadata() {
-            local file="$1"
-            local native_version="$2"
-            local native_build_version="$3"
-            local native_version_fields="$4"
-            jq -n \
-              --arg fileName "$(basename "$file")" \
-              --arg nativeVersion "$native_version" \
-              --arg nativeBuildVersion "$native_build_version" \
-              --argjson nativeVersionFields "$native_version_fields" \
-              '{fileName: $fileName, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
-              > "$file.native-version.json"
-          }
-          deb_fields="$(jq -n --arg Version "$deb_version" '{Version: $Version}')"
-          rpm_fields="$(jq -n --arg Version "$rpm_version" --arg Release "$rpm_release" '{Version: $Version, Release: $Release}')"
-          write_native_version_metadata "$deb_target" "$deb_version" "$BUILD_NUMBER" "$deb_fields"
-          write_native_version_metadata "$rpm_target" "${rpm_version}-${rpm_release}" "$rpm_release" "$rpm_fields"
-
-          for file in staging/linux/*.deb staging/linux/*.rpm; do
-            directory="$(dirname "$file")"
-            filename="$(basename "$file")"
-            (cd "$directory" && sha256sum "$filename" > "$filename.sha256")
-          done
-
-          write_group_build_metadata() {
-            local output="$1"
-            local platform="$2"
-            local arch="$3"
-            shift 3
-            local expected_count="$#"
-            local group_ndjson
-            local group_json
-            group_ndjson="$(mktemp)"
-            group_json="$(mktemp)"
-            : > "$group_ndjson"
-            for file in "$@"; do
-              local filename
-              local hash
-              local size_bytes
-              local native_version
-              local native_build_version
-              local native_version_fields
-              filename="$(basename "$file")"
-              hash="$(sha256sum "$file" | awk '{ print $1 }')"
-              size_bytes="$(stat --printf='%s' "$file")"
-              native_version="$(jq -r '.nativeVersion' "$file.native-version.json")"
-              native_build_version="$(jq -r '.nativeBuildVersion' "$file.native-version.json")"
-              native_version_fields="$(jq -c '.nativeVersionFields' "$file.native-version.json")"
-              jq -n \
-                --arg platform "$platform" \
-                --arg arch "$arch" \
-                --arg fileName "$filename" \
-                --argjson sizeBytes "$size_bytes" \
-                --arg sha256 "$hash" \
-                --arg signingStatus 'unsigned' \
-                --arg nativeVersion "$native_version" \
-                --arg nativeBuildVersion "$native_build_version" \
-                --argjson nativeVersionFields "$native_version_fields" \
-                '{platform: $platform, arch: $arch, fileName: $fileName, sizeBytes: $sizeBytes, sha256: $sha256, signingStatus: $signingStatus, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
-                >> "$group_ndjson"
-            done
-            jq -s '.' "$group_ndjson" > "$group_json"
-            jq --slurpfile artifacts "$group_json" '. + {artifacts: $artifacts[0]}' \
-              "$METADATA_FILE" > "$output"
-            jq -e \
-              --argjson expectedCount "$expected_count" \
-              --arg platform "$platform" \
-              --arg arch "$arch" '
-              (.artifacts | type == "array" and length == $expectedCount) and
-              all(.artifacts[];
-                .platform == $platform and
-                .arch == $arch and
-                (.fileName | type == "string" and length > 0) and
-                (.sizeBytes | type == "number" and . > 0) and
-                (.sha256 | test("^[0-9a-f]{64}$")) and
-                .signingStatus == "unsigned" and
-                (.nativeVersion | type == "string" and length > 0) and
-                (.nativeBuildVersion | type == "string" and length > 0) and
-                (.nativeVersionFields | type == "object" and length > 0)
-              )
-            ' "$output" > /dev/null
-          }
-          write_group_build_metadata staging/linux/build-metadata.json linux "$desktop_arch" "$deb_target" "$rpm_target"
-
-      - name: 上传 Linux 构建产物
+      - name: 上传 Linux DEB 构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: multi-bili-linux-${{ steps.collect.outputs.artifact_version }}-${{ steps.collect.outputs.desktop_arch }}
-          path: staging/linux/
+          name: Linux-deb
+          path: staging/linux/multi-bili-linux-*-*.deb
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: 上传 Linux RPM 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: Linux-rpm
+          path: staging/linux/multi-bili-linux-*-*.rpm
           if-no-files-found: error
           retention-days: 7
 

@@ -162,7 +162,6 @@ jobs:
           $exeTarget = "staging/windows/multi-bili-windows-$env:ARTIFACT_VERSION-$desktopArch.exe"
           Copy-Item $msiFiles[0].FullName $msiTarget
           Copy-Item $exeFiles[0].FullName $exeTarget
-          Copy-Item 'build/version/build-metadata.json' 'staging/windows/build-metadata.json'
 
           $coreParts = $env:VERSION_CORE.Split('.')
           if ($coreParts.Count -ne 3) {
@@ -209,85 +208,19 @@ jobs:
             }
           }
 
-          function Write-NativeVersionMetadata(
-            [System.IO.FileInfo]$File,
-            [string]$NativeVersion,
-            [string]$NativeBuildVersion,
-            [hashtable]$NativeVersionFields
-          ) {
-            $metadata = [ordered]@{
-              fileName = $File.Name
-              nativeVersion = $NativeVersion
-              nativeBuildVersion = $NativeBuildVersion
-              nativeVersionFields = $NativeVersionFields
-            } | ConvertTo-Json -Depth 5
-            [System.IO.File]::WriteAllText(
-              "$($File.FullName).native-version.json",
-              "$metadata`n",
-              [System.Text.UTF8Encoding]::new($false)
-            )
-          }
-          Write-NativeVersionMetadata (Get-Item $msiTarget) $msiProductVersion $env:BUILD_NUMBER @{ ProductVersion = $msiProductVersion }
-          Write-NativeVersionMetadata (Get-Item $exeTarget) $exeProductVersion $env:BUILD_NUMBER @{ ProductVersion = $exeProductVersion }
-
-          foreach ($file in @(Get-Item $msiTarget, $exeTarget)) {
-            $hash = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash.ToLowerInvariant()
-            [System.IO.File]::WriteAllText(
-              "$($file.FullName).sha256",
-              "$hash  $($file.Name)`n",
-              [System.Text.UTF8Encoding]::new($false)
-            )
-          }
-
-          $artifactMetadata = @(
-            foreach ($file in @(Get-Item $msiTarget, $exeTarget)) {
-              $nativeMetadata = Get-Content -Raw "$($file.FullName).native-version.json" | ConvertFrom-Json
-              [ordered]@{
-                platform = 'windows'
-                arch = $desktopArch
-                fileName = $file.Name
-                sizeBytes = $file.Length
-                sha256 = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash.ToLowerInvariant()
-                signingStatus = 'unsigned'
-                nativeVersion = $nativeMetadata.nativeVersion
-                nativeBuildVersion = $nativeMetadata.nativeBuildVersion
-                nativeVersionFields = $nativeMetadata.nativeVersionFields
-              }
-            }
-          )
-          $groupMetadata = Get-Content -Raw 'build/version/build-metadata.json' | ConvertFrom-Json -AsHashtable
-          $groupMetadata['artifacts'] = $artifactMetadata
-          $groupMetadataJson = $groupMetadata | ConvertTo-Json -Depth 10
-          [System.IO.File]::WriteAllText(
-            (Resolve-Path 'staging/windows').Path + '\build-metadata.json',
-            "$groupMetadataJson`n",
-            [System.Text.UTF8Encoding]::new($false)
-          )
-          $writtenGroupMetadata = Get-Content -Raw 'staging/windows/build-metadata.json' | ConvertFrom-Json
-          if (@($writtenGroupMetadata.artifacts).Count -ne 2) {
-            throw 'Windows build-metadata.json 必须恰好记录 MSI 和 EXE 两个产物'
-          }
-          foreach ($artifact in @($writtenGroupMetadata.artifacts)) {
-            if (
-              $artifact.platform -cne 'windows' -or
-              $artifact.arch -cne $desktopArch -or
-              [string]::IsNullOrWhiteSpace($artifact.fileName) -or
-              [long]$artifact.sizeBytes -le 0 -or
-              $artifact.sha256 -notmatch '^[0-9a-f]{64}$' -or
-              $artifact.signingStatus -cne 'unsigned' -or
-              [string]::IsNullOrWhiteSpace($artifact.nativeVersion) -or
-              [string]::IsNullOrWhiteSpace($artifact.nativeBuildVersion) -or
-              $null -eq $artifact.nativeVersionFields
-            ) {
-              throw "Windows build-metadata.json 产物记录无效：$($artifact.fileName)"
-            }
-          }
-
-      - name: 上传 Windows 构建产物
+      - name: 上传 Windows EXE 构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: multi-bili-windows-${{ steps.collect.outputs.artifact_version }}-${{ steps.collect.outputs.desktop_arch }}
-          path: staging/windows/
+          name: Win-exe
+          path: staging/windows/multi-bili-windows-*-*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: 上传 Windows MSI 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: Win-msi
+          path: staging/windows/multi-bili-windows-*-*.msi
           if-no-files-found: error
           retention-days: 7
 

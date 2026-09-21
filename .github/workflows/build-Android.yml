@@ -153,95 +153,12 @@ jobs:
           mkdir -p staging/android
           apk_target="staging/android/multi-bili-android-${ARTIFACT_VERSION}-universal.apk"
           cp "${apk_files[0]}" "$apk_target"
-          cp "$METADATA_FILE" staging/android/
-
-          write_native_version_metadata() {
-            local file="$1"
-            local native_version="$2"
-            local native_build_version="$3"
-            local native_version_fields="$4"
-            jq -n \
-              --arg fileName "$(basename "$file")" \
-              --arg nativeVersion "$native_version" \
-              --arg nativeBuildVersion "$native_build_version" \
-              --argjson nativeVersionFields "$native_version_fields" \
-              '{fileName: $fileName, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
-              > "$file.native-version.json"
-          }
-          apk_fields="$(jq -n --arg versionName "$apk_version_name" --arg versionCode "$apk_version_code" '{versionName: $versionName, versionCode: $versionCode}')"
-          write_native_version_metadata "$apk_target" "$apk_version_name" "$apk_version_code" "$apk_fields"
-
-          for file in staging/android/*.apk; do
-            directory="$(dirname "$file")"
-            filename="$(basename "$file")"
-            (cd "$directory" && sha256sum "$filename" > "$filename.sha256")
-          done
-
-          write_group_build_metadata() {
-            local output="$1"
-            local platform="$2"
-            local arch="$3"
-            shift 3
-            local expected_count="$#"
-            local group_ndjson
-            local group_json
-            group_ndjson="$(mktemp)"
-            group_json="$(mktemp)"
-            : > "$group_ndjson"
-            for file in "$@"; do
-              local filename
-              local hash
-              local size_bytes
-              local native_version
-              local native_build_version
-              local native_version_fields
-              filename="$(basename "$file")"
-              hash="$(sha256sum "$file" | awk '{ print $1 }')"
-              size_bytes="$(stat --printf='%s' "$file")"
-              native_version="$(jq -r '.nativeVersion' "$file.native-version.json")"
-              native_build_version="$(jq -r '.nativeBuildVersion' "$file.native-version.json")"
-              native_version_fields="$(jq -c '.nativeVersionFields' "$file.native-version.json")"
-              jq -n \
-                --arg platform "$platform" \
-                --arg arch "$arch" \
-                --arg fileName "$filename" \
-                --argjson sizeBytes "$size_bytes" \
-                --arg sha256 "$hash" \
-                --arg signingStatus 'unsigned' \
-                --arg nativeVersion "$native_version" \
-                --arg nativeBuildVersion "$native_build_version" \
-                --argjson nativeVersionFields "$native_version_fields" \
-                '{platform: $platform, arch: $arch, fileName: $fileName, sizeBytes: $sizeBytes, sha256: $sha256, signingStatus: $signingStatus, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
-                >> "$group_ndjson"
-            done
-            jq -s '.' "$group_ndjson" > "$group_json"
-            jq --slurpfile artifacts "$group_json" '. + {artifacts: $artifacts[0]}' \
-              "$METADATA_FILE" > "$output"
-            jq -e \
-              --argjson expectedCount "$expected_count" \
-              --arg platform "$platform" \
-              --arg arch "$arch" '
-              (.artifacts | type == "array" and length == $expectedCount) and
-              all(.artifacts[];
-                .platform == $platform and
-                .arch == $arch and
-                (.fileName | type == "string" and length > 0) and
-                (.sizeBytes | type == "number" and . > 0) and
-                (.sha256 | test("^[0-9a-f]{64}$")) and
-                .signingStatus == "unsigned" and
-                (.nativeVersion | type == "string" and length > 0) and
-                (.nativeBuildVersion | type == "string" and length > 0) and
-                (.nativeVersionFields | type == "object" and length > 0)
-              )
-            ' "$output" > /dev/null
-          }
-          write_group_build_metadata staging/android/build-metadata.json android universal "$apk_target"
 
       - name: 上传 Android 构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: multi-bili-android-${{ steps.collect.outputs.artifact_version }}-universal
-          path: staging/android/
+          name: Android-apk
+          path: staging/android/multi-bili-android-*-universal.apk
           if-no-files-found: error
           retention-days: 7
 

@@ -142,7 +142,6 @@ jobs:
           mkdir -p staging/macos
           dmg_target="staging/macos/multi-bili-macos-${ARTIFACT_VERSION}-${desktop_arch}.dmg"
           cp "${dmg_files[0]}" "$dmg_target"
-          cp "$METADATA_FILE" staging/macos/
 
           dmg_mount="$(mktemp -d)"
           dmg_attached='false'
@@ -169,88 +168,6 @@ jobs:
             exit 1
           fi
 
-          write_native_version_metadata() {
-            local file="$1"
-            local native_version="$2"
-            local native_build_version="$3"
-            local native_version_fields="$4"
-            jq -n \
-              --arg fileName "$(basename "$file")" \
-              --arg nativeVersion "$native_version" \
-              --arg nativeBuildVersion "$native_build_version" \
-              --argjson nativeVersionFields "$native_version_fields" \
-              '{fileName: $fileName, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
-              > "$file.native-version.json"
-          }
-          dmg_fields="$(jq -n --arg CFBundleShortVersionString "$dmg_version" --arg CFBundleVersion "$dmg_build" '{CFBundleShortVersionString: $CFBundleShortVersionString, CFBundleVersion: $CFBundleVersion}')"
-          write_native_version_metadata "$dmg_target" "$dmg_version" "$dmg_build" "$dmg_fields"
-
-          for file in staging/macos/*.dmg; do
-            directory="$(dirname "$file")"
-            filename="$(basename "$file")"
-            (cd "$directory" && shasum -a 256 "$filename" > "$filename.sha256")
-          done
-
-          write_group_build_metadata() {
-            local output="$1"
-            local platform="$2"
-            local arch="$3"
-            shift 3
-            local expected_count="$#"
-            local group_ndjson
-            local group_json
-            group_ndjson="$(mktemp)"
-            group_json="$(mktemp)"
-            : > "$group_ndjson"
-            for file in "$@"; do
-              local filename
-              local hash
-              local size_bytes
-              local native_version
-              local native_build_version
-              local native_version_fields
-              filename="$(basename "$file")"
-              hash="$(shasum -a 256 "$file" | awk '{ print $1 }')"
-              size_bytes="$(stat -f '%z' "$file")"
-              native_version="$(jq -r '.nativeVersion' "$file.native-version.json")"
-              native_build_version="$(jq -r '.nativeBuildVersion' "$file.native-version.json")"
-              native_version_fields="$(jq -c '.nativeVersionFields' "$file.native-version.json")"
-              jq -n \
-                --arg platform "$platform" \
-                --arg arch "$arch" \
-                --arg fileName "$filename" \
-                --argjson sizeBytes "$size_bytes" \
-                --arg sha256 "$hash" \
-                --arg signingStatus 'unsigned' \
-                --arg nativeVersion "$native_version" \
-                --arg nativeBuildVersion "$native_build_version" \
-                --argjson nativeVersionFields "$native_version_fields" \
-                '{platform: $platform, arch: $arch, fileName: $fileName, sizeBytes: $sizeBytes, sha256: $sha256, signingStatus: $signingStatus, nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
-                >> "$group_ndjson"
-            done
-            jq -s '.' "$group_ndjson" > "$group_json"
-            jq --slurpfile artifacts "$group_json" '. + {artifacts: $artifacts[0]}' \
-              "$METADATA_FILE" > "$output"
-            jq -e \
-              --argjson expectedCount "$expected_count" \
-              --arg platform "$platform" \
-              --arg arch "$arch" '
-              (.artifacts | type == "array" and length == $expectedCount) and
-              all(.artifacts[];
-                .platform == $platform and
-                .arch == $arch and
-                (.fileName | type == "string" and length > 0) and
-                (.sizeBytes | type == "number" and . > 0) and
-                (.sha256 | test("^[0-9a-f]{64}$")) and
-                .signingStatus == "unsigned" and
-                (.nativeVersion | type == "string" and length > 0) and
-                (.nativeBuildVersion | type == "string" and length > 0) and
-                (.nativeVersionFields | type == "object" and length > 0)
-              )
-            ' "$output" > /dev/null
-          }
-          write_group_build_metadata staging/macos/build-metadata.json macos "$desktop_arch" "$dmg_target"
-
       - name: 确认构建未修改受控文件
         run: |
           git diff --exit-code
@@ -259,8 +176,8 @@ jobs:
       - name: 上传 macOS 构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: multi-bili-macos-${{ steps.collect.outputs.artifact_version }}-${{ steps.collect.outputs.desktop_arch }}
-          path: staging/macos/
+          name: Mac-dmg
+          path: staging/macos/multi-bili-macos-*-*.dmg
           if-no-files-found: error
           retention-days: 7
 

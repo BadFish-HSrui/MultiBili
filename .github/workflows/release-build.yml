@@ -45,7 +45,7 @@ jobs:
     with:
       clean_cache: ${{ inputs.clean_cache || false }}
 
-  checksums:
+  summary:
     needs:
       - linux
       - android
@@ -53,191 +53,47 @@ jobs:
       - ios
       - windows
     runs-on: ubuntu-latest
+    if: always()
     steps:
-      - name: 下载全部平台构建产物
-        uses: actions/download-artifact@v4
-        with:
-          pattern: multi-bili-*
-          path: collected
-
-      - name: 校验并汇总 SHA-256
-        id: checksum
+      - name: 生成构建概览看板
         shell: bash
         env:
+          LINUX_RESULT: ${{ needs.linux.result }}
+          ANDROID_RESULT: ${{ needs.android.result }}
+          MACOS_RESULT: ${{ needs.macos.result }}
+          IOS_RESULT: ${{ needs.ios.result }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
 
-          mapfile -d '' binary_files < <(find collected -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.apk' -o -name '*.dmg' -o -name '*.ipa' -o -name '*.msi' -o -name '*.exe' \) -print0 | sort -z)
-          if [[ "${#binary_files[@]}" -ne 7 ]]; then
-            echo "期望七个二进制产物，实际为 ${#binary_files[@]}" >&2
-            exit 1
-          fi
-          for extension in deb rpm apk dmg ipa msi exe; do
-            extension_count=0
-            for file in "${binary_files[@]}"; do
-              if [[ "$file" == *."$extension" ]]; then
-                extension_count=$((extension_count + 1))
-              fi
-            done
-            if [[ "$extension_count" -ne 1 ]]; then
-              echo "期望恰好一个 .$extension 产物，实际为 $extension_count" >&2
-              exit 1
-            fi
-          done
-          for file in "${binary_files[@]}"; do
-            if [[ ! -s "$file.sha256" ]]; then
-              echo "缺少产物 SHA-256 sidecar：$file" >&2
-              exit 1
-            fi
-            if [[ ! -s "$file.native-version.json" ]]; then
-              echo "缺少产物原生版本元数据：$file" >&2
-              exit 1
-            fi
-          done
-
-          mapfile -d '' group_metadata_files < <(find collected -type f -name 'build-metadata.json' -print0 | sort -z)
-          if [[ "${#group_metadata_files[@]}" -ne 5 ]]; then
-            echo "期望 Linux、Android、macOS、iOS、Windows 五份上传组 metadata，实际为 ${#group_metadata_files[@]}" >&2
-            exit 1
-          fi
-
-          mkdir -p summary
-          base_metadata="${group_metadata_files[0]}"
-          ARTIFACT_VERSION="$(jq -r '.artifactVersion' "$base_metadata")"
-          release_version="$(jq -r '.releaseVersion' "$base_metadata")"
-          build_number="$(jq -r '.buildNumber' "$base_metadata")"
-          commit_sha="$(jq -r '.commitSha' "$base_metadata")"
-          echo "artifact_version=$ARTIFACT_VERSION" >> "$GITHUB_OUTPUT"
-          for group_metadata_path in "${group_metadata_files[@]}"; do
-            if ! jq -e \
-              --slurpfile base "$base_metadata" \
-              --arg commitSha "$COMMIT_SHA" '
-                .commitSha == $commitSha and
-                (del(.artifacts) == ($base[0] | del(.artifacts)))
-              ' "$group_metadata_path" > /dev/null; then
-              echo "上传组 build-metadata.json 的提交或版本字段与本次运行不一致：$group_metadata_path" >&2
-              exit 1
-            fi
-          done
-
-          artifacts_ndjson="$RUNNER_TEMP/multi-bili-artifacts.ndjson"
-          : > "$artifacts_ndjson"
-          : > summary/SHA256SUMS
-          declare -A seen_names
-          for file in "${binary_files[@]}"; do
-            filename="$(basename "$file")"
-            if [[ "$filename" != multi-bili-*-"${ARTIFACT_VERSION}"-* ]]; then
-              echo "产物文件名未使用统一 APP_ARTIFACT_VERSION：$filename" >&2
-              exit 1
-            fi
-            if [[ -n "${seen_names[$filename]:-}" ]]; then
-              echo "产物文件名重复：$filename" >&2
-              exit 1
-            fi
-            seen_names[$filename]=1
-
-            sidecar_path="$file.sha256"
-            sidecar_directory="$(dirname "$sidecar_path")"
-            sidecar_name="$(basename "$sidecar_path")"
-            (cd "$sidecar_directory" && sha256sum --check "$sidecar_name") > /dev/null
-            mapfile -t sidecar_fields < <(awk 'NR == 1 { print $1; print $2 }' "$sidecar_path")
-            if [[ "${#sidecar_fields[@]}" -ne 2 ]] || [[ ! "${sidecar_fields[0]}" =~ ^[0-9a-f]{64}$ ]] || [[ "${sidecar_fields[1]}" != "$filename" ]]; then
-              echo "产物 SHA-256 sidecar 格式无效：$sidecar_path" >&2
-              exit 1
-            fi
-            hash="${sidecar_fields[0]}"
-            size_bytes="$(stat --printf='%s' "$file")"
-            printf '%s  %s\n' "$hash" "$filename" >> summary/SHA256SUMS
-
-            native_version_path="$file.native-version.json"
-            if ! jq -e --arg fileName "$filename" '
-              .fileName == $fileName and
-              (.nativeVersion | type == "string" and length > 0) and
-              (.nativeBuildVersion | type == "string" and length > 0) and
-              (.nativeVersionFields | type == "object" and length > 0)
-            ' "$native_version_path" > /dev/null; then
-              echo "产物原生版本元数据无效：$filename" >&2
-              exit 1
-            fi
-            native_version="$(jq -r '.nativeVersion' "$native_version_path")"
-            native_build_version="$(jq -r '.nativeBuildVersion' "$native_version_path")"
-            native_version_fields="$(jq -c '.nativeVersionFields' "$native_version_path")"
-            arch="${filename#multi-bili-*-"${ARTIFACT_VERSION}"-}"
-            arch="${arch%.*}"
-
-            group_metadata_path="$(dirname "$file")/build-metadata.json"
-            if [[ ! -s "$group_metadata_path" ]] || ! jq -e \
-              --arg fileName "$filename" \
-              --arg arch "$arch" \
-              --argjson sizeBytes "$size_bytes" \
-              --arg sha256 "$hash" \
-              --arg nativeVersion "$native_version" \
-              --arg nativeBuildVersion "$native_build_version" \
-              --argjson nativeVersionFields "$native_version_fields" '
-                any(.artifacts[];
-                  .fileName == $fileName and
-                  .arch == $arch and
-                  .sizeBytes == $sizeBytes and
-                  .sha256 == $sha256 and
-                  .signingStatus == "unsigned" and
-                  .nativeVersion == $nativeVersion and
-                  .nativeBuildVersion == $nativeBuildVersion and
-                  .nativeVersionFields == $nativeVersionFields
-                )
-              ' "$group_metadata_path" > /dev/null; then
-              echo "上传组 build-metadata.json 未准确记录产物：$filename" >&2
-              exit 1
-            fi
-            jq -c \
-              --arg fileName "$filename" \
-              --argjson sizeBytes "$size_bytes" \
-              --arg sha256 "$hash" \
-              --arg nativeVersion "$native_version" \
-              --arg nativeBuildVersion "$native_build_version" \
-              --argjson nativeVersionFields "$native_version_fields" \
-              '.artifacts[]
-               | select(.fileName == $fileName and .sizeBytes == $sizeBytes and .sha256 == $sha256)
-               | {platform: .platform, arch: .arch, fileName: .fileName, sizeBytes: .sizeBytes, sha256: .sha256, signingStatus: "unsigned", nativeVersion: $nativeVersion, nativeBuildVersion: $nativeBuildVersion, nativeVersionFields: $nativeVersionFields}' \
-              "$group_metadata_path" >> "$artifacts_ndjson"
-          done
-
-          jq -e '
-            (length == 7) and
-            (([.[].fileName] | length) == ([.[].fileName] | unique | length)) and
-            (([.[].platform] | sort) == ["android", "ios", "linux", "linux", "macos", "windows", "windows"]) and
-            all(.[];
-              (.platform | type == "string" and length > 0) and
-              (.arch | type == "string" and length > 0) and
-              (.fileName | type == "string" and length > 0) and
-              (.sizeBytes | type == "number" and . > 0) and
-              (.sha256 | test("^[0-9a-f]{64}$")) and
-              .signingStatus == "unsigned" and
-              (.nativeVersion | type == "string" and length > 0) and
-              (.nativeBuildVersion | type == "string" and length > 0) and
-              (.nativeVersionFields | type == "object" and length > 0)
-            )
-          ' <(jq -s '.' "$artifacts_ndjson") > /dev/null
-          jq -s --slurpfile base "$base_metadata" \
-            '. as $artifacts | $base[0] + {artifacts: ($artifacts | sort_by(.fileName))}' \
-            "$artifacts_ndjson" > summary/build-metadata.json
+          format_status() {
+            case "$1" in
+              success) echo "✅ 成功" ;;
+              failure) echo "❌ 失败" ;;
+              cancelled) echo "🚫 已取消" ;;
+              skipped) echo "⏭️ 跳过" ;;
+              *) echo "❓ $1" ;;
+            esac
+          }
 
           {
-            echo "## 全平台构建完成"
+            echo "## 全平台构建状态概览"
             echo
-            echo "- Release version: \`$release_version\`"
-            echo "- Build number: \`$build_number\`"
-            echo "- Commit: \`$commit_sha\`"
-            echo "- Artifact version: \`$ARTIFACT_VERSION\`"
+            echo "- 触发 Commit：\`$COMMIT_SHA\`"
             echo
-            echo '七个二进制产物均已通过各自 SHA-256 sidecar 复核；完整列表保存在 `SHA256SUMS` artifact。'
+            echo "| 平台 | 构建状态 | 产物 Artifact 名称 | 包含格式 |"
+            echo "| --- | --- | --- | --- |"
+            echo "| Linux | $(format_status "$LINUX_RESULT") | \`Linux-deb\` / \`Linux-rpm\` | DEB, RPM |"
+            echo "| Android | $(format_status "$ANDROID_RESULT") | \`Android-apk\` | APK |"
+            echo "| macOS | $(format_status "$MACOS_RESULT") | \`Mac-dmg\` | DMG |"
+            echo "| iOS | $(format_status "$IOS_RESULT") | \`IOS-ipa\` | IPA |"
+            echo "| Windows | $(format_status "$WINDOWS_RESULT") | \`Win-exe\` / \`Win-msi\` | EXE, MSI |"
+            echo
+            echo "产物已作为独立 Artifact 上传，可直接在当前 Actions 运行页面下载对应的目标格式。"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: 上传构建元数据与校验和汇总
-        uses: actions/upload-artifact@v4
-        with:
-          name: multi-bili-${{ steps.checksum.outputs.artifact_version }}-checksums
-          path: summary/
-          if-no-files-found: error
-          retention-days: 7
+          if [[ "$LINUX_RESULT" != "success" || "$ANDROID_RESULT" != "success" || "$MACOS_RESULT" != "success" || "$IOS_RESULT" != "success" || "$WINDOWS_RESULT" != "success" ]]; then
+            echo "部分平台构建未成功完成。" >&2
+            exit 1
+          fi
