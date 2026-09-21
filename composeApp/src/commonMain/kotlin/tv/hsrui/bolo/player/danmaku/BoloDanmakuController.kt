@@ -115,7 +115,8 @@ class BoloDanmakuController {
     internal fun animationTimeMs(): Long = animationTime().coerceAtMost(Long.MAX_VALUE.toDouble()).toLong()
 
     private fun animationTime(): Double = animationBaseMs + if (_state.value.isPlaying) {
-        animationAnchor.elapsedNow().inWholeNanoseconds / 1_000_000.0 * _state.value.playbackSpeed
+        animationAnchor.elapsedNow().inWholeNanoseconds / 1_000_000.0 *
+            danmakuAdvanceFactor(_state.value.playbackSpeed)
     } else 0.0
 
     private fun updatePlayback(isPlaying: Boolean, speed: Float, positionMs: Long = _state.value.positionMs) {
