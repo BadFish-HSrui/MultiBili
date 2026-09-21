@@ -128,8 +128,8 @@ jobs:
           echo "artifact_version=$ARTIFACT_VERSION" >> "$GITHUB_OUTPUT"
           shopt -s nullglob
           apk_files=(androidApp/build/outputs/apk/release/*.apk)
-          if [[ "${#apk_files[@]}" -ne 1 ]]; then
-            echo "期望恰好一个 APK，实际为 ${#apk_files[@]}" >&2
+          if [[ "${#apk_files[@]}" -ne 5 ]]; then
+            echo "期望恰好 5 个 APK，实际为 ${#apk_files[@]}" >&2
             exit 1
           fi
 
@@ -143,22 +143,46 @@ jobs:
             fi
             apkanalyzer_bin="${apkanalyzer_candidates[$((${#apkanalyzer_candidates[@]} - 1))]}"
           fi
-          apk_version_name="$("$apkanalyzer_bin" manifest version-name "${apk_files[0]}")"
-          apk_version_code="$("$apkanalyzer_bin" manifest version-code "${apk_files[0]}")"
-          if [[ "$apk_version_name" != "$DISPLAY_VERSION" || "$apk_version_code" != "$BUILD_NUMBER" ]]; then
-            echo "APK versionName/versionCode 不一致：expected=$DISPLAY_VERSION/$BUILD_NUMBER actual=$apk_version_name/$apk_version_code" >&2
-            exit 1
-          fi
+
+          for apk in "${apk_files[@]}"; do
+            apk_version_name="$("$apkanalyzer_bin" manifest version-name "$apk")"
+            apk_version_code="$("$apkanalyzer_bin" manifest version-code "$apk")"
+            if [[ "$apk_version_name" != "$DISPLAY_VERSION" || "$apk_version_code" != "$BUILD_NUMBER" ]]; then
+              echo "APK $apk 的 versionName/versionCode 不一致：expected=$DISPLAY_VERSION/$BUILD_NUMBER actual=$apk_version_name/$apk_version_code" >&2
+              exit 1
+            fi
+          done
 
           mkdir -p staging/android
-          apk_target="staging/android/multi-bili-android-${ARTIFACT_VERSION}-universal.apk"
-          cp "${apk_files[0]}" "$apk_target"
+          declare -A abi_map=(
+            ["arm64-v8a"]="arm64"
+            ["armeabi-v7a"]="arm32"
+            ["x86"]="x86"
+            ["x86_64"]="x64"
+            ["universal"]="universal"
+          )
+          matched_count=0
+          for apk in "${apk_files[@]}"; do
+            filename="$(basename "$apk")"
+            for key in "${!abi_map[@]}"; do
+              if [[ "$filename" == *"-${key}-"* ]]; then
+                target_arch="${abi_map[$key]}"
+                cp "$apk" "staging/android/multi-bili-android-${ARTIFACT_VERSION}-${target_arch}.apk"
+                matched_count=$((matched_count + 1))
+                break
+              fi
+            done
+          done
+          if [[ "$matched_count" -ne 5 ]]; then
+            echo "未能成功识别并映射全部 5 个 APK 架构，成功映射数量：$matched_count" >&2
+            exit 1
+          fi
 
       - name: 上传 Android 构建产物
         uses: actions/upload-artifact@v4
         with:
           name: Android-apk
-          path: staging/android/multi-bili-android-*-universal.apk
+          path: staging/android/multi-bili-android-*.apk
           if-no-files-found: error
           retention-days: 7
 
