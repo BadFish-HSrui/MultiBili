@@ -6,6 +6,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.Navigator
 import androidx.compose.material.icons.rounded.AutoDelete
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material3.CircularProgressIndicator
@@ -52,6 +57,15 @@ fun WatchLaterScreen(
     val uiState: HistoryVideosUiState by viewModel.uiState.collectAsState()
     val watchLaterGridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
+    val navigator: Navigator = koinInject()
+    var refreshAfterSearch by rememberSaveable { mutableStateOf(false) }
+    val currentRoute = navigator.backStack.lastOrNull()
+    LaunchedEffect(currentRoute, refreshAfterSearch) {
+        if (refreshAfterSearch && currentRoute == BoloRoute.AccountFeature.WatchLater) {
+            refreshAfterSearch = false
+            viewModel.refreshVideos()
+        }
+    }
 
     Scaffold(
         modifier = modifier,
@@ -117,6 +131,14 @@ fun WatchLaterScreen(
                             onRefresh = { viewModel.refreshVideos() },
                             modifier = Modifier.align(Alignment.BottomEnd)
                         ) {
+                            FloatingActionButtonMenuItem(
+                                onClick = {
+                                    refreshAfterSearch = true
+                                    navigator.navigateTo(BoloRoute.AccountFeature.WatchLaterSearch)
+                                },
+                                text = { Text("搜索内容") },
+                                icon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                            )
                             var showDeleteAllDialog by remember { mutableStateOf(false) }
                             var showDeleteViewedDialog by remember { mutableStateOf(false) }
 
@@ -132,7 +154,7 @@ fun WatchLaterScreen(
                             )
                             FloatingActionButtonMenuItem(
                                 onClick = { showDeleteViewedDialog = true },
-                                text = { Text("删除看完") },
+                                text = { Text("清除看完") },
                                 icon = {
                                     Icon(
                                         imageVector = Icons.Rounded.AutoDelete,
@@ -172,7 +194,7 @@ fun WatchLaterScreen(
                             }
                             if (showDeleteViewedDialog) {
                                 ShowConfirmDialog(
-                                    title = { Text("删除所有稍后再看视频") },
+                                    title = { Text("清除所有已看完视频") },
                                     onCancel = { showDeleteViewedDialog = false },
                                     onConfirm = {
                                         scope.launch {

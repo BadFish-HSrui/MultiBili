@@ -19,6 +19,7 @@ import tv.hsrui.bolo.login.LoginWebView
 import tv.hsrui.bolo.userSpace.UserSpaceScreen
 import tv.hsrui.bolo.userSpace.UserUploadsSearchScreen
 import tv.hsrui.bolo.userSpace.collection.UserCollectionSearchScreen
+import tv.hsrui.bolo.accountFeature.feature.watchLater.WatchLaterSearchScreen
 import tv.hsrui.bolo.userSpace.collection.UserCollectionScreen
 import tv.hsrui.bolo.userSpace.series.UserSeriesScreen
 import tv.hsrui.bolo.main.MainScreen
@@ -48,6 +49,7 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
         is BoloRoute.AccountFeature -> {
             when (route) {
                 is BoloRoute.AccountFeature.HistorySearch -> NavEntry(key = route) { HistorySearchScreen() }
+                is BoloRoute.AccountFeature.WatchLaterSearch -> NavEntry(key = route) { WatchLaterSearchScreen() }
                 is BoloRoute.AccountFeature.List -> NavEntry(
                     key = route,
                     contentKey = "AccountFeature.List",
