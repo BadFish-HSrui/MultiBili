@@ -7,9 +7,6 @@
 
 </div>
 
-### :warning:: 本项目目的不是实现官方客户端的所有功能,而是更专注于视频
-
-
 ### 不包含以下特性：
 
 - :thumbsup: 丝滑的使用体验
@@ -18,8 +15,13 @@
 - :zap: 运行流畅
 - :100: 无BUG
 
-### 调试与构建
-参考[构建指南](docs/build-guide.md)
+> [!NOTE]
+> 由于项目目前处于早期开发阶段,可能频繁发生架构变动,暂不接受PR,有建议欢迎提交Issues
+> 
+> 本项目目标不是实现官方客户端的所有功能,而是优先专注于视频/番剧,当前阶段不会添加关于 私信/动态/直播 的内容
+
+> [!CAUTION]
+> 为了项目的存续,**不要在国内社交平台公开推广**
 
 ### 鸣谢
 - [SocialSisterYi/bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect): 提供B站Api信息
