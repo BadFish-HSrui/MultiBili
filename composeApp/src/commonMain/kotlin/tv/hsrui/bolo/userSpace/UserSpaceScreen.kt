@@ -33,6 +33,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -41,6 +42,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -50,6 +52,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -134,6 +138,7 @@ private fun UserSpaceContent(
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val maxHeaderHeight = maxHeight / 2
+        val availableTabsWidth = maxWidth
         Column(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier.fillMaxWidth().heightIn(max = maxHeaderHeight)
@@ -161,13 +166,26 @@ private fun UserSpaceContent(
                             // Tab 集合改变时按类型重建 Pager；列表状态在外层保留，避免索引错位。
                             val pager = rememberPagerState(initialPage = tabs.indexOf(currentTab)) { tabs.size }
                             LaunchedEffect(pager.settledPage) { selectedTab = tabs[pager.settledPage] }
-                            SecondaryScrollableTabRow(selectedTabIndex = pager.currentPage, containerColor = Color.Transparent) {
+                            val density = LocalDensity.current
+                            val tabWidths = remember { mutableStateMapOf<UserSpaceTab, Int>() }
+                            val defaultEdgePadding = TabRowDefaults.ScrollableTabRowEdgeStartPadding
+                            val edgePadding = if (tabWidths.size == tabs.size) {
+                                val tabsWidth = with(density) { tabWidths.values.sum().toDp() }
+                                ((availableTabsWidth - tabsWidth) / 2).coerceAtLeast(defaultEdgePadding)
+                            } else {
+                                defaultEdgePadding
+                            }
+                            SecondaryScrollableTabRow(
+                                selectedTabIndex = pager.currentPage,
+                                containerColor = Color.Transparent,
+                                edgePadding = edgePadding,
+                            ) {
                                 tabs.forEachIndexed { index, tab ->
                                     Tab(
                                         selected = pager.currentPage == index,
                                         onClick = { scope.launch { pager.animateScrollToPage(index) } },
                                         text = { Text(tab.title) },
-                                        modifier = Modifier.height(36.dp),
+                                        modifier = Modifier.height(36.dp).onSizeChanged { tabWidths[tab] = it.width },
                                     )
                                 }
                             }

@@ -1,5 +1,6 @@
 package tv.hsrui.bolo.ui.components.user
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -49,8 +50,10 @@ internal fun ShowUserInfoLayout(
     fixedHeight: Dp? = null,
     signMinLines: Int = 1,
     onClick: (() -> Unit)? = null,
+    onUserClick: (() -> Unit)? = null,
     statistics: @Composable RowScope.() -> Unit,
 ) {
+    val userClickModifier = if (onUserClick == null) Modifier else Modifier.clickable(onClick = onUserClick)
     val content: @Composable ColumnScope.() -> Unit = {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -63,7 +66,7 @@ internal fun ShowUserInfoLayout(
                     model = face,
                     contentDescription = "个人头像",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(1F).clip(CircleShape),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1F).clip(CircleShape).then(userClickModifier),
                 )
                 if (isVip) {
                     Surface(
@@ -97,7 +100,7 @@ internal fun ShowUserInfoLayout(
                         color = if (isVip) BiliColor.ThemeColor else LocalContentColor.current,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1F, fill = false).padding(horizontal = 4.dp),
+                        modifier = Modifier.weight(1F, fill = false).padding(horizontal = 4.dp).then(userClickModifier),
                     )
                 }
                 Text(

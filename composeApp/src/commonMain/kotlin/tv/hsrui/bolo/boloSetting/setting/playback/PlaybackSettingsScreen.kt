@@ -71,16 +71,7 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
     var showDynamicLoudnessInfo by remember { mutableStateOf(false) }
     var showRecordQualitySelectionInfo by remember { mutableStateOf(false) }
     var showOptimizePlaybackSourceInfo by remember { mutableStateOf(false) }
-    var showBackgroundPlaybackInfo by remember { mutableStateOf(false) }
     var showSubtitleAutoEnableInfo by remember { mutableStateOf(false) }
-
-    if (showBackgroundPlaybackInfo) {
-        ShowInfoDialog(onConfirm = { showBackgroundPlaybackInfo = false }) {
-            Text("切换应用或锁屏后继续播放音频，退出播放页面后停止",
-                textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F))
-        }
-    }
 
     if (showSubtitleAutoEnableInfo) {
         ShowInfoDialog(onConfirm = { showSubtitleAutoEnableInfo = false }) {
@@ -196,10 +187,6 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text("后台播放", style = MaterialTheme.typography.bodyLarge)
-                                    IconButton(onClick = { showBackgroundPlaybackInfo = true },
-                                        modifier = Modifier.padding(start = 4.dp).size(16.dp)) {
-                                        Icon(Icons.Outlined.Info, "后台播放说明", modifier = Modifier.size(16.dp))
-                                    }
                                     Spacer(Modifier.weight(1f))
                                     Switch(checked = settings.playerBackgroundPlaybackEnabled, onCheckedChange = null)
                                 }

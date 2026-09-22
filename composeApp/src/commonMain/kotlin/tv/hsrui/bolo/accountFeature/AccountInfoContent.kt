@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextAlign
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.navigation.openUserSpace
 import tv.hsrui.bolo.ui.components.user.ShowUserInfoLayout
 import tv.hsrui.network.feature.account.myinfo.MyAccountInfoManager
 import tv.hsrui.network.utils.formatCountToString
@@ -31,6 +32,11 @@ internal fun AccountInfoContent(modifier: Modifier = Modifier) {
         isVip = myAccountInfo.isVip,
         vipTypeString = myAccountInfo.vipTypeString,
         modifier = modifier,
+        onUserClick = if (myAccountInfo.mid > 0) {
+            { openUserSpace(myAccountInfo.mid) }
+        } else {
+            null
+        },
     ) {
         Text(
             text = "硬币: ${myAccountInfo.coins}",

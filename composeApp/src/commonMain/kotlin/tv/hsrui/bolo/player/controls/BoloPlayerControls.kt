@@ -20,6 +20,7 @@ import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.PressInteraction
@@ -85,11 +86,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.focus.FocusRequester
@@ -120,6 +123,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -160,6 +164,7 @@ import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.bolo.ui.components.slider.ShowSlider
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
+import tv.hsrui.network.feature.player.PlayerChapterData
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.subtitle.SubtitleItem
 import kotlin.math.abs
@@ -257,6 +262,7 @@ fun BoloPlayerControls(
     val danmakuState by viewModel.danmakuController.state.collectAsState()
     val danmakuClosed by viewModel.danmakuClosed.collectAsState()
     val highEnergyProgress by viewModel.highEnergyProgress.collectAsState()
+    val chapters by viewModel.chapters.collectAsState()
     val currentVideoQuality by viewModel.currentVideoQuality.collectAsState()
     val currentAudioQuality by viewModel.currentAudioQuality.collectAsState()
     var sliderPreviewFraction by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
@@ -302,8 +308,9 @@ fun BoloPlayerControls(
     var qualityMenuOpen by remember { mutableStateOf(false) }
     var audioQualityMenuOpen by remember { mutableStateOf(false) }
     var subtitleMenuOpen by remember { mutableStateOf(false) }
+    var chapterMenuOpen by remember { mutableStateOf(false) }
     val controlsInteractionActive = mousePressed || sliderPreviewFraction != null ||
-        settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen || audioQualityMenuOpen || subtitleMenuOpen
+        settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen || audioQualityMenuOpen || subtitleMenuOpen || chapterMenuOpen
     val latestControlsInteractionActive by rememberUpdatedState(controlsInteractionActive)
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     LaunchedEffect(isDesktop, mouseInside, mouseMovementRevision, controlsInteractionActive) {
@@ -348,10 +355,8 @@ fun BoloPlayerControls(
         if (playback.isPlaybackSuspended) return
         if (playback.isPlaying) {
             viewModel.pause()
-            showActionFeedback(Icons.Rounded.Pause, "暂停")
         } else {
             viewModel.play()
-            showActionFeedback(Icons.Rounded.PlayArrow, "播放")
         }
     }
     fun showSeekFeedback(direction: Int) {
@@ -450,7 +455,7 @@ fun BoloPlayerControls(
         }
     }
     val keyboardBlocked = settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen || audioQualityMenuOpen ||
-        subtitleMenuOpen || mousePressed || sliderPreviewFraction != null
+        subtitleMenuOpen || chapterMenuOpen || mousePressed || sliderPreviewFraction != null
     fun onVolumeKeyEvent(event: KeyEvent): Boolean {
         if (event.key != Key.DirectionUp && event.key != Key.DirectionDown && event.key != Key.M) return false
         if (event.type == KeyEventType.KeyUp) {
@@ -586,6 +591,17 @@ fun BoloPlayerControls(
             .coerceIn(0L, durationMs.coerceAtLeast(0L))
     }
     val displayedPositionMs = previewPositionMs ?: playState.displayPositionMs
+    val visibleChapters = remember(chapters, durationMs, showExtendedControls, playerUiState) {
+        if (showExtendedControls && playerUiState is VideoPlayerUiState.Success) {
+            chapters.mapNotNull { it.clippedTo(durationMs) }
+        } else emptyList()
+    }
+    val currentChapter = visibleChapters.lastOrNull { it.contains(displayedPositionMs, durationMs) }
+    val chapterBoundaries = remember(visibleChapters, durationMs) {
+        val chapterEndMs = visibleChapters.maxOfOrNull { it.endMs }
+        visibleChapters.flatMap { listOf(it.startMs, it.endMs) }
+            .filter { it > 0L && it < durationMs && it != chapterEndMs }.distinct().sorted()
+    }
     val sliderValue = if (durationMs > 0L) {
         (displayedPositionMs.toDouble() / durationMs.toDouble()).coerceIn(0.0, 1.0).toFloat()
     } else {
@@ -1042,10 +1058,27 @@ fun BoloPlayerControls(
                                 colors = sliderColors,
                                 sliderState = sliderState,
                                 thumbTrackGapSize = 0.dp,
-                                modifier = Modifier.height(4.dp).onGloballyPositioned {
-                                    progressTrackCoordinates = it
-                                    updateHighEnergyTrackBounds()
-                                },
+                                modifier = Modifier.height(4.dp)
+                                    .onGloballyPositioned {
+                                        progressTrackCoordinates = it
+                                        updateHighEnergyTrackBounds()
+                                    }
+                                    .drawWithContent {
+                                        drawContent()
+                                        for (boundary in chapterBoundaries) {
+                                            val fraction = (boundary.toDouble() / durationMs).toFloat()
+                                            val x = size.width * if (layoutDirection == LayoutDirection.Rtl) {
+                                                1f - fraction
+                                            } else fraction
+                                            with(SliderDefaults) {
+                                                drawStopIndicator(
+                                                    offset = Offset(x, size.height / 2f),
+                                                    size = TrackStopIndicatorSize,
+                                                    color = if (boundary <= displayedPositionMs) Color.White else BiliColor.ThemeColor,
+                                                )
+                                            }
+                                        }
+                                    },
                             )
                         }
                     )
@@ -1103,6 +1136,21 @@ fun BoloPlayerControls(
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White
                         )
+
+                        if (visibleChapters.isNotEmpty()) {
+                            key(viewModel, viewModel.avid, viewModel.cid, viewModel.episodeId, isFullscreen) {
+                                ChapterMenu(
+                                    chapters = visibleChapters,
+                                    currentChapter = currentChapter,
+                                    seekEnabled = playState.isSeekable && !playState.isPlaybackSuspended,
+                                    onChapterSelected = {
+                                        viewModel.seekToMs(it.startMs, autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled)
+                                    },
+                                    onExpandedChange = { chapterMenuOpen = it },
+                                    modifier = Modifier.layoutId("chapter"),
+                                )
+                            }
+                        }
 
                         TextButton(
                             onClick = {
@@ -1260,9 +1308,6 @@ fun BoloPlayerControls(
                 Icons.Rounded.FastForward to "快进"
             }
             actionFeedback != null -> actionFeedback
-            !playState.isPlaying && !playState.isBuffering && !playState.isSeeking &&
-                !playState.isEnded && !playState.isPlaybackSuspended && !playState.isRebuilding ->
-                Icons.Rounded.Pause to "暂停"
             else -> null
         }
         val feedbackVisibility = remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
@@ -1454,14 +1499,31 @@ private fun PlayerBottomControlsRow(
     ) { measurables, constraints ->
         val spacing = 12.dp.roundToPx()
         // 隐藏项仍以自然宽度参与测量，恢复时不依赖上一次显示结果。
-        val placeables = measurables.map { it.measure(Constraints(maxHeight = constraints.maxHeight)) }
+        val chapterIndex = measurables.indexOfFirst { it.layoutId == "chapter" }
+        val otherPlaceables = measurables.mapIndexed { index, measurable ->
+            if (index == chapterIndex) null else measurable.measure(Constraints(maxHeight = constraints.maxHeight))
+        }
+        val chapterNaturalWidth = if (chapterIndex >= 0) {
+            measurables[chapterIndex].maxIntrinsicWidth(constraints.maxHeight)
+                .coerceIn(64.dp.roundToPx(), 160.dp.roundToPx())
+        } else 0
+        val otherWidth = otherPlaceables.sumOf { it?.width ?: 0 } +
+            spacing * (measurables.size - 1).coerceAtLeast(0)
+        val chapterWidth = if (chapterIndex >= 0) {
+            (constraints.maxWidth - otherWidth).coerceIn(64.dp.roundToPx(), chapterNaturalWidth)
+        } else 0
         val widths = measurables.mapIndexed { index, measurable ->
-            (measurable.layoutId as? String) to placeables[index].width
+            (measurable.layoutId as? String) to (otherPlaceables[index]?.width ?: chapterWidth)
         }
         val hidden = if (collapseControls) {
             hiddenPlayerControls(widths, constraints.maxWidth, spacing)
         } else emptySet()
         hiddenControls = hidden
+        val placeables = measurables.mapIndexed { index, measurable ->
+            otherPlaceables[index] ?: measurable.measure(
+                Constraints(maxWidth = chapterWidth, maxHeight = constraints.maxHeight),
+            )
+        }
         val visibleIndices = measurables.indices.filter { widths[it].first !in hidden }
         val contentWidth = visibleIndices.sumOf { placeables[it].width } +
             spacing * (visibleIndices.size - 1).coerceAtLeast(0)
@@ -1494,6 +1556,80 @@ private fun hiddenPlayerControls(
         requiredWidth -= width + spacing
     }
     return hidden
+}
+
+@Composable
+private fun ChapterMenu(
+    chapters: List<PlayerChapterData>,
+    currentChapter: PlayerChapterData?,
+    seekEnabled: Boolean,
+    onChapterSelected: (PlayerChapterData) -> Unit,
+    onExpandedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember(chapters) { mutableStateOf(false) }
+    var openingIndex by remember(chapters) { mutableIntStateOf(0) }
+    var rowHeights by remember(chapters) { mutableStateOf(List(chapters.size) { 0 }) }
+    val scrollState = rememberScrollState()
+    val latestOnExpandedChange by rememberUpdatedState(onExpandedChange)
+    DisposableEffect(expanded) {
+        latestOnExpandedChange(expanded)
+        onDispose { latestOnExpandedChange(false) }
+    }
+    LaunchedEffect(expanded, rowHeights) {
+        if (expanded && rowHeights.all { it > 0 }) {
+            scrollState.scrollTo(rowHeights.take(openingIndex).sum())
+        }
+    }
+    Box(modifier.widthIn(max = 160.dp)) {
+        TextButton(
+            onClick = {
+                openingIndex = chapters.indexOf(currentChapter).coerceAtLeast(0)
+                expanded = true
+            },
+            modifier = Modifier.height(32.dp),
+            colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+        ) {
+            Text(
+                text = currentChapter?.let { "章节 · ${it.title}" } ?: "章节",
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.widthIn(max = 320.dp).heightIn(max = 320.dp),
+            scrollState = scrollState,
+        ) {
+            chapters.forEachIndexed { index, chapter ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            chapter.title,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    leadingIcon = { Text(chapter.startMs.formatPlayerDuration(), style = MaterialTheme.typography.labelMedium) },
+                    trailingIcon = {
+                        if (chapter == currentChapter) Icon(Icons.Rounded.Check, contentDescription = "当前章节")
+                    },
+                    enabled = seekEnabled,
+                    onClick = {
+                        expanded = false
+                        onChapterSelected(chapter)
+                    },
+                    modifier = Modifier.onSizeChanged { size ->
+                        if (rowHeights[index] != size.height) {
+                            rowHeights = rowHeights.toMutableList().also { it[index] = size.height }
+                        }
+                    },
+                )
+            }
+        }
+    }
 }
 
 @Composable

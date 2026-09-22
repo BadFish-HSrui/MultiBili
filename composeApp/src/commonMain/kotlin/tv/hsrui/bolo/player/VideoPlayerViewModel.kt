@@ -41,6 +41,7 @@ import tv.hsrui.network.feature.player.VideoSource
 import tv.hsrui.network.feature.player.HighEnergyProgressData
 import tv.hsrui.network.feature.player.fetchHighEnergyProgress
 import tv.hsrui.network.feature.player.PlayerInfoResponse
+import tv.hsrui.network.feature.player.PlayerChapterData
 import tv.hsrui.network.feature.player.fetchPlayerInfo
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
 import tv.hsrui.network.feature.player.enumModels.VideoCodec
@@ -72,6 +73,8 @@ class VideoPlayerViewModel(
     private var highEnergyProgressRequested = false
     private val _highEnergyProgress = MutableStateFlow<HighEnergyProgressData?>(null)
     val highEnergyProgress = _highEnergyProgress.asStateFlow()
+    private val _chapters = MutableStateFlow<List<PlayerChapterData>>(emptyList())
+    val chapters = _chapters.asStateFlow()
     private var sourceGeneration = 0L
     private var autoPlayOnOpen = true
     internal var pendingPlayWhenReady by mutableStateOf<Boolean?>(null)
@@ -175,6 +178,7 @@ class VideoPlayerViewModel(
                 ?.displayPositionMs ?: lastConfirmedPositionMs
         }
         if (opensNewMedia) {
+            _chapters.value = emptyList()
             singleEpisodeLoopEnabled = false
             playerInfo = (initialPlayerInfo ?: this.initialPlayerInfo).takeIf { sourceGeneration == 0L }
             lastConfirmedPositionMs = null
@@ -366,6 +370,10 @@ class VideoPlayerViewModel(
             currentCoroutineContext().ensureActive()
             if (generation != sourceGeneration || avid != requestedAvid || cid != requestedCid) return
             if (result.isSuccess) {
+                _chapters.value = playerInfo?.takeIf {
+                    it.matchesRequest(requestedAvid, requestedCid, requestedSession) &&
+                        loginStorage.cookies.sessData == requestedSession
+                }?.chapters.orEmpty()
                 _uiState.value = VideoPlayerUiState.Success(result)
                 loadHighEnergyProgress()
                 subtitleLoadJob = viewModelScope.launch {
@@ -618,6 +626,7 @@ class VideoPlayerViewModel(
     fun closePlayback() {
         if (playbackClosed) return
         playbackClosed = true
+        _chapters.value = emptyList()
         highEnergyProgressGeneration += 1
         highEnergyProgressLoadJob?.cancel()
         _highEnergyProgress.value = null

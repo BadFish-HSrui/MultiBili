@@ -3,6 +3,12 @@ package tv.hsrui.network.feature.player
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
 
 @Serializable
 data class PlayerInfoResponse(
@@ -10,7 +16,6 @@ data class PlayerInfoResponse(
     val message: String = "",
     private val data: PlayerInfoData? = null,
 ) {
-    // 请求上下文不进入 JSON、copy 或 toString，也不持久化账号会话。
     @Transient private var requestMedia: Pair<Long, Long>? = null
     @Transient private var requestAccountSession: String? = null
 
@@ -20,6 +25,7 @@ data class PlayerInfoResponse(
     val ocrLanguage: String? get() = data?.ocrLanguage.takeIf { isSuccess }
     val lastPlayCid: Long get() = if (isSuccess) data?.lastPlayCid ?: 0L else 0L
     val lastPlayPositionMs: Long get() = if (isSuccess) data?.lastPlayPositionMs ?: 0L else 0L
+    val chapters: List<PlayerChapterData> get() = if (isSuccess) data?.chapters.orEmpty() else emptyList()
 
     internal fun bindRequest(avid: Long, cid: Long, accountSession: String): PlayerInfoResponse = apply {
         requestMedia = avid to cid
@@ -41,4 +47,36 @@ data class PlayerInfoData(
     @SerialName("ocr_language") val ocrLanguage: String? = null,
     @SerialName("last_play_cid") val lastPlayCid: Long? = null,
     @SerialName("last_play_time") val lastPlayPositionMs: Long? = null,
-)
+    @SerialName("view_points") private val viewPoints: JsonElement? = null,
+) {
+    // 可选章节逐项容错，不让异常条目影响字幕和历史进度。
+    val chapters: List<PlayerChapterData>
+        get() = (viewPoints as? JsonArray).orEmpty().mapNotNull { element ->
+            val point = element as? JsonObject ?: return@mapNotNull null
+            if ((point["type"] as? JsonPrimitive)?.intOrNull != 2) return@mapNotNull null
+            val title = (point["content"] as? JsonPrimitive)?.takeIf { it.isString }
+                ?.content?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            val start = (point["from"] as? JsonPrimitive)?.doubleOrNull ?: return@mapNotNull null
+            val end = (point["to"] as? JsonPrimitive)?.doubleOrNull ?: return@mapNotNull null
+            val limit = Long.MAX_VALUE.toDouble() / 1000.0
+            if (!start.isFinite() || !end.isFinite() || start < 0.0 || end <= start || end >= limit) {
+                return@mapNotNull null
+            }
+            val startMs = (start * 1000.0).toLong()
+            val endMs = (end * 1000.0).toLong()
+            if (endMs <= startMs) return@mapNotNull null
+            PlayerChapterData(title, startMs, endMs)
+        }.sortedBy { it.startMs }.distinctBy { it.startMs }
+}
+
+data class PlayerChapterData(
+    val title: String,
+    val startMs: Long,
+    val endMs: Long,
+) {
+    fun clippedTo(durationMs: Long): PlayerChapterData? =
+        if (durationMs <= 0L || startMs >= durationMs) null else copy(endMs = minOf(endMs, durationMs))
+
+    fun contains(positionMs: Long, durationMs: Long): Boolean =
+        positionMs >= startMs && (positionMs < endMs || (positionMs == durationMs && endMs == durationMs))
+}

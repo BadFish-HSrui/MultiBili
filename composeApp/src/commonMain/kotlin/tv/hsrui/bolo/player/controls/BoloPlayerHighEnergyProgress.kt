@@ -17,8 +17,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.network.feature.player.HighEnergyProgressData
-import kotlin.math.ceil
-import kotlin.math.min
+import kotlin.math.floor
 
 @Composable
 internal fun BoloPlayerHighEnergyProgress(
@@ -67,36 +66,29 @@ internal fun BoloPlayerHighEnergyProgress(
 
 private fun buildHighEnergyProgressPath(data: HighEnergyProgressData, durationMs: Long): Path? {
     if (durationMs <= 0L || !data.stepSeconds.isFinite() || data.stepSeconds <= 0.0 || data.samples.size < 2) return null
-    val stepFraction = data.stepSeconds / (durationMs.toDouble() / 1_000.0)
-    if (!stepFraction.isFinite() || stepFraction <= 0.0) return null
-    // 保留越过右边界的首个点，以裁切曲线而非压缩整片时间轴。
-    val lastIndex = min(data.samples.lastIndex, ceil(1.0 / stepFraction).toInt())
-    val maximum = (0..lastIndex).maxOf { data.samples[it].takeIf { value -> value.isFinite() && value >= 0.0 } ?: 0.0 }
-    if (lastIndex < 1 || maximum <= 0.0) return null
+    val sampleCount = maxOf(data.samples.size.toDouble(), floor(durationMs / 1_000.0 / data.stepSeconds))
+    if (!sampleCount.isFinite()) return null
+    val maximum = data.samples.maxOf { it.takeIf { value -> value.isFinite() && value >= 0.0 } ?: 0.0 }
+    if (maximum <= 0.0) return null
     fun sampleY(index: Int): Float {
-        val value = data.samples[index].takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
+        val value = data.samples.getOrNull(index)?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
         return (0.8 * (1.0 - value / maximum)).toFloat()
     }
     return Path().apply {
         moveTo(0f, 1f)
-        var previousX = 0f
-        var previousY = sampleY(0)
-        lineTo(previousX, previousY)
-        for (index in 1..lastIndex) {
-            val x = (index * stepFraction).toFloat()
+        var previousY = 0.8f
+        lineTo(0f, previousY)
+        // 采样按总点数均匀铺满，末次真实采样之后始终保留一个零热度收尾点。
+        for (index in 1..data.samples.size) {
+            val x = (index / sampleCount).toFloat()
             val y = sampleY(index)
-            val middleX = (previousX + x) / 2f
+            val middleX = ((index - 0.5) / sampleCount).toFloat()
             cubicTo(middleX, previousY, middleX, y, x, y)
-            previousX = x
             previousY = y
         }
-        if (previousX < 1f) {
-            val zeroX = min(1.0, (lastIndex + 1.0) * stepFraction).toFloat()
-            val middleX = (previousX + zeroX) / 2f
-            cubicTo(middleX, previousY, middleX, 0.8f, zeroX, 0.8f)
-            lineTo(1f, 0.8f)
-        }
-        lineTo(maxOf(1f, previousX), 1f)
+        // 缺失尾部的连续零采样是一条水平线，无需逐点分配或绘制。
+        lineTo(1f, 0.8f)
+        lineTo(1f, 1f)
         close()
     }
 }
