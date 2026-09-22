@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButtonMenuScope
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.LaunchedEffect
@@ -31,7 +32,8 @@ fun VideosGridPage(
     uiState: VideosUiState,
     viewModel: VideosViewModel,
     modifier: Modifier = Modifier,
-    emptyMessage: String? = null
+    emptyMessage: String? = null,
+    otherButton: @Composable FloatingActionButtonMenuScope.() -> Unit = {},
 ) {
     VideosGridPage(
         uiState = uiState,
@@ -40,6 +42,7 @@ fun VideosGridPage(
         onLoadMore = viewModel::loadMoreVideos,
         modifier = modifier,
         emptyMessage = emptyMessage,
+        otherButton = otherButton,
     )
 }
 
@@ -54,6 +57,7 @@ fun VideosGridPage(
     emptyMessage: String? = null,
     videoGridState: LazyGridState = rememberLazyGridState(),
     enablePullToRefresh: Boolean = true,
+    otherButton: @Composable FloatingActionButtonMenuScope.() -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
 
@@ -114,6 +118,7 @@ fun VideosGridPage(
                             onBackToTop = { scope.launch { videoGridState.animateScrollToItem(0) } },
                             onRefresh = { onRefresh() },
                             modifier = Modifier.align(Alignment.BottomEnd),
+                            otherButton = otherButton,
                         )
                     }
                 }
