@@ -46,7 +46,6 @@ internal class BoloDanmakuEngine {
     private var items = emptyList<BoloDanmakuItem>()
     val itemCount: Int get() = items.size
     private val active = ArrayList<Entry>(500)
-    internal val activeEntries: List<Entry> get() = active
     private val pending = linkedMapOf<Long, BoloDanmakuItem>()
     private val scheduledIds = mutableSetOf<Long>()
     private var cursor = 0

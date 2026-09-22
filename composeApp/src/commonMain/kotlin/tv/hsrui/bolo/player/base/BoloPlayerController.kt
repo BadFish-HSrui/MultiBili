@@ -94,9 +94,6 @@ class BoloPlayerController(
     private var nativeSeeking = false
     private var requestSequence = 0L
     private var activeSeekRequest = 0L
-    private var debugSubmissionFailure = false
-    private var debugTimeout = false
-    private var debugNotSeekable = false
 
     internal suspend fun loadMedia(
         video: BiliDashObject,
@@ -363,7 +360,7 @@ class BoloPlayerController(
 
     private fun observePosition(seconds: Double, request: Long) {
         val position = secondsToMs(seconds) ?: return
-        if (!ready || playbackBlocked || debugTimeout) return
+        if (!ready || playbackBlocked) return
         if (state.value.isSeeking && request != activeSeekRequest) return
         if (!state.value.isSeeking && nativeSeeking) return
         // UI 在 seek/缓冲期间会标为未播放，不能据此忽略原生继续前进的时间。
@@ -598,7 +595,6 @@ class BoloPlayerController(
             } else failSeek("当前媒体不支持跳转")
             return
         }
-        if (debugNotSeekable) { debugNotSeekable = false; failSeek("当前媒体不支持跳转"); return }
         val engine = mutableBackend.value ?: return
         val target = coordinator.pendingPositionMs ?: return
         val expected = generation
@@ -609,10 +605,9 @@ class BoloPlayerController(
                 if (!coordinator.isCurrent(expected, revision)) return@launch
                 activeSeekRequest = ++requestSequence
                 val request = activeSeekRequest
-                val result = if (debugSubmissionFailure) -1 else withContext(boloMpvDispatcher) {
+                val result = withContext(boloMpvDispatcher) {
                     engine.seek(target / 1000.0, request)
                 }
-                debugSubmissionFailure = false
                 if (!coordinator.isCurrent(expected, revision)) return@launch
                 if (result < 0) { failSeek("跳转提交失败（$result）"); return@launch }
                 coordinator.markSubmitted(revision)
@@ -626,7 +621,6 @@ class BoloPlayerController(
         val position = state.value.displayPositionMs
         coordinator.cancelCurrentSeek()
         seekJob?.cancel()
-        debugTimeout = false
         mutableState.value = state.value.copy(pendingSeekPositionMs = null, isBuffering = false)
         if (state.value.isRebuilding) {
             fail(BoloPlayerError.DecoderError("重建后恢复进度失败：$message"))
@@ -835,10 +829,6 @@ class BoloPlayerController(
             releaseEngine()
             if (generation == expected + 1 && !disposed) onError(error)
         }
-    }
-
-    internal fun injectSeekFailureForDebug(nativeSubmissionFailure: Boolean, timeout: Boolean, notSeekable: Boolean) {
-        scope.launch { debugSubmissionFailure = nativeSubmissionFailure; debugTimeout = timeout; debugNotSeekable = notSeekable }
     }
 
     private fun secondsToMs(value: Double): Long? = value.takeIf { it.isFinite() && it >= 0 && it < Long.MAX_VALUE / 1000.0 }

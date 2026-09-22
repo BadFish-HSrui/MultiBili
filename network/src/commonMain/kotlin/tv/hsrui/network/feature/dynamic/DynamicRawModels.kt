@@ -36,8 +36,7 @@ data class DynamicRawResponse(
                 val face: String = "",
                 val name: String = "",
                 val mid: Long = 0,
-                @SerialName("pub_time") val pubDateString: String = "",
-                @SerialName("pub_action") val pubActionString: String = ""
+                @SerialName("pub_time") val pubDateString: String = ""
             )
 
             @Serializable
@@ -62,7 +61,6 @@ data class DynamicRawResponse(
             ) {
                 @Serializable
                 data class Main(
-                    @SerialName("type") val typeString: String = "MAJOR_TYPE_NONE",
                     val archive: Archive = Archive()
                 ) {
                     @Serializable
@@ -72,8 +70,7 @@ data class DynamicRawResponse(
                         @SerialName("cover") val coverUrl: String = "",
                         @SerialName("stat") val state: State = State(),
                         @SerialName("duration_text") val durationString: String = "",
-                        @SerialName("title") val title: String = "",
-                        @SerialName("desc") val desc: String = ""
+                        @SerialName("title") val title: String = ""
                     ) {
                         @Serializable
                         data class State(

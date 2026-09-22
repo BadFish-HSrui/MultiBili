@@ -14,15 +14,12 @@ data class RelationResponse(
 
 @Serializable
 data class RelationDate(
-    @SerialName("relation") val to: RelationState = RelationState(),
-    @SerialName("be_relation") val fron: RelationState = RelationState()
+    @SerialName("relation") val to: RelationState = RelationState()
 )
 
 @Serializable
 data class RelationState(
-    @SerialName("mid") val mid: Long = 0,
     @SerialName("attribute") val attribute: Int = 0,
-    @SerialName("mtime") val mtime: Long = 0,
     @SerialName("special") private val _special: Int = 0
 ) {
     val relationString

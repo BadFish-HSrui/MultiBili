@@ -16,10 +16,8 @@ internal class BoloPlayerSeekCoordinator {
     private var submitted = false
     private var attempts = 0
 
-    internal val currentMediaGeneration: Long get() = mediaGeneration
     internal val currentRevision: Long get() = seekRevision
     internal val pendingPositionMs: Long? get() = targetPositionMs
-    internal val submittedAttempt: Int get() = attempts
     internal val isSubmitted: Boolean get() = submitted
 
     /** 切换媒体并取消旧媒体下的所有请求和回调。 */
@@ -85,16 +83,6 @@ internal class BoloPlayerSeekCoordinator {
     internal fun isCurrent(mediaGeneration: Long, revision: Long): Boolean =
         this.mediaGeneration == mediaGeneration && isCurrent(revision)
 
-    internal fun canRetry(revision: Long): Boolean =
-        isCurrent(revision) && attempts < MaxAttempts
-
-    /** 只取消指定 revision，避免旧超时撤销新请求。 */
-    internal fun cancelSeek(revision: Long): Boolean {
-        if (!isCurrent(revision)) return false
-        clearRequest()
-        return true
-    }
-
     internal fun cancelCurrentSeek(): Boolean {
         if (targetPositionMs == null) return false
         clearRequest()
@@ -116,8 +104,6 @@ internal class BoloPlayerSeekCoordinator {
 
     internal companion object {
         internal const val ConfirmationToleranceMs = 250L
-        internal const val ConfirmationReadbackIntervalMs = 50L
-        internal const val ConfirmationReadbackAttempts = 20
         internal const val AttemptTimeoutMs = 10_000L
         internal const val MaxAttempts = 2
     }

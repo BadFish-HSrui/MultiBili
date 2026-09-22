@@ -62,11 +62,8 @@ data class BiliDashObject(
     @SerialName("id") private val _qualityCode: Int = 0,
     @SerialName("base_url") private val baseUrl: String = "",
     @SerialName("backup_url") private val backupUrl: List<String> = emptyList(),
-    @SerialName("codecs") val codecString: String = "",
     @SerialName("codecid") private val _codecCode: Int = 0,
-    @SerialName("mime_type") val mimeType: String = "",
     @SerialName("frame_rate") val frameRate: String = "",
-    @SerialName("segment_base") val segmentBase: BiliSegmentBase? = null,
     val bandwidth: Long = 0L,
     val width: Int = 0,
     val height: Int = 0,
@@ -92,20 +89,6 @@ data class BiliDashObject(
 
     fun withFallbackDuration(duration: Long): BiliDashObject =
         if (this.duration > 0 || duration <= 0) this else copy(duration = duration)
-}
-
-@Serializable
-data class BiliSegmentBase(
-    @SerialName("initialization") val initialization: String = "",
-    @SerialName("Initialization") val initializationPascalCase: String = "",
-    @SerialName("index_range") val indexRange: String = "",
-    @SerialName("indexRange") val indexRangeCamelCase: String = ""
-) {
-    val resolvedInitialization: String
-        get() = initialization.ifBlank { initializationPascalCase }
-
-    val resolvedIndexRange: String
-        get() = indexRange.ifBlank { indexRangeCamelCase }
 }
 
 fun VideoPlayResponse.toVideoSource(): VideoSource {
