@@ -33,11 +33,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -154,6 +156,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.PlatformType
+import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.navigation.Navigator
@@ -190,6 +194,14 @@ fun BoloPlayerControls(
 ) {
     val isFullscreen = fullscreenState.isFullscreen
     val isDesktop = fullscreenState.isDesktop
+    val windowSize = LocalWindowInfo.current.containerSize
+    val controlsInsets = if (
+        getPlatform().type == PlatformType.Ios && isFullscreen && windowSize.width > windowSize.height
+    ) {
+        WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
+    } else {
+        WindowInsets.safeDrawing
+    }
     val showExtendedControls = isFullscreen || isExpanded()
     val navigator: Navigator = koinInject()
     var infoOpen by remember(viewModel, isFullscreen, showExtendedControls, navigationOnly) { mutableStateOf(false) }
@@ -237,7 +249,7 @@ fun BoloPlayerControls(
         Box(modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier.align(Alignment.TopStart)
-                    .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
+                    .then(if (isFullscreen) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -875,7 +887,7 @@ fun BoloPlayerControls(
         if (showExtendedControls && infoOpen) {
             BoxWithConstraints(
                 Modifier.fillMaxSize()
-                    .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
+                    .then(if (isFullscreen) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
                     .padding(16.dp),
             ) {
                 BoloPlayerInfoPanel(
@@ -939,7 +951,7 @@ fun BoloPlayerControls(
             // 使用同一套 Insets 消费规则测量可用区域，不叠加控制区内边距。
             Box(
                 Modifier.matchParentSize()
-                    .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier),
+                    .then(if (isFullscreen) Modifier.windowInsetsPadding(controlsInsets) else Modifier),
             ) {
                 Box(Modifier.matchParentSize().onGloballyPositioned { coordinates ->
                     val root = controlsRootCoordinates
@@ -975,7 +987,7 @@ fun BoloPlayerControls(
                             exit = slideOutVertically(tween(200)) { -it },
                         )
                         .fillMaxWidth()
-                        .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
+                        .then(if (isFullscreen) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1026,8 +1038,8 @@ fun BoloPlayerControls(
                             updateHighEnergyTrackBounds()
                         }
                         .fillMaxWidth()
-                        .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
-                        .padding(horizontal = 16.dp, vertical = 16.dp)
+                        .then(if (isFullscreen) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     val sliderColors = SliderDefaults.colors(
                         activeTrackColor = BiliColor.ThemeColor,
@@ -1121,7 +1133,8 @@ fun BoloPlayerControls(
                             Icon(
                                 imageVector = if (playState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                                 contentDescription = if (playState.isPlaying) "暂停" else "播放",
-                                tint = Color.White
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp),
                             )
                         }
 
@@ -1533,7 +1546,6 @@ private fun PlayerBottomControlsRow(
         content = { content(hiddenControls) },
         modifier = Modifier.fillMaxWidth().height(32.dp).padding(horizontal = 8.dp),
     ) { measurables, constraints ->
-        val spacing = 12.dp.roundToPx()
         // 隐藏项仍以自然宽度参与测量，恢复时不依赖上一次显示结果。
         val chapterIndex = measurables.indexOfFirst { it.layoutId == "chapter" }
         val otherPlaceables = measurables.mapIndexed { index, measurable ->
@@ -1543,8 +1555,7 @@ private fun PlayerBottomControlsRow(
             measurables[chapterIndex].maxIntrinsicWidth(constraints.maxHeight)
                 .coerceIn(64.dp.roundToPx(), 160.dp.roundToPx())
         } else 0
-        val otherWidth = otherPlaceables.sumOf { it?.width ?: 0 } +
-            spacing * (measurables.size - 1).coerceAtLeast(0)
+        val otherWidth = otherPlaceables.sumOf { it?.width ?: 0 }
         val chapterWidth = if (chapterIndex >= 0) {
             (constraints.maxWidth - otherWidth).coerceIn(64.dp.roundToPx(), chapterNaturalWidth)
         } else 0
@@ -1552,7 +1563,7 @@ private fun PlayerBottomControlsRow(
             (measurable.layoutId as? String) to (otherPlaceables[index]?.width ?: chapterWidth)
         }
         val hidden = if (collapseControls) {
-            hiddenPlayerControls(widths, constraints.maxWidth, spacing)
+            hiddenPlayerControls(widths, constraints.maxWidth)
         } else emptySet()
         hiddenControls = hidden
         val placeables = measurables.mapIndexed { index, measurable ->
@@ -1561,8 +1572,7 @@ private fun PlayerBottomControlsRow(
             )
         }
         val visibleIndices = measurables.indices.filter { widths[it].first !in hidden }
-        val contentWidth = visibleIndices.sumOf { placeables[it].width } +
-            spacing * (visibleIndices.size - 1).coerceAtLeast(0)
+        val contentWidth = visibleIndices.sumOf { placeables[it].width }
         val width = constraints.constrainWidth(contentWidth)
         val height = constraints.constrainHeight(placeables.maxOfOrNull { it.height } ?: 0)
         val spacerWidth = (width - contentWidth).coerceAtLeast(0)
@@ -1571,7 +1581,7 @@ private fun PlayerBottomControlsRow(
             for (index in visibleIndices) {
                 val placeable = placeables[index]
                 placeable.placeRelative(x, (height - placeable.height) / 2)
-                x += placeable.width + spacing
+                x += placeable.width
                 if (widths[index].first == "spacer") x += spacerWidth
             }
         }
@@ -1581,15 +1591,14 @@ private fun PlayerBottomControlsRow(
 private fun hiddenPlayerControls(
     widths: List<Pair<String?, Int>>,
     availableWidth: Int,
-    spacing: Int,
 ): Set<String> {
     val hidden = mutableSetOf<String>()
-    var requiredWidth = widths.sumOf { it.second } + spacing * (widths.size - 1).coerceAtLeast(0)
+    var requiredWidth = widths.sumOf { it.second }
     for (id in listOf("audio", "subtitle", "volume", "speed")) {
         if (requiredWidth <= availableWidth) break
         val width = widths.firstOrNull { it.first == id }?.second ?: continue
         hidden.add(id)
-        requiredWidth -= width + spacing
+        requiredWidth -= width
     }
     return hidden
 }
