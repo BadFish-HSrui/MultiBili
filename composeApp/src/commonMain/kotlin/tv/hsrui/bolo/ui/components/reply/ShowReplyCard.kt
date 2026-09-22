@@ -69,6 +69,11 @@ fun ShowReplyCard(
     onDelete: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
+    var showTextDialog by remember(replyInfo.rpid, replyInfo.content.text) { mutableStateOf(false) }
+
+    if (showTextDialog) {
+        ShowReplyTextDialog(text = replyInfo.content.text, onDismiss = { showTextDialog = false })
+    }
 
     Card(modifier = modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(8.dp)) {
@@ -167,6 +172,7 @@ fun ShowReplyCard(
                     overflow = TextOverflow.Ellipsis,
                     onTextLayout = { if (!expanded) hasOverflow = it.hasVisualOverflow },
                     style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.replyTextLongPress(replyInfo.content.text) { showTextDialog = true },
                 )
                 if (!expanded && hasOverflow) {
                     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
@@ -210,6 +216,16 @@ fun ShowReplyCard(
                         replyInfo.previewReplies?.forEach { preReply ->
                             val (annotatedString, inlineContentMap) =
                                 remember(preReply.content, scope) { preReply.content.toRichString(scope) }
+                            var showPreviewTextDialog by remember(preReply.rpid, preReply.content.text) {
+                                mutableStateOf(false)
+                            }
+
+                            if (showPreviewTextDialog) {
+                                ShowReplyTextDialog(
+                                    text = preReply.content.text,
+                                    onDismiss = { showPreviewTextDialog = false },
+                                )
+                            }
 
                             Text(
                                 text = buildAnnotatedString {
@@ -224,7 +240,10 @@ fun ShowReplyCard(
                                 inlineContent = inlineContentMap,
                                 maxLines = 1,
                                 style = MaterialTheme.typography.bodyMedium,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.replyTextLongPress(preReply.content.text) {
+                                    showPreviewTextDialog = true
+                                },
                             )
                         }
                         if (replyInfo.replyCount > 0) {

@@ -62,6 +62,11 @@ fun ShowSubReply(
     onDelete: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
+    var showTextDialog by remember(replyInfo.rpid, replyInfo.content.text) { mutableStateOf(false) }
+
+    if (showTextDialog) {
+        ShowReplyTextDialog(text = replyInfo.content.text, onDismiss = { showTextDialog = false })
+    }
 
     Column(modifier = modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -146,6 +151,7 @@ fun ShowSubReply(
                     overflow = TextOverflow.Ellipsis,
                     onTextLayout = { if (!expanded) hasOverflow = it.hasVisualOverflow },
                     style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.replyTextLongPress(replyInfo.content.text) { showTextDialog = true },
                 )
                 if (!expanded && hasOverflow) {
                     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {

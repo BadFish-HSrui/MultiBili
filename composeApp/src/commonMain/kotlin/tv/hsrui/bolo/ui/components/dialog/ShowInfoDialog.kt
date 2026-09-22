@@ -57,6 +57,7 @@ fun ShowInfoDialog(
     icon: @Composable (() -> Unit)? = null,
     text: String = "",
     confirmEnabled: Boolean = true,
+    content: (@Composable () -> Unit)? = null,
 ) {
     ShowInfoDialog(
         onConfirm = onConfirm,
@@ -66,7 +67,9 @@ fun ShowInfoDialog(
 
         title()
 
-        if (text.isNotEmpty()) {
+        if (content != null) {
+            content()
+        } else if (text.isNotEmpty()) {
             Text(
                 text = text,
                 textAlign = TextAlign.Center,
