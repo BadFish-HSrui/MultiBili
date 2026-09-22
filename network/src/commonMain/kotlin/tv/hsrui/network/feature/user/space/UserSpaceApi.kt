@@ -18,6 +18,7 @@ suspend fun fetchUserSpaceUploads(
     mid: Long,
     pageNumber: Int = 1,
     order: UserSpaceUploadOrder = UserSpaceUploadOrder.Latest,
+    keyword: String = "",
 ): UserSpaceUploadsResponse = withTimeoutOrNull(15_000) {
     ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.UserSpace.UPLOADS) {
         buildWithWbi {
@@ -25,6 +26,7 @@ suspend fun fetchUserSpaceUploads(
             parameter("pn", pageNumber)
             parameter("ps", 30)
             parameter("order", order.value)
+            if (keyword.isNotBlank()) parameter("keyword", keyword)
         }
     }.body<UserSpaceUploadsResponse>()
 } ?: error("视频投稿请求超时")

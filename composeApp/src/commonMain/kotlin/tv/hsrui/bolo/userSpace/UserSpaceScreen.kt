@@ -5,6 +5,11 @@ import tv.hsrui.bolo.view.video.VideoPlaybackRequest
 import tv.hsrui.network.feature.video.list.VideoListType
 import tv.hsrui.network.feature.video.list.VideoListSort
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.FloatingActionButtonMenuItem
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.Navigator
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.gestures.Orientation
@@ -109,6 +114,7 @@ fun UserSpaceScreen(mid: Long, modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun UserSpaceContent(
     mid: Long,
@@ -123,6 +129,7 @@ private fun UserSpaceContent(
     canManageFavoritesNow: () -> Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val navigator: Navigator = koinInject()
     var selectedTab by rememberSaveable(mid) { mutableStateOf(UserSpaceTab.Uploads) }
     val uploadGrid = rememberLazyGridState()
     val likesGrid = rememberLazyGridState()
@@ -251,7 +258,15 @@ private fun UserSpaceContent(
                                                 },
                                                 enablePullToRefresh = false,
                                                 modifier = Modifier.weight(1f),
-                                            )
+                                            ) {
+                                                if (tab == UserSpaceTab.Uploads) {
+                                                    FloatingActionButtonMenuItem(
+                                                        onClick = { navigator.navigateTo(BoloRoute.User.UploadsSearch(mid)) },
+                                                        text = { Text("搜索内容") },
+                                                        icon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                                                    )
+                                                }
+                                            }
                                             if (tab == UserSpaceTab.Uploads && state.loadMoreError != null) {
                                                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp)) {
                                                     Text(state.loadMoreError, modifier = Modifier.weight(1f), maxLines = 2)
