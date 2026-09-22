@@ -14,6 +14,28 @@ import tv.hsrui.network.feature.reply.ReplySectionType.Companion.ReplySectionTyp
 import tv.hsrui.network.login.storage.LoginStorage
 import tv.hsrui.network.model.BaseResponse
 
+suspend fun deleteReply(
+    replySection: ReplySectionType,
+    rpid: Long,
+): BaseResponse {
+    require(replySection.oid > 0 && rpid > 0) { "无效的评论标识" }
+    val loginStorage: LoginStorage = getKoin().get()
+    check(loginStorage.isLoggedIn) { "请先登录" }
+
+    return ApiClient.httpClient.post(ApiUrls.BASE + ApiUrls.Reply.DELETE) {
+        setBody(
+            FormDataContent(
+                Parameters.build {
+                    append("type", replySection.typeCode.toString())
+                    append("oid", replySection.oid.toString())
+                    append("rpid", rpid.toString())
+                    append("csrf", loginStorage.cookies.csrf)
+                }
+            )
+        )
+    }.body()
+}
+
 suspend fun switchReplyLike(
     replyItem: ReplyItem
 ): Pair<BaseResponse, ReplyLikeState> {

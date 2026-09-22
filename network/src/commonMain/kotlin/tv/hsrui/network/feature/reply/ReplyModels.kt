@@ -17,8 +17,13 @@ data class RepliesData(
     @SerialName("cursor") private val _cursor: ReplyCursor = ReplyCursor(),
     @SerialName("top_replies") private val _topReplies: List<ReplyItem>? = null,
     @SerialName("replies") private val _replies: List<ReplyItem>? = null,
-    @SerialName("control") private val _inputControl: ReplyInputControl = ReplyInputControl()
+    @SerialName("control") private val _inputControl: ReplyInputControl = ReplyInputControl(),
+    @SerialName("assist") private val assistCode: Int = 0,
+    @SerialName("upper") private val upperInfo: ReplyUpperInfo? = null,
 ) {
+    val isAssist: Boolean get() = assistCode == 1
+    val upMid: Long get() = upperInfo?.mid ?: 0L
+
     val topReply get() = _topReplies?.firstOrNull()
 
     val hasMore get() = !_cursor.isEnd
@@ -29,6 +34,11 @@ data class RepliesData(
     val replies: List<ReplyItem> get() = _replies ?: emptyList()
 
     val replyLabelText by _inputControl::replyLabelText
+
+    @Serializable
+    data class ReplyUpperInfo(
+        val mid: Long = 0,
+    )
 
     @Serializable
     data class ReplyCursor(

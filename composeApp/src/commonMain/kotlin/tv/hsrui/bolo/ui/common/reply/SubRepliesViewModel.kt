@@ -2,6 +2,7 @@ package tv.hsrui.bolo.ui.common.reply
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -12,6 +13,7 @@ import tv.hsrui.network.feature.reply.SubReplyResponse
 import tv.hsrui.network.feature.reply.fetchSubRepliesWith
 
 class SubRepliesViewModel(val replySection: ReplySectionType, private val rootReply: ReplyItem) : ViewModel() {
+    private val deletedReplyIds = mutableSetOf<Long>()
     private val _uiState = MutableStateFlow<SubRepliesUiState>(SubRepliesUiState.Loading)
     val uiState = _uiState.asStateFlow()
 
@@ -24,13 +26,26 @@ class SubRepliesViewModel(val replySection: ReplySectionType, private val rootRe
         loadSubReplies()
     }
 
+    private fun SubRepliesUiState.Success.withoutDeletedReplies() = copy(
+        rootReply = rootReply.withoutDeletedReplies(deletedReplyIds) ?: rootReply,
+        subReplies = subReplies.mapNotNull { it.withoutDeletedReplies(deletedReplyIds) },
+        isRootDeleted = rootReply.rpid in deletedReplyIds,
+    )
+
+    fun removeReply(reply: ReplyItem) {
+        deletedReplyIds.add(reply.rpid)
+        _uiState.update { state ->
+            if (state is SubRepliesUiState.Success) state.withoutDeletedReplies() else state
+        }
+    }
+
     fun updateReply(reply: ReplyItem) {
         _uiState.update { oldState ->
             if (oldState is SubRepliesUiState.Success) {
                 oldState.copy(
                     rootReply = if (oldState.rootReply.rpid == reply.rpid) reply else oldState.rootReply,
                     subReplies = oldState.subReplies.map { if (it.rpid == reply.rpid) reply else it }
-                )
+                ).withoutDeletedReplies()
             } else {
                 oldState
             }
@@ -53,10 +68,13 @@ class SubRepliesViewModel(val replySection: ReplySectionType, private val rootRe
                 if (result.isSuccess) {
                     _uiState.value =
                         SubRepliesUiState.Success(result.data.rootReply ?: rootReply, result.data.subReplies)
+                            .withoutDeletedReplies()
                     canLoadMore = result.data.hasMore
                 } else {
                     _uiState.value = SubRepliesUiState.Error("[${result.code}]: ${result.message}")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.value = SubRepliesUiState.Error(e.message ?: "其他网络错误")
             }
@@ -73,13 +91,17 @@ class SubRepliesViewModel(val replySection: ReplySectionType, private val rootRe
                 val result = fetchSubReplies()
                 if (result.isSuccess) {
                     _uiState.update { oldState ->
-                        (oldState as SubRepliesUiState.Success).copy(
-                            subReplies = (oldState.subReplies + result.data.subReplies).distinctBy { it.rpid })
+                        if (oldState !is SubRepliesUiState.Success) return@update oldState
+                        oldState.copy(
+                            subReplies = (oldState.subReplies + result.data.subReplies).distinctBy { it.rpid }
+                        ).withoutDeletedReplies()
                     }
                     canLoadMore = result.data.hasMore
                 } else {
                     _uiState.value = SubRepliesUiState.Error("[${result.code}]: ${result.message}")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.value = SubRepliesUiState.Error(e.message ?: "其他网络错误")
             } finally {

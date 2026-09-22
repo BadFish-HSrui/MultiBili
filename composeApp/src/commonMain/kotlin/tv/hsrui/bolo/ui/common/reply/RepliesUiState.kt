@@ -8,6 +8,9 @@ sealed class RepliesUiState {
         val topReply: ReplyItem?,
         val replies: List<ReplyItem>,
         val totalReplyCount: Long? = null,
+        val upMid: Long = 0,
+        val isAssist: Boolean = false,
+        val permissionUserMid: Long = 0,
     ) : RepliesUiState()
     data class Error(val message: String) : RepliesUiState()
 }

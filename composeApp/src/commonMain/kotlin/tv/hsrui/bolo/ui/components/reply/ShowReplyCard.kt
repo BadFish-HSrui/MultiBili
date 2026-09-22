@@ -14,10 +14,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
@@ -63,12 +65,14 @@ fun ShowReplyCard(
     isTop: Boolean = false,
     imageAnimationEnabled: Boolean = true,
     onImageClick: (List<ReplyPicture>, Int) -> Unit = { _, _ -> },
+    canDelete: Boolean = false,
+    onDelete: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
 
     Card(modifier = modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 AsyncImage(
                     model = replyInfo.userAvatarUrl,
                     contentDescription = "评论用户头像",
@@ -78,7 +82,7 @@ fun ShowReplyCard(
                         .clickable(enabled = replyInfo.userMid > 0) { openUserSpace(replyInfo.userMid) }
 //                        .background(Color.Black)
                 )
-                Column(modifier = Modifier.padding(start = 4.dp)) {
+                Column(modifier = Modifier.weight(1F).padding(start = 4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (isUpReply) {
                             Surface(
@@ -97,7 +101,9 @@ fun ShowReplyCard(
                         Text(
                             text = replyInfo.userName,
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.alpha(0.8F).clickable(enabled = replyInfo.userMid > 0) { openUserSpace(replyInfo.userMid) }
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1F, fill = false).alpha(0.8F).clickable(enabled = replyInfo.userMid > 0) { openUserSpace(replyInfo.userMid) }
                         )
                         Surface(
                             shape = CircleShape,
@@ -131,6 +137,18 @@ fun ShowReplyCard(
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.alpha(0.67F)
                     )
+                }
+                if (canDelete) {
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(24.dp).align(Alignment.Top),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.DeleteForever,
+                            contentDescription = "删除评论",
+                            modifier = Modifier.size(20.dp).alpha(0.5F),
+                        )
+                    }
                 }
             }
 

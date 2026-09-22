@@ -47,6 +47,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
+import tv.hsrui.bolo.ui.components.dialog.ShowDeleteReplyDialog
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.image.ShowImageViewer
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
@@ -82,6 +83,9 @@ fun RepliesGridPage(
     val staggeredGridState = rememberLazyStaggeredGridState()
     val activeStaggeredGridState = staggeredGridState.takeIf { isMedium() }
     val loginStorage: LoginStorage = koinInject()
+    val currentUserMid by loginStorage.currentUserMidFlow.collectAsState(
+        initial = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L,
+    )
 
     repliesGridState.OnGridBottomReached(
         buffer = 4,
@@ -115,6 +119,17 @@ fun RepliesGridPage(
             }
 
             is RepliesUiState.Success -> {
+                val effectiveUpMid = uiState.upMid.takeIf { it > 0 } ?: upMid
+                val canDeleteReply: (ReplyItem) -> Boolean = { reply ->
+                    val currentState = viewModel.uiState.value as? RepliesUiState.Success
+                    val mid = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L
+                    val ownerMid = currentState?.upMid?.takeIf { it > 0 } ?: upMid
+                    currentState != null && mid > 0 && mid == currentUserMid && ownerMid > 0 &&
+                        reply.rpid > 0 && viewModel.replySection.oid > 0 &&
+                        (mid == reply.userMid || mid == ownerMid ||
+                            (currentState.isAssist && currentState.permissionUserMid == mid))
+                }
+                var deleteTarget by remember { mutableStateOf<ReplyItem?>(null) }
                 var inputRootReply by remember { mutableStateOf(false) }
                 val rootReplyText = rememberSaveable { mutableStateOf("") }
                 val subReplyText = rememberSaveable { mutableStateOf("") }
@@ -122,6 +137,15 @@ fun RepliesGridPage(
                 var replyTarget by remember { mutableStateOf<ReplyItem?>(null) }
                 val scope = rememberCoroutineScope()
                 val subRepliesSurfaceState = rememberSubRepliesSurfaceState()
+                val onReplyDeleted: (ReplyItem) -> Unit = { deletedReply ->
+                    viewModel.removeReply(deletedReply)
+                    if (replyTarget?.rpid == deletedReply.rpid || replyTarget?.rootRpid == deletedReply.rpid) {
+                        replyTarget = null
+                    }
+                    if (subRepliesSurfaceState.currentReply?.rpid == deletedReply.rpid) {
+                        scope.launch { subRepliesSurfaceState.dismiss() }
+                    }
+                }
                 val subRepliesBackState = rememberNavigationEventState(NavigationEventInfo.None)
                 val latestPredictiveBackProgress = remember { FloatArray(1) }
                 val predictiveBackProgress =
@@ -189,7 +213,9 @@ fun RepliesGridPage(
                                         uiState.topReply.let { topReply ->
                                             ShowReplyCard(
                                                 replyInfo = topReply,
-                                                isUpReply = (topReply.userMid == upMid),
+                                                isUpReply = (topReply.userMid == effectiveUpMid),
+                                                canDelete = canDeleteReply(topReply),
+                                                onDelete = { deleteTarget = topReply },
                                                 sendReply = { replyTarget = topReply },
                                                 updateReply = { viewModel.updateReply(it) },
                                                 onViewClick = {
@@ -221,7 +247,9 @@ fun RepliesGridPage(
                             ) { reply ->
                                 ShowReplyCard(
                                     replyInfo = reply,
-                                    isUpReply = (reply.userMid == upMid),
+                                    isUpReply = (reply.userMid == effectiveUpMid),
+                                    canDelete = canDeleteReply(reply),
+                                    onDelete = { deleteTarget = reply },
                                     sendReply = { replyTarget = reply },
                                     onViewClick = {
                                         latestPredictiveBackProgress[0] = 0f
@@ -298,12 +326,27 @@ fun RepliesGridPage(
                         SubRepliesGridPage(
                             viewModel = subRepliesViewModel,
                             uiState = subRepliesUiState,
-                            upMid = upMid,
+                            upMid = effectiveUpMid,
+                            canDeleteReply = canDeleteReply,
+                            onReplyDeleted = onReplyDeleted,
                             modifier = Modifier.fillMaxSize(),
                             imageAnimationEnabled = viewingImageUrls.isEmpty(),
                             onImageClick = onImageClick,
                         )
                     }
+                }
+
+                deleteTarget?.let { target ->
+                    ShowDeleteReplyDialog(
+                        replyInfo = target,
+                        replySection = viewModel.replySection,
+                        canDelete = { canDeleteReply(target) },
+                        onCancel = { deleteTarget = null },
+                        onDeleted = {
+                            deleteTarget = null
+                            onReplyDeleted(target)
+                        },
+                    )
                 }
 
                 replyTarget?.let { target ->

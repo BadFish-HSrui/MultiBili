@@ -69,6 +69,7 @@ object ApiUrls {
         const val LIKE = "x/v2/reply/action" //点赞
         const val DISLIKE = "x/v2/reply/hate" //点踩
         const val SEND = "x/v2/reply/add" //发送评论
+        const val DELETE = "x/v2/reply/del" //删除评论
     }
 
     object Play {

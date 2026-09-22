@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
+import tv.hsrui.bolo.ui.components.dialog.ShowDeleteReplyDialog
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
 import tv.hsrui.bolo.ui.components.reply.ShowReplyInput
@@ -42,6 +43,8 @@ fun SubRepliesGridPage(
     viewModel: SubRepliesViewModel,
     uiState: SubRepliesUiState,
     upMid: Long,
+    canDeleteReply: (ReplyItem) -> Boolean,
+    onReplyDeleted: (ReplyItem) -> Unit,
     modifier: Modifier = Modifier,
     imageAnimationEnabled: Boolean = true,
     onImageClick: (List<ReplyPicture>, Int) -> Unit = { _, _ -> },
@@ -86,6 +89,7 @@ fun SubRepliesGridPage(
                 val subReplyText = rememberSaveable { mutableStateOf("") }
                 var lastSubReplyId by rememberSaveable { mutableStateOf(0L) }
                 var replyTarget by remember { mutableStateOf<ReplyItem?>(null) }
+                var deleteTarget by remember { mutableStateOf<ReplyItem?>(null) }
                 val scope = rememberCoroutineScope()
 
                 Box {
@@ -96,16 +100,20 @@ fun SubRepliesGridPage(
                         staggeredGridState = activeStaggeredGridState,
                         noContentPadding = true,
                         noContentSpacing = true,
-                        topContent = {
-                            ShowSubReply(
-                                replyInfo = uiState.rootReply,
-                                isUpReply = (uiState.rootReply.userMid == upMid),
-                                sendReply = { replyTarget = uiState.rootReply },
-                                updateReply = { viewModel.updateReply(it) },
-                                isTop = true,
-                                imageAnimationEnabled = imageAnimationEnabled,
-                                onImageClick = onImageClick,
-                            )
+                        topContent = if (uiState.isRootDeleted) null else {
+                            {
+                                ShowSubReply(
+                                    replyInfo = uiState.rootReply,
+                                    isUpReply = (uiState.rootReply.userMid == upMid),
+                                    sendReply = { replyTarget = uiState.rootReply },
+                                    updateReply = { viewModel.updateReply(it) },
+                                    isTop = true,
+                                    canDelete = canDeleteReply(uiState.rootReply),
+                                    onDelete = { deleteTarget = uiState.rootReply },
+                                    imageAnimationEnabled = imageAnimationEnabled,
+                                    onImageClick = onImageClick,
+                                )
+                            }
                         },
                         bottomContent = if (!loginStorage.isLoggedIn) {
                             {
@@ -126,8 +134,27 @@ fun SubRepliesGridPage(
                             isUpReply = (subReply.userMid == upMid),
                             sendReply = { replyTarget = subReply },
                             updateReply = { viewModel.updateReply(it) },
+                            canDelete = canDeleteReply(subReply),
+                            onDelete = { deleteTarget = subReply },
                             imageAnimationEnabled = imageAnimationEnabled,
                             onImageClick = onImageClick,
+                        )
+                    }
+
+                    deleteTarget?.let { target ->
+                        ShowDeleteReplyDialog(
+                            replyInfo = target,
+                            replySection = viewModel.replySection,
+                            canDelete = { !uiState.isRootDeleted && canDeleteReply(target) },
+                            onCancel = { deleteTarget = null },
+                            onDeleted = {
+                                deleteTarget = null
+                                if (replyTarget?.rpid == target.rpid || replyTarget?.rootRpid == target.rpid) {
+                                    replyTarget = null
+                                }
+                                viewModel.removeReply(target)
+                                onReplyDeleted(target)
+                            },
                         )
                     }
 
