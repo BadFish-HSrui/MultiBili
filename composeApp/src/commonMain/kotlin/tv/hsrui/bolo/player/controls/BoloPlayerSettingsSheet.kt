@@ -117,6 +117,10 @@ fun BoloPlayerSettingsSheet(
     onResumeAfterBackgroundEnabledChange: (Boolean) -> Unit,
     autoPlayAfterSeekEnabled: Boolean,
     onAutoPlayAfterSeekEnabledChange: (Boolean) -> Unit,
+    highEnergyProgressEnabled: Boolean,
+    onHighEnergyProgressEnabledChange: (Boolean) -> Unit,
+    highEnergyProgressAlwaysVisible: Boolean,
+    onHighEnergyProgressAlwaysVisibleChange: (Boolean) -> Unit,
     mergeAudioChannelsEnabled: Boolean,
     onMergeAudioChannelsEnabledChange: (Boolean) -> Unit,
     rebuildEnabled: Boolean,
@@ -512,6 +516,23 @@ fun BoloPlayerSettingsSheet(
                                                                 )
                                                             }
                                                         }
+                                                    }
+                                                }
+                                                Card(Modifier.fillMaxWidth()) {
+                                                    Column(Modifier.padding(4.dp)) {
+                                                        PlayerGestureSwitch(
+                                                            label = "显示高能进度条",
+                                                            checked = highEnergyProgressEnabled,
+                                                            enabled = isOpen,
+                                                            onCheckedChange = onHighEnergyProgressEnabledChange,
+                                                        )
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        PlayerGestureSwitch(
+                                                            label = "总是显示高能进度条",
+                                                            checked = highEnergyProgressAlwaysVisible,
+                                                            enabled = isOpen,
+                                                            onCheckedChange = onHighEnergyProgressAlwaysVisibleChange,
+                                                        )
                                                     }
                                                 }
                                                 Card(Modifier.fillMaxWidth()) {

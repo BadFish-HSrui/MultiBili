@@ -4,7 +4,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.fadeIn
@@ -89,6 +91,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -114,7 +117,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.layoutId
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -251,6 +256,7 @@ fun BoloPlayerControls(
     val subtitleState by viewModel.subtitleController.state.collectAsState()
     val danmakuState by viewModel.danmakuController.state.collectAsState()
     val danmakuClosed by viewModel.danmakuClosed.collectAsState()
+    val highEnergyProgress by viewModel.highEnergyProgress.collectAsState()
     val currentVideoQuality by viewModel.currentVideoQuality.collectAsState()
     val currentAudioQuality by viewModel.currentAudioQuality.collectAsState()
     var sliderPreviewFraction by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
@@ -267,6 +273,26 @@ fun BoloPlayerControls(
         }
     }
     var controlsVisible by remember { mutableStateOf(false) }
+    val controlsTransition = updateTransition(controlsVisible, label = "playerControls")
+    val controlsReveal by controlsTransition.animateFloat(
+        transitionSpec = { tween(200) }, label = "highEnergyProgressPosition",
+    ) { if (it) 1f else 0f }
+    var controlsRootCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var bottomControlsCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var progressTrackCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var highEnergyTrackBounds by remember(isFullscreen, showExtendedControls) { mutableStateOf<Rect?>(null) }
+    var highEnergyHiddenBounds by remember(isFullscreen, showExtendedControls) { mutableStateOf(Rect.Zero) }
+    fun updateHighEnergyTrackBounds() {
+        val root = controlsRootCoordinates?.takeIf { it.isAttached } ?: return
+        val bottom = bottomControlsCoordinates?.takeIf { it.isAttached } ?: return
+        val track = progressTrackCoordinates?.takeIf { it.isAttached } ?: return
+        val bottomBounds = root.localBoundingBoxOf(bottom, clipBounds = false)
+        val trackBounds = root.localBoundingBoxOf(track, clipBounds = false)
+        // 去掉控制区显隐位移，得到曲线插值所需的稳定终点。
+        highEnergyTrackBounds = trackBounds.translate(
+            Offset(0f, root.size.height - bottom.size.height - bottomBounds.top),
+        )
+    }
     var settingsOpen by remember(isFullscreen, showExtendedControls) { mutableStateOf(false) }
     var mouseInside by remember { mutableStateOf(false) }
     var mousePressed by remember { mutableStateOf(false) }
@@ -560,6 +586,11 @@ fun BoloPlayerControls(
             .coerceIn(0L, durationMs.coerceAtLeast(0L))
     }
     val displayedPositionMs = previewPositionMs ?: playState.displayPositionMs
+    val sliderValue = if (durationMs > 0L) {
+        (displayedPositionMs.toDouble() / durationMs.toDouble()).coerceIn(0.0, 1.0).toFloat()
+    } else {
+        0f
+    }
     val videoQualities = (playerUiState as? VideoPlayerUiState.Success)
         ?.videoSource
         ?.videoQualities
@@ -570,7 +601,10 @@ fun BoloPlayerControls(
         .orEmpty()
 
     Box(
-        modifier = modifier.fillMaxSize().onPreviewKeyEvent { event ->
+        modifier = modifier.fillMaxSize().onGloballyPositioned {
+            controlsRootCoordinates = it
+            updateHighEnergyTrackBounds()
+        }.onPreviewKeyEvent { event ->
             // 播放器内优先接管音量与开关按键，播放器外的输入框仍自行处理。
             isDesktop && (event.key == Key.Spacebar || event.key == Key.DirectionUp ||
                 event.key == Key.DirectionDown || event.key == Key.M || event.key == Key.D) && onPlayerKeyEvent(event)
@@ -825,8 +859,8 @@ fun BoloPlayerControls(
                 )
             }
         }
-        AnimatedVisibility(
-            visible = controlsVisible,
+        controlsTransition.AnimatedVisibility(
+            visible = { it },
             enter = EnterTransition.None,
             exit = ExitTransition.None,
             modifier = Modifier.fillMaxSize().clipToBounds()
@@ -870,8 +904,43 @@ fun BoloPlayerControls(
                             )
                         )
                 )
-
-
+            }
+        }
+        if (showExtendedControls && settings.playerHighEnergyProgressEnabled &&
+            highEnergyProgress != null && durationMs > 0L &&
+            (settings.playerHighEnergyProgressAlwaysVisible || controlsTransition.currentState || controlsTransition.targetState)
+        ) {
+            // 使用同一套 Insets 消费规则测量可用区域，不叠加控制区内边距。
+            Box(
+                Modifier.matchParentSize()
+                    .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier),
+            ) {
+                Box(Modifier.matchParentSize().onGloballyPositioned { coordinates ->
+                    val root = controlsRootCoordinates
+                    if (root != null && root.isAttached && coordinates.isAttached) {
+                        highEnergyHiddenBounds = root.localBoundingBoxOf(coordinates, clipBounds = false)
+                    }
+                })
+            }
+            BoloPlayerHighEnergyProgress(
+                data = highEnergyProgress!!,
+                durationMs = durationMs,
+                positionFraction = { sliderValue },
+                controlsFraction = { controlsReveal },
+                shownTrackBounds = { highEnergyTrackBounds },
+                hiddenBounds = { highEnergyHiddenBounds },
+                modifier = Modifier.matchParentSize().graphicsLayer {
+                    alpha = if (settings.playerHighEnergyProgressAlwaysVisible) 1f else controlsReveal
+                },
+            )
+        }
+        controlsTransition.AnimatedVisibility(
+            visible = { it },
+            enter = EnterTransition.None,
+            exit = ExitTransition.None,
+            modifier = Modifier.fillMaxSize().clipToBounds(),
+        ) {
+            Box(Modifier.fillMaxSize()) {
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -926,6 +995,10 @@ fun BoloPlayerControls(
                             enter = slideInVertically(tween(200)) { it },
                             exit = slideOutVertically(tween(200)) { it },
                         )
+                        .onGloballyPositioned {
+                            bottomControlsCoordinates = it
+                            updateHighEnergyTrackBounds()
+                        }
                         .fillMaxWidth()
                         .then(if (isFullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
                         .padding(horizontal = 16.dp, vertical = 16.dp)
@@ -935,14 +1008,6 @@ fun BoloPlayerControls(
                         thumbColor = BiliColor.ThemeColor,
                         inactiveTrackColor = Color.White.copy(alpha = 0.3f)
                     )
-                    val sliderValue = if (durationMs > 0L) {
-                        (displayedPositionMs.toDouble() / durationMs.toDouble())
-                            .coerceIn(0.0, 1.0)
-                            .toFloat()
-                    } else {
-                        0f
-                    }
-
                     // 下方播放进度条
                     Slider(
                         modifier = Modifier.fillMaxWidth().height(32.dp),
@@ -977,7 +1042,10 @@ fun BoloPlayerControls(
                                 colors = sliderColors,
                                 sliderState = sliderState,
                                 thumbTrackGapSize = 0.dp,
-                                modifier = Modifier.height(4.dp)
+                                modifier = Modifier.height(4.dp).onGloballyPositioned {
+                                    progressTrackCoordinates = it
+                                    updateHighEnergyTrackBounds()
+                                },
                             )
                         }
                     )
@@ -1286,6 +1354,10 @@ fun BoloPlayerControls(
                 onResumeAfterBackgroundEnabledChange = { settings.playerResumeAfterBackgroundEnabled = it },
                 autoPlayAfterSeekEnabled = settings.playerAutoPlayAfterSeekEnabled,
                 onAutoPlayAfterSeekEnabledChange = { settings.playerAutoPlayAfterSeekEnabled = it },
+                highEnergyProgressEnabled = settings.playerHighEnergyProgressEnabled,
+                onHighEnergyProgressEnabledChange = { settings.playerHighEnergyProgressEnabled = it },
+                highEnergyProgressAlwaysVisible = settings.playerHighEnergyProgressAlwaysVisible,
+                onHighEnergyProgressAlwaysVisibleChange = { settings.playerHighEnergyProgressAlwaysVisible = it },
                 mergeAudioChannelsEnabled = settings.playerMergeAudioChannelsEnabled,
                 onMergeAudioChannelsEnabledChange = { settings.playerMergeAudioChannelsEnabled = it },
                 rebuildEnabled = !playState.isRebuilding && !playState.isPlaybackSuspended,

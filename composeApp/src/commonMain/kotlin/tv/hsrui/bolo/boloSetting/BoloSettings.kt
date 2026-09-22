@@ -303,6 +303,34 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentPlayerPlaybackEndBehavior = value
         }
 
+    private var storedPlayerHighEnergyProgressEnabled by settingsKSafe(
+        true,
+        key = "player_high_energy_progress_enabled",
+    )
+    private var currentPlayerHighEnergyProgressEnabled by mutableStateOf(storedPlayerHighEnergyProgressEnabled)
+
+    var playerHighEnergyProgressEnabled: Boolean
+        get() = currentPlayerHighEnergyProgressEnabled
+        set(value) {
+            if (value == currentPlayerHighEnergyProgressEnabled) return
+            storedPlayerHighEnergyProgressEnabled = value
+            currentPlayerHighEnergyProgressEnabled = value
+        }
+
+    private var storedPlayerHighEnergyProgressAlwaysVisible by settingsKSafe(
+        false,
+        key = "player_high_energy_progress_always_visible",
+    )
+    private var currentPlayerHighEnergyProgressAlwaysVisible by mutableStateOf(storedPlayerHighEnergyProgressAlwaysVisible)
+
+    var playerHighEnergyProgressAlwaysVisible: Boolean
+        get() = currentPlayerHighEnergyProgressAlwaysVisible
+        set(value) {
+            if (value == currentPlayerHighEnergyProgressAlwaysVisible) return
+            storedPlayerHighEnergyProgressAlwaysVisible = value
+            currentPlayerHighEnergyProgressAlwaysVisible = value
+        }
+
     private var storedPlayerMergeAudioChannelsEnabled by settingsKSafe(
         false,
         key = "player_merge_audio_channels_enabled",

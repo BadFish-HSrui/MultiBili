@@ -38,6 +38,8 @@ import tv.hsrui.bolo.player.subtitle.BoloSubtitleController
 import tv.hsrui.network.feature.danmaku.DanmakuMode
 import tv.hsrui.network.feature.danmaku.fetchDanmakuSegment
 import tv.hsrui.network.feature.player.VideoSource
+import tv.hsrui.network.feature.player.HighEnergyProgressData
+import tv.hsrui.network.feature.player.fetchHighEnergyProgress
 import tv.hsrui.network.feature.player.PlayerInfoResponse
 import tv.hsrui.network.feature.player.fetchPlayerInfo
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
@@ -65,6 +67,11 @@ class VideoPlayerViewModel(
     var singleEpisodeLoopEnabled by mutableStateOf(false)
     private var sourceLoadJob: Job? = null
     private var subtitleLoadJob: Job? = null
+    private var highEnergyProgressLoadJob: Job? = null
+    private var highEnergyProgressGeneration = 0L
+    private var highEnergyProgressRequested = false
+    private val _highEnergyProgress = MutableStateFlow<HighEnergyProgressData?>(null)
+    val highEnergyProgress = _highEnergyProgress.asStateFlow()
     private var sourceGeneration = 0L
     private var autoPlayOnOpen = true
     internal var pendingPlayWhenReady by mutableStateOf<Boolean?>(null)
@@ -157,6 +164,12 @@ class VideoPlayerViewModel(
     fun switchMedia(avid: Long, cid: Long, episodeId: Long? = null, forceReload: Boolean = false, initialPlayerInfo: PlayerInfoResponse? = null) {
         if (!forceReload && this.avid == avid && this.cid == cid && this.episodeId == episodeId) return
         val opensNewMedia = sourceGeneration == 0L || this.avid != avid || this.cid != cid || this.episodeId != episodeId
+        if (opensNewMedia || (forceReload && _highEnergyProgress.value == null)) {
+            highEnergyProgressLoadJob?.cancel()
+            highEnergyProgressGeneration += 1
+            highEnergyProgressRequested = false
+            _highEnergyProgress.value = null
+        }
         val retryPositionMs = if (opensNewMedia) null else {
             controller.state.value.takeIf { it.hasConfirmedPosition && playbackGeneration == sourceGeneration }
                 ?.displayPositionMs ?: lastConfirmedPositionMs
@@ -354,6 +367,7 @@ class VideoPlayerViewModel(
             if (generation != sourceGeneration || avid != requestedAvid || cid != requestedCid) return
             if (result.isSuccess) {
                 _uiState.value = VideoPlayerUiState.Success(result)
+                loadHighEnergyProgress()
                 subtitleLoadJob = viewModelScope.launch {
                     try {
                         val info = playerInfo?.takeIf { it.matchesRequest(requestedAvid, requestedCid, requestedSession) }
@@ -382,6 +396,29 @@ class VideoPlayerViewModel(
         } catch (e: Exception) {
             if (generation != sourceGeneration || avid != requestedAvid || cid != requestedCid) return
             _uiState.value = VideoPlayerUiState.Error(e.message ?: "其他网络错误")
+        }
+    }
+
+    private fun loadHighEnergyProgress() {
+        if (highEnergyProgressRequested || playbackClosed || avid <= 0L || cid <= 0L) return
+        highEnergyProgressRequested = true
+        val requestedAvid = avid
+        val requestedCid = cid
+        val generation = highEnergyProgressGeneration
+        highEnergyProgressLoadJob = viewModelScope.launch {
+            try {
+                val data = fetchHighEnergyProgress(requestedAvid, requestedCid)
+                currentCoroutineContext().ensureActive()
+                if (!playbackClosed && generation == highEnergyProgressGeneration &&
+                    requestedAvid == avid && requestedCid == cid
+                ) {
+                    _highEnergyProgress.value = data
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 可选曲线加载失败不影响播放，也不自动重复请求。
+            }
         }
     }
 
@@ -581,6 +618,9 @@ class VideoPlayerViewModel(
     fun closePlayback() {
         if (playbackClosed) return
         playbackClosed = true
+        highEnergyProgressGeneration += 1
+        highEnergyProgressLoadJob?.cancel()
+        _highEnergyProgress.value = null
         viewModelScope.cancel()
         subtitleLoadJob?.cancel()
         onPlaybackPageExited()
