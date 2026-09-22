@@ -14,6 +14,7 @@ sealed interface BoloRoute {
     sealed interface User : BoloRoute {
         @Serializable data class Space(val mid: Long) : User
         @Serializable data class UploadsSearch(val mid: Long) : User
+        @Serializable data class CollectionSearch(val mid: Long, val seasonId: Long) : User
         @Serializable data class Collection(val mid: Long, val seasonId: Long) : User
         @Serializable data class Series(val mid: Long, val seriesId: Long) : User
     }

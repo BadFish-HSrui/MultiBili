@@ -14,6 +14,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButtonMenuItem
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.Navigator
+import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -53,6 +62,7 @@ fun UserCollectionScreen(mid: Long, seasonId: Long, modifier: Modifier = Modifie
             }
             is UserCollectionUiState.Error -> ShowErrorContent(current.message, retry = viewModel::loadCollection, modifier = Modifier.padding(padding))
             is UserCollectionUiState.Success -> UserCollectionContent(
+                mid = mid,
                 state = current,
                 onRefresh = viewModel::loadCollection,
                 onSectionSelected = viewModel::selectSection,
@@ -62,13 +72,16 @@ fun UserCollectionScreen(mid: Long, seasonId: Long, modifier: Modifier = Modifie
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun UserCollectionContent(
+    mid: Long,
     state: UserCollectionUiState.Success,
     onRefresh: () -> Unit,
     onSectionSelected: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val navigator: Navigator = koinInject()
     val collection = state.collection
     val section = collection.sections.firstOrNull { it.sectionId == state.selectedSectionId }
     val videos = section?.episodes.orEmpty().filter { it.isAvailable && it.bvid.isNotBlank() }
@@ -103,13 +116,26 @@ private fun UserCollectionContent(
                 }
             }
             if (videos.isEmpty()) {
-                Column(
-                    modifier = Modifier.weight(1f).fillMaxWidth().scrollable(rememberScrollableState { 0f }, Orientation.Vertical),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text(if (collection.sections.isEmpty()) "暂无合集视频" else "此分段暂无可播放视频")
-                    TextButton(onClick = onRefresh, enabled = !state.isRefreshing) { Text("刷新") }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().scrollable(rememberScrollableState { 0f }, Orientation.Vertical),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(if (collection.sections.isEmpty()) "暂无合集视频" else "此分段暂无可播放视频")
+                        TextButton(onClick = onRefresh, enabled = !state.isRefreshing) { Text("刷新") }
+                    }
+                    ShowGridFABMenu(
+                        onBackToTop = {},
+                        onRefresh = onRefresh,
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                    ) {
+                        FloatingActionButtonMenuItem(
+                            onClick = { navigator.navigateTo(BoloRoute.User.CollectionSearch(mid, collection.seasonId)) },
+                            text = { Text("搜索内容") },
+                            icon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                        )
+                    }
                 }
             } else scrollStates.SaveableStateProvider(state.selectedSectionId ?: 0L) {
                 VideosGridPage(
@@ -121,7 +147,13 @@ private fun UserCollectionContent(
                     videoGridState = rememberLazyGridState(),
                     enablePullToRefresh = false,
                     modifier = Modifier.weight(1f),
-                )
+                ) {
+                    FloatingActionButtonMenuItem(
+                        onClick = { navigator.navigateTo(BoloRoute.User.CollectionSearch(mid, collection.seasonId)) },
+                        text = { Text("搜索内容") },
+                        icon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    )
+                }
             }
         }
     }
