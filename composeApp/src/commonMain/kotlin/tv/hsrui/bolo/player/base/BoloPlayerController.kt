@@ -89,15 +89,21 @@ class BoloPlayerController(
     private var debugTimeout = false
     private var debugNotSeekable = false
 
-    internal suspend fun loadMedia(video: BiliDashObject, audio: BiliDashObject?, start: Long, loudness: VideoLoudnessData?) {
+    internal suspend fun loadMedia(
+        video: BiliDashObject,
+        audio: BiliDashObject?,
+        start: Long,
+        loudness: VideoLoudnessData?,
+        sortCdn: Boolean,
+    ) {
         withContext(Dispatchers.Main.immediate) {
             if (disposed) return@withContext
             cancelRebuild()
             loudnessJob?.cancel()
             loudnessRevision++
             mediaLoudness = loudness
-            videoUrls = (listOf(video.baseUrl) + video.backupUrl).filter(String::isNotBlank).distinct()
-            audioUrls = audio?.let { (listOf(it.baseUrl) + it.backupUrl).filter(String::isNotBlank).distinct() }.orEmpty()
+            videoUrls = video.getUrls(sortCDN = sortCdn)
+            audioUrls = audio?.getUrls(sortCDN = sortCdn).orEmpty()
             mediaInfo = BoloPlayerInfo(
                 video = BoloPlayerVideoInfo(
                     nominalBitrateBps = video.bandwidth.takeIf { it > 0 },
@@ -770,4 +776,5 @@ suspend fun BoloPlayerController.load(
     audio: BiliDashObject? = null,
     startPositionMs: Long = 0L,
     loudness: VideoLoudnessData? = null,
-) = loadMedia(video, audio, startPositionMs, loudness)
+    sortCdn: Boolean = false,
+) = loadMedia(video, audio, startPositionMs, loudness, sortCdn)

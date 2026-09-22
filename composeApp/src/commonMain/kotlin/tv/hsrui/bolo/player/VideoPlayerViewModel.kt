@@ -245,7 +245,13 @@ class VideoPlayerViewModel(
                 settings.playerDynamicLoudnessTargetLufs.toDouble(), settings.playerDynamicLoudnessRangeLu.toDouble(),
                 settings.playerDynamicLoudnessTruePeakDbtp.toDouble(),
             )
-            controller.load(video = video, audio = audio, startPositionMs = startPositionMs, loudness = currentState.videoSource.loudness)
+            controller.load(
+                video = video,
+                audio = audio,
+                startPositionMs = startPositionMs,
+                loudness = currentState.videoSource.loudness,
+                sortCdn = settings.playerOptimizePlaybackSourceEnabled,
+            )
             currentCoroutineContext().ensureActive()
             if (generation != sourceGeneration) return@launch
             playbackGeneration = generation

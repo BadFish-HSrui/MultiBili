@@ -68,6 +68,7 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
     var showDanmakuAutoEnableInfo by remember { mutableStateOf(false) }
     var showDynamicLoudnessInfo by remember { mutableStateOf(false) }
     var showRecordQualitySelectionInfo by remember { mutableStateOf(false) }
+    var showOptimizePlaybackSourceInfo by remember { mutableStateOf(false) }
     var showSubtitleAutoEnableInfo by remember { mutableStateOf(false) }
 
     if (showSubtitleAutoEnableInfo) {
@@ -85,6 +86,18 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
         ShowInfoDialog(onConfirm = { showRecordQualitySelectionInfo = false }) {
             Text(
                 text = "开启后修改音画质会同时修改默认项",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
+            )
+        }
+    }
+
+    if (showOptimizePlaybackSourceInfo) {
+        ShowInfoDialog(onConfirm = { showOptimizePlaybackSourceInfo = false }) {
+            Text(
+                text = "重新排序获取的播放源列表，让官方/服务商CDN优先。\n\n" +
+                        "B站通常将PCDN作为默认源，在最后一个备用源才提供官方/服务商CDN。",
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
@@ -352,6 +365,29 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 Text("隐藏播放器音质选项", style = MaterialTheme.typography.bodyLarge)
                                 Spacer(Modifier.weight(1f))
                                 Switch(checked = settings.playerHideAudioQualitySelectorEnabled, onCheckedChange = null)
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.playerOptimizePlaybackSourceEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.playerOptimizePlaybackSourceEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("优化播放源", style = MaterialTheme.typography.bodyLarge)
+                                IconButton(
+                                    onClick = { showOptimizePlaybackSourceInfo = true },
+                                    modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Info,
+                                        contentDescription = "优化播放源说明",
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                                Spacer(Modifier.weight(1f))
+                                Switch(checked = settings.playerOptimizePlaybackSourceEnabled, onCheckedChange = null)
                             }
                         }
                     }

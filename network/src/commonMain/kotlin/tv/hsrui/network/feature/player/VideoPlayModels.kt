@@ -1,5 +1,8 @@
 package tv.hsrui.network.feature.player
 
+import io.ktor.http.DEFAULT_PORT
+import io.ktor.http.URLProtocol
+import io.ktor.http.Url
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -57,8 +60,8 @@ data class VideoPlayData(
 @Serializable
 data class BiliDashObject(
     @SerialName("id") private val _qualityCode: Int = 0,
-    @SerialName("base_url") val baseUrl: String = "",
-    @SerialName("backup_url") val backupUrl: List<String> = emptyList(),
+    @SerialName("base_url") private val baseUrl: String = "",
+    @SerialName("backup_url") private val backupUrl: List<String> = emptyList(),
     @SerialName("codecs") val codecString: String = "",
     @SerialName("codecid") private val _codecCode: Int = 0,
     @SerialName("mime_type") val mimeType: String = "",
@@ -74,6 +77,18 @@ data class BiliDashObject(
     }
 
     val codec by lazy { VideoCodec(_codecCode) }
+
+    fun getUrls(sortCDN: Boolean = false): List<String> {
+        val urls = (listOf(baseUrl) + backupUrl).filter(String::isNotBlank).distinct()
+        if (!sortCDN) return urls
+        val (preferred, remaining) = urls.partition { url ->
+            runCatching {
+                val parsed = Url(url)
+                parsed.protocol == URLProtocol.HTTPS && parsed.specifiedPort == DEFAULT_PORT
+            }.getOrDefault(false)
+        }
+        return preferred + remaining
+    }
 
     fun withFallbackDuration(duration: Long): BiliDashObject =
         if (this.duration > 0 || duration <= 0) this else copy(duration = duration)

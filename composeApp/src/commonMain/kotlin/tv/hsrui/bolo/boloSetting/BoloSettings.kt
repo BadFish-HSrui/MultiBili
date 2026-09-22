@@ -111,6 +111,19 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentPlayerRecordQualitySelectionEnabled = value
         }
 
+    private var storedPlayerOptimizePlaybackSourceEnabled by settingsKSafe(
+        true, key = "player_optimize_playback_source_enabled",
+    )
+    private var currentPlayerOptimizePlaybackSourceEnabled by mutableStateOf(storedPlayerOptimizePlaybackSourceEnabled)
+
+    var playerOptimizePlaybackSourceEnabled: Boolean
+        get() = currentPlayerOptimizePlaybackSourceEnabled
+        set(value) {
+            if (value == currentPlayerOptimizePlaybackSourceEnabled) return
+            storedPlayerOptimizePlaybackSourceEnabled = value
+            currentPlayerOptimizePlaybackSourceEnabled = value
+        }
+
     private var storedPlayerLoudnessMode by settingsKSafe("standard", key = "player_loudness_mode")
     private var currentPlayerLoudnessMode by mutableStateOf(
         PlaybackLoudnessMode.entries.firstOrNull { it.storedValue == storedPlayerLoudnessMode }
