@@ -185,7 +185,12 @@ internal class NativePlayerBuild(
     private fun packageBridge(libraries: NativePlayerLibraries): File {
         val chain = libraries.chain
         val ios = chain.system in listOf("ios", "iossim")
-        val sources = if (ios) listOf("bolo_mpv.c", "BoloMpvView.m") else listOf("bolo_mpv.c", "bolo_mpv_jni.c")
+        val sources = if (ios) listOf("bolo_mpv.c", "BoloMpvView.m") else
+            listOf("bolo_mpv.c", "bolo_mpv_jni.c") + when (chain.system) {
+                "macos" -> listOf("bolo_system_media_macos.m")
+                "windows" -> listOf("bolo_system_media_windows.cpp")
+                else -> emptyList()
+            }
         val include = mutableListOf("-I${nativePath(libraries.prefix.resolve("include"))}", "-I${nativePath(libraries.work.resolve("bridge"))}")
         if (!ios && chain.system != "android") {
             val java = chain.environment["JAVA_HOME"]?.let(::File) ?: File(System.getProperty("java.home"))
@@ -195,7 +200,8 @@ internal class NativePlayerBuild(
         }
         val objects = sources.map { name ->
             val output = libraries.work.resolve("$name.o")
-            libraries.run(listOf(chain.cc) + libraries.flags + include + listOf(if (name.endsWith(".m")) "-fobjc-arc" else "-std=c11",
+            libraries.run(listOf(if (name.endsWith(".cpp")) chain.cpp else chain.cc) + libraries.flags + include + listOf(
+                when { name.endsWith(".m") -> "-fobjc-arc"; name.endsWith(".cpp") -> "-std=c++17"; else -> "-std=c11" },
                 "-O2", "-c", libraries.work.resolve("bridge/$name"), "-o", output))
             output
         }
@@ -235,8 +241,8 @@ internal class NativePlayerBuild(
             val symbolFlags = if (chain.system in listOf("android", "linux"))
                 listOf("-Wl,--exclude-libs,ALL", "-Wl,--no-undefined") else emptyList()
             val systemLibs = when (chain.system) {
-                "macos" -> listOf("-framework", "OpenGL", "-framework", "IOSurface")
-                "windows" -> listOf("-lopengl32")
+                "macos" -> listOf("-framework", "OpenGL", "-framework", "IOSurface", "-framework", "AppKit", "-framework", "MediaPlayer")
+                "windows" -> listOf("-lopengl32", "-lole32", "-lruntimeobject", "-luuid", "-lshlwapi", "-lshcore")
                 "linux" -> listOf("-ldl")
                 else -> emptyList()
             }

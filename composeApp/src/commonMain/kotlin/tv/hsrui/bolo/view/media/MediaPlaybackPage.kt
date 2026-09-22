@@ -49,11 +49,9 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import coil3.compose.AsyncImage
-import kotlinx.coroutines.flow.first
 import tv.hsrui.bolo.navigation.openMedia
 import tv.hsrui.bolo.player.VideoPlayer
 import tv.hsrui.bolo.player.VideoPlayerUiState
-import tv.hsrui.bolo.player.VideoPlayerViewModel
 import tv.hsrui.bolo.player.controls.BoloPlayerControls
 import tv.hsrui.bolo.ui.common.player.PlayerPageLayout
 import tv.hsrui.bolo.ui.common.reply.RepliesGridPage
@@ -75,21 +73,9 @@ fun MediaPlaybackPage(
     modifier: Modifier = Modifier,
 ) {
     val episode = uiState.episode
-    val playerViewModel = composeViewModel(key = "media_player") {
-        VideoPlayerViewModel(episode?.avid ?: 0L, episode?.cid ?: 0L, episode?.episodeId)
-    }
+    val playerViewModel = viewModel.playbackSession.player
     val playerUiState by playerViewModel.uiState.collectAsState()
     val playerInfo by playerViewModel.controller.info.collectAsState()
-    DisposableEffect(viewModel) {
-        onDispose { viewModel.cancelEpisodeNavigation() }
-    }
-    LaunchedEffect(episode?.episodeId) {
-        if (episode != null) {
-            playerViewModel.switchMedia(episode.avid, episode.cid, episode.episodeId)
-            val result = playerViewModel.uiState.first { it !is VideoPlayerUiState.Loading }
-            viewModel.onEpisodePlaybackResult(episode.episodeId, result is VideoPlayerUiState.Error)
-        }
-    }
     LaunchedEffect(uiState.media.seasonId) {
         viewModel.loadRecommendations(uiState.media.seasonId)
     }

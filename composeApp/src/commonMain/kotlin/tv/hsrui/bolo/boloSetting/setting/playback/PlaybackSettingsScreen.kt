@@ -45,6 +45,8 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.PlatformType
+import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.boloSetting.PlaybackEndBehavior
 import tv.hsrui.bolo.boloSetting.PlaybackLoudnessMode
@@ -69,7 +71,16 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
     var showDynamicLoudnessInfo by remember { mutableStateOf(false) }
     var showRecordQualitySelectionInfo by remember { mutableStateOf(false) }
     var showOptimizePlaybackSourceInfo by remember { mutableStateOf(false) }
+    var showBackgroundPlaybackInfo by remember { mutableStateOf(false) }
     var showSubtitleAutoEnableInfo by remember { mutableStateOf(false) }
+
+    if (showBackgroundPlaybackInfo) {
+        ShowInfoDialog(onConfirm = { showBackgroundPlaybackInfo = false }) {
+            Text("切换应用或锁屏后继续播放音频，退出播放页面后停止",
+                textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F))
+        }
+    }
 
     if (showSubtitleAutoEnableInfo) {
         ShowInfoDialog(onConfirm = { showSubtitleAutoEnableInfo = false }) {
@@ -175,6 +186,25 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                             modifier = Modifier.padding(8.dp)
                         )
                         Card(Modifier.fillMaxWidth()) {
+                            if (getPlatform().type != PlatformType.Desktop) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                        value = settings.playerBackgroundPlaybackEnabled,
+                                        role = Role.Switch,
+                                        onValueChange = { settings.playerBackgroundPlaybackEnabled = it },
+                                    ).padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("后台播放", style = MaterialTheme.typography.bodyLarge)
+                                    IconButton(onClick = { showBackgroundPlaybackInfo = true },
+                                        modifier = Modifier.padding(start = 4.dp).size(16.dp)) {
+                                        Icon(Icons.Outlined.Info, "后台播放说明", modifier = Modifier.size(16.dp))
+                                    }
+                                    Spacer(Modifier.weight(1f))
+                                    Switch(checked = settings.playerBackgroundPlaybackEnabled, onCheckedChange = null)
+                                }
+                                HorizontalDivider()
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
                                     value = settings.playerAutoPlayOnOpenEnabled,

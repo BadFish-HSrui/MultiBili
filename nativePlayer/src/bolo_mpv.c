@@ -17,6 +17,7 @@ struct bolo_mpv {
     double seek_target;
     int report_eof;
     int loaded, needs_audio;
+    atomic_int video_enabled;
     int merge_audio_channels;
 };
 
@@ -36,6 +37,7 @@ bolo_mpv *bolo_mpv_create(const char *platform) {
     if (!p) return NULL;
     p->player = mpv_create();
     p->expected_entry = p->playing_entry = -1;
+    atomic_init(&p->video_enabled, 1);
     atomic_init(&p->dirty, 0);
     if (!p->player) { free(p); return NULL; }
     const char *opts[][2] = {
@@ -131,6 +133,12 @@ int bolo_mpv_pause(bolo_mpv *p, int paused) {
 int bolo_mpv_speed(bolo_mpv *p, double speed) {
     return mpv_set_property(p->player, "speed", MPV_FORMAT_DOUBLE, &speed);
 }
+int bolo_mpv_video_enabled(bolo_mpv *p, int enabled) {
+    int result = mpv_set_property_string(p->player, "vid", enabled ? "auto" : "no");
+    if (result >= 0) p->video_enabled = enabled;
+    return result;
+}
+
 int bolo_mpv_volume(bolo_mpv *p, double volume) {
     return mpv_set_property(p->player, "volume", MPV_FORMAT_DOUBLE, &volume);
 }
@@ -284,7 +292,7 @@ int bolo_mpv_poll(bolo_mpv *p, bolo_mpv_event *out) {
             if (p->playing_entry != p->expected_entry) break;
             p->loaded = 1;
             mpv_node tracks = {0};
-            int audio_ok = !p->needs_audio, video_ok = 0;
+            int audio_ok = !p->needs_audio, video_ok = !p->video_enabled;
             if (mpv_get_property(p->player, "track-list", MPV_FORMAT_NODE, &tracks) >= 0 &&
                 tracks.format == MPV_FORMAT_NODE_ARRAY) {
                 for (int i = 0; i < tracks.u.list->num; ++i) {

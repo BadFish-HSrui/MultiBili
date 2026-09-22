@@ -40,6 +40,9 @@ JNIEXPORT jint JNICALL JNI(load)(JNIEnv *env, jobject self, jlong handle, jstrin
     (*env)->ReleaseStringUTFChars(env, video, v);
     return r;
 }
+JNIEXPORT jint JNICALL JNI(videoEnabled)(JNIEnv *env, jobject self, jlong handle, jboolean enabled) {
+    return bolo_mpv_video_enabled(PLAYER(handle)->core, enabled);
+}
 JNIEXPORT jint JNICALL JNI(pause)(JNIEnv *env, jobject self, jlong p, jboolean value) { return bolo_mpv_pause(PLAYER(p)->core, value); }
 JNIEXPORT jint JNICALL JNI(speed)(JNIEnv *env, jobject self, jlong p, jdouble value) { return bolo_mpv_speed(PLAYER(p)->core, value); }
 JNIEXPORT jint JNICALL JNI(volume)(JNIEnv *env, jobject self, jlong p, jdouble value) { return bolo_mpv_volume(PLAYER(p)->core, value); }

@@ -6,10 +6,15 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import tv.hsrui.bolo.player.VideoPlayerUiState
+import tv.hsrui.bolo.player.session.BoloPlaybackSession
+import tv.hsrui.bolo.player.session.BoloSystemMediaMetadata
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.network.feature.media.MediaSeasonData
 import tv.hsrui.network.feature.media.fetchMediaSeason
@@ -32,7 +37,26 @@ class MediaPlaybackViewModel(
     private var seasonGeneration = 0L
     private var recommendationsGeneration = 0L
 
+    val playbackSession = BoloPlaybackSession.obtain("media_${seasonId}_$episodeId")
+
     init {
+        viewModelScope.launch {
+            uiState.collectLatest { value ->
+                val state = value as? MediaPlaybackUiState.Success ?: return@collectLatest
+                val episode = state.episode ?: return@collectLatest
+                val player = playbackSession.player
+                player.switchMedia(episode.avid, episode.cid, episode.episodeId)
+                playbackSession.updateMedia(
+                    BoloSystemMediaMetadata("${episode.avid}:${episode.cid}:${episode.episodeId}",
+                        "${state.media.title} ${episode.displayTitle}", album = state.media.title, artworkUrl = state.media.coverUrl),
+                    if (state.hasPreviousEpisode) ::selectPreviousEpisode else null,
+                    if (state.hasNextEpisode) ::selectNextEpisode else null,
+                    state.episodeNavigationEnabled,
+                )
+                val result = player.uiState.first { it !is VideoPlayerUiState.Loading }
+                onEpisodePlaybackResult(episode.episodeId, result is VideoPlayerUiState.Error)
+            }
+        }
         loadMedia()
     }
 

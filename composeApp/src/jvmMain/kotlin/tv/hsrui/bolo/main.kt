@@ -10,6 +10,7 @@ import multibili.composeapp.generated.resources.jvm_icon
 import org.jetbrains.compose.resources.painterResource
 import tv.hsrui.bolo.player.DesktopPlayerFullscreenWindow
 import tv.hsrui.bolo.player.DesktopPlayerKeyboard
+import tv.hsrui.bolo.player.session.BoloPlaybackSession
 import java.awt.Dimension
 
 fun main() {
@@ -17,7 +18,7 @@ fun main() {
     application {
         val windowState = rememberWindowState(width = 1200.dp, height = 800.dp)
         Window(
-            onCloseRequest = ::exitApplication,
+            onCloseRequest = { BoloPlaybackSession.current?.close(); exitApplication() },
             state = windowState,
             onPreviewKeyEvent = DesktopPlayerKeyboard::onPreviewKeyEvent,
             onKeyEvent = { event ->

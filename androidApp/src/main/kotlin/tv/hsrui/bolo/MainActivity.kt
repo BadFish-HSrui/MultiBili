@@ -8,10 +8,26 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import tv.hsrui.bolo.utils.url.AppContext
+import tv.hsrui.bolo.player.session.BoloPlaybackSession
 import kotlin.math.max
 import kotlin.math.min
 
 class MainActivity : ComponentActivity() {
+    override fun onStart() {
+        super.onStart()
+        BoloPlaybackSession.current?.setForeground(true)
+    }
+
+    override fun onStop() {
+        if (!isChangingConfigurations) BoloPlaybackSession.current?.setForeground(false)
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        if (isFinishing) BoloPlaybackSession.current?.close()
+        super.onDestroy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         AppContext.instance = application
         enableEdgeToEdge()

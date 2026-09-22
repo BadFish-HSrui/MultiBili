@@ -11,6 +11,8 @@ import kotlinx.cinterop.toKString
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
@@ -26,6 +28,7 @@ private var audioSessionOwner: BoloMpvBackend? = null
 
 internal actual class BoloMpvBackend actual constructor() {
     private val handle = checkNotNull(bolo_mpv_create("ios")) { "libmpv 初始化失败" }
+    private val outputMutex = Mutex()
     private var outputReady = CompletableDeferred<Unit>()
     private var outputGeneration = 0L
     private var host: UIView? = null
@@ -34,16 +37,18 @@ internal actual class BoloMpvBackend actual constructor() {
     private var destroyed = false
 
     actual suspend fun bind(output: Any) = withContext(NonCancellable + Dispatchers.Main.immediate) {
-        if (closed || host === output) return@withContext
-        view?.let { closeOutput(it) }
-        if (closed) return@withContext
-        host = output as UIView
-        val nativeView = BoloMpvView(player = handle.rawValue.toLong())
-        nativeView.setFrame(output.bounds)
-        nativeView.autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
-        output.addSubview(nativeView)
-        view = nativeView
-        prepareOutput(nativeView)
+        outputMutex.withLock {
+            if (closed || host === output) return@withLock
+            view?.let { closeOutput(it) }
+            if (closed) return@withLock
+            host = output as UIView
+            val nativeView = BoloMpvView(player = handle.rawValue.toLong())
+            nativeView.setFrame(output.bounds)
+            nativeView.autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
+            output.addSubview(nativeView)
+            view = nativeView
+            prepareOutput(nativeView)
+        }
     }
 
     private fun prepareOutput(nativeView: BoloMpvView) {
@@ -70,15 +75,30 @@ internal actual class BoloMpvBackend actual constructor() {
         nativeView.closeWithCompletion { continuation.resume(Unit) }
     }
 
+    actual suspend fun detachOutput(output: Any) = withContext(NonCancellable + Dispatchers.Main.immediate) {
+        outputMutex.withLock {
+            if (host !== output || closed) return@withLock
+            withContext(boloMpvDispatcher) { videoEnabled(false) }
+            view?.let { closeOutput(it) }
+            view = null
+            host = null
+            ++outputGeneration
+            if (outputReady.isCompleted) outputReady = CompletableDeferred()
+        }
+    }
+
     actual suspend fun unbind() = withContext(NonCancellable + Dispatchers.Main.immediate) {
-        closed = true
-        // 等待专用队列释放 Render API 后才允许 controller 销毁 mpv；Main 协程仅挂起。
-        view?.let { closeOutput(it) }
-        view = null
-        host = null
+        outputMutex.withLock {
+            closed = true
+            // 等待专用队列释放 Render API 后才允许 controller 销毁 mpv；Main 协程仅挂起。
+            view?.let { closeOutput(it) }
+            view = null
+            host = null
+        }
     }
     actual suspend fun awaitOutput() { outputReady.await() }
     actual fun load(video: String, audio: String?, startSeconds: Double, generation: Long, userAgent: String, referrer: String) = if (destroyed) -3 else bolo_mpv_load(handle, video, audio, startSeconds, generation, userAgent, referrer)
+    actual fun videoEnabled(enabled: Boolean) = if (destroyed) -3 else bolo_mpv_video_enabled(handle, if (enabled) 1 else 0)
     actual fun pause(paused: Boolean) = if (destroyed) -3 else bolo_mpv_pause(handle, if (paused) 1 else 0)
     actual fun speed(speed: Double) = if (destroyed) -3 else bolo_mpv_speed(handle, speed)
     actual fun volume(volume: Double) = if (destroyed) -3 else bolo_mpv_volume(handle, volume)

@@ -11,11 +11,20 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import tv.hsrui.bolo.utils.url.AppContext
+import tv.hsrui.bolo.player.session.BoloMediaSessionService
 
 internal actual class BoloMpvBackend actual constructor() {
     private val handle = BoloMpvNative.create("android").also { check(it != 0L) { "libmpv 初始化失败" } }
-    private val outputReady = CompletableDeferred<Unit>()
+    init {
+        try { configureBoloMpvCertificates(handle, java.io.File(AppContext.instance.cacheDir, "mpv-certificates")) }
+        catch (error: Exception) { BoloMpvNative.destroy(handle); throw error }
+    }
+    private val outputMutex = Mutex()
+    private var outputReady = CompletableDeferred<Unit>()
     private val resizeScope = CoroutineScope(SupervisorJob() + boloMpvDispatcher)
     private var resizeJob: Job? = null
     private var outputWidth = 0
@@ -28,24 +37,23 @@ internal actual class BoloMpvBackend actual constructor() {
     private var destroyed = false // 仅由串行 native dispatcher 访问。
 
     actual suspend fun bind(output: Any) = withContext(Dispatchers.Main.immediate + NonCancellable) {
-        if (closing || texture === output) return@withContext
-        try {
-            texture?.surfaceTextureListener = null
-            val view = output as TextureView
-            withContext(boloMpvDispatcher) {
-                if (!destroyed) configureBoloMpvCertificates(handle, java.io.File(view.context.cacheDir, "mpv-certificates"))
-            }
-            if (closing) return@withContext
-            texture = view
-            view.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-                override fun onSurfaceTextureAvailable(value: SurfaceTexture, width: Int, height: Int) { resize(width, height); connect(view, value) }
-                override fun onSurfaceTextureSizeChanged(value: SurfaceTexture, width: Int, height: Int) { resize(width, height) }
-                override fun onSurfaceTextureUpdated(value: SurfaceTexture) { }
-                // TextureView 临时离开窗口时保留输出；native 销毁完成后统一释放。
-                override fun onSurfaceTextureDestroyed(value: SurfaceTexture) = false
-            }
-            view.surfaceTexture?.let { resize(view.width, view.height); connect(view, it) }
-        } catch (error: Exception) { outputReady.completeExceptionally(error) }
+        outputMutex.withLock {
+            if (closing || texture === output) return@withLock
+            try {
+                texture?.surfaceTextureListener = null
+                val view = output as TextureView
+                if (closing) return@withLock
+                texture = view
+                view.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                    override fun onSurfaceTextureAvailable(value: SurfaceTexture, width: Int, height: Int) { resize(width, height); connect(view, value) }
+                    override fun onSurfaceTextureSizeChanged(value: SurfaceTexture, width: Int, height: Int) { resize(width, height) }
+                    override fun onSurfaceTextureUpdated(value: SurfaceTexture) { }
+                    // TextureView 临时离开窗口时保留输出；native 销毁完成后统一释放。
+                    override fun onSurfaceTextureDestroyed(value: SurfaceTexture) = false
+                }
+                view.surfaceTexture?.let { resize(view.width, view.height); connect(view, it) }
+            } catch (error: Exception) { outputReady.completeExceptionally(error) }
+        }
     }
 
     private fun resize(width: Int, height: Int) {
@@ -71,17 +79,37 @@ internal actual class BoloMpvBackend actual constructor() {
         outputReady.complete(Unit)
     }
 
+    actual suspend fun detachOutput(output: Any) = withContext(NonCancellable + Dispatchers.Main.immediate) {
+        outputMutex.withLock {
+            if (texture !== output || closing) return@withLock
+            withContext(boloMpvDispatcher) {
+                if (!destroyed) { videoEnabled(false); BoloMpvNative.surface(handle, null) }
+            }
+            resizeJob?.cancel()
+            texture?.surfaceTextureListener = null
+            surface?.release()
+            if (texture?.isAvailable != true) retainedTexture?.release()
+            texture = null
+            retainedTexture = null
+            surface = null
+            surfaceBound = false
+            if (outputReady.isCompleted) outputReady = CompletableDeferred()
+        }
+    }
+
     actual suspend fun unbind() = withContext(Dispatchers.Main.immediate) {
-        closing = true
-        // 先等待 core 退出，确保 TextureView 重新接管纹理后可安全销毁它。
-        withContext(boloMpvDispatcher) { destroy() }
-        surface?.release()
-        surface = null
-        texture?.surfaceTextureListener = null
-        // 是否脱离窗口只在 Main 判断，涵盖等待 core 销毁期间发生的 detach。
-        if (texture?.isAvailable != true) retainedTexture?.release()
-        retainedTexture = null
-        texture = null
+        outputMutex.withLock {
+            closing = true
+            // 先等待 core 退出，确保 TextureView 重新接管纹理后可安全销毁它。
+            withContext(boloMpvDispatcher) { destroy() }
+            surface?.release()
+            surface = null
+            texture?.surfaceTextureListener = null
+            // 是否脱离窗口只在 Main 判断，涵盖等待 core 销毁期间发生的 detach。
+            if (texture?.isAvailable != true) retainedTexture?.release()
+            retainedTexture = null
+            texture = null
+        }
     }
     actual suspend fun awaitOutput() {
         outputReady.await()
@@ -98,6 +126,7 @@ internal actual class BoloMpvBackend actual constructor() {
         }
     }
     actual fun load(video: String, audio: String?, startSeconds: Double, generation: Long, userAgent: String, referrer: String) = if (destroyed) -3 else BoloMpvNative.load(handle, video, audio, startSeconds, generation, userAgent, referrer)
+    actual fun videoEnabled(enabled: Boolean) = if (destroyed) -3 else BoloMpvNative.videoEnabled(handle, enabled)
     actual fun pause(paused: Boolean) = if (destroyed) -3 else BoloMpvNative.pause(handle, paused)
     actual fun speed(speed: Double) = if (destroyed) -3 else BoloMpvNative.speed(handle, speed)
     actual fun volume(volume: Double) = if (destroyed) -3 else BoloMpvNative.volume(handle, volume)
@@ -115,5 +144,7 @@ internal actual class BoloMpvBackend actual constructor() {
         resizeScope.cancel()
         BoloMpvNative.destroy(handle)
     }
-    actual suspend fun setAudioActive(active: Boolean) = true
+    actual suspend fun setAudioActive(active: Boolean): Boolean = withContext(Dispatchers.Main.immediate) {
+        BoloMediaSessionService.setAudioActive(this@BoloMpvBackend, active)
+    }
 }

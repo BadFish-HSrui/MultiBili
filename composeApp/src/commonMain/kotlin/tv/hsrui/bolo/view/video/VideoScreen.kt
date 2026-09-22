@@ -11,15 +11,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.remember
+import tv.hsrui.bolo.player.session.BoloPlaybackSession
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 
 @Composable
 fun VideoScreen(
     request: VideoPlaybackRequest,
-    viewModel: VideoViewModel = viewModel(key = request.key) {
-        VideoViewModel(request = request)
+    viewModel: VideoViewModel = remember(request.key) {
+        BoloPlaybackSession.obtain(request.key).getViewModel(request.key) { VideoViewModel(request = request) }
     },
     modifier: Modifier = Modifier
 ) {

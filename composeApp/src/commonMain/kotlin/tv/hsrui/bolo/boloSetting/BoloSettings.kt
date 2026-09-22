@@ -244,6 +244,20 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentPlayerReportProgressImmediatelyEnabled = value
         }
 
+    private var storedPlayerBackgroundPlaybackEnabled by settingsKSafe(
+        false,
+        key = "player_background_playback_enabled",
+    )
+    private var currentPlayerBackgroundPlaybackEnabled by mutableStateOf(storedPlayerBackgroundPlaybackEnabled)
+
+    var playerBackgroundPlaybackEnabled: Boolean
+        get() = currentPlayerBackgroundPlaybackEnabled
+        set(value) {
+            if (value == currentPlayerBackgroundPlaybackEnabled) return
+            storedPlayerBackgroundPlaybackEnabled = value
+            currentPlayerBackgroundPlaybackEnabled = value
+        }
+
     private var storedPlayerResumeAfterBackgroundEnabled by settingsKSafe(
         false,
         key = "player_resume_after_background_enabled",

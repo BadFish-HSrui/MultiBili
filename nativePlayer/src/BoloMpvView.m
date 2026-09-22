@@ -156,7 +156,10 @@ static void *get_proc(void *unused, const char *name) { return dlsym(RTLD_DEFAUL
     // 因为 GCD 可能在调用线程内联执行同步 block，令 GL 再次落到 Main。
     dispatch_semaphore_t drained = dispatch_semaphore_create(0);
     dispatch_async(_renderQueue, ^{
-        @autoreleasepool { [self releaseOnRenderQueue]; }
+        @autoreleasepool {
+            if (self->_player) bolo_mpv_video_enabled(self->_player, 0);
+            [self releaseOnRenderQueue];
+        }
         dispatch_semaphore_signal(drained);
     });
     dispatch_semaphore_wait(drained, DISPATCH_TIME_FOREVER);

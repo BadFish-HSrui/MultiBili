@@ -9,17 +9,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
-import tv.hsrui.bolo.boloSetting.PlaybackEndBehavior
 import tv.hsrui.bolo.player.base.BoloVideoPlayer
 import tv.hsrui.bolo.player.controls.BoloPlayerControls
 import tv.hsrui.bolo.player.danmaku.BoloDanmakuLayer
@@ -38,16 +34,6 @@ fun VideoPlayer(
     episodeNavigationEnabled: Boolean = true,
 ) {
     val settings: BoloSettings = koinInject()
-    val currentOnNextEpisode by rememberUpdatedState(onNextEpisode)
-    val currentEpisodeNavigationEnabled by rememberUpdatedState(episodeNavigationEnabled)
-    DisposableEffect(viewModel) {
-        viewModel.onPlaybackPageEntered()
-        onDispose { viewModel.onPlaybackPageExited() }
-    }
-    PlaybackReportLifecycleEffect(onForegroundChanged = viewModel::onPlaybackForegroundChanged)
-    LaunchedEffect(viewModel, settings.playerResumeAfterBackgroundEnabled) {
-        viewModel.controller.setResumeAfterBackgroundEnabled(settings.playerResumeAfterBackgroundEnabled)
-    }
     LaunchedEffect(viewModel, settings.playerMergeAudioChannelsEnabled) {
         viewModel.controller.setMergeAudioChannelsEnabled(settings.playerMergeAudioChannelsEnabled)
     }
@@ -61,24 +47,6 @@ fun VideoPlayer(
             settings.playerDynamicLoudnessTargetLufs.toDouble(), settings.playerDynamicLoudnessRangeLu.toDouble(),
             settings.playerDynamicLoudnessTruePeakDbtp.toDouble(),
         )
-    }
-    LaunchedEffect(viewModel) {
-        var wasPlaying = false
-        var wasEnded = viewModel.controller.state.value.isEnded
-        viewModel.controller.state.collect { playback ->
-            val shouldHandleEnd = wasPlaying && !wasEnded && playback.isEnded && !playback.isPlaybackSuspended
-            wasPlaying = playback.isPlaying && !playback.isPlaybackSuspended
-            wasEnded = playback.isEnded
-            if (shouldHandleEnd) {
-                val behavior = if (viewModel.singleEpisodeLoopEnabled) PlaybackEndBehavior.Replay
-                    else settings.playerPlaybackEndBehavior
-                when (behavior) {
-                    PlaybackEndBehavior.Off -> Unit
-                    PlaybackEndBehavior.Replay -> viewModel.play()
-                    PlaybackEndBehavior.NextEpisode -> if (currentEpisodeNavigationEnabled) currentOnNextEpisode?.invoke()
-                }
-            }
-        }
     }
     LaunchedEffect(
         viewModel.subtitleController,

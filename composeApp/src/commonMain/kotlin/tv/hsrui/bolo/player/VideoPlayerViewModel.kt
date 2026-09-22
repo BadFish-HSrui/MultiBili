@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -66,6 +67,8 @@ class VideoPlayerViewModel(
     private var subtitleLoadJob: Job? = null
     private var sourceGeneration = 0L
     private var autoPlayOnOpen = true
+    internal var pendingPlayWhenReady by mutableStateOf<Boolean?>(null)
+        private set
     private var resumeFromHistoryOnOpen = true
     private var playerInfo: PlayerInfoResponse? = null
     private var playbackGeneration = -1L
@@ -82,6 +85,8 @@ class VideoPlayerViewModel(
     private var danmakuGeneration = 0L
     private val _danmakuClosed = MutableStateFlow(false)
     val danmakuClosed = _danmakuClosed.asStateFlow()
+    private var playbackForeground = true
+    private var playbackClosed = false
     private var awaitingPlaybackReload = true
     private var danmakuMedia: Pair<Long, Long>? = null
     private var awaitingDanmakuSeek = false
@@ -149,7 +154,7 @@ class VideoPlayerViewModel(
         if (avid > 0L && cid > 0L) switchMedia(avid, cid, episodeId, forceReload = true)
     }
 
-    fun switchMedia(avid: Long, cid: Long, episodeId: Long? = null, forceReload: Boolean = false) {
+    fun switchMedia(avid: Long, cid: Long, episodeId: Long? = null, forceReload: Boolean = false, initialPlayerInfo: PlayerInfoResponse? = null) {
         if (!forceReload && this.avid == avid && this.cid == cid && this.episodeId == episodeId) return
         val opensNewMedia = sourceGeneration == 0L || this.avid != avid || this.cid != cid || this.episodeId != episodeId
         val retryPositionMs = if (opensNewMedia) null else {
@@ -158,7 +163,7 @@ class VideoPlayerViewModel(
         }
         if (opensNewMedia) {
             singleEpisodeLoopEnabled = false
-            playerInfo = initialPlayerInfo.takeIf { sourceGeneration == 0L }
+            playerInfo = (initialPlayerInfo ?: this.initialPlayerInfo).takeIf { sourceGeneration == 0L }
             lastConfirmedPositionMs = null
             autoPlayOnOpen = settings.playerAutoPlayOnOpenEnabled
             resumeFromHistoryOnOpen = settings.playerResumeFromHistoryEnabled
@@ -172,6 +177,7 @@ class VideoPlayerViewModel(
         replayJob?.cancel()
         val generation = ++sourceGeneration
         controller.pause()
+        pendingPlayWhenReady = autoPlayOnOpen
         this.avid = avid
         this.cid = cid
         this.episodeId = episodeId
@@ -183,7 +189,8 @@ class VideoPlayerViewModel(
         sourceLoadJob = viewModelScope.launch {
             loadVideo()
             if (generation == sourceGeneration) {
-                playVideo(startPositionMs = retryPositionMs ?: resumePositionMs(), autoPlay = autoPlayOnOpen)
+                playVideo(startPositionMs = retryPositionMs ?: resumePositionMs(), autoPlay = pendingPlayWhenReady == true)
+                if (uiState.value is VideoPlayerUiState.Error) pendingPlayWhenReady = null
             }
         }
     }
@@ -239,6 +246,7 @@ class VideoPlayerViewModel(
         subtitleController.synchronize(startPositionMs)
         playbackLoadJob?.cancel()
         val generation = sourceGeneration
+        val intentRevision = controller.playIntentRevision
         playbackLoadJob = viewModelScope.launch {
             controller.setLoudnessSettings(
                 settings.playerLoudnessMode, settings.playerDynamicLoudnessEnabled,
@@ -256,7 +264,8 @@ class VideoPlayerViewModel(
             if (generation != sourceGeneration) return@launch
             playbackGeneration = generation
             playbackReportController.mediaLoaded()
-            if (autoPlay) controller.play()
+            if (pendingPlayWhenReady ?: (autoPlay && controller.playIntentRevision == intentRevision)) controller.play()
+            pendingPlayWhenReady = null
         }
     }
 
@@ -270,7 +279,17 @@ class VideoPlayerViewModel(
         playbackReportController.leavePage()
     }
 
+    fun setBackgroundPlaybackAllowed(allowed: Boolean) {
+        playbackReportController.setBackgroundPlaybackAllowed(allowed)
+    }
+
     fun onPlaybackForegroundChanged(active: Boolean) {
+        playbackForeground = active
+        if (!active) {
+            danmakuController.pause()
+            danmakuRequests.values.toList().forEach { it.cancel() }
+            danmakuRequests.clear()
+        }
         playbackReportController.updatePlayback(controller.state.value, controller.backend.value != null)
         playbackReportController.setForeground(active)
     }
@@ -367,8 +386,13 @@ class VideoPlayerViewModel(
     }
 
     fun play() {
-        if (uiState.value !is VideoPlayerUiState.Success) return
         if (controller.state.value.isPlaybackSuspended) return
+        if (pendingPlayWhenReady != null) {
+            pendingPlayWhenReady = true
+            controller.pause() // 保持旧媒体暂停，同时使此前的中断恢复票据失效。
+            return
+        }
+        if (uiState.value !is VideoPlayerUiState.Success) return
         if (!controller.state.value.isEnded) {
             if (replayJob?.isActive != true) controller.play()
             return
@@ -385,6 +409,7 @@ class VideoPlayerViewModel(
     }
 
     fun pause() {
+        if (pendingPlayWhenReady != null) pendingPlayWhenReady = false
         replayJob?.cancel()
         controller.pause()
     }
@@ -422,6 +447,7 @@ class VideoPlayerViewModel(
     }
 
     private fun synchronizeDanmaku(playback: BoloPlayerState) {
+        if (!playbackForeground) { danmakuController.pause(); return }
         if (danmakuMedia != (avid to cid)) return
         val pending = playback.pendingSeekPositionMs
         if (pending != null && (!awaitingPlaybackReload || awaitingDanmakuSeek)) {
@@ -552,7 +578,10 @@ class VideoPlayerViewModel(
         danmakuController.clear()
     }
 
-    override fun onCleared() {
+    fun closePlayback() {
+        if (playbackClosed) return
+        playbackClosed = true
+        viewModelScope.cancel()
         subtitleLoadJob?.cancel()
         onPlaybackPageExited()
         playbackReportController.close()
@@ -566,6 +595,10 @@ class VideoPlayerViewModel(
         danmakuRequests.clear()
         danmakuController.dispose()
         controller.dispose()
+    }
+
+    override fun onCleared() {
+        closePlayback()
         super.onCleared()
     }
 }

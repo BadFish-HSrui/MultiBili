@@ -13,6 +13,7 @@ internal object BoloMpvNative {
     init { loadBoloMpvLibrary() }
     external fun create(platform: String): Long
     external fun load(handle: Long, video: String, audio: String?, start: Double, generation: Long, userAgent: String, referrer: String): Int
+    external fun videoEnabled(handle: Long, enabled: Boolean): Int
     external fun pause(handle: Long, paused: Boolean): Int
     external fun speed(handle: Long, speed: Double): Int
     external fun volume(handle: Long, volume: Double): Int

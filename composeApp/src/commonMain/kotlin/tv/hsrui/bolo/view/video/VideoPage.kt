@@ -4,20 +4,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
-import kotlinx.coroutines.flow.first
 import tv.hsrui.bolo.player.VideoPlayer
 import tv.hsrui.bolo.player.VideoPlayerUiState
-import tv.hsrui.bolo.player.VideoPlayerViewModel
 import tv.hsrui.bolo.ui.common.player.PlayerPageLayout
 import tv.hsrui.bolo.view.video.desc.VideoDescPage
 import tv.hsrui.bolo.view.video.reply.VideoReplyPage
@@ -29,19 +25,9 @@ fun VideoPage(
     modifier: Modifier = Modifier
 ) {
     val videoInfo = uiState.video
-    val viewModel = viewModel(key = "video_player") {
-        VideoPlayerViewModel(videoInfo.avid, videoInfo.cid, initialPlayerInfo = uiState.initialPlayerInfo)
-    }
+    val viewModel = videoViewModel.playbackSession.player
     val playerUiState by viewModel.uiState.collectAsState()
     val playerInfo by viewModel.controller.info.collectAsState()
-    DisposableEffect(videoViewModel) {
-        onDispose { videoViewModel.cancelEpisodeNavigation() }
-    }
-    LaunchedEffect(videoInfo.avid, videoInfo.cid) {
-        viewModel.switchMedia(videoInfo.avid, videoInfo.cid)
-        val result = viewModel.uiState.first { it !is VideoPlayerUiState.Loading }
-        videoViewModel.onEpisodePlaybackResult(videoInfo.avid, videoInfo.cid, result is VideoPlayerUiState.Error)
-    }
     // 简介操作、推荐和评论按稿件保留；同视频切 P 复用，换视频或离页时清理。
     val detailOwner = remember(videoInfo.avid) {
         object : ViewModelStoreOwner { override val viewModelStore = ViewModelStore() }

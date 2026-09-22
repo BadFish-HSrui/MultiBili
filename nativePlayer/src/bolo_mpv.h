@@ -22,6 +22,7 @@ enum {
 
 bolo_mpv *bolo_mpv_create(const char *platform);
 int bolo_mpv_load(bolo_mpv *, const char *video, const char *audio, double start, int64_t generation, const char *user_agent, const char *referrer);
+int bolo_mpv_video_enabled(bolo_mpv *player, int enabled);
 int bolo_mpv_pause(bolo_mpv *, int paused);
 int bolo_mpv_speed(bolo_mpv *, double speed);
 int bolo_mpv_volume(bolo_mpv *, double volume);

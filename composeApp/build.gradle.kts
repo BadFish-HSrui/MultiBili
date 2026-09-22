@@ -88,6 +88,7 @@ kotlin {
         androidMain.get().dependsOn(mobileMain)
         iosMain.get().dependsOn(mobileMain)
         androidMain.dependencies {
+            implementation(libs.media3.session)
             implementation(libs.coil.gif)
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.activity.compose)
@@ -123,6 +124,8 @@ kotlin {
             implementation(libs.kotlin.test)
         }
         jvmMain.dependencies {
+            implementation(libs.dbus.java.core)
+            runtimeOnly(libs.dbus.java.transport)
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
             implementation(libs.jogl)

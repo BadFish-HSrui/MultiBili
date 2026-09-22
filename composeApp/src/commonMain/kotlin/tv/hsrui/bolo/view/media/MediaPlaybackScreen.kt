@@ -10,7 +10,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.remember
+import tv.hsrui.bolo.player.session.BoloPlaybackSession
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 
@@ -19,8 +20,10 @@ fun MediaPlaybackScreen(
     seasonId: Long = 0,
     modifier: Modifier = Modifier,
     episodeId: Long = 0,
-    viewModel: MediaPlaybackViewModel = viewModel(key = "media_${seasonId}_$episodeId") {
-        MediaPlaybackViewModel(seasonId, episodeId)
+    viewModel: MediaPlaybackViewModel = remember(seasonId, episodeId) {
+        BoloPlaybackSession.obtain("media_${seasonId}_$episodeId").getViewModel("media_${seasonId}_$episodeId") {
+            MediaPlaybackViewModel(seasonId, episodeId)
+        }
     },
 ) {
     val uiState by viewModel.uiState.collectAsState()

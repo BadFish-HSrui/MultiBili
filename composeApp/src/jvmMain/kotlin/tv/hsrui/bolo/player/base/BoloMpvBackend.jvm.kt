@@ -20,7 +20,7 @@ internal actual class BoloMpvBackend actual constructor() {
         }
     }
     private val outputMutex = Mutex()
-    private val outputReady = CompletableDeferred<Unit>()
+    private var outputReady = CompletableDeferred<Unit>()
     private var output: BoloDesktopVideoOutput? = null
     private var renderer: BoloDesktopMpvRenderer? = null
     @Volatile private var closed = false
@@ -67,6 +67,17 @@ internal actual class BoloMpvBackend actual constructor() {
         }
     }
 
+    actual suspend fun detachOutput(output: Any) {
+        outputMutex.withLock {
+            if (this.output !== output || closed) return@withLock
+            withContext(boloMpvDispatcher) { videoEnabled(false) }
+            renderer?.close()
+            renderer = null
+            this.output = null
+            if (outputReady.isCompleted) outputReady = CompletableDeferred()
+        }
+    }
+
     actual suspend fun unbind() {
         closed = true
         outputMutex.withLock {
@@ -77,6 +88,7 @@ internal actual class BoloMpvBackend actual constructor() {
     }
     actual suspend fun awaitOutput() { outputReady.await() }
     actual fun load(video: String, audio: String?, startSeconds: Double, generation: Long, userAgent: String, referrer: String) = if (destroyed) -3 else BoloMpvNative.load(handle, video, audio, startSeconds, generation, userAgent, referrer)
+    actual fun videoEnabled(enabled: Boolean) = if (destroyed) -3 else BoloMpvNative.videoEnabled(handle, enabled)
     actual fun pause(paused: Boolean) = if (destroyed) -3 else BoloMpvNative.pause(handle, paused)
     actual fun speed(speed: Double) = if (destroyed) -3 else BoloMpvNative.speed(handle, speed)
     actual fun volume(volume: Double) = if (destroyed) -3 else BoloMpvNative.volume(handle, volume)

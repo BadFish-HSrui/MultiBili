@@ -3,9 +3,11 @@ package tv.hsrui.bolo.player.base
 /** 普通 native 调用由串行 dispatcher 执行；GL 只在平台渲染上下文执行。 */
 internal expect class BoloMpvBackend() {
     suspend fun bind(output: Any)
+    suspend fun detachOutput(output: Any)
     suspend fun unbind()
     suspend fun awaitOutput()
     fun load(video: String, audio: String?, startSeconds: Double, generation: Long, userAgent: String, referrer: String): Int
+    fun videoEnabled(enabled: Boolean): Int
     fun pause(paused: Boolean): Int
     fun speed(speed: Double): Int
     fun volume(volume: Double): Int

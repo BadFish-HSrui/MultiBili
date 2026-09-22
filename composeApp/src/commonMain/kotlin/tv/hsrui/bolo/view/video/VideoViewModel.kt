@@ -6,11 +6,16 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.model.Vid
+import tv.hsrui.bolo.player.VideoPlayerUiState
+import tv.hsrui.bolo.player.session.BoloPlaybackSession
+import tv.hsrui.bolo.player.session.BoloSystemMediaMetadata
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.video.fetchVideoInfo
@@ -35,7 +40,27 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
     private var listState: VideoListUiState? = null
     private var hasOpenedVideo = false
 
-    init { loadPlayback() }
+    val playbackSession = BoloPlaybackSession.obtain(request.key)
+
+    init {
+        viewModelScope.launch {
+            uiState.collectLatest { value ->
+                val state = value as? VideoUiState.Success ?: return@collectLatest
+                val video = state.video
+                val player = playbackSession.player
+                player.switchMedia(video.avid, video.cid, initialPlayerInfo = state.initialPlayerInfo)
+                playbackSession.updateMedia(
+                    BoloSystemMediaMetadata("${video.avid}:${video.cid}", video.title, video.upName, artworkUrl = video.coverUrl),
+                    if (state.hasPreviousEpisode) ::selectPreviousEpisode else null,
+                    if (state.hasNextEpisode) ::selectNextEpisode else null,
+                    state.episodeNavigationEnabled,
+                )
+                val result = player.uiState.first { it !is VideoPlayerUiState.Loading }
+                onEpisodePlaybackResult(video.avid, video.cid, result is VideoPlayerUiState.Error)
+            }
+        }
+        loadPlayback()
+    }
 
     fun loadPlayback() {
         if (request is VideoPlaybackRequest.VideoList) loadVideoList() else loadVideoInfo()

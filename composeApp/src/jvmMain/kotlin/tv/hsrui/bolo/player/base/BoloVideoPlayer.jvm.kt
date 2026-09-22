@@ -23,14 +23,14 @@ actual fun BoloVideoPlayer(controller: BoloPlayerController, modifier: Modifier)
     val backend by controller.backend.collectAsState()
     DisposableEffect(controller) {
         controller.outputAttached()
-        onDispose { controller.release() }
+        onDispose { controller.outputDetached(output) }
     }
     LaunchedEffect(controller, output) {
         output.failures.collect { (failedBackend, cause) ->
             output.handleFailure(controller, failedBackend, cause)
         }
     }
-    LaunchedEffect(backend, output) { backend?.bind(output) }
+    LaunchedEffect(backend, output) { backend?.bind(output); controller.outputAttached() }
     Box(modifier.background(Color.Black).onSizeChanged { output.size = it }) {
         if (output.direct) {
             SwingPanel(factory = { output.panel }, modifier = Modifier.matchParentSize())
