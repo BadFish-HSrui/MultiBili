@@ -8,6 +8,7 @@ data class BoloDanmakuItem(
     val fontSize: Float = 25f,
     val colorRgb: Long = 0xFFFFFF,
     val weight: Int = 0,
+    val isOwn: Boolean = false,
 )
 
 enum class BoloDanmakuMode {

@@ -34,7 +34,11 @@ fun ShowReplyInput(
     text: MutableState<String>,
     labelText: String,
     onSend: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    maxLength: Int = 1000,
+    sendContentDescription: String = "发送评论",
+    sendEnabled: Boolean = true,
+    errorText: String? = null,
 ) {
     var text by text
     val focusRequester = remember { FocusRequester() }
@@ -71,23 +75,25 @@ fun ShowReplyInput(
                     onValueChange = { text = it },
                     textStyle = MaterialTheme.typography.bodyMedium,
                     maxLines = 5,
+                    isError = errorText != null,
                     supportingText = {
                         Text(
-                            "${text.length}/1000",
+                            text = errorText?.let { "$it · ${text.length}/$maxLength" } ?: "${text.length}/$maxLength",
                             style = MaterialTheme.typography.bodySmall
                         )
                     },
                     trailingIcon = {
                         IconButton(
                             onClick = {
-                                if (text.length <= 1000) {
+                                if (sendEnabled && text.length <= maxLength) {
                                     onSend(text)
                                 }
-                            }
+                            },
+                            enabled = sendEnabled,
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.Send,
-                                contentDescription = "发送评论"
+                                contentDescription = sendContentDescription
                             )
                         }
                     },

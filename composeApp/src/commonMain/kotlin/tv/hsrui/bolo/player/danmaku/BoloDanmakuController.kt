@@ -34,6 +34,13 @@ class BoloDanmakuController {
         publish(_state.value.copy(itemCount = engine.itemCount))
     }
 
+    /** 保留原始进度供回看，当前帧直接入场，不依赖媒体调度游标。 */
+    fun showImmediately(item: BoloDanmakuItem) {
+        checkUsable()
+        engine.showImmediately(item)
+        publish(_state.value.copy(itemCount = engine.itemCount))
+    }
+
     fun play() {
         checkUsable()
         awaitingSeekSync = false

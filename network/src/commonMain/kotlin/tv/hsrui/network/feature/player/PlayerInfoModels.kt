@@ -26,6 +26,10 @@ data class PlayerInfoResponse(
     val lastPlayCid: Long get() = if (isSuccess) data?.lastPlayCid ?: 0L else 0L
     val lastPlayPositionMs: Long get() = if (isSuccess) data?.lastPlayPositionMs ?: 0L else 0L
     val chapters: List<PlayerChapterData> get() = if (isSuccess) data?.chapters.orEmpty() else emptyList()
+    val danmakuUserHash: String get() = if (isSuccess) data?.danmakuUserHash.orEmpty() else ""
+    val canSendDanmaku: Boolean get() = isSuccess && data?.canSendDanmaku == true
+    val danmakuMaxLength: Int get() = if (isSuccess) data?.danmakuMaxLength ?: 0 else 0
+    val danmakuCooldownMs: Long get() = if (isSuccess) data?.danmakuCooldownMs ?: 0L else 0L
 
     internal fun bindRequest(avid: Long, cid: Long, accountSession: String): PlayerInfoResponse = apply {
         requestMedia = avid to cid
@@ -48,7 +52,27 @@ data class PlayerInfoData(
     @SerialName("last_play_cid") val lastPlayCid: Long? = null,
     @SerialName("last_play_time") val lastPlayPositionMs: Long? = null,
     @SerialName("view_points") private val viewPoints: JsonElement? = null,
+    @SerialName("login_mid") private val loginMid: Long = 0L,
+    @SerialName("login_mid_hash") val danmakuUserHash: String = "",
+    @SerialName("permission") private val permission: String? = null,
+    @SerialName("block_time") private val blockTime: Long? = null,
+    @SerialName("level_info") private val levelInfo: JsonObject? = null,
+    @SerialName("is_ugc_pay_preview") private val isPaidPreview: Boolean = false,
 ) {
+    private val danmakuPermissions: Set<String> get() = permission?.split(',')?.toSet().orEmpty()
+    private val hasLimitedDanmaku: Boolean get() = "9999" in danmakuPermissions
+    private val hasShortDanmaku: Boolean get() = hasLimitedDanmaku || "5000" in danmakuPermissions
+    val canSendDanmaku: Boolean
+        get() = loginMid > 0L && permission != null && blockTime == 0L && !hasLimitedDanmaku &&
+            ((levelInfo?.get("current_level") as? JsonPrimitive)?.intOrNull ?: 0) > 0 && !isPaidPreview
+    val danmakuMaxLength: Int get() = if (hasShortDanmaku) 20 else 100
+    val danmakuCooldownMs: Long
+        get() = when {
+            hasShortDanmaku -> 10_000L
+            danmakuPermissions.any { it in setOf("20000", "32000", "31300", "30000", "25000") } -> 1_000L
+            else -> 5_000L
+        }
+
     // 可选章节逐项容错，不让异常条目影响字幕和历史进度。
     val chapters: List<PlayerChapterData>
         get() = (viewPoints as? JsonArray).orEmpty().mapNotNull { element ->

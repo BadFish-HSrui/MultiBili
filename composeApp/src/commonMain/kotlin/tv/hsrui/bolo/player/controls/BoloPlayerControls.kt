@@ -161,6 +161,8 @@ import tv.hsrui.bolo.player.VideoPlayerViewModel
 import tv.hsrui.bolo.player.PlayerKeyboardEffect
 import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.ui.theme.BiliColor
+import tv.hsrui.bolo.ui.components.reply.ShowReplyInput
+import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.bolo.ui.components.slider.ShowSlider
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
@@ -265,6 +267,14 @@ fun BoloPlayerControls(
     val chapters by viewModel.chapters.collectAsState()
     val currentVideoQuality by viewModel.currentVideoQuality.collectAsState()
     val currentAudioQuality by viewModel.currentAudioQuality.collectAsState()
+    val danmakuInputOpen = viewModel.danmakuInputOpen
+    val danmakuSendError = viewModel.danmakuSendError
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.dismissDanmakuInput(resumePlayback = false) }
+    }
+    LaunchedEffect(danmakuSendError) {
+        if (!viewModel.danmakuInputOpen) danmakuSendError?.let { showSnackbarMessage(it) }
+    }
     var sliderPreviewFraction by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
         mutableStateOf<Float?>(null)
     }
@@ -310,7 +320,7 @@ fun BoloPlayerControls(
     var subtitleMenuOpen by remember { mutableStateOf(false) }
     var chapterMenuOpen by remember { mutableStateOf(false) }
     val controlsInteractionActive = mousePressed || sliderPreviewFraction != null ||
-        settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen || audioQualityMenuOpen || subtitleMenuOpen || chapterMenuOpen
+        settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen || audioQualityMenuOpen || subtitleMenuOpen || chapterMenuOpen || danmakuInputOpen
     val latestControlsInteractionActive by rememberUpdatedState(controlsInteractionActive)
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     LaunchedEffect(isDesktop, mouseInside, mouseMovementRevision, controlsInteractionActive) {
@@ -455,7 +465,7 @@ fun BoloPlayerControls(
         }
     }
     val keyboardBlocked = settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen || audioQualityMenuOpen ||
-        subtitleMenuOpen || chapterMenuOpen || mousePressed || sliderPreviewFraction != null
+        subtitleMenuOpen || chapterMenuOpen || danmakuInputOpen || mousePressed || sliderPreviewFraction != null
     fun onVolumeKeyEvent(event: KeyEvent): Boolean {
         if (event.key != Key.DirectionUp && event.key != Key.DirectionDown && event.key != Key.M) return false
         if (event.type == KeyEventType.KeyUp) {
@@ -1174,6 +1184,20 @@ fun BoloPlayerControls(
                             )
                         }
 
+                        if (viewModel.canSendDanmaku) {
+                            TextButton(
+                                onClick = viewModel::openDanmakuInput,
+                                enabled = viewModel.danmakuInputEnabled,
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = Color.White,
+                                    disabledContentColor = Color.White.copy(alpha = 0.38f),
+                                ),
+                                modifier = Modifier.height(32.dp),
+                            ) {
+                                Text("发送弹幕", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                            }
+                        }
+
                         Spacer(Modifier.layoutId("spacer"))
 
                         if (showExtendedControls && subtitleState.subtitles.isNotEmpty()) {
@@ -1392,6 +1416,18 @@ fun BoloPlayerControls(
                     )
                 }
             }
+        }
+        if (danmakuInputOpen) {
+            ShowReplyInput(
+                text = viewModel.danmakuDraft,
+                labelText = "发送弹幕",
+                onSend = viewModel::sendDanmaku,
+                onDismiss = { viewModel.dismissDanmakuInput() },
+                maxLength = viewModel.danmakuMaxLength,
+                sendContentDescription = "发送弹幕",
+                sendEnabled = viewModel.danmakuSubmitEnabled,
+                errorText = danmakuSendError,
+            )
         }
         if (showExtendedControls) {
             BoloPlayerSettingsSheet(

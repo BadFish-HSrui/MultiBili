@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -33,6 +34,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.ui.theme.BiliColor
 
 @Composable
 fun BoloDanmakuLayer(
@@ -90,6 +92,7 @@ fun BoloDanmakuLayer(
         frame.longValue
         if (controller.isDisposed || !controller.state.value.isVisible) return@Canvas
         val padding = 2f * density.density
+        val borderWidth = density.density
         controller.engine.resize(
             width = size.width,
             height = size.height,
@@ -124,12 +127,24 @@ fun BoloDanmakuLayer(
             },
         ) { item ->
             val result = layout(item)
-            (result.size.width + padding * 2) to result.size.height.toFloat()
+            val inset = padding + if (item.isOwn) borderWidth else 0f
+            (result.size.width + inset * 2) to
+                (result.size.height + if (item.isOwn) inset * 2 else 0f)
         }
         clipRect {
             for (entry in entries) {
                 val result = layout(entry.item)
-                val offset = Offset(entry.x(animationTimeMs, size.width) + padding, entry.y)
+                val x = entry.x(animationTimeMs, size.width)
+                val inset = padding + if (entry.item.isOwn) borderWidth else 0f
+                val offset = Offset(x + inset, entry.y + if (entry.item.isOwn) inset else 0f)
+                if (entry.item.isOwn) {
+                    drawRect(
+                        color = BiliColor.Blue,
+                        topLeft = Offset(x + borderWidth / 2, entry.y + borderWidth / 2),
+                        size = Size(entry.width - borderWidth, entry.height - borderWidth),
+                        style = Stroke(width = borderWidth),
+                    )
+                }
                 drawText(result, color = Color.Black, topLeft = offset, drawStyle = Stroke(width = padding))
                 drawText(result, color = Color((entry.item.colorRgb and 0xFFFFFF) or 0xFF000000), topLeft = offset, drawStyle = Fill)
             }

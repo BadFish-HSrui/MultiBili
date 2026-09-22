@@ -83,6 +83,8 @@ object ApiUrls {
 
     object Danmaku {
         const val SEGMENT = "x/v2/dm/wbi/web/seg.so" //分段弹幕
+        const val VIEW = "x/v2/dm/web/view" //弹幕开放状态
+        const val SEND = "x/v2/dm/post" //发送弹幕
     }
 
     const val WBI = "x/web-interface/nav" //用于获取WbiKey，实际上是导航栏接口

@@ -37,6 +37,8 @@ import tv.hsrui.bolo.player.danmaku.BoloDanmakuMode
 import tv.hsrui.bolo.player.subtitle.BoloSubtitleController
 import tv.hsrui.network.feature.danmaku.DanmakuMode
 import tv.hsrui.network.feature.danmaku.fetchDanmakuSegment
+import tv.hsrui.network.feature.danmaku.fetchDanmakuView
+import tv.hsrui.network.feature.danmaku.sendDanmaku as postDanmaku
 import tv.hsrui.network.feature.player.VideoSource
 import tv.hsrui.network.feature.player.HighEnergyProgressData
 import tv.hsrui.network.feature.player.fetchHighEnergyProgress
@@ -90,6 +92,35 @@ class VideoPlayerViewModel(
     private val danmakuSegments = mutableMapOf<Long, List<BoloDanmakuItem>>()
     private val danmakuRequests = mutableMapOf<Long, Job>()
     private val failedDanmakuSegments = mutableSetOf<Long>()
+    private val sentDanmaku = linkedMapOf<Long, BoloDanmakuItem>()
+    private var danmakuContextJob: Job? = null
+    private var danmakuSendJob: Job? = null
+    private var danmakuCooldownJob: Job? = null
+    private var danmakuPlayerInfo by mutableStateOf<PlayerInfoResponse?>(null)
+    private var danmakuSendingAllowed by mutableStateOf(false)
+    private var danmakuCoolingDown by mutableStateOf(false)
+    private var danmakuSending by mutableStateOf(false)
+    var danmakuInputOpen by mutableStateOf(false)
+        private set
+    val danmakuDraft = mutableStateOf("")
+    var danmakuSendError by mutableStateOf<String?>(null)
+        private set
+    private var danmakuInputRevision = 0L
+    private var danmakuResumeRevision: Long? = null
+    val danmakuMaxLength: Int get() = danmakuPlayerInfo?.danmakuMaxLength ?: 0
+    val canSendDanmaku: Boolean
+        get() {
+            val playback = controller.state.value
+            return !playbackClosed && playbackForeground && danmakuSendingAllowed &&
+                danmakuPlayerInfo?.canSendDanmaku == true && !_danmakuClosed.value &&
+                danmakuController.state.value.isVisible && uiState.value is VideoPlayerUiState.Success &&
+                playbackGeneration == sourceGeneration && playback.hasConfirmedPosition &&
+                !awaitingPlaybackReload && !playback.isSeeking && !playback.isRebuilding &&
+                !playback.isPlaybackSuspended && !playback.isEnded
+        }
+    val danmakuSubmitEnabled: Boolean get() = canSendDanmaku && !danmakuSending && !danmakuCoolingDown &&
+        danmakuDraft.value.isNotBlank() && danmakuDraft.value.length <= danmakuMaxLength
+    val danmakuInputEnabled: Boolean get() = canSendDanmaku && !danmakuSending && !danmakuCoolingDown
     private var danmakuWindow = emptySet<Long>()
     private var currentDanmakuSegment = 0L
     private var danmakuGeneration = 0L
@@ -178,6 +209,8 @@ class VideoPlayerViewModel(
                 ?.displayPositionMs ?: lastConfirmedPositionMs
         }
         if (opensNewMedia) {
+            sentDanmaku.clear()
+            danmakuDraft.value = ""
             _chapters.value = emptyList()
             singleEpisodeLoopEnabled = false
             playerInfo = (initialPlayerInfo ?: this.initialPlayerInfo).takeIf { sourceGeneration == 0L }
@@ -216,6 +249,111 @@ class VideoPlayerViewModel(
         if (_danmakuClosed.value) return
         danmakuController.setVisible(visible)
         settings.danmakuEnabled = visible
+    }
+
+    fun openDanmakuInput() {
+        if (!danmakuInputEnabled || danmakuInputOpen) return
+        val wasPlaying = controller.state.value.isPlaying
+        pause()
+        danmakuResumeRevision = controller.playIntentRevision.takeIf { wasPlaying }
+        danmakuInputRevision += 1L
+        danmakuSendError = null
+        danmakuInputOpen = true
+    }
+
+    fun dismissDanmakuInput(resumePlayback: Boolean = true) {
+        val resumeRevision = danmakuResumeRevision
+        danmakuResumeRevision = null
+        danmakuInputOpen = false
+        danmakuInputRevision += 1L
+        if (resumePlayback && resumeRevision == controller.playIntentRevision &&
+            playbackForeground && !playbackClosed && !controller.state.value.isEnded &&
+            playbackGeneration == sourceGeneration
+        ) play()
+    }
+
+    private fun refreshDanmakuContext() {
+        danmakuContextJob?.cancel()
+        danmakuSendingAllowed = false
+        val info = playerInfo?.takeIf { it.matchesRequest(avid, cid, loginStorage.cookies.sessData) }
+        danmakuPlayerInfo = info
+        if (info?.canSendDanmaku != true || !loginStorage.isLoggedIn) return
+        val generation = danmakuGeneration
+        val requestedAvid = avid
+        val requestedCid = cid
+        danmakuContextJob = viewModelScope.launch {
+            try {
+                val response = fetchDanmakuView(requestedAvid, requestedCid)
+                if (generation != danmakuGeneration || playbackClosed) return@launch
+                danmakuSendingAllowed = response.canSend
+                if (response.isClosed) {
+                    _danmakuClosed.value = true
+                    danmakuRequests.values.toList().forEach { it.cancel() }
+                    danmakuRequests.clear()
+                    danmakuSegments.clear()
+                    danmakuController.clear()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // 发送权限未知时隐藏入口，不影响已有播放与弹幕加载。
+            }
+        }
+    }
+
+    fun sendDanmaku(message: String) {
+        if (!danmakuInputOpen || !danmakuSubmitEnabled || message != danmakuDraft.value) return
+        val requestedAvid = avid
+        val requestedCid = cid
+        val generation = danmakuGeneration
+        val inputRevision = danmakuInputRevision
+        val progressMs = controller.state.value.currentPositionMs.coerceAtLeast(0L)
+        val cooldownMs = danmakuPlayerInfo?.danmakuCooldownMs ?: return
+        danmakuSending = true
+        danmakuSendError = null
+        danmakuSendJob = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            val requestJob = currentCoroutineContext().job
+            try {
+                val response = postDanmaku(requestedAvid, requestedCid, progressMs, message)
+                if (generation != danmakuGeneration || playbackClosed) return@launch
+                if (!response.isSuccess) {
+                    if (response.code == 36711) danmakuSendingAllowed = false
+                    danmakuSendError = if (response.code == 0) "发送结果缺少弹幕 ID，请勿重复发送" else
+                        "[${response.code}]: ${response.message}"
+                    return@launch
+                }
+                val item = BoloDanmakuItem(
+                    id = response.id,
+                    progressMs = progressMs,
+                    content = response.content ?: message,
+                    mode = BoloDanmakuMode.Scroll,
+                    isOwn = true,
+                )
+                sentDanmaku[item.id] = item
+                publishDanmakuSegments()
+                danmakuController.showImmediately(item)
+                danmakuCoolingDown = true
+                danmakuCooldownJob?.cancel()
+                danmakuCooldownJob = viewModelScope.launch {
+                    delay(cooldownMs)
+                    danmakuCoolingDown = false
+                }
+                if (danmakuDraft.value == message) danmakuDraft.value = ""
+                if (danmakuInputOpen && danmakuInputRevision == inputRevision) dismissDanmakuInput()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (generation == danmakuGeneration && !playbackClosed) {
+                    danmakuSendError = "弹幕发送失败或结果未确认，请检查网络后重试"
+                }
+            } finally {
+                if (danmakuSendJob === requestJob) {
+                    danmakuSending = false
+                    danmakuSendJob = null
+                }
+            }
+        }
+        danmakuSendJob?.start()
     }
 
     fun setDesktopVolume(percent: Int) {
@@ -291,6 +429,9 @@ class VideoPlayerViewModel(
     }
 
     fun onPlaybackPageExited() {
+        dismissDanmakuInput(resumePlayback = false)
+        danmakuDraft.value = ""
+        danmakuSendJob?.cancel()
         singleEpisodeLoopEnabled = false
         playbackReportController.updatePlayback(controller.state.value, controller.backend.value != null)
         playbackReportController.leavePage()
@@ -303,6 +444,7 @@ class VideoPlayerViewModel(
     fun onPlaybackForegroundChanged(active: Boolean) {
         playbackForeground = active
         if (!active) {
+            dismissDanmakuInput(resumePlayback = false)
             danmakuController.pause()
             danmakuRequests.values.toList().forEach { it.cancel() }
             danmakuRequests.clear()
@@ -375,6 +517,7 @@ class VideoPlayerViewModel(
                         loginStorage.cookies.sessData == requestedSession
                 }?.chapters.orEmpty()
                 _uiState.value = VideoPlayerUiState.Success(result)
+                refreshDanmakuContext()
                 loadHighEnergyProgress()
                 subtitleLoadJob = viewModelScope.launch {
                     try {
@@ -565,6 +708,8 @@ class VideoPlayerViewModel(
                         danmakuRequests.values.filter { it !== requestJob }.forEach { it.cancel() }
                         return
                     }
+                    val loggedIn = loginStorage.isLoggedIn
+                    val userHash = danmakuPlayerInfo?.danmakuUserHash.orEmpty()
                     danmakuSegments[segmentIndex] = response.items.mapNotNull { item ->
                         val mode = when (item.mode) {
                             DanmakuMode.Scroll -> BoloDanmakuMode.Scroll
@@ -580,6 +725,8 @@ class VideoPlayerViewModel(
                             fontSize = item.fontSize.takeIf { it > 0 }?.toFloat() ?: 25f,
                             colorRgb = item.colorRgb,
                             weight = item.weight,
+                            isOwn = loggedIn && (item.isOwn ||
+                                (item.senderHash.isNotEmpty() && item.senderHash == userHash)),
                         )
                     }
                     publishDanmakuSegments()
@@ -602,10 +749,18 @@ class VideoPlayerViewModel(
     }
 
     private fun publishDanmakuSegments() {
-        danmakuController.load(danmakuSegments.entries.sortedBy { it.key }.flatMap { it.value })
+        danmakuController.load(danmakuSegments.entries.sortedBy { it.key }.flatMap { it.value } + sentDanmaku.values)
     }
 
     private fun resetDanmaku() {
+        dismissDanmakuInput(resumePlayback = false)
+        danmakuContextJob?.cancel()
+        danmakuSendJob?.cancel()
+        danmakuSendJob = null
+        danmakuSending = false
+        danmakuSendingAllowed = false
+        danmakuPlayerInfo = null
+        danmakuSendError = null
         subtitleLoadJob?.cancel()
         subtitleController.clear()
         danmakuGeneration += 1
