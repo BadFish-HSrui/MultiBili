@@ -15,9 +15,19 @@ import tv.hsrui.bolo.getPlatform
 
 @Stable
 class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = false) {
-    val isDesktop = getPlatform().type == PlatformType.Desktop
+    private val platform = getPlatform().type
+    val isDesktop = platform == PlatformType.Desktop
+    private val usesIosFullscreen = platform == PlatformType.Ios
 
-    var isFullscreen by mutableStateOf(initialFullscreen)
+    internal var iosFullscreenTarget by mutableStateOf(initialFullscreen)
+        private set
+    internal var iosFullscreenGeneration by mutableStateOf(0L)
+        private set
+    internal var isChangingIosFullscreen by mutableStateOf(usesIosFullscreen && initialFullscreen)
+        private set
+    internal var onIosFullscreenRequest: (() -> Unit)? = null
+
+    var isFullscreen by mutableStateOf(initialFullscreen && !usesIosFullscreen)
         private set
     var isSystemFullscreen by mutableStateOf(false)
         private set
@@ -32,9 +42,13 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
 
     val isChangingSystemFullscreen: Boolean get() = systemFullscreenRequest != null
     val canExitFullscreen: Boolean
-        get() = isFullscreen || isSystemFullscreen || isChangingSystemFullscreen
+        get() = isFullscreen || isSystemFullscreen || isChangingSystemFullscreen || isChangingIosFullscreen
 
     fun toggleWindowFullscreen() {
+        if (usesIosFullscreen) {
+            requestIosFullscreen(!iosFullscreenTarget)
+            return
+        }
         isFullscreen = !isFullscreen
         if (isDesktop && !isFullscreen && isSystemFullscreenOwnedByPlayer) {
             isSystemFullscreenOwnedByPlayer = false
@@ -52,10 +66,31 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
 
     fun exitFullscreen() {
         when {
+            usesIosFullscreen -> requestIosFullscreen(false)
             isChangingSystemFullscreen -> Unit
             isSystemFullscreen -> requestSystemFullscreen(false)
             else -> isFullscreen = false
         }
+    }
+
+    private fun requestIosFullscreen(fullscreen: Boolean) {
+        if (iosFullscreenTarget == fullscreen) return
+        iosFullscreenTarget = fullscreen
+        iosFullscreenGeneration++
+        isChangingIosFullscreen = true
+        onIosFullscreenRequest?.invoke()
+    }
+
+    // 仅由 iOS 宿主在原生几何与 Compose 视口一致时提交展示状态。
+    internal fun updateIosFullscreenLayout(fullscreen: Boolean) {
+        if (usesIosFullscreen) isFullscreen = fullscreen
+    }
+
+    internal fun completeIosFullscreenRequest(generation: Long, fullscreen: Boolean) {
+        if (!usesIosFullscreen || generation != iosFullscreenGeneration) return
+        isFullscreen = fullscreen
+        iosFullscreenTarget = fullscreen
+        isChangingIosFullscreen = false
     }
 
     private fun requestSystemFullscreen(fullscreen: Boolean) {
@@ -94,7 +129,7 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
 
     internal companion object {
         val Saver = Saver<PlayerFullscreenState, Boolean>(
-            save = { it.fullscreenBeforeSystem ?: it.isFullscreen },
+            save = { if (it.usesIosFullscreen) it.iosFullscreenTarget else it.fullscreenBeforeSystem ?: it.isFullscreen },
             restore = { PlayerFullscreenState(it) },
         )
     }

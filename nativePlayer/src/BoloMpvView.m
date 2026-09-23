@@ -1,5 +1,6 @@
 #import "BoloMpvView.h"
 #import <QuartzCore/CAEAGLLayer.h>
+#import <QuartzCore/CAMediaTiming.h>
 #import <OpenGLES/ES3/gl.h>
 #import <OpenGLES/EAGL.h>
 #include <dlfcn.h>
@@ -16,7 +17,7 @@
     bolo_mpv *_player;
     EAGLContext *_context;
     GLuint _framebuffer, _color;
-    GLint _width, _height;
+    GLint _width, _height, _loggedWidth, _loggedHeight;
     BOOL _prepared;
 }
 + (Class)layerClass { return CAEAGLLayer.class; }
@@ -124,7 +125,12 @@ static void *get_proc(void *unused, const char *name) { return dlsym(RTLD_DEFAUL
     bolo_mpv_render(_player, _framebuffer, _width, _height, 1);
     if (!atomic_load(&_renderAllowed)) return;
     glBindRenderbuffer(GL_RENDERBUFFER, _color);
-    [_context presentRenderbuffer:GL_RENDERBUFFER];
+    BOOL presented = [_context presentRenderbuffer:GL_RENDERBUFFER];
+    if (presented && (_loggedWidth != _width || _loggedHeight != _height)) {
+        _loggedWidth = _width;
+        _loggedHeight = _height;
+        NSLog(@"[PlayerFullscreen] t=%.6f first_frame view=%p size=%dx%d", CACurrentMediaTime(), self, _width, _height);
+    }
 }
 - (void)stopSubmittingFrames {
     NSAssert(NSThread.isMainThread, @"Video host belongs to Main");
