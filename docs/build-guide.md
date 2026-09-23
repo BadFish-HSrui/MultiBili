@@ -166,11 +166,3 @@ gradlew.bat :androidApp:assembleRelease
 首次打包 MSI/EXE 会联网下载 WiX 3.11；已有 WiX 时用 `WIX_PATH` 指定。
 
 产物位于 `composeApp/build/compose/binaries/main/` 下对应格式的子目录。
-
-## 构建缓存
-
-原生构建缓存位于 `~/.gradle/bolo-native`；普通 clean 不会清理，需要时运行：
-
-```bash
-./gradlew :nativePlayer:cleanNativeCache
-```

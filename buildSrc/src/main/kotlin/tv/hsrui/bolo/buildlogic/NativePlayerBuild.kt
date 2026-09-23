@@ -9,11 +9,12 @@ import java.security.MessageDigest
 
 internal class NativePlayerBuild(
     val root: File,
-    private val cache: File,
+    private val buildDirectory: File,
     private val logger: Logger,
     private val jobs: Int,
 ) {
-    private val host = NativePlayerEnvironment(root, logger)
+    private val cache = buildDirectory.resolve("cache")
+    private val host = NativePlayerEnvironment(root, buildDirectory, logger)
     private val dependencies by lazy { nativeReadJson(root.resolve("dependencies.lock.json")) }
     private val recipes by lazy {
         val code = root.parentFile.resolve("buildSrc/src/main/kotlin/tv/hsrui/bolo/buildlogic")
@@ -24,24 +25,17 @@ internal class NativePlayerBuild(
     fun execute(command: String) {
         require(jobs > 0) { "BOLO_NATIVE_JOBS must be positive" }
         if (command == "check-sources") { logger.lifecycle(nativeJson(sourceIdentity())); return }
-        nativeLock(cache.resolve("locks/maintenance"), shared = command != "clean-cache") {
-            if (command == "clean-cache") {
-                // tools 仅用于清除旧 Python 编排留下的 venv；新构建不在这里安装工具。
-                for (name in listOf("bundles", "libraries", "downloads", "tools")) nativeDelete(cache.resolve(name))
-                return@nativeLock
-            }
-            val targets = when (command) {
-                "android" -> listOf("android-arm64", "android-armv7", "android-x86", "android-x64")
-                "ios" -> listOf("ios-arm64", "iossim-arm64")
-                "desktop" -> listOf((if (host.mac) "macos" else if (host.windows) "windows" else "linux") + "-" +
-                    when (System.getProperty("os.arch")) { "aarch64", "arm64" -> "arm64"; "amd64", "x86_64" -> "x64"; else -> error("Unsupported desktop architecture") })
-                else -> throw GradleException("Unknown native command: $command")
-            }
-            host.prepare(targets)
-            nativeLock(cache.resolve("locks/prepare-${nativeHash(root.canonicalPath)}-$command")) {
-                val bundles = targets.associateWith(::build)
-                prepare(command, bundles)
-            }
+        val targets = when (command) {
+            "android" -> listOf("android-arm64", "android-armv7", "android-x86", "android-x64")
+            "ios" -> listOf("ios-arm64", "iossim-arm64")
+            "desktop" -> listOf((if (host.mac) "macos" else if (host.windows) "windows" else "linux") + "-" +
+                when (System.getProperty("os.arch")) { "aarch64", "arm64" -> "arm64"; "amd64", "x86_64" -> "x64"; else -> error("Unsupported desktop architecture") })
+            else -> throw GradleException("Unknown native command: $command")
+        }
+        host.prepare(targets)
+        nativeLock(cache.resolve("locks/prepare-$command")) {
+            val bundles = targets.associateWith(::build)
+            prepare(command, bundles)
         }
     }
 
@@ -87,7 +81,7 @@ internal class NativePlayerBuild(
         nativeLock(cache.resolve("locks/download-$name")) {
             if (!archive.isFile || nativeSha(archive) != sha) {
                 archive.parentFile.mkdirs()
-                val local = root.resolve("build/downloads/$name.tar.gz")
+                val local = buildDirectory.resolve("downloads/$name.tar.gz")
                 val partial = archive.resolveSibling("$sha.partial")
                 try {
                     if (local.isFile && nativeSha(local) == sha) nativeCopyFile(local, partial)
@@ -127,7 +121,7 @@ internal class NativePlayerBuild(
                 logger.lifecycle("Native cache hit: {} {}", target, fingerprint)
                 return@nativeLock bundle
             }
-            val work = root.resolve("build/work/$target/kotlin-$fingerprint")
+            val work = buildDirectory.resolve("work/$target/kotlin-$fingerprint")
             nativeDelete(work)
             work.mkdirs()
             nativeCopyTree(root.resolve("src"), work.resolve("bridge"))
@@ -262,12 +256,12 @@ internal class NativePlayerBuild(
     private fun prepare(command: String, bundles: Map<String, File>) {
         val key = nativeHash(nativeJson(mapOf("bundles" to bundles.mapValues { it.value.name },
             "podspec" to if (command == "ios") nativeSha(root.resolve("BoloNativePlayer.podspec")) else null)))
-        val output = root.resolve("build/$command")
+        val output = buildDirectory.resolve(command)
         if (nativeValidBundle(output, key)) {
             logger.lifecycle("Native output verified: {}", command)
             return
         }
-        val stage = Files.createTempDirectory(root.resolve("build").apply { mkdirs() }.toPath(), ".prepare-$command-").toFile()
+        val stage = Files.createTempDirectory(buildDirectory.apply { mkdirs() }.toPath(), ".prepare-$command-").toFile()
         try {
             when (command) {
                 "android" -> {

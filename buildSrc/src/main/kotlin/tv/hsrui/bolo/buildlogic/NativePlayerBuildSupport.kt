@@ -57,11 +57,11 @@ internal fun nativeWriteJson(file: File, value: Any?) {
 
 // FileChannel 不允许同一 JVM 的重叠锁；先在 JVM 内协调，再与其他 Gradle 进程协调。
 private val nativeLocks = ConcurrentHashMap<String, ReentrantLock>()
-internal fun <T> nativeLock(file: File, shared: Boolean = false, action: () -> T): T =
+internal fun <T> nativeLock(file: File, action: () -> T): T =
     nativeLocks.computeIfAbsent(file.canonicalPath) { ReentrantLock() }.withLock {
         file.parentFile.mkdirs()
         FileChannel.open(file.toPath(), CREATE, READ, WRITE).use { channel ->
-            channel.lock(0, Long.MAX_VALUE, shared).use { action() }
+            channel.lock().use { action() }
         }
     }
 
@@ -203,6 +203,7 @@ internal fun nativeShellSplit(value: String): List<String> {
 
 internal class NativePlayerEnvironment(
     val root: File,
+    buildDirectory: File,
     private val logger: Logger,
 ) {
     val windows = System.getProperty("os.name").startsWith("Windows")
@@ -213,6 +214,8 @@ internal class NativePlayerEnvironment(
     private val brew = if (System.getProperty("os.arch") in listOf("aarch64", "arm64")) "/opt/homebrew" else "/usr/local"
     val tools = linkedMapOf<String, File>()
     val identity = linkedMapOf<String, Any?>()
+    private val temporaryDirectory = buildDirectory.resolve("tmp")
+    private val toolCacheDirectory = buildDirectory.resolve("tool-cache")
 
     init {
         val search = mutableListOf<String>()
@@ -222,7 +225,20 @@ internal class NativePlayerEnvironment(
         environment["LC_ALL"] = "C"
         environment["PYTHONHASHSEED"] = "0"
         environment["SOURCE_DATE_EPOCH"] = "1750000000"
+        for (name in listOf("TMPDIR", "TMP", "TEMP")) setEnvironment(name, nativePath(temporaryDirectory))
+        setEnvironment("XDG_CACHE_HOME", nativePath(toolCacheDirectory))
+        setEnvironment("CLANG_MODULE_CACHE_PATH", nativePath(toolCacheDirectory.resolve("clang")))
+        setEnvironment("CCACHE_DIR", nativePath(toolCacheDirectory.resolve("ccache")))
+        setEnvironment("SCCACHE_DIR", nativePath(toolCacheDirectory.resolve("sccache")))
+        setEnvironment("PYTHONPYCACHEPREFIX", nativePath(toolCacheDirectory.resolve("python")))
+        setEnvironment("PYTHONDONTWRITEBYTECODE", "1")
         identity["host"] = listOf(System.getProperty("os.name"), System.getProperty("os.version"), System.getProperty("os.arch"))
+    }
+
+    private fun setEnvironment(name: String, value: String) {
+        val key = if (windows) environment.keys.firstOrNull { it.equals(name, ignoreCase = true) } ?: name else name
+        if (windows) environment.keys.removeAll { it != key && it.equals(name, ignoreCase = true) }
+        environment[key] = value
     }
 
     private fun find(name: String): File? {
@@ -241,6 +257,8 @@ internal class NativePlayerEnvironment(
         run(args.toList(), cwd, env, capture)
 
     fun run(args: List<Any>, cwd: File = root, env: Map<String, String> = environment, capture: Boolean = false): String {
+        temporaryDirectory.mkdirs()
+        toolCacheDirectory.mkdirs()
         val command = args.map { if (it is File) nativePath(it) else it.toString() }.toMutableList()
         if (!File(command[0]).isAbsolute) command[0] = nativePath(tool(command[0]))
         logger.info("+ {}", command.joinToString(" ") { nativeQuote(it) })

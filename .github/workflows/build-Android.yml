@@ -21,7 +21,7 @@ jobs:
   build:
     env:
       # 缓存布局或键形状变更时递增，可用于一次性作废旧条目。
-      BOLO_CACHE_VERSION: v1
+      BOLO_CACHE_VERSION: v2
     runs-on: ubuntu-latest
     steps:
       - name: 检出源码
@@ -65,10 +65,14 @@ jobs:
               exit 1
             fi
           done
+          # gitlink 的提交变化不会被上面的文件 glob 捕获，必须单独加入原生输入身份。
+          FFMPEG_COMMIT="$(git -C nativePlayer/vendor/ffmpeg rev-parse HEAD)"
+          MPV_COMMIT="$(git -C nativePlayer/vendor/mpv rev-parse HEAD)"
+          NATIVE_SOURCE_HASH="$(printf '%s\n' "$NATIVE_SOURCE_HASH" "$FFMPEG_COMMIT" "$MPV_COMMIT" | git hash-object --stdin)"
           # 恢复键：clean_cache 时用 -disabled-<run_id> 让恢复必定落空（本次不使用缓存）
           echo "native=$CACHE_RUNNER-android-native-$BOLO_CACHE_VERSION-$NATIVE_SOURCE_HASH$CACHE_SUFFIX" >> "$GITHUB_OUTPUT"
           echo "gradle=$CACHE_RUNNER-gradle-$BOLO_CACHE_VERSION-$GRADLE_INPUT_HASH$CACHE_SUFFIX" >> "$GITHUB_OUTPUT"
-          # 保存键：本平台缓存的真实键，clean_cache 时同样保存，供后续运行命中
+          # 保存键：本平台缓存的真实键，clean_cache 时同样尝试保存；已有条目不可覆盖
           echo "native-save=$CACHE_RUNNER-android-native-$BOLO_CACHE_VERSION-$NATIVE_SOURCE_HASH" >> "$GITHUB_OUTPUT"
           echo "gradle-save=$CACHE_RUNNER-gradle-$BOLO_CACHE_VERSION-$GRADLE_INPUT_HASH" >> "$GITHUB_OUTPUT"
 
@@ -76,7 +80,11 @@ jobs:
         id: restore-native
         uses: actions/cache/restore@v4
         with:
-          path: ~/.gradle/bolo-native
+          path: |
+            nativePlayer/build/cache/downloads/*.tar.gz
+            nativePlayer/build/cache/libraries/*/*
+            nativePlayer/build/cache/bundles/*/*
+            !nativePlayer/build/cache/**/.staging-*/**
           key: ${{ steps.cache-keys.outputs.native }}
           restore-keys: |
             ${{ steps.cache-keys.outputs.native }}
@@ -95,10 +103,10 @@ jobs:
           restore-keys: |
             ${{ steps.cache-keys.outputs.gradle }}
 
-      # 只清空原生缓存：恢复键已带 -disabled-<run_id>，Gradle 依赖缓存无需也不应清理。
+      # 清空模块原生构建目录：恢复键已带 -disabled-<run_id>，Gradle 依赖缓存无需清理。
       - name: 清理原生构建缓存（可选）
         if: ${{ inputs.clean_cache }}
-        run: ./gradlew :nativePlayer:cleanNativeCache
+        run: ./gradlew :nativePlayer:clean
 
       - name: 编译 Android 产物
         run: |
@@ -192,7 +200,7 @@ jobs:
 
       # 原生缓存中的每个 bundle 都由 Gradle 侧的指纹与 SHA-256 manifest 校验，
       # 因此构建失败时保存不会让下一次运行误用半成品；保存成功则避免重付整轮原生编译。
-      # clean_cache 只让本次运行忽略已有缓存，本次从源码构建出的缓存仍写入真实键，供后续运行命中。
+      # clean_cache 让本次运行忽略已有缓存，仍按真实键尝试保存；已有同键条目不可覆盖。
       - name: 保存 Gradle 缓存
         if: ${{ !cancelled() && steps.restore-gradle.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
@@ -209,5 +217,9 @@ jobs:
         if: ${{ !cancelled() && steps.restore-native.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
-          path: ~/.gradle/bolo-native
+          path: |
+            nativePlayer/build/cache/downloads/*.tar.gz
+            nativePlayer/build/cache/libraries/*/*
+            nativePlayer/build/cache/bundles/*/*
+            !nativePlayer/build/cache/**/.staging-*/**
           key: ${{ steps.cache-keys.outputs.native-save }}
