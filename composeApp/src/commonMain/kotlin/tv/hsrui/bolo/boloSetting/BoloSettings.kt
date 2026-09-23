@@ -11,6 +11,32 @@ import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import kotlin.math.roundToInt
 
 class BoloSettings(settingsKSafe: KSafePlain) {
+    private var storedAppClipboardLinkRecognitionEnabled by settingsKSafe(
+        false, key = "app_clipboard_link_recognition_enabled",
+    )
+    private var currentAppClipboardLinkRecognitionEnabled by mutableStateOf(storedAppClipboardLinkRecognitionEnabled)
+
+    var appClipboardLinkRecognitionEnabled: Boolean
+        get() = currentAppClipboardLinkRecognitionEnabled
+        set(value) {
+            if (value == currentAppClipboardLinkRecognitionEnabled) return
+            storedAppClipboardLinkRecognitionEnabled = value
+            currentAppClipboardLinkRecognitionEnabled = value
+        }
+
+    private var storedAppSystemLinkHandlingEnabled by settingsKSafe(
+        false, key = "app_system_link_handling_enabled",
+    )
+    private var currentAppSystemLinkHandlingEnabled by mutableStateOf(storedAppSystemLinkHandlingEnabled)
+
+    var appSystemLinkHandlingEnabled: Boolean
+        get() = currentAppSystemLinkHandlingEnabled
+        set(value) {
+            if (value == currentAppSystemLinkHandlingEnabled) return
+            storedAppSystemLinkHandlingEnabled = value
+            currentAppSystemLinkHandlingEnabled = value
+        }
+
     private var storedPlayerAutoPlayOnOpenEnabled by settingsKSafe(
         true,
         key = "player_auto_play_on_open_enabled",

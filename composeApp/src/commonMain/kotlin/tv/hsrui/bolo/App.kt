@@ -23,6 +23,7 @@ import org.koin.dsl.KoinConfiguration
 import org.koin.dsl.koinConfiguration
 import tv.hsrui.bolo.boloSetting.BoloSettingsModule
 import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.ExternalLinkEffect
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.navigation.NavigatorModule
 import tv.hsrui.bolo.navigation.navigationEntry
@@ -59,6 +60,8 @@ fun App() {
             val navigator: Navigator = koinInject()
             val snackbarManager: SnackbarManager = koinInject()
             val snackbarHostState = remember { SnackbarHostState() }
+
+            ExternalLinkEffect()
 
             LaunchedEffect(Unit) {
                 snackbarManager.messages.collect { (message, duration) ->

@@ -26,6 +26,7 @@ fun ShowConfirmDialog(
     onConfirm: () -> Unit,
     cancelEnabled: Boolean = true,
     confirmEnabled: Boolean = true,
+    confirmText: String = "确认",
     content: @Composable () -> Unit,
 ) {
     BasicAlertDialog(
@@ -55,7 +56,7 @@ fun ShowConfirmDialog(
                         onClick = onConfirm,
                         enabled = confirmEnabled,
                     ) {
-                        Text("确认")
+                        Text(confirmText)
                     }
                 }
             }

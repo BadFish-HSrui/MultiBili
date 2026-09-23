@@ -1,6 +1,7 @@
 package tv.hsrui.bolo
 
 import android.content.pm.ActivityInfo
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,10 +10,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import tv.hsrui.bolo.utils.url.AppContext
 import tv.hsrui.bolo.player.session.BoloPlaybackSession
+import tv.hsrui.bolo.navigation.ExternalLinkHandler
 import kotlin.math.max
 import kotlin.math.min
 
 class MainActivity : ComponentActivity() {
+    private fun receiveExternalLink(intent: Intent) {
+        if (intent.action != Intent.ACTION_VIEW) return
+        val url = intent.dataString ?: return
+        // 消费宿主 Intent；配置重建不会再次将同一入口入队。
+        intent.data = null
+        ExternalLinkHandler.receiveSystemLink(url)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        receiveExternalLink(intent)
+    }
+
     override fun onStart() {
         super.onStart()
         BoloPlaybackSession.current?.setForeground(true)
@@ -32,6 +48,7 @@ class MainActivity : ComponentActivity() {
         AppContext.instance = application
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        receiveExternalLink(intent)
 
         val widthDp = resources.configuration.screenWidthDp
         val heightDP = resources.configuration.screenHeightDp

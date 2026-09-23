@@ -26,6 +26,7 @@
         <activity
             android:exported="true"
             android:name=".MainActivity"
+            android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
@@ -33,6 +34,49 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <activity-alias
+            android:name="tv.hsrui.bolo.ExternalLinkEntry"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="http"/>
+                <data android:scheme="https"/>
+                <data android:host="bilibili.com"/>
+                <data android:host="www.bilibili.com"/>
+                <data android:host="m.bilibili.com"/>
+                <data android:pathPrefix="/video/"/>
+                <data android:pathPrefix="/bangumi/play/"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="http"/>
+                <data android:scheme="https"/>
+                <data android:host="space.bilibili.com"/>
+                <data android:host="search.bilibili.com"/>
+                <data android:host="b23.tv"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="bilibili" android:host="video"/>
+                <data android:scheme="bilibili" android:host="space"/>
+                <data android:scheme="bilibili" android:host="search"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="bilibili" android:host="bangumi" android:pathPrefix="/season/"/>
+                <data android:scheme="bilibili" android:host="bangumi" android:pathPrefix="/play/"/>
+            </intent-filter>
+        </activity-alias>
     </application>
 
 </manifest>
