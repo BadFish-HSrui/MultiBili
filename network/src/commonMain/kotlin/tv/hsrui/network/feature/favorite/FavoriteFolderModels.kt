@@ -62,6 +62,7 @@ data class FavoriteFolderInfoData(
     val mid: Long = 0,
     @SerialName("attr") private val attributeBits: Int = 0,
     val title: String = "",
+    val intro: String = "",
     @SerialName("cover") private val _cover: String = "",
     @SerialName("fav_state") private val favoriteStateCode: Int = 0,
     @SerialName("media_count") val mediaCount: Int = 0

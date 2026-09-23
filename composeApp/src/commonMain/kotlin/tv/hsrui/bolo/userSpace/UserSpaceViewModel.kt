@@ -34,7 +34,9 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
     private var collectionLoadMoreJob: Job? = null
     private var seriesLoadMoreJob: Job? = null
     private var collectionPlaybackJob: Job? = null
+    private var favoriteReturnJob: Job? = null
     private var collectionPlaybackGeneration = 0
+    private var hasShownSpace = false
 
     init { refreshSpace() }
 
@@ -47,6 +49,7 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
         loadMoreJob?.cancel()
         collectionLoadMoreJob?.cancel()
         seriesLoadMoreJob?.cancel()
+        favoriteReturnJob?.cancel()
         cancelCollectionPlayback()
         _uiState.update {
             it.copy(
@@ -74,6 +77,17 @@ class UserSpaceViewModel(private val mid: Long, private val loginStorage: LoginS
     }
 
     fun refreshTab() = refreshSpace()
+
+    fun onSpaceVisible() {
+        if (!hasShownSpace) {
+            hasShownSpace = true
+            return
+        }
+        if (!loginStorage.isLoggedIn || loginStorage.cookies.dedeUserID != mid || _uiState.value.isRefreshing) return
+        favoriteReturnJob?.cancel()
+        val version = requestVersion
+        favoriteReturnJob = viewModelScope.launch { loadFavorites(version, hidden = false) }
+    }
 
     fun setUploadOrder(order: UserSpaceUploadOrder) {
         if (order == _uiState.value.uploadOrder) return

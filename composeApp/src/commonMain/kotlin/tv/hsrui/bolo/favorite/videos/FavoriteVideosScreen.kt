@@ -28,6 +28,7 @@ import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.dialog.ShowDeleteFavoriteFolderDialog
+import tv.hsrui.bolo.ui.components.dialog.ShowEditFavoriteFolderDialog
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.utils.calculateWithoutBottom
 import tv.hsrui.network.feature.favorite.removeFavoriteVideo
@@ -62,6 +63,7 @@ fun FavoriteVideosScreen(
     }
     val canManage = currentUserMid > 0 && canManageNow()
     var showDeleteFolderDialog by rememberSaveable(mediaId) { mutableStateOf(false) }
+    var showEditFolderDialog by rememberSaveable(mediaId) { mutableStateOf(false) }
     val successState = uiState as? FavoriteVideosUiState.Success
     val folderTitle = successState
         ?.folderTitle
@@ -92,6 +94,7 @@ fun FavoriteVideosScreen(
             onLoadMore = viewModel::loadMoreVideos,
             onRefresh = viewModel::refreshVideos,
             onDeleteFolder = { showDeleteFolderDialog = true },
+            onEditFolder = { showEditFolderDialog = true },
             onSearch = {
                 refreshAfterSearch = true
                 navigator.navigateTo(BoloRoute.Favorite.Search(mediaId))
@@ -115,6 +118,21 @@ fun FavoriteVideosScreen(
                 }
             },
             modifier = Modifier.padding(innerPadding.calculateWithoutBottom())
+        )
+    }
+
+    if (showEditFolderDialog && canManage && successState != null) {
+        ShowEditFavoriteFolderDialog(
+            mediaId = mediaId,
+            folderTitle = successState.folderTitle,
+            folderIntro = successState.folderIntro,
+            isPrivate = successState.isPrivate,
+            canEdit = canManageNow,
+            onCancel = { showEditFolderDialog = false },
+            onEdited = {
+                showEditFolderDialog = false
+                viewModel.refreshVideos()
+            },
         )
     }
 

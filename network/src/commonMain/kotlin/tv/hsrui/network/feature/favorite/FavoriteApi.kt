@@ -80,7 +80,7 @@ suspend fun fetchFavoriteFolderInfo(mediaId: Long): FavoriteFolderInfoResponse {
     return response.body()
 }
 
-suspend fun createFavoriteFolder(title: String, isPrivate: Boolean): FavoriteFolderInfoResponse {
+suspend fun createFavoriteFolder(title: String, intro: String, isPublic: Boolean): FavoriteFolderInfoResponse {
     val loginStorage: LoginStorage = getKoin().get()
 
     val response = ApiClient.httpClient.post(ApiUrls.BASE + ApiUrls.Favorite.CREATE_FOLDER) {
@@ -88,7 +88,28 @@ suspend fun createFavoriteFolder(title: String, isPrivate: Boolean): FavoriteFol
             FormDataContent(
                 Parameters.build {
                     append("title", title.trim())
-                    append("privacy", if (isPrivate) "1" else "0")
+                    append("intro", intro)
+                    append("privacy", if (isPublic) "0" else "1")
+                    append("csrf", loginStorage.cookies.csrf)
+                }
+            )
+        )
+    }
+
+    return response.body()
+}
+
+suspend fun editFavoriteFolder(mediaId: Long, title: String, intro: String, isPublic: Boolean): FavoriteFolderInfoResponse {
+    val loginStorage: LoginStorage = getKoin().get()
+
+    val response = ApiClient.httpClient.post(ApiUrls.BASE + ApiUrls.Favorite.EDIT_FOLDER) {
+        setBody(
+            FormDataContent(
+                Parameters.build {
+                    append("media_id", mediaId.toString())
+                    append("title", title.trim())
+                    append("intro", intro)
+                    append("privacy", if (isPublic) "0" else "1")
                     append("csrf", loginStorage.cookies.csrf)
                 }
             )

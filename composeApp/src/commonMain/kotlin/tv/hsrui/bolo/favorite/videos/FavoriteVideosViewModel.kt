@@ -41,6 +41,8 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
             try {
                 var nextPageNumber = 1
                 var folderTitle = ""
+                var folderIntro = ""
+                var isPrivate = false
                 var isDefault = true
                 var ownerMid = 0L
                 val videos = mutableListOf<FavoriteVideoCard>()
@@ -59,7 +61,12 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                     if (folderTitle.isEmpty()) {
                         folderTitle = result.folderInfo?.title.orEmpty()
                     }
-                    result.folderInfo?.let { isDefault = it.isDefault; ownerMid = it.mid }
+                    result.folderInfo?.let {
+                        folderIntro = it.intro
+                        isPrivate = it.isPrivate
+                        isDefault = it.isDefault
+                        ownerMid = it.mid
+                    }
                     videos += result.videos
                     pageNumber = nextPageNumber
                     canLoadMore = result.hasMore
@@ -69,6 +76,8 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                 if (version != requestVersion) return@launch
                 _uiState.value = FavoriteVideosUiState.Success(
                     folderTitle = folderTitle,
+                    folderIntro = folderIntro,
+                    isPrivate = isPrivate,
                     isDefault = isDefault,
                     videos = videos.distinctBy { it.resourceKey },
                     ownerMid = ownerMid,
@@ -97,6 +106,8 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
             try {
                 var nextPageNumber = pageNumber + 1
                 var folderTitle = currentState.folderTitle
+                var folderIntro = currentState.folderIntro
+                var isPrivate = currentState.isPrivate
                 var isDefault = currentState.isDefault
                 var ownerMid = currentState.ownerMid
                 val videos = mutableListOf<FavoriteVideoCard>()
@@ -115,7 +126,12 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                     if (folderTitle.isEmpty()) {
                         folderTitle = result.folderInfo?.title.orEmpty()
                     }
-                    result.folderInfo?.let { isDefault = it.isDefault; ownerMid = it.mid }
+                    result.folderInfo?.let {
+                        folderIntro = it.intro
+                        isPrivate = it.isPrivate
+                        isDefault = it.isDefault
+                        ownerMid = it.mid
+                    }
                     videos += result.videos
                     pageNumber = nextPageNumber
                     canLoadMore = result.hasMore
@@ -125,6 +141,8 @@ class FavoriteVideosViewModel(private val mediaId: Long) : ViewModel() {
                 if (version != requestVersion) return@launch
                 _uiState.value = FavoriteVideosUiState.Success(
                     folderTitle = folderTitle,
+                    folderIntro = folderIntro,
+                    isPrivate = isPrivate,
                     isDefault = isDefault,
                     videos = (currentState.videos + videos).distinctBy { it.resourceKey },
                     ownerMid = ownerMid,

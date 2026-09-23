@@ -80,6 +80,11 @@ fun UserSpaceScreen(mid: Long, modifier: Modifier = Modifier) {
     val loginStorage: LoginStorage = koinInject()
     val viewModel = viewModel(key = "UserSpace:$mid") { UserSpaceViewModel(mid, loginStorage) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val navigator: Navigator = koinInject()
+    val currentRoute = navigator.backStack.lastOrNull()
+    LaunchedEffect(currentRoute) {
+        if (currentRoute == BoloRoute.User.Space(mid)) viewModel.onSpaceVisible()
+    }
     DisposableEffect(viewModel) {
         onDispose { viewModel.cancelCollectionPlayback() }
     }
