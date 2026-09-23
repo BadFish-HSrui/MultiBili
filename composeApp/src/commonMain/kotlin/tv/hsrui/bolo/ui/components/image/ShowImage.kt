@@ -45,6 +45,7 @@ expect fun ShowImage(
     contentScale: ContentScale = ContentScale.Fit,
     animationEnabled: Boolean = true,
     zoomState: CoilZoomState? = null,
+    onTap: (() -> Unit)? = null,
 )
 
 internal interface ImageAnimation {
@@ -62,6 +63,7 @@ internal fun ShowImage(
     contentScale: ContentScale,
     animationEnabled: Boolean,
     zoomState: CoilZoomState? = null,
+    onTap: (() -> Unit)? = null,
     decoderFactory: Decoder.Factory,
     createAnimation: (Image, Painter, CoroutineScope) -> ImageAnimation?,
 ) {
@@ -122,6 +124,7 @@ internal fun ShowImage(
                     contentScale = contentScale,
                     zoomState = zoomState,
                     scrollBar = null,
+                    onTap = if (onTap == null) null else { _ -> onTap() },
                 )
             } else {
                 AsyncImage(

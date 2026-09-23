@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.remember
 import tv.hsrui.bolo.player.session.BoloPlaybackSession
+import tv.hsrui.bolo.ui.common.player.PlayerStatusBarOverlay
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 
@@ -27,22 +28,25 @@ fun MediaPlaybackScreen(
     },
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    Surface(modifier = modifier.fillMaxSize()) {
-        when (val state = uiState) {
-            is MediaPlaybackUiState.Success -> MediaPlaybackPage(uiState = state, viewModel = viewModel)
-            else -> Column(Modifier.fillMaxSize()) {
-                ShowTopBarWithNavigationButton(title = {})
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    when (state) {
-                        MediaPlaybackUiState.Loading -> CircularProgressIndicator()
-                        is MediaPlaybackUiState.Error -> ShowErrorContent(
-                            message = state.message,
-                            retry = viewModel::loadMedia,
-                        )
-                        is MediaPlaybackUiState.Success -> Unit
+    Box(modifier.fillMaxSize()) {
+        Surface(modifier = Modifier.fillMaxSize()) {
+            when (val state = uiState) {
+                is MediaPlaybackUiState.Success -> MediaPlaybackPage(uiState = state, viewModel = viewModel)
+                else -> Column(Modifier.fillMaxSize()) {
+                    ShowTopBarWithNavigationButton(title = {})
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        when (state) {
+                            MediaPlaybackUiState.Loading -> CircularProgressIndicator()
+                            is MediaPlaybackUiState.Error -> ShowErrorContent(
+                                message = state.message,
+                                retry = viewModel::loadMedia,
+                            )
+                            is MediaPlaybackUiState.Success -> Unit
+                        }
                     }
                 }
             }
         }
+        PlayerStatusBarOverlay()
     }
 }

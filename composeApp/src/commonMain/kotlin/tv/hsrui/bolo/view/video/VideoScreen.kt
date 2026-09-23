@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.remember
 import tv.hsrui.bolo.player.session.BoloPlaybackSession
+import tv.hsrui.bolo.ui.common.player.PlayerStatusBarOverlay
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 
@@ -26,25 +27,28 @@ fun VideoScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    Surface(modifier = modifier.fillMaxSize()) {
-        when (val state = uiState) {
-            is VideoUiState.Success -> {
-                VideoPage(uiState = state, videoViewModel = viewModel)
-            }
-            else -> Column(Modifier.fillMaxSize()) {
-                ShowTopBarWithNavigationButton(title = {})
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    when (state) {
-                        is VideoUiState.Loading -> CircularProgressIndicator()
-                        is VideoUiState.Error -> ShowErrorContent(
-                            message = state.message,
-                            retry = viewModel::loadPlayback,
-                        )
-                        VideoUiState.Empty -> Text("暂无可播放视频")
-                        is VideoUiState.Success -> Unit
+    Box(modifier.fillMaxSize()) {
+        Surface(modifier = Modifier.fillMaxSize()) {
+            when (val state = uiState) {
+                is VideoUiState.Success -> {
+                    VideoPage(uiState = state, videoViewModel = viewModel)
+                }
+                else -> Column(Modifier.fillMaxSize()) {
+                    ShowTopBarWithNavigationButton(title = {})
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        when (state) {
+                            is VideoUiState.Loading -> CircularProgressIndicator()
+                            is VideoUiState.Error -> ShowErrorContent(
+                                message = state.message,
+                                retry = viewModel::loadPlayback,
+                            )
+                            VideoUiState.Empty -> Text("暂无可播放视频")
+                            is VideoUiState.Success -> Unit
+                        }
                     }
                 }
             }
         }
+        PlayerStatusBarOverlay()
     }
 }

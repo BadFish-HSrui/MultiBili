@@ -1,5 +1,6 @@
 package tv.hsrui.bolo.ui.components.image
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,12 +40,13 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogProperties
 import com.github.panpf.zoomimage.CoilZoomState
 import com.github.panpf.zoomimage.rememberCoilZoomState
 import kotlinx.coroutines.launch
+import tv.hsrui.bolo.ui.common.systembar.LightSystemBarContentEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,14 +64,17 @@ fun ShowImageViewer(
     BasicAlertDialog(
         onDismissRequest = onDismissRequest,
         modifier = Modifier.fillMaxSize(),
-        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false),
+        properties = imageViewerDialogProperties(),
     ) {
+        LightSystemBarContentEffect(includeNavigationBar = true)
         val focusRequester = remember { FocusRequester() }
         LaunchedEffect(Unit) { focusRequester.requestFocus() }
         Surface(
             color = Color.Black,
             contentColor = Color.White,
-            modifier = Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+            modifier = Modifier.fillMaxSize().pointerInput(onDismissRequest) {
+                detectTapGestures(onTap = { onDismissRequest() })
+            }.onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyUp) false
                 else when (event.key) {
                     Key.Escape -> { onDismissRequest(); true }
@@ -110,6 +115,7 @@ fun ShowImageViewer(
                                 contentScale = ContentScale.Inside,
                                 animationEnabled = selected && !pager.isScrollInProgress,
                                 zoomState = zoomStates[page],
+                                onTap = onDismissRequest,
                             )
                         }
                     }
