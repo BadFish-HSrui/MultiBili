@@ -14,10 +14,12 @@ import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.ui.common.systembar.LightSystemBarContentEffect
 
 @Composable
-fun PlayerStatusBarOverlay() {
+fun PlayerStatusBarOverlay(isFullscreen: Boolean) {
     if (getPlatform().type == PlatformType.Desktop) return
 
     LightSystemBarContentEffect()
+    if (isFullscreen) return
+
     Box(
         Modifier
             .fillMaxWidth()

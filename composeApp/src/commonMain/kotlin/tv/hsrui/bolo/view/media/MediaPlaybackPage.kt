@@ -50,6 +50,7 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.navigation.openMedia
+import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.player.VideoPlayer
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.player.controls.BoloPlayerControls
@@ -70,6 +71,7 @@ import tv.hsrui.network.utils.formatCountToString
 fun MediaPlaybackPage(
     uiState: MediaPlaybackUiState.Success,
     viewModel: MediaPlaybackViewModel,
+    fullscreenState: PlayerFullscreenState,
     modifier: Modifier = Modifier,
 ) {
     val episode = uiState.episode
@@ -95,6 +97,7 @@ fun MediaPlaybackPage(
     val repliesUiState = repliesViewModel?.uiState?.collectAsState()?.value
 
     PlayerPageLayout(
+        fullscreenState = fullscreenState,
         descContent = { MediaDescPage(uiState = uiState, viewModel = viewModel, modifier = Modifier.fillMaxSize()) },
         replyContent = {
             key(episode?.episodeId) {
@@ -117,7 +120,7 @@ fun MediaPlaybackPage(
             episode != null && playerUiState is VideoPlayerUiState.Success
         },
         modifier = modifier,
-    ) { fullscreenState ->
+    ) {
         if (episode != null) {
             VideoPlayer(
                 title = "${uiState.media.title} ${episode.displayTitle}",

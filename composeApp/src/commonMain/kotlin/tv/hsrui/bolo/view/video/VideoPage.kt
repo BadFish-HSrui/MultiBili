@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.player.VideoPlayer
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.ui.common.player.PlayerPageLayout
@@ -22,6 +23,7 @@ import tv.hsrui.bolo.view.video.reply.VideoReplyPage
 fun VideoPage(
     uiState: VideoUiState.Success,
     videoViewModel: VideoViewModel,
+    fullscreenState: PlayerFullscreenState,
     modifier: Modifier = Modifier
 ) {
     val videoInfo = uiState.video
@@ -34,6 +36,7 @@ fun VideoPage(
     }
     DisposableEffect(detailOwner) { onDispose { detailOwner.viewModelStore.clear() } }
     PlayerPageLayout(
+        fullscreenState = fullscreenState,
         descContent = {
             CompositionLocalProvider(LocalViewModelStoreOwner provides detailOwner) {
                 key(videoInfo.avid) {
@@ -62,7 +65,7 @@ fun VideoPage(
         replyCount = videoInfo.stateCount.reply.toLong(),
         videoAspectRatio = playerInfo.video.aspectRatio.takeIf { playerUiState is VideoPlayerUiState.Success },
         modifier = modifier,
-    ) { fullscreenState ->
+    ) {
         VideoPlayer(
             title = videoInfo.title,
             viewModel = viewModel,

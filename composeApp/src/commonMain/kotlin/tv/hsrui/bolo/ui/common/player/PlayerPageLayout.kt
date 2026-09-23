@@ -43,13 +43,8 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import androidx.navigationevent.NavigationEventInfo
-import androidx.navigationevent.compose.NavigationBackHandler
-import androidx.navigationevent.compose.rememberNavigationEventState
 import kotlinx.coroutines.launch
-import tv.hsrui.bolo.player.PlayerFullscreenEffect
 import tv.hsrui.bolo.player.PlayerFullscreenState
-import tv.hsrui.bolo.player.rememberPlayerFullscreenState
 import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.network.utils.formatCountToString
 import kotlin.math.roundToInt
@@ -74,28 +69,20 @@ private fun Modifier.playerBounds(
 
 @Composable
 fun PlayerPageLayout(
+    fullscreenState: PlayerFullscreenState,
     descContent: @Composable () -> Unit,
     replyContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     replyCount: Long? = null,
     videoAspectRatio: Float? = null,
-    playerContent: @Composable (PlayerFullscreenState) -> Unit,
+    playerContent: @Composable () -> Unit,
 ) {
     val currentDescContent by rememberUpdatedState(descContent)
     val currentReplyContent by rememberUpdatedState(replyContent)
     val currentReplyCount by rememberUpdatedState(replyCount)
-    val fullscreenState = rememberPlayerFullscreenState()
     val isFullscreen = fullscreenState.isFullscreen
-    val fullscreenBackState = rememberNavigationEventState(NavigationEventInfo.None)
     var rootOffsetInRoot by remember { mutableStateOf(IntOffset.Zero) }
     var playerBoundsInRoot by remember { mutableStateOf(IntRect.Zero) }
-
-    PlayerFullscreenEffect(fullscreenState)
-    NavigationBackHandler(
-        state = fullscreenBackState,
-        isBackEnabled = fullscreenState.canExitFullscreen,
-        onBackCompleted = fullscreenState::exitFullscreen
-    )
 
     val videoInfoBar = remember {
         movableContentOf {
@@ -219,7 +206,7 @@ fun PlayerPageLayout(
             }
 
             Box(modifier = playerModifier) {
-                playerContent(fullscreenState)
+                playerContent()
             }
         }
     }
