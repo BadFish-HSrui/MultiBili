@@ -51,6 +51,7 @@ internal fun ShowUserInfoLayout(
     signMinLines: Int = 1,
     onClick: (() -> Unit)? = null,
     onUserClick: (() -> Unit)? = null,
+    nameTrailingContent: @Composable RowScope.() -> Unit = {},
     statistics: @Composable RowScope.() -> Unit,
 ) {
     val userClickModifier = if (onUserClick == null) Modifier else Modifier.clickable(onClick = onUserClick)
@@ -85,23 +86,26 @@ internal fun ShowUserInfoLayout(
                 }
             }
             Column(modifier = Modifier.weight(1F).padding(start = 8.dp).wrapContentHeight()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(shape = CircleShape, color = BiliColor.getLevelColor(level)) {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Row(modifier = Modifier.weight(1F), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(shape = CircleShape, color = BiliColor.getLevelColor(level)) {
+                            Text(
+                                text = levelString,
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(horizontal = 4.dp),
+                            )
+                        }
                         Text(
-                            text = levelString,
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier.padding(horizontal = 4.dp),
+                            text = name,
+                            textAlign = TextAlign.Center,
+                            color = if (isVip) BiliColor.ThemeColor else LocalContentColor.current,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1F, fill = false).padding(horizontal = 4.dp).then(userClickModifier),
                         )
                     }
-                    Text(
-                        text = name,
-                        textAlign = TextAlign.Center,
-                        color = if (isVip) BiliColor.ThemeColor else LocalContentColor.current,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1F, fill = false).padding(horizontal = 4.dp).then(userClickModifier),
-                    )
+                    nameTrailingContent()
                 }
                 Text(
                     text = sign.ifEmpty { "这个人很懒，没有签名喵" },

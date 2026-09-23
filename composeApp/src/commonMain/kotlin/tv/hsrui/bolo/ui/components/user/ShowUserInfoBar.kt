@@ -2,6 +2,7 @@ package tv.hsrui.bolo.ui.components.user
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
@@ -9,6 +10,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -21,11 +23,18 @@ import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.ui.components.button.RelationButton
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
+import tv.hsrui.network.login.storage.LoginStorage
 import tv.hsrui.network.utils.formatCountToString
 
 @Composable
 fun ShowUserInfoBar(mid: Long, modifier: Modifier = Modifier, refreshKey: Int = 0) {
+    val loginStorage: LoginStorage = koinInject()
+    val currentUserMid by loginStorage.currentUserMidFlow.collectAsStateWithLifecycle(
+        initialValue = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L,
+    )
     val viewModel = viewModel(key = "UserInfoBar:$mid") { UserInfoBarViewModel(mid) }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -56,6 +65,17 @@ fun ShowUserInfoBar(mid: Long, modifier: Modifier = Modifier, refreshKey: Int = 
             vipTypeString = "大会员",
             modifier = modifier,
             shape = CardDefaults.shape,
+            nameTrailingContent = {
+                if (mid > 0 && mid != currentUserMid) {
+                    key(mid, currentUserMid, refreshKey) {
+                        RelationButton(
+                            upName = state.info.name,
+                            mid = mid,
+                            modifier = Modifier.height(24.dp),
+                        )
+                    }
+                }
+            },
         ) {
             Layout(
                 modifier = Modifier.fillMaxWidth(),
