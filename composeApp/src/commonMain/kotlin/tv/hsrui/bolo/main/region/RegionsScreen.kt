@@ -8,17 +8,35 @@ import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import tv.hsrui.network.feature.region.Region
 
 @Composable
-fun RegionsScreen(modifier: Modifier = Modifier) {
+fun RegionsScreen(
+    modifier: Modifier = Modifier,
+    reselectEvents: Flow<Unit>? = null,
+) {
     val tabs = Region.entries
     val pagerState = rememberPagerState { tabs.size }
     val coroutineScope = rememberCoroutineScope()
+
+    val pageReselectEvents = remember(reselectEvents, pagerState) {
+        List(tabs.size) { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
+    }
+    LaunchedEffect(reselectEvents, pagerState) {
+        reselectEvents?.collect {
+            if (!pagerState.isScrollInProgress) {
+                pageReselectEvents[pagerState.currentPage].tryEmit(Unit)
+            }
+        }
+    }
 
     Column(modifier = modifier) {
         SecondaryScrollableTabRow(selectedTabIndex = pagerState.currentPage) {
@@ -33,7 +51,10 @@ fun RegionsScreen(modifier: Modifier = Modifier) {
         }
 
         HorizontalPager(state = pagerState, beyondViewportPageCount = 1) { page ->
-            RegionFeedPage(tabs[page])
+            val activeReselectEvents = pageReselectEvents[page].takeIf {
+                pagerState.currentPage == page && !pagerState.isScrollInProgress
+            }
+            RegionFeedPage(tabs[page], reselectEvents = activeReselectEvents)
         }
     }
 }

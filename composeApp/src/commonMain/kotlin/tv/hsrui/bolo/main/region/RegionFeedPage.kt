@@ -5,6 +5,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.Flow
 import tv.hsrui.bolo.ui.common.videosPage.VideosGridPage
 import tv.hsrui.network.feature.region.Region
 
@@ -12,12 +13,14 @@ import tv.hsrui.network.feature.region.Region
 fun RegionFeedPage(
     region: Region,
     regionFeedViewModel: RegionFeedViewModel = viewModel(key = region.name) { RegionFeedViewModel(region) },
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    reselectEvents: Flow<Unit>? = null,
 ) {
     val regionFeedUiState by regionFeedViewModel.uiState.collectAsState()
     VideosGridPage(
         uiState = regionFeedUiState,
         viewModel = regionFeedViewModel,
+        reselectEvents = reselectEvents,
         modifier = modifier,
     )
 }

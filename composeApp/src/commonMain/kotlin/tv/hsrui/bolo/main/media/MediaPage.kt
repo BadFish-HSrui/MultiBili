@@ -34,6 +34,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.navigation.openMedia
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
@@ -51,6 +53,7 @@ fun MediaPage(
     mediaViewModel: MediaViewModel = viewModel(key = "media:$seasonType") {
         MediaViewModel(seasonType = seasonType)
     },
+    reselectEvents: Flow<Unit>? = null,
 ) {
     val uiState by mediaViewModel.uiState.collectAsState()
     val filterUiState by mediaViewModel.filterUiState.collectAsState()
@@ -73,6 +76,25 @@ fun MediaPage(
     }
     val scope = rememberCoroutineScope()
     val success = uiState as? MediaUiState.Success
+
+    LaunchedEffect(reselectEvents, mediaViewModel, gridState) {
+        var scrollJob: Job? = null
+        reselectEvents?.collect {
+            if (scrollJob?.isActive == true) return@collect
+            val currentState = mediaViewModel.uiState.value
+            val currentSuccess = currentState as? MediaUiState.Success
+            val hasContent = currentSuccess?.media?.isNotEmpty() == true
+            val isAtTop = gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
+            if (hasContent && !isAtTop) {
+                scrollJob = launch { gridState.animateScrollToItem(0) }
+            } else if (currentState !is MediaUiState.Loading &&
+                currentSuccess?.isRefreshing != true && currentSuccess?.isLoadingMore != true
+            ) {
+                gridState.requestScrollToItem(0)
+                mediaViewModel.refreshMedia()
+            }
+        }
+    }
 
     LaunchedEffect(showFilterDialog) {
         if (showFilterDialog) mediaViewModel.loadMediaConditions()

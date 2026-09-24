@@ -5,17 +5,20 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.Flow
 import tv.hsrui.bolo.ui.common.videosPage.VideosGridPage
 
 @Composable
 fun RecommendPage(
     modifier: Modifier = Modifier,
-    recommendViewModel: RecommendViewModel = viewModel { RecommendViewModel() }
+    recommendViewModel: RecommendViewModel = viewModel { RecommendViewModel() },
+    reselectEvents: Flow<Unit>? = null,
 ) {
     val recommendUiState by recommendViewModel.uiState.collectAsState()
     VideosGridPage(
         uiState = recommendUiState,
         viewModel = recommendViewModel,
+        reselectEvents = reselectEvents,
         modifier = modifier
     )
 }

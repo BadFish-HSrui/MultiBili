@@ -18,6 +18,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.ui.components.dropdownMenu.items.WatchLaterMenuItem
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
@@ -33,8 +35,27 @@ fun VideosGridPage(
     viewModel: VideosViewModel,
     modifier: Modifier = Modifier,
     emptyMessage: String? = null,
+    reselectEvents: Flow<Unit>? = null,
     otherButton: @Composable FloatingActionButtonMenuScope.() -> Unit = {},
 ) {
+    val videoGridState = rememberLazyGridState()
+    LaunchedEffect(reselectEvents, viewModel, videoGridState) {
+        var scrollJob: Job? = null
+        reselectEvents?.collect {
+            if (scrollJob?.isActive == true) return@collect
+            val currentState = viewModel.uiState.value
+            val hasContent = currentState is VideosUiState.Success && currentState.videos.isNotEmpty()
+            val isAtTop = videoGridState.firstVisibleItemIndex == 0 &&
+                videoGridState.firstVisibleItemScrollOffset == 0
+            if (hasContent && !isAtTop) {
+                scrollJob = launch { videoGridState.animateScrollToItem(0) }
+            } else if (currentState !is VideosUiState.Loading && !viewModel.isLoading) {
+                videoGridState.requestScrollToItem(0)
+                viewModel.refreshVideos()
+            }
+        }
+    }
+
     VideosGridPage(
         uiState = uiState,
         isLoading = viewModel.isLoading,
@@ -42,6 +63,7 @@ fun VideosGridPage(
         onLoadMore = viewModel::loadMoreVideos,
         modifier = modifier,
         emptyMessage = emptyMessage,
+        videoGridState = videoGridState,
         otherButton = otherButton,
     )
 }

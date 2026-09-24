@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -31,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import multibili.composeapp.generated.resources.AppIconSquare
 import multibili.composeapp.generated.resources.Res
 import org.jetbrains.compose.resources.painterResource
@@ -50,7 +53,15 @@ import tv.hsrui.network.login.storage.LoginStorage
 @Composable
 fun MainScreen(modifier: Modifier = Modifier) {
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.HOME) }
-    val onClick: (MainTab) -> Unit = { selectedTab = it }
+    val eventTab = selectedTab
+    val reselectEvents = remember(eventTab) { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
+    val onClick: (MainTab) -> Unit = { tab ->
+        if (selectedTab != tab) {
+            selectedTab = tab
+        } else if (eventTab == tab) {
+            reselectEvents.tryEmit(Unit)
+        }
+    }
     val saveableStateHolder = rememberSaveableStateHolder()
     val isVerticalLayout = isCompact()
     val navigator: Navigator = koinInject()
@@ -121,18 +132,22 @@ fun MainScreen(modifier: Modifier = Modifier) {
                         }
                     }
                 }
-                MainContent(selectedTab, Modifier.weight(1F).fillMaxHeight())
+                MainContent(selectedTab, Modifier.weight(1F).fillMaxHeight(), reselectEvents)
             }
         }
     }
 }
 
 @Composable
-private fun MainContent(tab: MainTab, modifier: Modifier = Modifier) {
+private fun MainContent(
+    tab: MainTab,
+    modifier: Modifier = Modifier,
+    reselectEvents: Flow<Unit>? = null,
+) {
     when (tab) {
-        MainTab.HOME -> HomeScreen(modifier)
-        MainTab.REGION -> RegionsScreen(modifier)
-        MainTab.MEDIA -> MediaScreen(modifier)
+        MainTab.HOME -> HomeScreen(modifier, reselectEvents)
+        MainTab.REGION -> RegionsScreen(modifier, reselectEvents)
+        MainTab.MEDIA -> MediaScreen(modifier, reselectEvents)
     }
 }
 
