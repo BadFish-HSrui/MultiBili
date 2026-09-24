@@ -1,5 +1,8 @@
 # 构建指南
 
+> [!IMPORTANT]
+> 版本号构建系统依赖Git，请完整克隆仓库，不要直接下载源码压缩包。
+
 ## 安装依赖
 
 调试推荐使用安装了[Kotlin Multiplatform 插件](https://plugins.jetbrains.com/plugin/14936-kotlin-multiplatform)的[Android Studio](https://developer.android.com/studio)加载本项目；构建可完全使用命令行。
@@ -80,13 +83,6 @@ brew install cocoapods
 ```bash
 sudo gem install cocoapods
 ```
-
-## 构建前置条件
-
-- 需要完整 Git 历史；不要使用浅克隆或源码压缩包。
-- 首次构建需要联网。
-- 每个平台的产物只能在该平台上构建，其他平台的打包任务会被跳过。
-- Android 目标同时需要 Android SDK/NDK 与原生播放器构建工具。
 
 ## 编译目标
 
