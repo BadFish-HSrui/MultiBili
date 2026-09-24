@@ -220,6 +220,15 @@ internal class NativePlayerEnvironment(
     init {
         val search = mutableListOf<String>()
         if (mac) search += listOf("$brew/bin", "$brew/sbin")
+        if (windows) {
+            // 优先使用同一套 MSYS2 工具，避免命中 WindowsApps 的 Bash/Python 执行别名。
+            val msysRoot = File.listRoots().orEmpty().asSequence()
+                .map { it.resolve("msys64") }
+                .firstOrNull { it.resolve("ucrt64/bin/gcc.exe").isFile && it.resolve("usr/bin/bash.exe").isFile }
+            if (msysRoot != null) {
+                search += listOf(msysRoot.resolve("ucrt64/bin").path, msysRoot.resolve("usr/bin").path)
+            }
+        }
         search += environment[pathKey].orEmpty().split(File.pathSeparator).filter(String::isNotBlank)
         environment[pathKey] = search.distinct().joinToString(File.pathSeparator)
         environment["LC_ALL"] = "C"
