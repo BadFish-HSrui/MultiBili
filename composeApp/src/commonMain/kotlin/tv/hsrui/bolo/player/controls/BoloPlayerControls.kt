@@ -223,7 +223,7 @@ fun BoloPlayerControls(
                     contentDescription = when {
                         !isDesktop && isFullscreen -> "退出全屏"
                         infoOpen -> "关闭播放信息"
-                        fullscreenState.canExitFullscreen -> "退出全屏"
+                        fullscreenState.shouldHandleFullscreenBack -> "退出全屏"
                         else -> "返回"
                     },
                     tint = navigationContentColor,
@@ -468,9 +468,7 @@ fun BoloPlayerControls(
         showSeekFeedback(direction)
     }
     fun toggleDesktopFullscreen() {
-        val isExternalSystemFullscreen = fullscreenState.isSystemFullscreen &&
-            !fullscreenState.isSystemFullscreenOwnedByPlayer
-        if (isExternalSystemFullscreen || settings.playerDesktopDefaultWindowFullscreenEnabled) {
+        if (fullscreenState.isManualSystemFullscreen || settings.playerDesktopDefaultWindowFullscreenEnabled) {
             fullscreenState.toggleWindowFullscreen()
         } else {
             fullscreenState.toggleFullscreen()
@@ -1316,9 +1314,7 @@ fun BoloPlayerControls(
                             }
                         }
 
-                        if (!isDesktop || !fullscreenState.isSystemFullscreen ||
-                            fullscreenState.isSystemFullscreenOwnedByPlayer
-                        ) {
+                        if (!fullscreenState.isManualSystemFullscreen) {
                             val isSystemFullscreen = if (isDesktop) fullscreenState.isSystemFullscreen else isFullscreen
                             IconButton(
                                 onClick = fullscreenState::toggleFullscreen,

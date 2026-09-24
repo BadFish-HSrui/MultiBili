@@ -41,8 +41,13 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
     internal var releaseSystemFullscreenOwnership: (() -> Unit)? = null
 
     val isChangingSystemFullscreen: Boolean get() = systemFullscreenRequest != null
-    val canExitFullscreen: Boolean
-        get() = isFullscreen || isSystemFullscreen || isChangingSystemFullscreen || isChangingIosFullscreen
+    internal val isManualSystemFullscreen: Boolean
+        get() = isDesktop && (isSystemFullscreen || systemFullscreenRequest == true) &&
+            !isSystemFullscreenOwnedByPlayer
+    val shouldHandleFullscreenBack: Boolean
+        // 手动系统全屏属于应用窗口，返回直接离页，不先收起播放器布局。
+        get() = !isManualSystemFullscreen &&
+            (isFullscreen || isSystemFullscreen || isChangingSystemFullscreen || isChangingIosFullscreen)
 
     fun toggleWindowFullscreen() {
         if (usesIosFullscreen) {
@@ -67,6 +72,7 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
     fun exitFullscreen() {
         when {
             usesIosFullscreen -> requestIosFullscreen(false)
+            isManualSystemFullscreen -> Unit
             isChangingSystemFullscreen -> Unit
             isSystemFullscreen -> requestSystemFullscreen(false)
             else -> isFullscreen = false
@@ -95,6 +101,7 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
 
     private fun requestSystemFullscreen(fullscreen: Boolean) {
         if (isChangingSystemFullscreen) return
+        if (!fullscreen && !isSystemFullscreenOwnedByPlayer) return
         if (fullscreen) {
             fullscreenBeforeSystem = isFullscreen
             isFullscreen = true

@@ -101,12 +101,21 @@ internal object DesktopPlayerFullscreenWindow {
         player?.releaseSystemFullscreenOwnership = null
         player = state
         state.releaseSystemFullscreenOwnership = {
-            if (fullscreenOwner === state) fullscreenOwner = null
+            if (fullscreenOwner === state) {
+                fullscreenOwner = null
+                exitAfterEnter = false
+            }
         }
         state.updateSystemFullscreen(isSystemFullscreen, ownedByPlayer = fullscreenOwner === state)
     }
 
     fun unbindPlayer(state: PlayerFullscreenState) {
+        if (player === state && state.systemFullscreenRequest == true &&
+            state.isManualSystemFullscreen && requestedFullscreen == null
+        ) {
+            // 交接后直接离页时，Effect 可能尚未提交进入请求，由宿主继续完成。
+            requestFullscreen(state, true)
+        }
         state.releaseSystemFullscreenOwnership = null
         if (player === state) player = null
         if (requestOwner === state) requestOwner = null
@@ -120,9 +129,11 @@ internal object DesktopPlayerFullscreenWindow {
     }
 
     fun requestFullscreen(state: PlayerFullscreenState, fullscreen: Boolean) {
-        if (player !== state) return
+        if (player !== state || state.systemFullscreenRequest != fullscreen) return
         observeWindow()
-        if (requestedFullscreen != null || nativeTransition || window == null || isSystemFullscreen == fullscreen) {
+        if (requestedFullscreen != null || nativeTransition || window == null || isSystemFullscreen == fullscreen ||
+            (!fullscreen && fullscreenOwner !== state)
+        ) {
             state.completeSystemFullscreenRequest(isSystemFullscreen, ownedByPlayer = fullscreenOwner === state)
             return
         }
@@ -130,10 +141,10 @@ internal object DesktopPlayerFullscreenWindow {
     }
 
     fun onKeyEvent(event: KeyEvent): Boolean {
-        val state = player ?: return false
         if (event.key != Key.Escape) return false
         return when (event.type) {
             KeyEventType.KeyDown -> {
+                val state = player ?: return false
                 if (!escapePressed) {
                     escapePressed = true
                     state.goBack()

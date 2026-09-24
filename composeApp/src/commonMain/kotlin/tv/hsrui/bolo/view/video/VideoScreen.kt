@@ -41,7 +41,7 @@ fun VideoScreen(
     PlayerFullscreenEffect(fullscreenState)
     NavigationBackHandler(
         state = fullscreenBackState,
-        isBackEnabled = fullscreenState.canExitFullscreen,
+        isBackEnabled = fullscreenState.shouldHandleFullscreenBack,
         onBackCompleted = fullscreenState::exitFullscreen,
     )
 
@@ -59,7 +59,10 @@ fun VideoScreen(
                     VideoPage(uiState = state, videoViewModel = viewModel, fullscreenState = fullscreenState)
                 }
                 else -> Column(Modifier.fillMaxSize()) {
-                    ShowTopBarWithNavigationButton(title = {})
+                    ShowTopBarWithNavigationButton(
+                        onBack = if (fullscreenState.isDesktop) fullscreenState::goBack else null,
+                        title = {},
+                    )
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         when (state) {
                             is VideoUiState.Loading -> CircularProgressIndicator()

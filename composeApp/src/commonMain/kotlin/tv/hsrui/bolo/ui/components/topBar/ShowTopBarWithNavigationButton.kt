@@ -28,6 +28,7 @@ fun ShowTopBarWithNavigationButton(
     modifier: Modifier = Modifier,
     goBackBefore: BoloRoute? = null,
     actions: @Composable RowScope.() -> Unit = {},
+    onBack: (() -> Unit)? = null,
     title: @Composable () -> Unit = { Text(stringResource(Res.string.app_name)) }
 ) {
     val navigator: Navigator = koinInject()
@@ -39,7 +40,8 @@ fun ShowTopBarWithNavigationButton(
             Row {
                 IconButton(
                     onClick = {
-                        if (goBackBefore == null) navigator.goBack()
+                        if (onBack != null) onBack()
+                        else if (goBackBefore == null) navigator.goBack()
                         else navigator.goBackBefore(goBackBefore)
                     },
                     modifier = Modifier.size(40.dp)

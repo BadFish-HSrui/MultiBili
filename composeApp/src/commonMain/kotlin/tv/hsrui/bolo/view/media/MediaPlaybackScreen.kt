@@ -43,7 +43,7 @@ fun MediaPlaybackScreen(
     PlayerFullscreenEffect(fullscreenState)
     NavigationBackHandler(
         state = fullscreenBackState,
-        isBackEnabled = fullscreenState.canExitFullscreen,
+        isBackEnabled = fullscreenState.shouldHandleFullscreenBack,
         onBackCompleted = fullscreenState::exitFullscreen,
     )
     Box(
@@ -62,7 +62,10 @@ fun MediaPlaybackScreen(
                     fullscreenState = fullscreenState,
                 )
                 else -> Column(Modifier.fillMaxSize()) {
-                    ShowTopBarWithNavigationButton(title = {})
+                    ShowTopBarWithNavigationButton(
+                        onBack = if (fullscreenState.isDesktop) fullscreenState::goBack else null,
+                        title = {},
+                    )
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         when (state) {
                             MediaPlaybackUiState.Loading -> CircularProgressIndicator()
