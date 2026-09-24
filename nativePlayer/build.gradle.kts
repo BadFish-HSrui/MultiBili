@@ -12,6 +12,9 @@ fun nativeTask(name: String, nativeCommand: String) = tasks.register<NativePlaye
         .orElse(Runtime.getRuntime().availableProcessors().coerceAtMost(12)))
 }
 nativeTask("prepareAndroidNative", "android")
-nativeTask("prepareIosNative", "ios")
+nativeTask("prepareIosNative", "ios").configure {
+    val isMacHost = System.getProperty("os.name").startsWith("Mac")
+    onlyIf("iOS native libraries require macOS and Xcode") { isMacHost }
+}
 nativeTask("prepareDesktopNative", "desktop")
 nativeTask("checkNativeSources", "check-sources")

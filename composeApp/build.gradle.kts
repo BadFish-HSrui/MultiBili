@@ -21,6 +21,7 @@ plugins {
 
 val appVersionMetadata = rootProject.extra["appVersionMetadata"] as ResolvedVersionMetadata
 val iosDeploymentTarget = "16.0"
+val isMacHost = System.getProperty("os.name").startsWith("Mac")
 val (appVersionMajor, appVersionMinor) = appVersionMetadata.coreVersion.split('.')
 val windowsPackageVersion =
     "$appVersionMajor.$appVersionMinor.${appVersionMetadata.buildNumber}"
@@ -208,7 +209,7 @@ kotlin.sourceSets.named("jvmMain") { resources.srcDir(desktopNativeResources) }
 tasks.matching { it.name == "jvmProcessResources" }.configureEach {
     dependsOn(":nativePlayer:prepareDesktopNative")
 }
-if (System.getProperty("os.name").startsWith("Mac")) {
+if (isMacHost) {
     // Xcode 的 PATH 可能不含 Homebrew；普通及 synthetic Pod 安装共用自动查找结果。
     val cocoaPodsExecutable = providers.environmentVariable("PATH").orElse("").map { path ->
         (path.split(File.pathSeparator) + listOf("/opt/homebrew/bin", "/usr/local/bin"))
@@ -223,5 +224,10 @@ if (System.getProperty("os.name").startsWith("Mac")) {
     }
 }
 tasks.matching { it.name == "podspec" || it.name.startsWith("podGen") || it.name == "podInstall" || it.name.startsWith("podInstallSynthetic") || it.name == "generateDefBoloNativePlayer" || it.name.startsWith("cinteropBoloNativePlayer") }.configureEach {
-    dependsOn(":nativePlayer:prepareIosNative")
+    if (isMacHost) {
+        dependsOn(":nativePlayer:prepareIosNative")
+    } else {
+        // 非 macOS 无法生成本地 Pod；同时跳过任务，避免校验尚未生成的输入目录。
+        enabled = false
+    }
 }
