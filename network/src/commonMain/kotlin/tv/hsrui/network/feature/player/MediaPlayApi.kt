@@ -9,7 +9,8 @@ import tv.hsrui.network.constant.ApiUrls
 suspend fun fetchMediaPlayInfo(episodeId: Long): VideoSource {
     return ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.Play.MEDIA) {
         parameter("ep_id", episodeId)
-        parameter("fnval", 16)
+        parameter("qn", 120)
+        parameter("fnval", 2192)
         parameter("fnver", 0)
         parameter("fourk", 1)
         parameter("voice_balance", 1)

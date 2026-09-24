@@ -15,8 +15,8 @@ suspend fun fetchVideoPlayInfo(
         buildWithWbi {
             parameter("avid", avid)
             parameter("cid", cid)
-            parameter("qn", 4048)
-            parameter("fnval", 16)
+            parameter("qn", 120)
+            parameter("fnval", 2192)
             parameter("fourk", 1)
             parameter("try_look", 1)
             parameter("voice_balance", 1)
