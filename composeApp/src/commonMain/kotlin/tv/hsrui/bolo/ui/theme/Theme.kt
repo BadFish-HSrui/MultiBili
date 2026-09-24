@@ -10,6 +10,8 @@ import androidx.compose.ui.unit.Density
 import com.materialkolor.DynamicMaterialExpressiveTheme
 import com.materialkolor.PaletteStyle
 import com.materialkolor.rememberDynamicMaterialThemeState
+import tv.hsrui.bolo.PlatformType
+import tv.hsrui.bolo.getPlatform
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -25,7 +27,14 @@ fun AppTheme(
 
     val density = LocalDensity.current
     CompositionLocalProvider(
-        LocalDensity provides Density(density = density.density, fontScale = 1f)
+        LocalDensity provides Density(
+            density = density.density,
+            fontScale = when(getPlatform().type) {
+                PlatformType.Ios -> 1.08F
+                PlatformType.Android -> 1F
+                PlatformType.Desktop -> 1.1F
+            }
+        )
     ) {
         DynamicMaterialExpressiveTheme(
             state = dynamicThemeState,
