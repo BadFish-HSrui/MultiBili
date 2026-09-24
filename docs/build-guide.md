@@ -8,7 +8,8 @@
 调试推荐使用安装了[Kotlin Multiplatform 插件](https://plugins.jetbrains.com/plugin/14936-kotlin-multiplatform)的[Android Studio](https://developer.android.com/studio)加载本项目；构建可完全使用命令行。
 
 ### JDK
-安装 JDK 21 [Oracle JDK](https://www.oracle.com/cn/java/technologies/downloads/)
+安装 JBR-SDK 25 [JetBrains/JetBrainsRuntime](https://github.com/JetBrains/JetBrainsRuntime/releases)，并添加到 `JAVA_HOME`
+> 下载你的编译设备架构对应 **`JBRSDK`**，不要下载 `JBR (vanilla, bundled by default)` 不能用来打包
 
 ### 原生播放器构建工具
 
