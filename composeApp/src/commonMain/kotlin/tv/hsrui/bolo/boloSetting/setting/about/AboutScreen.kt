@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +32,7 @@ import multibili.composeapp.generated.resources.github_repo_url
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import tv.hsrui.bolo.BuildInfo
+import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.utils.url.openUrl
 
 @Preview(showBackground = true)
@@ -38,6 +40,7 @@ import tv.hsrui.bolo.utils.url.openUrl
 fun AboutScreen(modifier: Modifier = Modifier) {
     val githubRepoUrlString = stringResource(Res.string.github_repo_url)
     val scope = rememberCoroutineScope()
+    val jvmRuntimeDescription = remember { getPlatform().jvmRuntimeDescription }
 
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
         Column(
@@ -59,6 +62,13 @@ fun AboutScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(top = 8.dp)
             )
             Text("tv.hsrui.bolo / ${BuildInfo.appDisplayVersion}")
+            jvmRuntimeDescription?.let { description ->
+                Text(
+                    text = "JVM：$description",
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
 
             Surface(
                 onClick = { scope.launch { openUrl(githubRepoUrlString) } },

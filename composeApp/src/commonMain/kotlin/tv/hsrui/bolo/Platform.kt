@@ -9,7 +9,8 @@ enum class PlatformType {
 data class Platform(
     val name: String,
     val deviceCode: String,
-    val type: PlatformType
+    val type: PlatformType,
+    val jvmRuntimeDescription: String? = null
 )
 
 expect fun getPlatform(): Platform
