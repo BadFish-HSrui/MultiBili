@@ -1,5 +1,6 @@
 package tv.hsrui.bolo
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -11,7 +12,6 @@ import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneSt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
@@ -22,6 +22,8 @@ import org.koin.compose.koinInject
 import org.koin.dsl.KoinConfiguration
 import org.koin.dsl.koinConfiguration
 import tv.hsrui.bolo.boloSetting.BoloSettingsModule
+import tv.hsrui.bolo.boloSetting.AppThemeMode
+import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.ExternalLinkEffect
 import tv.hsrui.bolo.navigation.Navigator
@@ -31,6 +33,7 @@ import tv.hsrui.bolo.storage.appData.AppDataStorageModule
 import tv.hsrui.bolo.storage.kSafe.KSafeModule
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarModule
+import tv.hsrui.bolo.ui.common.systembar.AppSystemBarThemeEffect
 import tv.hsrui.bolo.ui.theme.AppTheme
 import tv.hsrui.network.feature.account.myinfo.MyAccountInfoModule
 import tv.hsrui.network.login.storage.LoginStorageModule
@@ -55,8 +58,17 @@ fun koinConfig(): KoinConfiguration {
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun App() {
-    AppTheme {
-        KoinApplication(configuration = koinConfig()) {
+    val configuration = remember { koinConfig() }
+    KoinApplication(configuration = configuration) {
+        val settings: BoloSettings = koinInject()
+        val systemDarkTheme = isSystemInDarkTheme()
+        val isDarkTheme = when (settings.appThemeMode) {
+            AppThemeMode.Dark -> true
+            AppThemeMode.Light -> false
+            AppThemeMode.Auto -> systemDarkTheme
+        }
+        AppTheme(isDarkTheme = isDarkTheme) {
+            AppSystemBarThemeEffect(isDarkTheme)
             val navigator: Navigator = koinInject()
             val snackbarManager: SnackbarManager = koinInject()
             val snackbarHostState = remember { SnackbarHostState() }

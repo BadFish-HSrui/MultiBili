@@ -17,6 +17,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.boloSetting.AppThemeMode
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
@@ -54,6 +58,31 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
             ) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("界面设置", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))
+                        Card(Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("应用主题", style = MaterialTheme.typography.bodyLarge)
+                                Spacer(Modifier.weight(1f))
+                                SingleChoiceSegmentedButtonRow {
+                                    AppThemeMode.entries.forEachIndexed { index, mode ->
+                                        SegmentedButton(
+                                            selected = mode == settings.appThemeMode,
+                                            onClick = { settings.appThemeMode = mode },
+                                            shape = SegmentedButtonDefaults.itemShape(
+                                                index = index,
+                                                count = AppThemeMode.entries.size,
+                                            ),
+                                            modifier = Modifier.padding(vertical = 8.dp),
+                                        ) {
+                                            Text(mode.title, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         Text("外部链接", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))
                         Card(Modifier.fillMaxWidth()) {
                             Row(

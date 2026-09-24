@@ -11,6 +11,19 @@ import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import kotlin.math.roundToInt
 
 class BoloSettings(settingsKSafe: KSafePlain) {
+    private var storedAppThemeMode by settingsKSafe("auto", key = "app_theme_mode")
+    private var currentAppThemeMode by mutableStateOf(
+        AppThemeMode.entries.firstOrNull { it.storedValue == storedAppThemeMode } ?: AppThemeMode.Auto,
+    )
+
+    var appThemeMode: AppThemeMode
+        get() = currentAppThemeMode
+        set(value) {
+            if (value == currentAppThemeMode) return
+            storedAppThemeMode = value.storedValue
+            currentAppThemeMode = value
+        }
+
     private var storedAppClipboardLinkRecognitionEnabled by settingsKSafe(
         false, key = "app_clipboard_link_recognition_enabled",
     )

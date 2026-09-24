@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import tv.hsrui.bolo.ui.common.systembar.SystemBarAppearance
 
 @Composable
 actual fun PlayerFullscreenEffect(fullscreenState: PlayerFullscreenState) {
@@ -84,6 +85,7 @@ private fun hideSystemBars(activity: Activity) {
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        SystemBarAppearance.apply(window)
     }
 }
 
@@ -94,5 +96,6 @@ private fun showSystemBars(activity: Activity, originalSystemUiVisibility: Int) 
     } else {
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = originalSystemUiVisibility
+        SystemBarAppearance.apply(window)
     }
 }

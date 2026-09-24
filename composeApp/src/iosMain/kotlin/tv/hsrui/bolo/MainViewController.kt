@@ -5,6 +5,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.window.ComposeUIViewController
 import platform.UIKit.UIStatusBarStyle
 import platform.UIKit.UIStatusBarStyleLightContent
+import platform.UIKit.UIStatusBarStyleDarkContent
 import platform.UIKit.UIViewController
 import platform.UIKit.addChildViewController
 import platform.UIKit.didMoveToParentViewController
@@ -26,9 +27,20 @@ internal class StatusBarAppearance {
         get() = controllerReference?.get()
         set(value) { controllerReference = value?.let(::WeakReference) }
     private var requests = 0
+    private var isDarkTheme: Boolean? = null
 
     val preferredStyle: UIStatusBarStyle?
-        get() = if (requests > 0) UIStatusBarStyleLightContent else null
+        get() = when {
+            requests > 0 || isDarkTheme == true -> UIStatusBarStyleLightContent
+            isDarkTheme == false -> UIStatusBarStyleDarkContent
+            else -> null
+        }
+
+    fun setTheme(isDarkTheme: Boolean?) {
+        if (this.isDarkTheme == isDarkTheme) return
+        this.isDarkTheme = isDarkTheme
+        controller?.setNeedsStatusBarAppearanceUpdate()
+    }
 
     fun acquire() {
         requests++
