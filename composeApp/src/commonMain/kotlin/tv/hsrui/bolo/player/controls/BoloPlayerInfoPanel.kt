@@ -62,7 +62,7 @@ internal fun BoloPlayerInfoPanel(
                 val resolution = if (video.width != null && video.height != null) "${video.width}×${video.height}" else "—"
                 BoloPlayerInfoRow("视频分辨率", "$resolution·${video.fps?.let(::playerInfoDecimal) ?: "—"}fps")
                 BoloPlayerInfoRow("播放分片", playerInfoFragment(video.fragmentIndex, video.fragmentCount))
-                BoloPlayerInfoRow("视频解码器", playerInfoDecoder(video.decoder, video.decoderDescription))
+                BoloPlayerInfoRow("视频解码器", video.decoderDescription)
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Color.White.copy(alpha = 0.2f))
                 val audio = info.audio
                 BoloPlayerInfoRow("音频编码", audio?.codec)
@@ -80,7 +80,7 @@ internal fun BoloPlayerInfoPanel(
                     (audio.outputChannelCount ?: 0) > 1
                 BoloPlayerInfoRow("声道布局", if (merged && layout != null) "$layout（已合并）" else layout)
                 BoloPlayerInfoRow("播放分片", playerInfoFragment(audio?.fragmentIndex, audio?.fragmentCount))
-                BoloPlayerInfoRow("音频解码器", playerInfoDecoder(audio?.decoder, audio?.decoderDescription))
+                BoloPlayerInfoRow("音频解码器", audio?.decoderDescription)
                 BoloPlayerInfoRow("音量均衡", audio?.let(::playerInfoLoudnessStatus), singleLine = true)
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Color.White.copy(alpha = 0.2f))
                 BoloPlayerInfoRow("硬解路径", if (info.hardwareDecoder == "no") "软件解码" else info.hardwareDecoder)
@@ -157,9 +157,6 @@ private fun playerInfoLoudnessDecimal(value: Double): String {
 
 private fun playerInfoFragment(index: Int?, count: Int?): String =
     if (index == null && count == null) "—" else "${index ?: "—"} / ${count ?: "—"}"
-
-private fun playerInfoDecoder(name: String?, description: String?): String? =
-    listOfNotNull(name, description).distinct().takeIf { it.isNotEmpty() }?.joinToString("\n")
 
 private fun playerInfoDecimal(value: Double): String {
     val scaled = (value * 100).roundToLong()

@@ -1,6 +1,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <roapi.h>
+#include <winstring.h>
 #include <windows.media.h>
 #include <windows.storage.streams.h>
 #include <systemmediatransportcontrolsinterop.h>

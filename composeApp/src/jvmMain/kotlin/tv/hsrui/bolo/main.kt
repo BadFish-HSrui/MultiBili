@@ -1,6 +1,9 @@
 package tv.hsrui.bolo
 
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.InterceptPlatformTextInput
+import androidx.compose.ui.platform.PlatformTextInputInterceptor
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -27,12 +30,29 @@ fun main() {
             title = "Multi Bili",
             icon = painterResource(Res.drawable.jvm_icon)
         ) {
+            val inputMethod = remember(window) { DesktopInputMethod(window) }
+            val inputInterceptor = remember(inputMethod) {
+                PlatformTextInputInterceptor { request, nextHandler ->
+                    inputMethod.scheduleUpdate()
+                    try {
+                        nextHandler.startInputMethod(request)
+                    } finally {
+                        inputMethod.scheduleUpdate()
+                    }
+                }
+            }
             DisposableEffect(window, windowState) {
                 window.minimumSize = Dimension(720, 600)
                 DesktopPlayerFullscreenWindow.attach(window, windowState)
-                onDispose { DesktopPlayerFullscreenWindow.detach(window) }
+                inputMethod.attach()
+                onDispose {
+                    inputMethod.close()
+                    DesktopPlayerFullscreenWindow.detach(window)
+                }
             }
-            App()
+            InterceptPlatformTextInput(inputInterceptor) {
+                App()
+            }
         }
     }
 }
