@@ -46,7 +46,6 @@ import tv.hsrui.network.feature.player.PlayerInfoResponse
 import tv.hsrui.network.feature.player.PlayerChapterData
 import tv.hsrui.network.feature.player.fetchPlayerInfo
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
-import tv.hsrui.network.feature.player.enumModels.VideoCodec
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.player.fetchVideoPlayInfo
 import tv.hsrui.network.feature.player.fetchMediaPlayInfo
@@ -142,7 +141,6 @@ class VideoPlayerViewModel(
     val currentAudioQuality = _currentAudioQuality.asStateFlow()
 
     var videoQuality: VideoQuality = VideoQuality.best
-    var videoCodec: VideoCodec = VideoCodec.HEVC
     var audioQuality: AudioQuality? = AudioQuality.best
 
     var isLoading: Boolean = false
@@ -386,11 +384,10 @@ class VideoPlayerViewModel(
         if (currentState !is VideoPlayerUiState.Success) return
         playbackReportController.beforeReload(controller.state.value, controller.backend.value != null)
 
-        val video = currentState.videoSource.getVideo(quality = videoQuality, codec = videoCodec)
+        val video = currentState.videoSource.getVideo(quality = videoQuality, codec = settings.playerDefaultVideoCodec)
         val audio = currentState.videoSource.getAudio(quality = audioQuality)
 
         videoQuality = video.quality as VideoQuality
-        videoCodec = video.codec
         audioQuality = audio?.let { it.quality as AudioQuality }
         _currentVideoQuality.value = videoQuality
         _currentAudioQuality.value = audioQuality
@@ -477,7 +474,7 @@ class VideoPlayerViewModel(
         if (!resumeFromHistoryOnOpen || !loginStorage.isLoggedIn) return 0L
         val info = playerInfo?.takeIf { it.matchesRequest(avid, cid, loginStorage.cookies.sessData) } ?: return 0L
         val source = (uiState.value as? VideoPlayerUiState.Success)?.videoSource ?: return 0L
-        val durationSeconds = maxOf(source.getVideo(videoQuality, videoCodec).duration,
+        val durationSeconds = maxOf(source.getVideo(videoQuality, settings.playerDefaultVideoCodec).duration,
             source.getAudio(audioQuality)?.duration ?: 0L)
         val durationMs = durationSeconds.coerceIn(0L, Long.MAX_VALUE / 1000L) * 1000L
         return info.resumePositionMs(cid, durationMs)

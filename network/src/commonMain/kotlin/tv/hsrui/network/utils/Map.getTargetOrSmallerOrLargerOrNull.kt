@@ -6,7 +6,7 @@ fun <K : Enum<K>, V> Map<K, V>.getTargetOrSmallerOrLargerOrNull(targetKey: K): V
 
     val smallerKey = this.keys
         .filter { it < targetKey }
-        .maxOrNull()
+       .maxOrNull()
 
     if (smallerKey != null) return this.getValue(smallerKey)
 

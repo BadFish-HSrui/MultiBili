@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import eu.anifantakis.lib.ksafe.KSafePlain
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
+import tv.hsrui.network.feature.player.enumModels.VideoCodec
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import kotlin.math.roundToInt
 
@@ -91,6 +92,25 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             storedPlayerResumeFromHistoryEnabled = value
             currentPlayerResumeFromHistoryEnabled = value
         }
+
+    private var storedPlayerDefaultVideoCodec by settingsKSafe(12, key = "player_default_video_codec")
+    private var currentPlayerDefaultVideoCodec by mutableStateOf(
+        normalizeDefaultVideoCodec(VideoCodec.entries.firstOrNull { it.code == storedPlayerDefaultVideoCodec }),
+    )
+
+    var playerDefaultVideoCodec: VideoCodec
+        get() = currentPlayerDefaultVideoCodec
+        set(value) {
+            val normalized = normalizeDefaultVideoCodec(value)
+            if (storedPlayerDefaultVideoCodec == normalized.code) return
+            storedPlayerDefaultVideoCodec = normalized.code
+            currentPlayerDefaultVideoCodec = normalized
+        }
+
+    private fun normalizeDefaultVideoCodec(value: VideoCodec?): VideoCodec = when (value) {
+        VideoCodec.AVC, VideoCodec.AV1 -> value
+        else -> VideoCodec.HEVC
+    }
 
     private var storedPlayerDefaultVideoQuality by settingsKSafe(120, key = "player_default_video_quality")
     private var currentPlayerDefaultVideoQuality by mutableStateOf(

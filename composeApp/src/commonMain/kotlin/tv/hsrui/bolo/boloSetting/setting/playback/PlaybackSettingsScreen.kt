@@ -58,6 +58,7 @@ import tv.hsrui.bolo.utils.calculateWithoutBottom
 import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
 import tv.hsrui.network.feature.player.enumModels.Quality
+import tv.hsrui.network.feature.player.enumModels.VideoCodec
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import kotlin.math.roundToInt
 
@@ -263,7 +264,7 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                             ) {
                                 Text("播放结束行为", style = MaterialTheme.typography.bodyLarge)
                                 Spacer(Modifier.weight(1f))
-                                SingleChoiceSegmentedButtonRow {
+                                SingleChoiceSegmentedButtonRow(modifier = Modifier.widthIn(max = 220.dp)) {
                                     val behaviors = PlaybackEndBehavior.entries
                                     behaviors.forEachIndexed { index, behavior ->
                                         SegmentedButton(
@@ -276,6 +277,32 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                             modifier = Modifier.padding(vertical = 8.dp),
                                         ) {
                                             Text(behavior.title, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                        }
+                                    }
+                                }
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp)
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("默认视频编码", style = MaterialTheme.typography.bodyLarge)
+                                Spacer(Modifier.weight(1f))
+                                SingleChoiceSegmentedButtonRow(modifier = Modifier.widthIn(max = 220.dp)) {
+                                    val codecs = listOf(VideoCodec.AVC, VideoCodec.HEVC, VideoCodec.AV1)
+                                    codecs.forEachIndexed { index, codec ->
+                                        SegmentedButton(
+                                            selected = codec == settings.playerDefaultVideoCodec,
+                                            onClick = { settings.playerDefaultVideoCodec = codec },
+                                            shape = SegmentedButtonDefaults.itemShape(
+                                                index = index,
+                                                count = codecs.size,
+                                            ),
+                                            modifier = Modifier.padding(vertical = 8.dp),
+                                        ) {
+                                            Text(codec.name, style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                         }
                                     }
                                 }
@@ -433,7 +460,7 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     )
                                 }
                                 Spacer(Modifier.weight(1f))
-                                SingleChoiceSegmentedButtonRow {
+                                SingleChoiceSegmentedButtonRow(modifier = Modifier.widthIn(max = 220.dp)) {
                                     val modes = listOf("关闭", "智能", "总是")
                                     val selectedIndex = when {
                                         settings.subtitleAlwaysOn -> 2
@@ -612,7 +639,7 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 ) {
                                     Text("音量均衡", style = MaterialTheme.typography.bodyLarge)
                                     Spacer(Modifier.weight(1f))
-                                    SingleChoiceSegmentedButtonRow {
+                                    SingleChoiceSegmentedButtonRow(modifier = Modifier.widthIn(max = 220.dp)) {
                                         val modes = PlaybackLoudnessMode.entries
                                         modes.forEachIndexed { index, mode ->
                                             SegmentedButton(
@@ -679,7 +706,7 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                             ) {
                                 Text("上报播放进度", style = MaterialTheme.typography.bodyLarge)
                                 Spacer(modifier = Modifier.weight(1F))
-                                SingleChoiceSegmentedButtonRow(modifier = Modifier) {
+                                SingleChoiceSegmentedButtonRow(modifier = Modifier.widthIn(max = 220.dp)) {
                                     val modes = PlaybackProgressReportMode.entries
                                     modes.forEachIndexed { index, mode ->
                                         SegmentedButton(

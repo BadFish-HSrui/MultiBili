@@ -66,7 +66,7 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
                             ) {
                                 Text("应用主题", style = MaterialTheme.typography.bodyLarge)
                                 Spacer(Modifier.weight(1f))
-                                SingleChoiceSegmentedButtonRow {
+                                SingleChoiceSegmentedButtonRow(modifier = Modifier.widthIn(max = 220.dp)) {
                                     AppThemeMode.entries.forEachIndexed { index, mode ->
                                         SegmentedButton(
                                             selected = mode == settings.appThemeMode,
