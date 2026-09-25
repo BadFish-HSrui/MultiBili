@@ -691,6 +691,7 @@ fun BoloPlayerControls(
                     currentAudioQuality,
                     settingsOpen,
                     isFullscreen,
+                    showExtendedControls,
                     longPressSpeedGestureEnabled,
                     longPressSpeed,
                     isDesktop,
@@ -717,7 +718,7 @@ fun BoloPlayerControls(
                         )
                         return@pointerInput
                     }
-                    // 说明面板或全屏切换会重启本手势循环，同一手势内的判定都在一个循环里完成。
+                    // 设置面板、全屏或扩展布局切换会重启本手势循环，同一手势内的判定都在一个循环里完成。
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = true)
                         // null 表示超时前已松手或手势被取消，继续按单双击语义判定。
@@ -760,7 +761,7 @@ fun BoloPlayerControls(
                         val playback = viewModel.controller.state.value
                         if (
                             controlsVisible ||
-                            !isFullscreen ||
+                            !showExtendedControls ||
                             !longPressSpeedGestureEnabled ||
                             !playback.isPlaying ||
                             playback.isPlaybackSuspended
@@ -794,13 +795,14 @@ fun BoloPlayerControls(
                     currentVideoQuality,
                     currentAudioQuality,
                     isFullscreen,
+                    showExtendedControls,
                     settingsOpen,
                     deviceControls,
                     seekGestureEnabled,
                     brightnessGestureEnabled,
                     volumeGestureEnabled,
                 ) {
-                    if (isDesktop || !isFullscreen || settingsOpen) return@pointerInput
+                    if (isDesktop || !showExtendedControls || settingsOpen) return@pointerInput
                     try {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
