@@ -130,7 +130,8 @@ class VideoPlayerViewModel(
     private val _danmakuClosed = MutableStateFlow(false)
     val danmakuClosed = _danmakuClosed.asStateFlow()
     private var playbackForeground = true
-    private var playbackClosed = false
+    internal var playbackClosed = false
+        private set
     private var awaitingPlaybackReload = true
     private var danmakuMedia: Pair<Long, Long>? = null
     private var awaitingDanmakuSeek = false
@@ -630,6 +631,7 @@ class VideoPlayerViewModel(
     }
 
     fun seekToMs(positionMs: Long, autoPlayAfterSeek: Boolean = false) {
+        if (playbackClosed) return
         val playbackBeforeSeek = controller.state.value
         if (playbackBeforeSeek.isPlaybackSuspended) return
         danmakuController.pause()

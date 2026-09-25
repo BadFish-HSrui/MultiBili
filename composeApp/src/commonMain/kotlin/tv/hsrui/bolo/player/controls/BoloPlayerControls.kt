@@ -513,7 +513,10 @@ fun BoloPlayerControls(
             keyboardBlocked || infoOpen || !windowFocused) cancelKeyboardInteraction()
     }
     val onPlayerKeyEvent: (KeyEvent) -> Boolean = { event ->
-        if (event.type == KeyEventType.KeyUp) {
+        if (viewModel.playbackClosed) {
+            cancelKeyboardInteraction()
+            false
+        } else if (event.type == KeyEventType.KeyUp) {
             val cancelled = keyboardCancelledKeys.remove(event.key)
             val handled = keyboardPressedKeys.remove(event.key)
             if (event.key == Key.DirectionRight && handled) {
@@ -571,6 +574,7 @@ fun BoloPlayerControls(
                         rightHoldPending = true
                         rightHoldJob = keyboardScope.launch {
                             delay(300)
+                            if (viewModel.playbackClosed) return@launch
                             val current = viewModel.controller.state.value
                             if (current.isPlaying && !current.isPlaybackSuspended && !current.isRebuilding) {
                                 keyboardBaseSpeed = current.playbackSpeed
