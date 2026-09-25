@@ -1,8 +1,8 @@
 {
   "libplacebo": {
     "version": "v7.360.1",
-    "url": "https://code.videolan.org/videolan/libplacebo/-/archive/v7.360.1/libplacebo-v7.360.1.tar.gz",
-    "sha256": "14c0a99f4b01557ec9826ce6b1d52f6de21be274ba03fd5aab7307f18766dc39"
+    "url": "https://codeload.github.com/haasn/libplacebo/tar.gz/refs/tags/v7.360.1",
+    "sha256": "d05fdf90bea2f629eaa2d115e909fd356388ac639e54f77b87a018a6d76224bd"
   },
   "libass": {
     "version": "0.17.4",
@@ -26,7 +26,7 @@
   },
   "dav1d": {
     "version": "1.5.1",
-    "url": "https://code.videolan.org/videolan/dav1d/-/archive/1.5.1/dav1d-1.5.1.tar.gz",
+    "url": "https://codeload.github.com/videolan/dav1d/tar.gz/refs/tags/1.5.1",
     "sha256": "fa635e2bdb25147b1384007c83e15de44c589582bb3b9a53fc1579cb9d74b695"
   },
   "mbedtls": {
