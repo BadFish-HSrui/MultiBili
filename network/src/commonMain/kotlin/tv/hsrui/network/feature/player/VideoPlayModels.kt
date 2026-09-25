@@ -75,6 +75,10 @@ data class BiliDashObject(
 
     val codec by lazy { VideoCodec(_codecCode) }
 
+    val urlExpiresAtEpochSeconds: Map<String, Long?> by lazy {
+        getUrls().associateWith(::getUrlExpiresAtEpochSeconds)
+    }
+
     fun getUrls(sortCDN: Boolean = false): List<String> {
         val urls = (listOf(baseUrl) + backupUrl).filter(String::isNotBlank).distinct()
         if (!sortCDN) return urls
@@ -90,6 +94,13 @@ data class BiliDashObject(
     fun withFallbackDuration(duration: Long): BiliDashObject =
         if (this.duration > 0 || duration <= 0) this else copy(duration = duration)
 }
+
+fun getUrlExpiresAtEpochSeconds(url: String): Long? = runCatching {
+    val parameters = Url(url).parameters
+    listOf("expires", "wsTime", "txTime", "um_deadline", "deadline").firstNotNullOfOrNull { key ->
+        parameters[key]?.toLongOrNull()?.takeIf { it > 0L }
+    }
+}.getOrNull()
 
 fun VideoPlayResponse.toVideoSource(): VideoSource {
     val isSuccess: Boolean

@@ -7,9 +7,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -18,23 +20,25 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import kotlinx.io.IOException
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.player.base.BoloPlayerController
 import tv.hsrui.bolo.player.base.BoloPlayerError
-import tv.hsrui.bolo.player.base.BoloPlayerSeekCoordinator
+import tv.hsrui.bolo.player.base.BoloPlayerSource
 import tv.hsrui.bolo.player.base.BoloPlayerState
 import tv.hsrui.bolo.player.base.load
 import tv.hsrui.bolo.player.danmaku.BoloDanmakuController
 import tv.hsrui.bolo.player.danmaku.BoloDanmakuItem
 import tv.hsrui.bolo.player.danmaku.BoloDanmakuMode
 import tv.hsrui.bolo.player.subtitle.BoloSubtitleController
+import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.network.feature.danmaku.DanmakuMode
 import tv.hsrui.network.feature.danmaku.fetchDanmakuSegment
 import tv.hsrui.network.feature.danmaku.fetchDanmakuView
@@ -142,14 +146,14 @@ class VideoPlayerViewModel(
 
     var videoQuality: VideoQuality = VideoQuality.best
     var audioQuality: AudioQuality? = AudioQuality.best
+    private var currentVideoCodec = settings.playerDefaultVideoCodec
 
     var isLoading: Boolean = false
     private var playbackLoadJob: Job? = null
-    private var replayJob: Job? = null
 
     val controller = BoloPlayerController(onError = { e ->
         when (e) {
-            is BoloPlayerError.NetworkError -> println("网络错误: ${e.message}")
+            is BoloPlayerError.NetworkError -> showSnackbarMessage(e.message)
             is BoloPlayerError.DecoderError -> println("解码: ${e.message}")
             is BoloPlayerError.FormatNotSupported -> println("格式不支持: ${e.message}")
             is BoloPlayerError.SeekError -> println("跳转失败: ${e.message}")
@@ -158,6 +162,7 @@ class VideoPlayerViewModel(
     })
 
     init {
+        controller.onRefreshSource = ::refreshPlayInfo
         if (getPlatform().type == PlatformType.Desktop) {
             viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
                 snapshotFlow {
@@ -174,7 +179,6 @@ class VideoPlayerViewModel(
                     lastConfirmedPositionMs = playback.currentPositionMs
                 }
                 if (playback.isPlaybackSuspended) {
-                    replayJob?.cancel()
                     danmakuController.pause()
                     return@collect
                 }
@@ -222,7 +226,7 @@ class VideoPlayerViewModel(
         playbackReportController.openMedia(avid, cid)
         sourceLoadJob?.cancel()
         playbackLoadJob?.cancel()
-        replayJob?.cancel()
+        controller.cancelSourceRefresh(clearSource = true)
         val generation = ++sourceGeneration
         controller.pause()
         pendingPlayWhenReady = autoPlayOnOpen
@@ -379,13 +383,13 @@ class VideoPlayerViewModel(
     }
 
     private fun playVideo(startPositionMs: Long = 0L, autoPlay: Boolean = false) {
-        replayJob?.cancel()
         val currentState = uiState.value
         if (currentState !is VideoPlayerUiState.Success) return
         playbackReportController.beforeReload(controller.state.value, controller.backend.value != null)
 
         val video = currentState.videoSource.getVideo(quality = videoQuality, codec = settings.playerDefaultVideoCodec)
         val audio = currentState.videoSource.getAudio(quality = audioQuality)
+        currentVideoCodec = video.codec
 
         videoQuality = video.quality as VideoQuality
         audioQuality = audio?.let { it.quality as AudioQuality }
@@ -416,7 +420,9 @@ class VideoPlayerViewModel(
             if (generation != sourceGeneration) return@launch
             playbackGeneration = generation
             playbackReportController.mediaLoaded()
-            if (pendingPlayWhenReady ?: (autoPlay && controller.playIntentRevision == intentRevision)) controller.play()
+            if (pendingPlayWhenReady ?: (autoPlay && controller.playIntentRevision == intentRevision)) {
+                controller.play(allowSourceRefreshRetry = false)
+            }
             pendingPlayWhenReady = null
         }
     }
@@ -426,6 +432,7 @@ class VideoPlayerViewModel(
     }
 
     fun onPlaybackPageExited() {
+        controller.cancelSourceRefresh()
         dismissDanmakuInput(resumePlayback = false)
         danmakuDraft.value = ""
         danmakuSendJob?.cancel()
@@ -468,6 +475,42 @@ class VideoPlayerViewModel(
 
     suspend fun fetchPlayInfo(): VideoSource {
         return episodeId?.let { fetchMediaPlayInfo(it) } ?: fetchVideoPlayInfo(avid = avid, cid = cid)
+    }
+
+    private suspend fun refreshPlayInfo(): BoloPlayerSource {
+        val generation = sourceGeneration
+        repeat(2) { attempt ->
+            if (playbackClosed || generation != sourceGeneration) {
+                throw CancellationException("播放源请求已失效")
+            }
+            val result = try {
+                withTimeout(10_000L) { fetchPlayInfo() }
+            } catch (error: Exception) {
+                if (error is CancellationException && error !is TimeoutCancellationException) throw error
+                val retryable = error is IOException || error is HttpRequestTimeoutException || error is TimeoutCancellationException
+                if (attempt == 0 && retryable) {
+                    delay(1_000L)
+                    return@repeat
+                }
+                throw IllegalStateException("播放地址刷新失败，请重试")
+            }
+            currentCoroutineContext().ensureActive()
+            if (playbackClosed || generation != sourceGeneration) {
+                throw CancellationException("播放源请求已失效")
+            }
+            if (!result.isSuccess) throw IllegalStateException(result.message.ifBlank { "播放地址刷新失败，请重试" })
+            // 取流期间的选档操作优先；续期不重新读取默认编码，也不触发媒体打开流程。
+            val video = result.getVideo(videoQuality, currentVideoCodec)
+            val audio = result.getAudio(audioQuality)
+            videoQuality = video.quality as? VideoQuality ?: throw IllegalStateException("播放地址刷新失败，请重试")
+            audioQuality = audio?.quality as? AudioQuality
+            currentVideoCodec = video.codec
+            _currentVideoQuality.value = videoQuality
+            _currentAudioQuality.value = audioQuality
+            _uiState.value = VideoPlayerUiState.Success(result)
+            return BoloPlayerSource(video, audio, result.loudness, settings.playerOptimizePlaybackSourceEnabled)
+        }
+        throw IllegalStateException("播放地址刷新失败，请重试")
     }
 
     private fun resumePositionMs(): Long {
@@ -578,57 +621,26 @@ class VideoPlayerViewModel(
             return
         }
         if (uiState.value !is VideoPlayerUiState.Success) return
-        if (!controller.state.value.isEnded) {
-            if (replayJob?.isActive != true) controller.play()
-            return
-        }
-        if (replayJob?.isActive == true) return
-        seekToMs(0L)
-        replayJob = viewModelScope.launch {
-            // 先确认 EOF 暂停媒体已跳离结尾，再恢复播放。
-            val playback = controller.state.first { !it.isPlaybackSuspended && !it.isSeeking && !it.isBuffering }
-            if (playback.currentPositionMs in 0L..BoloPlayerSeekCoordinator.ConfirmationToleranceMs) {
-                controller.play()
-            }
-        }
+        controller.play()
     }
 
     fun pause() {
         if (pendingPlayWhenReady != null) pendingPlayWhenReady = false
-        replayJob?.cancel()
         controller.pause()
     }
 
     fun seekToMs(positionMs: Long, autoPlayAfterSeek: Boolean = false) {
         val playbackBeforeSeek = controller.state.value
         if (playbackBeforeSeek.isPlaybackSuspended) return
-        val shouldResume = autoPlayAfterSeek && !playbackBeforeSeek.isPlaying
-        val targetMs = if (playbackBeforeSeek.durationMs > 0L) {
-            positionMs.coerceIn(0L, playbackBeforeSeek.durationMs)
-        } else {
-            positionMs.coerceAtLeast(0L)
-        }
-        replayJob?.cancel()
         danmakuController.pause()
         danmakuController.seekToMs(positionMs)
         awaitingDanmakuSeek = true
         pendingDanmakuSeek = positionMs
         subtitleController.synchronize(positionMs)
-        controller.seekToMs(positionMs)
+        controller.seekToMs(positionMs, autoPlayAfterSeek)
         // 原生层可能同步拒绝 Seek，仍需以实际位置恢复调度。
         synchronizeDanmaku(controller.state.value)
         subtitleController.synchronize(controller.state.value.displayPositionMs)
-        if (shouldResume) {
-            replayJob = viewModelScope.launch {
-                val playback = controller.state.first { !it.isPlaybackSuspended && !it.isSeeking && !it.isBuffering }
-                val toleranceMs = BoloPlayerSeekCoordinator.ConfirmationToleranceMs
-                if (!playback.isEnded && playback.currentPositionMs in
-                    (targetMs - toleranceMs).coerceAtLeast(0L)..(targetMs + toleranceMs)
-                ) {
-                    controller.play()
-                }
-            }
-        }
     }
 
     private fun synchronizeDanmaku(playback: BoloPlayerState) {
@@ -789,7 +801,6 @@ class VideoPlayerViewModel(
         sourceGeneration += 1
         sourceLoadJob?.cancel()
         playbackLoadJob?.cancel()
-        replayJob?.cancel()
         subtitleController.clear()
         danmakuGeneration += 1
         danmakuRequests.values.toList().forEach { it.cancel() }

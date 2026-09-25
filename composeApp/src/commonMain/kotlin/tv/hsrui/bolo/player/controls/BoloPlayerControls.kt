@@ -375,7 +375,7 @@ fun BoloPlayerControls(
     fun togglePlayback() {
         val playback = viewModel.controller.state.value
         if (playback.isPlaybackSuspended) return
-        if (playback.isPlaying) {
+        if (viewModel.pendingPlayWhenReady ?: playback.playWhenReady) {
             viewModel.pause()
         } else {
             viewModel.play()
@@ -1129,8 +1129,8 @@ fun BoloPlayerControls(
                             modifier = Modifier.size(32.dp),
                         ) {
                             Icon(
-                                imageVector = if (playState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = if (playState.isPlaying) "暂停" else "播放",
+                                imageVector = if (viewModel.pendingPlayWhenReady ?: playState.playWhenReady) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                contentDescription = if (viewModel.pendingPlayWhenReady ?: playState.playWhenReady) "暂停" else "播放",
                                 tint = Color.White,
                                 modifier = Modifier.size(28.dp),
                             )
