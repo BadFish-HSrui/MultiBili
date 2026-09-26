@@ -23,6 +23,7 @@ data class RawSearchVideosData(
 
 @Serializable
 data class RawSearchVideoItem(
+    val mid: Long = 0,
     val aid: Long = 0,
     val bvid: String = "",
     val author: String = "",
@@ -51,7 +52,7 @@ fun RawSearchVideoItem.toVideoCard(): VideoCard {
             danmaku = danmaku,
             reply = replies
         ),
-        _owner = Owner(name = author)
+        _owner = Owner(mid = mid, name = author)
     )
 }
 

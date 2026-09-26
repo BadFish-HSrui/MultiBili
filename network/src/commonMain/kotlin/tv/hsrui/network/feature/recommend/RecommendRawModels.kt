@@ -34,6 +34,7 @@ data class RawRecommendItem(
 
 @Serializable
 data class RawOwner(
+    val mid: Long = 0,
     val name: String = "",
     val face: String = ""
 )
@@ -62,6 +63,7 @@ fun RawRecommendItem.toVideoCard(): VideoCard {
             reply = stat.reply
         ),
         _owner = Owner(
+            mid = owner.mid,
             name = owner.name,
             face = owner.face
         )
