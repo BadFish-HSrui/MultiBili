@@ -31,9 +31,5 @@ fun calculateBiliDanmakuSpeed(containerWidth: Float, danmakuWidth: Float): Float
     return ((width + textWidth) / duration).coerceAtMost(Float.MAX_VALUE.toDouble()).toFloat()
 }
 
-/** 弹幕动画时间推进系数：不高于 1× 时按基准速度推进，高于 1× 时在倍速基础上再乘 2/3。 */
-internal fun danmakuAdvanceFactor(playbackSpeed: Float): Float {
-    if (!playbackSpeed.isFinite() || playbackSpeed <= 0f) return 1f
-    if (playbackSpeed <= 1f) return 1f
-    return playbackSpeed * 2f / 3f
-}
+internal fun danmakuAdvanceFactor(playbackSpeed: Float): Float =
+    if (!playbackSpeed.isFinite() || playbackSpeed <= 1f) 1f else (1f + playbackSpeed) / 2f
