@@ -12,6 +12,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
@@ -35,6 +36,7 @@ fun BoloSubtitleLayer(
     val settings: BoloSettings = koinInject()
     val scale = settings.effectiveSubtitleScale
     val heightRatio = settings.effectiveSubtitleHeightRatio
+    val textAlpha = settings.effectiveSubtitleTextAlpha
     val backgroundAlpha = settings.effectiveSubtitleBackgroundAlpha
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
@@ -78,7 +80,7 @@ fun BoloSubtitleLayer(
                 Card(colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = backgroundAlpha))) {
                     Text(
                         text = state.text,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.alpha(textAlpha).padding(horizontal = 8.dp, vertical = 4.dp),
                         style = baseStyle.copy(
                             fontSize = (32f * fittedScale).sp,
                             lineHeight = (40f * fittedScale).sp,

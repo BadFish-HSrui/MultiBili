@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -43,6 +44,7 @@ fun BoloDanmakuLayer(
 ) {
     val settings: BoloSettings = koinInject()
     val danmakuScale = settings.danmakuScale
+    val danmakuAlpha = settings.effectiveDanmakuAlpha
     val danmakuSpeed = settings.danmakuSpeed
     val danmakuDisplayAreaRatio = settings.danmakuDisplayAreaRatio
     val danmakuTopBottomScrollEnabled = settings.danmakuTopBottomScrollEnabled
@@ -88,7 +90,7 @@ fun BoloDanmakuLayer(
         }
     }
 
-    Canvas(modifier.fillMaxSize()) {
+    Canvas(modifier.fillMaxSize().alpha(danmakuAlpha)) {
         frame.longValue
         if (controller.isDisposed || !controller.state.value.isVisible) return@Canvas
         val padding = 2f * density.density

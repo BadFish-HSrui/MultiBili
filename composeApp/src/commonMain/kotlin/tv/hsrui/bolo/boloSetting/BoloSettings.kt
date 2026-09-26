@@ -609,6 +609,27 @@ class BoloSettings(settingsKSafe: KSafePlain) {
             currentDanmakuScale = scale
         }
 
+    private var storedDanmakuAlpha by settingsKSafe(0.7f, key = "danmaku_alpha")
+    private var currentDanmakuAlpha by mutableFloatStateOf(normalizeDanmakuAlpha(storedDanmakuAlpha))
+    private var previewDanmakuAlpha by mutableStateOf<Float?>(null)
+
+    var danmakuAlpha: Float
+        get() = currentDanmakuAlpha
+        set(value) {
+            val normalized = normalizeDanmakuAlpha(value)
+            storedDanmakuAlpha = normalized
+            currentDanmakuAlpha = normalized
+        }
+
+    val effectiveDanmakuAlpha: Float get() = previewDanmakuAlpha ?: currentDanmakuAlpha
+
+    fun previewDanmakuAlpha(value: Float?) {
+        previewDanmakuAlpha = value?.let(::normalizeDanmakuAlpha)
+    }
+
+    private fun normalizeDanmakuAlpha(value: Float): Float =
+        if (!value.isFinite()) 0.7f else (value.coerceIn(0.2f, 1f) * 100f).roundToInt() / 100f
+
     private var storedDanmakuSpeed by settingsKSafe(1.0f, key = "danmaku_speed_factor")
     private var currentDanmakuSpeed by mutableFloatStateOf(normalizeDanmakuSpeed(storedDanmakuSpeed))
 
@@ -785,6 +806,26 @@ class BoloSettings(settingsKSafe: KSafePlain) {
 
     fun previewSubtitleHeightRatio(value: Float?) {
         previewSubtitleHeightRatio = value?.let { normalizeSubtitleValue(it, 0.2f, 0f, 1f) }
+    }
+
+    private var storedSubtitleTextAlpha by settingsKSafe(1.0f, key = "subtitle_text_alpha")
+    private var currentSubtitleTextAlpha by mutableFloatStateOf(
+        normalizeSubtitleValue(storedSubtitleTextAlpha, 1.0f, 0.2f, 1f),
+    )
+    private var previewSubtitleTextAlpha by mutableStateOf<Float?>(null)
+
+    var subtitleTextAlpha: Float
+        get() = currentSubtitleTextAlpha
+        set(value) {
+            val normalized = normalizeSubtitleValue(value, 1.0f, 0.2f, 1f)
+            storedSubtitleTextAlpha = normalized
+            currentSubtitleTextAlpha = normalized
+        }
+
+    val effectiveSubtitleTextAlpha: Float get() = previewSubtitleTextAlpha ?: currentSubtitleTextAlpha
+
+    fun previewSubtitleTextAlpha(value: Float?) {
+        previewSubtitleTextAlpha = value?.let { normalizeSubtitleValue(it, 1.0f, 0.2f, 1f) }
     }
 
     private var storedSubtitleBackgroundAlpha by settingsKSafe(0.7f, key = "subtitle_background_alpha")

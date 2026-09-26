@@ -145,6 +145,9 @@ fun BoloPlayerSettingsSheet(
     onDanmakuFilterLevelChange: (Int) -> Unit,
     danmakuScale: Float,
     onDanmakuScaleChange: (Float) -> Unit,
+    danmakuAlpha: Float,
+    onDanmakuAlphaChange: (Float) -> Unit,
+    onDanmakuAlphaPreview: (Float?) -> Unit,
     danmakuSpeed: Float,
     onDanmakuSpeedChange: (Float) -> Unit,
     danmakuDisplayAreaRatio: Float,
@@ -165,6 +168,9 @@ fun BoloPlayerSettingsSheet(
     subtitleHeightRatio: Float,
     onSubtitleHeightRatioChange: (Float) -> Unit,
     onSubtitleHeightRatioPreview: (Float?) -> Unit,
+    subtitleTextAlpha: Float,
+    onSubtitleTextAlphaChange: (Float) -> Unit,
+    onSubtitleTextAlphaPreview: (Float?) -> Unit,
     subtitleBackgroundAlpha: Float,
     onSubtitleBackgroundAlphaChange: (Float) -> Unit,
     onSubtitleBackgroundAlphaPreview: (Float?) -> Unit,
@@ -552,6 +558,8 @@ fun BoloPlayerSettingsSheet(
                                                 )
                                             }
                                             BoloPlayerSettingsTab.Danmaku -> {
+                                                val danmakuPageActive = isOpen && pagerState.currentPage == page &&
+                                                    !pagerState.isScrollInProgress
                                                 Card(Modifier.fillMaxWidth()) {
                                                     Column(Modifier.padding(4.dp)) {
                                                         val levelText = if (danmakuFilterLevel == 0) "关闭" else danmakuFilterLevel.toString()
@@ -601,6 +609,16 @@ fun BoloPlayerSettingsSheet(
                                                             value = danmakuScale,
                                                             isOpen = isOpen,
                                                             onValueChange = onDanmakuScaleChange,
+                                                        )
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        PlayerPercentageSlider(
+                                                            label = "弹幕不透明度",
+                                                            value = danmakuAlpha,
+                                                            isOpen = danmakuPageActive,
+                                                            onValueChange = onDanmakuAlphaChange,
+                                                            onValuePreview = onDanmakuAlphaPreview,
+                                                            percentRange = 20..100,
+                                                            centeredAt100 = false,
                                                         )
                                                         HorizontalDivider(thickness = 1.dp)
                                                         PlayerPercentageSlider(
@@ -758,6 +776,16 @@ fun BoloPlayerSettingsSheet(
                                                             onValueChange = onSubtitleHeightRatioChange,
                                                             onValuePreview = onSubtitleHeightRatioPreview,
                                                             percentRange = 0..100,
+                                                            centeredAt100 = false,
+                                                        )
+                                                        HorizontalDivider(thickness = 1.dp)
+                                                        PlayerPercentageSlider(
+                                                            label = "文本不透明度",
+                                                            value = subtitleTextAlpha,
+                                                            isOpen = subtitlePageActive,
+                                                            onValueChange = onSubtitleTextAlphaChange,
+                                                            onValuePreview = onSubtitleTextAlphaPreview,
+                                                            percentRange = 20..100,
                                                             centeredAt100 = false,
                                                         )
                                                         HorizontalDivider(thickness = 1.dp)
