@@ -505,11 +505,13 @@ fun BoloPlayerControls(
     ) {
         cancelKeyboardInteraction()
     }
+    val keyboardPlayWhenReady = viewModel.pendingPlayWhenReady ?: playState.playWhenReady
     LaunchedEffect(
-        playState.isPlaying, playState.isPlaybackSuspended, playState.isRebuilding,
+        keyboardPlayWhenReady, playState.isEnded, playState.isPlaybackSuspended, playState.isRebuilding,
         keyboardBlocked, infoOpen, windowFocused,
     ) {
-        if (!playState.isPlaying || playState.isPlaybackSuspended || playState.isRebuilding ||
+        // 缓冲时的暂时未播放不取消长按；主动暂停仍须结束临时倍速。
+        if (!keyboardPlayWhenReady || playState.isEnded || playState.isPlaybackSuspended || playState.isRebuilding ||
             keyboardBlocked || infoOpen || !windowFocused) cancelKeyboardInteraction()
     }
     val onPlayerKeyEvent: (KeyEvent) -> Boolean = { event ->
@@ -569,17 +571,18 @@ fun BoloPlayerControls(
                 Key.DirectionRight -> {
                     val firstDown = keyboardPressedKeys.add(Key.DirectionRight)
                     val playback = viewModel.controller.state.value
-                    if (firstDown && desktopFastForwardHoldSpeedEnabled && playback.isPlaying &&
+                    if (firstDown && desktopFastForwardHoldSpeedEnabled && !playback.isEnded &&
                         !playback.isPlaybackSuspended && !playback.isRebuilding) {
                         rightHoldPending = true
                         rightHoldJob = keyboardScope.launch {
                             delay(300)
                             if (viewModel.playbackClosed) return@launch
                             val current = viewModel.controller.state.value
-                            if (current.isPlaying && !current.isPlaybackSuspended && !current.isRebuilding) {
+                            if (!current.isEnded && !current.isPlaybackSuspended && !current.isRebuilding) {
                                 keyboardBaseSpeed = current.playbackSpeed
                                 keyboardSpeedBoost = longPressSpeed
                                 viewModel.controller.setPlaybackSpeed(longPressSpeed)
+                                if (!(viewModel.pendingPlayWhenReady ?: current.playWhenReady)) viewModel.play()
                             }
                         }
                     } else if (!rightHoldPending) {
