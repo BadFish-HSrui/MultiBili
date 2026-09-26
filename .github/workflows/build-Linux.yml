@@ -133,11 +133,10 @@ jobs:
             echo "缺少本地构建元数据 ${METADATA_FILE}，请通过 Gradle 构建任务生成" >&2
             exit 1
           fi
-          ARTIFACT_VERSION="$(jq -r '.artifactVersion' "$METADATA_FILE")"
+          DISPLAY_VERSION="$(jq -r '.appDisplayVersion' "$METADATA_FILE")"
           VERSION_CORE="$(jq -r '.coreVersion' "$METADATA_FILE")"
           BUILD_NUMBER="$(jq -r '.buildNumber' "$METADATA_FILE")"
-          export ARTIFACT_VERSION VERSION_CORE BUILD_NUMBER
-          echo "artifact_version=$ARTIFACT_VERSION" >> "$GITHUB_OUTPUT"
+          export DISPLAY_VERSION VERSION_CORE BUILD_NUMBER
           shopt -s nullglob
           deb_files=(composeApp/build/compose/binaries/main/deb/*.deb)
           rpm_files=(composeApp/build/compose/binaries/main/rpm/*.rpm)
@@ -173,8 +172,8 @@ jobs:
           fi
 
           mkdir -p staging/linux
-          deb_target="staging/linux/multi-bili-linux-${ARTIFACT_VERSION}-${desktop_arch}.deb"
-          rpm_target="staging/linux/multi-bili-linux-${ARTIFACT_VERSION}-${desktop_arch}.rpm"
+          deb_target="staging/linux/multi-bili-linux-${desktop_arch}-${DISPLAY_VERSION}.deb"
+          rpm_target="staging/linux/multi-bili-linux-${desktop_arch}-${DISPLAY_VERSION}.rpm"
           cp "${deb_files[0]}" "$deb_target"
           cp "${rpm_files[0]}" "$rpm_target"
 

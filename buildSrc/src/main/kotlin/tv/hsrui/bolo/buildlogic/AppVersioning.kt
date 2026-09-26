@@ -51,7 +51,6 @@ data class GitMetadata(
 data class ResolvedVersionMetadata(
     val releaseVersion: String,
     val appDisplayVersion: String,
-    val artifactVersion: String,
     val versionConfig: VersionConfig,
     val gitMetadata: GitMetadata,
 ) : Serializable {
@@ -158,7 +157,6 @@ fun resolveVersionMetadata(
 ): ResolvedVersionMetadata = ResolvedVersionMetadata(
     releaseVersion = formatReleaseVersion(versionConfig),
     appDisplayVersion = formatAppDisplayVersion(versionConfig, gitMetadata),
-    artifactVersion = formatArtifactVersion(versionConfig, gitMetadata),
     versionConfig = versionConfig,
     gitMetadata = gitMetadata,
 ).also(::validateVersionMetadata)
@@ -191,24 +189,6 @@ fun formatAppDisplayVersion(
     }
 }
 
-fun formatArtifactVersion(
-    versionConfig: VersionConfig,
-    gitMetadata: GitMetadata,
-): String {
-    validateVersionConfig(versionConfig)
-    validateGitMetadata(gitMetadata)
-    return buildString {
-        append(formatReleaseVersion(versionConfig))
-        append("-b")
-        append(gitMetadata.buildNumber)
-        append("-g")
-        append(gitMetadata.commitSha12)
-        if (gitMetadata.isDirty) {
-            append("-dirty")
-        }
-    }
-}
-
 fun validateVersionMetadata(metadata: ResolvedVersionMetadata) {
     validateVersionConfig(metadata.versionConfig)
     validateGitMetadata(metadata.gitMetadata)
@@ -217,9 +197,6 @@ fun validateVersionMetadata(metadata: ResolvedVersionMetadata) {
     }
     require(metadata.appDisplayVersion == formatAppDisplayVersion(metadata.versionConfig, metadata.gitMetadata)) {
         "Resolved appDisplayVersion does not match the version and Git metadata"
-    }
-    require(metadata.artifactVersion == formatArtifactVersion(metadata.versionConfig, metadata.gitMetadata)) {
-        "Resolved artifactVersion does not match the version and Git metadata"
     }
 }
 
@@ -294,9 +271,6 @@ abstract class AppVersionMetadataTask : DefaultTask() {
     abstract val appDisplayVersion: Property<String>
 
     @get:Input
-    abstract val artifactVersion: Property<String>
-
-    @get:Input
     abstract val buildNumber: Property<Int>
 
     @get:Input
@@ -308,7 +282,6 @@ abstract class AppVersionMetadataTask : DefaultTask() {
     protected fun resolvedMetadata(): ResolvedVersionMetadata = ResolvedVersionMetadata(
         releaseVersion = releaseVersion.get(),
         appDisplayVersion = appDisplayVersion.get(),
-        artifactVersion = artifactVersion.get(),
         versionConfig = VersionConfig(
             core = coreVersion.get(),
             channel = ReleaseChannel.valueOf(releaseChannel.get()),
@@ -338,8 +311,7 @@ abstract class WriteBuildMetadataTask : AppVersionMetadataTask() {
               "releaseVersion": "${metadata.releaseVersion}",
               "appDisplayVersion": "${metadata.appDisplayVersion}",
               "buildNumber": ${metadata.buildNumber},
-              "commitSha": "${metadata.commitSha}",
-              "artifactVersion": "${metadata.artifactVersion}"
+              "commitSha": "${metadata.commitSha}"
             }
             """.trimIndent() + "\n",
         )
@@ -360,7 +332,6 @@ abstract class PrintAppVersionMetadataTask : AppVersionMetadataTask() {
         println("APP_COMMIT_SHA=${metadata.commitSha}")
         println("APP_COMMIT_SHA7=${metadata.commitSha7}")
         println("APP_COMMIT_SHA12=${metadata.commitSha12}")
-        println("APP_ARTIFACT_VERSION=${metadata.artifactVersion}")
         println("APP_GIT_DIRTY=${metadata.isDirty}")
     }
 }

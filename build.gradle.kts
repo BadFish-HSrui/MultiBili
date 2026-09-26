@@ -48,7 +48,6 @@ fun AppVersionMetadataTask.configureVersionMetadataInputs() {
     prereleaseNumber.set(resolvedVersionMetadata.prereleaseNumber)
     releaseVersion.set(resolvedVersionMetadata.releaseVersion)
     appDisplayVersion.set(resolvedVersionMetadata.appDisplayVersion)
-    artifactVersion.set(resolvedVersionMetadata.artifactVersion)
     buildNumber.set(resolvedVersionMetadata.buildNumber)
     commitSha.set(resolvedVersionMetadata.commitSha)
     gitDirty.set(resolvedVersionMetadata.isDirty)

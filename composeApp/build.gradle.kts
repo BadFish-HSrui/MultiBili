@@ -201,7 +201,6 @@ buildkonfig {
         buildConfigField(STRING, "gitCommitSha7", appVersionMetadata.commitSha7)
         buildConfigField(STRING, "gitCommitSha12", appVersionMetadata.commitSha12)
         buildConfigField(BOOLEAN, "isGitDirty", appVersionMetadata.isDirty.toString())
-        buildConfigField(STRING, "artifactVersion", appVersionMetadata.artifactVersion)
     }
 }
 

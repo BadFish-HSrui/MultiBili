@@ -78,7 +78,7 @@ jobs:
           METADATA_FILE: build/version/build-metadata.json
         run: |
           set -euo pipefail
-          source_version="$(jq -er '.artifactVersion | select(test("^[0-9A-Za-z][0-9A-Za-z.+-]*$"))' "$METADATA_FILE")"
+          source_version="$(jq -er '.appDisplayVersion | select(test("^[0-9A-Za-z][0-9A-Za-z.+-]*$"))' "$METADATA_FILE")"
           source_commit="$(jq -er '.commitSha' "$METADATA_FILE")"
           source_count="$(jq -er '.buildNumber' "$METADATA_FILE")"
           test "$source_commit" = "$GITHUB_SHA"
@@ -96,7 +96,7 @@ jobs:
           source_temp="$(mktemp -d "$RUNNER_TEMP/bolo-source.XXXXXX")"
           trap 'rm -rf "$source_temp"' EXIT
           mkdir -p "$source_temp/stage/$source_name" "$source_temp/verify" staging/source
-          source_archive="$GITHUB_WORKSPACE/staging/source/$source_name.tar.gz"
+          source_archive="$GITHUB_WORKSPACE/staging/source/source.tar.gz"
           # 仅复制受控文件、Git 数据和锁定源码归档，不带入其他缓存或构建输出。
           git ls-files --cached --recurse-submodules -z > "$source_temp/files"
           printf '.git\0' >> "$source_temp/files"
@@ -168,7 +168,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Source
-          path: staging/source/multi-bili-source-*.tar.gz
+          path: staging/source/source.tar.gz
           if-no-files-found: error
           compression-level: 0
           retention-days: 7

@@ -130,11 +130,9 @@ jobs:
             echo "缺少本地构建元数据 ${METADATA_FILE}，请通过 Gradle 构建任务生成" >&2
             exit 1
           fi
-          ARTIFACT_VERSION="$(jq -r '.artifactVersion' "$METADATA_FILE")"
           DISPLAY_VERSION="$(jq -r '.appDisplayVersion' "$METADATA_FILE")"
           BUILD_NUMBER="$(jq -r '.buildNumber' "$METADATA_FILE")"
-          export ARTIFACT_VERSION DISPLAY_VERSION BUILD_NUMBER
-          echo "artifact_version=$ARTIFACT_VERSION" >> "$GITHUB_OUTPUT"
+          export DISPLAY_VERSION BUILD_NUMBER
           shopt -s nullglob
           apk_files=(androidApp/build/outputs/apk/release/*.apk)
           if [[ "${#apk_files[@]}" -ne 5 ]]; then
@@ -176,7 +174,7 @@ jobs:
             for key in "${!abi_map[@]}"; do
               if [[ "$filename" == *"-${key}-"* ]]; then
                 target_arch="${abi_map[$key]}"
-                cp "$apk" "staging/android/multi-bili-android-${ARTIFACT_VERSION}-${target_arch}.apk"
+                cp "$apk" "staging/android/multi-bili-android-${target_arch}-${DISPLAY_VERSION}.apk"
                 matched_count=$((matched_count + 1))
                 break
               fi

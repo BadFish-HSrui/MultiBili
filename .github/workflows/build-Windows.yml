@@ -146,10 +146,9 @@ jobs:
             throw "缺少本地构建元数据 $env:METADATA_FILE，请通过 Gradle 构建任务生成"
           }
           $buildMetadata = Get-Content -Raw $env:METADATA_FILE | ConvertFrom-Json
-          $env:ARTIFACT_VERSION = $buildMetadata.artifactVersion
+          $env:DISPLAY_VERSION = $buildMetadata.appDisplayVersion
           $env:VERSION_CORE = $buildMetadata.coreVersion
           $env:BUILD_NUMBER = [string]$buildMetadata.buildNumber
-          "artifact_version=$($buildMetadata.artifactVersion)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           $msiFiles = @(Get-ChildItem 'composeApp/build/compose/binaries/main/msi' -Filter '*.msi' -File)
           $exeFiles = @(Get-ChildItem 'composeApp/build/compose/binaries/main/exe' -Filter '*.exe' -File)
           if ($msiFiles.Count -ne 1 -or $exeFiles.Count -ne 1) {
@@ -167,8 +166,8 @@ jobs:
           "desktop_arch=$desktopArch" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
           New-Item -ItemType Directory -Force -Path 'staging/windows' | Out-Null
-          $msiTarget = "staging/windows/multi-bili-windows-$env:ARTIFACT_VERSION-$desktopArch.msi"
-          $exeTarget = "staging/windows/multi-bili-windows-$env:ARTIFACT_VERSION-$desktopArch.exe"
+          $msiTarget = "staging/windows/multi-bili-windows-$desktopArch-$env:DISPLAY_VERSION.msi"
+          $exeTarget = "staging/windows/multi-bili-windows-$desktopArch-$env:DISPLAY_VERSION.exe"
           Copy-Item $msiFiles[0].FullName $msiTarget
           Copy-Item $exeFiles[0].FullName $exeTarget
 

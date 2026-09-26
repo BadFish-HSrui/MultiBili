@@ -137,11 +137,10 @@ jobs:
             echo "缺少本地构建元数据 ${METADATA_FILE}，请通过 Gradle 构建任务生成" >&2
             exit 1
           fi
-          ARTIFACT_VERSION="$(jq -r '.artifactVersion' "$METADATA_FILE")"
+          DISPLAY_VERSION="$(jq -r '.appDisplayVersion' "$METADATA_FILE")"
           VERSION_CORE="$(jq -r '.coreVersion' "$METADATA_FILE")"
           BUILD_NUMBER="$(jq -r '.buildNumber' "$METADATA_FILE")"
-          export ARTIFACT_VERSION VERSION_CORE BUILD_NUMBER
-          echo "artifact_version=$ARTIFACT_VERSION" >> "$GITHUB_OUTPUT"
+          export DISPLAY_VERSION VERSION_CORE BUILD_NUMBER
           shopt -s nullglob
           app_files=(iosApp/build/Build/Products/Release-iphoneos/*.app)
           if [[ "${#app_files[@]}" -ne 1 ]]; then
@@ -150,7 +149,7 @@ jobs:
           fi
 
           mkdir -p staging/ios
-          ipa_target="staging/ios/multi-bili-ios-${ARTIFACT_VERSION}-arm64.ipa"
+          ipa_target="staging/ios/multi-bili-ios-arm64-${DISPLAY_VERSION}.ipa"
           ipa_root="$(mktemp -d)"
           mkdir -p "$ipa_root/Payload"
           cp -R "${app_files[0]}" "$ipa_root/Payload/"
@@ -179,7 +178,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: IOS-ipa
-          path: staging/ios/multi-bili-ios-*-arm64.ipa
+          path: staging/ios/multi-bili-ios-arm64-*.ipa
           if-no-files-found: error
           retention-days: 7
 

@@ -78,10 +78,6 @@ class AppVersioningTest {
 
             assertEquals("1.2.3-${channel.name.lowercase()}.5", metadata.releaseVersion)
             assertEquals(expectedDisplayVersion, metadata.appDisplayVersion)
-            assertEquals(
-                "1.2.3-${channel.name.lowercase()}.5-b42-g0123456789ab",
-                metadata.artifactVersion,
-            )
         }
     }
 
@@ -111,10 +107,8 @@ class AppVersioningTest {
 
         assertEquals("1.2.3-rc.2", rc.releaseVersion)
         assertEquals("1.2.3-rc2", rc.appDisplayVersion)
-        assertEquals("1.2.3-rc.2-b42-g0123456789ab", rc.artifactVersion)
         assertEquals("1.2.3", stable.releaseVersion)
         assertEquals("1.2.3", stable.appDisplayVersion)
-        assertEquals("1.2.3-b42-g0123456789ab", stable.artifactVersion)
     }
 
     @Test
@@ -150,7 +144,7 @@ class AppVersioningTest {
     }
 
     @Test
-    fun `appends dirty only to artifact version`() {
+    fun `keeps display version unchanged for dirty worktree`() {
         val metadata = resolveVersionMetadata(
             VersionConfig(
                 core = "1.0.0",
@@ -165,7 +159,6 @@ class AppVersioningTest {
         )
 
         assertEquals("1.0.0-alpha-0123456", metadata.appDisplayVersion)
-        assertEquals("1.0.0-alpha.1-b12-g0123456789ab-dirty", metadata.artifactVersion)
     }
 
     @Test

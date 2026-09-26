@@ -122,11 +122,10 @@ jobs:
             echo "缺少本地构建元数据 ${METADATA_FILE}，请通过 Gradle 构建任务生成" >&2
             exit 1
           fi
-          ARTIFACT_VERSION="$(jq -r '.artifactVersion' "$METADATA_FILE")"
+          DISPLAY_VERSION="$(jq -r '.appDisplayVersion' "$METADATA_FILE")"
           VERSION_CORE="$(jq -r '.coreVersion' "$METADATA_FILE")"
           BUILD_NUMBER="$(jq -r '.buildNumber' "$METADATA_FILE")"
-          export ARTIFACT_VERSION VERSION_CORE BUILD_NUMBER
-          echo "artifact_version=$ARTIFACT_VERSION" >> "$GITHUB_OUTPUT"
+          export DISPLAY_VERSION VERSION_CORE BUILD_NUMBER
           shopt -s nullglob
           dmg_files=(composeApp/build/compose/binaries/main/dmg/*.dmg)
           if [[ "${#dmg_files[@]}" -ne 1 ]]; then
@@ -149,7 +148,7 @@ jobs:
           echo "desktop_arch=$desktop_arch" >> "$GITHUB_OUTPUT"
 
           mkdir -p staging/macos
-          dmg_target="staging/macos/multi-bili-macos-${ARTIFACT_VERSION}-${desktop_arch}.dmg"
+          dmg_target="staging/macos/multi-bili-macos-${desktop_arch}-${DISPLAY_VERSION}.dmg"
           cp "${dmg_files[0]}" "$dmg_target"
 
           dmg_mount="$(mktemp -d)"
