@@ -204,7 +204,7 @@ fun ShowPlaybackCollectionSelector(
                         isFadeEnabled = false,
                         crossAxisTrackInset = 2.dp,
                     ),
-                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                    contentPadding = PaddingValues(8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     if (serverOrdered) item(key = "list_previous") {

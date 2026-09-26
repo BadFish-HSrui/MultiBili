@@ -34,7 +34,7 @@ fun ShowReplyPictures(
                 val ratio = if (picture.width > 0 && picture.height > 0) {
                     picture.width.toFloat() / picture.height
                 } else 1f
-                val previewRatio = ratio.coerceAtMost(16f / 9f)
+                val previewRatio = ratio.coerceIn(9f / 21f, 16f / 9f)
                 val height = minOf(240.dp, maxItemWidth / previewRatio)
                 val itemWidth = height * previewRatio
                 Surface(
@@ -46,7 +46,7 @@ fun ShowReplyPictures(
                         url = picture.url,
                         contentDescription = "评论图片 ${index + 1}，共 ${pictures.size} 张，点击查看大图",
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = if (ratio > 16f / 9f) ContentScale.Crop else ContentScale.Fit,
+                        contentScale = if (ratio < 9f / 21f || ratio > 16f / 9f) ContentScale.Crop else ContentScale.Fit,
                         animationEnabled = animationEnabled,
                     )
                 }

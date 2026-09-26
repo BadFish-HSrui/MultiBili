@@ -997,7 +997,7 @@ fun BoloPlayerControls(
                 ) {
                     navigationButtons()
 
-                    if (isFullscreen) {
+                    if (showExtendedControls) {
                         Text(
                             text = title,
                             modifier = Modifier
@@ -1010,7 +1010,6 @@ fun BoloPlayerControls(
                         )
                     }
                     if (showExtendedControls) {
-                        if (!isFullscreen) Spacer(Modifier.weight(1f))
                         IconButton(onClick = { infoOpen = !infoOpen }) {
                             Icon(
                                 imageVector = Icons.Rounded.Info,
