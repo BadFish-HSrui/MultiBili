@@ -164,6 +164,7 @@ import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.VideoPlayerViewModel
 import tv.hsrui.bolo.player.PlayerKeyboardEffect
 import tv.hsrui.bolo.player.PlayerFullscreenState
+import tv.hsrui.bolo.player.settings.BoloPlayerSettings
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.components.reply.ShowReplyInput
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
@@ -260,15 +261,16 @@ fun BoloPlayerControls(
     }
     val deviceControls = rememberPlayerDeviceControls()
     val settings: BoloSettings = koinInject()
+    val playerSettings: BoloPlayerSettings = koinInject()
     val hapticFeedback = LocalHapticFeedback.current
-    val seekGestureEnabled = settings.playerSeekGestureEnabled
-    val brightnessGestureEnabled = settings.playerBrightnessGestureEnabled
-    val volumeGestureEnabled = settings.playerVolumeGestureEnabled
-    val longPressSpeedGestureEnabled = settings.playerLongPressSpeedGestureEnabled
-    val longPressSpeed = settings.playerLongPressSpeed
-    val desktopDoubleClickPauseEnabled = settings.playerDesktopDoubleClickPauseEnabled
-    val desktopDefaultWindowFullscreenEnabled = settings.playerDesktopDefaultWindowFullscreenEnabled
-    val desktopFastForwardHoldSpeedEnabled = settings.playerDesktopFastForwardHoldSpeedEnabled
+    val seekGestureEnabled = playerSettings.playback.seekGestureEnabled
+    val brightnessGestureEnabled = playerSettings.playback.brightnessGestureEnabled
+    val volumeGestureEnabled = playerSettings.playback.volumeGestureEnabled
+    val longPressSpeedGestureEnabled = playerSettings.playback.longPressSpeedGestureEnabled
+    val longPressSpeed = playerSettings.playback.longPressSpeed
+    val desktopDoubleClickPauseEnabled = playerSettings.playback.desktopDoubleClickPauseEnabled
+    val desktopDefaultWindowFullscreenEnabled = playerSettings.playback.desktopDefaultWindowFullscreenEnabled
+    val desktopFastForwardHoldSpeedEnabled = playerSettings.playback.desktopFastForwardHoldSpeedEnabled
     val playState by viewModel.controller.state.collectAsState()
     val playerInfo by viewModel.controller.info.collectAsState()
     val playerUiState by viewModel.uiState.collectAsState()
@@ -406,8 +408,8 @@ fun BoloPlayerControls(
         mutableStateOf(false)
     }
     var desktopVolumeFeedbackRevision by remember { mutableIntStateOf(0) }
-    val desktopVolumeText = if (settings.playerDesktopMuted) "已静音" else "${settings.playerDesktopVolumePercent}%"
-    val desktopVolumeIcon = if (settings.playerDesktopMuted || settings.playerDesktopVolumePercent == 0) {
+    val desktopVolumeText = if (playerSettings.controls.desktopMuted) "已静音" else "${playerSettings.controls.desktopVolumePercent}%"
+    val desktopVolumeIcon = if (playerSettings.controls.desktopMuted || playerSettings.controls.desktopVolumePercent == 0) {
         Icons.AutoMirrored.Rounded.VolumeOff
     } else Icons.AutoMirrored.Rounded.VolumeUp
     fun showDesktopVolumeFeedback() {
@@ -461,14 +463,14 @@ fun BoloPlayerControls(
         if (!playback.isSeekable || playback.durationMs <= 0L || playback.isPlaybackSuspended) return
         keyboardSeekTimes[direction] = TimeSource.Monotonic.markNow()
         viewModel.seekToMs(
-            (playback.displayPositionMs + direction * settings.playerDoubleTapSeekSeconds * 1_000L)
+            (playback.displayPositionMs + direction * playerSettings.playback.doubleTapSeekSeconds * 1_000L)
                 .coerceIn(0L, playback.durationMs),
-            autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled,
+            autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled,
         )
         showSeekFeedback(direction)
     }
     fun toggleDesktopFullscreen() {
-        if (fullscreenState.isManualSystemFullscreen || settings.playerDesktopDefaultWindowFullscreenEnabled) {
+        if (fullscreenState.isManualSystemFullscreen || playerSettings.playback.desktopDefaultWindowFullscreenEnabled) {
             fullscreenState.toggleWindowFullscreen()
         } else {
             fullscreenState.toggleFullscreen()
@@ -704,8 +706,8 @@ fun BoloPlayerControls(
                     isDesktop,
                     desktopDoubleClickPauseEnabled,
                     desktopDefaultWindowFullscreenEnabled,
-                    settings.playerSideDoubleTapSeekEnabled,
-                    settings.playerDoubleTapSeekSeconds,
+                    playerSettings.playback.sideDoubleTapSeekEnabled,
+                    playerSettings.playback.doubleTapSeekSeconds,
                 ) {
                     if (settingsOpen) return@pointerInput
                     if (isDesktop) {
@@ -737,7 +739,7 @@ fun BoloPlayerControls(
                             if (secondDown != null) {
                                 val playback = viewModel.controller.state.value
                                 if (
-                                    settings.playerSideDoubleTapSeekEnabled &&
+                                    playerSettings.playback.sideDoubleTapSeekEnabled &&
                                     playback.isSeekable &&
                                     playback.durationMs > 0L
                                 ) {
@@ -747,11 +749,11 @@ fun BoloPlayerControls(
                                         else -> 0
                                     }
                                     if (direction != 0) {
-                                        val offsetMs = direction * settings.playerDoubleTapSeekSeconds * 1_000L
+                                        val offsetMs = direction * playerSettings.playback.doubleTapSeekSeconds * 1_000L
                                         viewModel.seekToMs(
                                             (playback.displayPositionMs + offsetMs)
                                                 .coerceIn(0L, playback.durationMs),
-                                            autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled,
+                                            autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled,
                                         )
                                         showSeekFeedback(direction)
                                     } else {
@@ -874,7 +876,7 @@ fun BoloPlayerControls(
                                     gesturePreviewMs?.let {
                                         viewModel.seekToMs(
                                             it.coerceIn(0L, latestPlayState.durationMs),
-                                            autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled,
+                                            autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled,
                                         )
                                     }
                                 }
@@ -951,9 +953,9 @@ fun BoloPlayerControls(
                 )
             }
         }
-        if (showExtendedControls && settings.playerHighEnergyProgressEnabled &&
+        if (showExtendedControls && playerSettings.playback.highEnergyProgressEnabled &&
             highEnergyProgress != null && durationMs > 0L &&
-            (settings.playerHighEnergyProgressAlwaysVisible || controlsTransition.currentState || controlsTransition.targetState)
+            (playerSettings.playback.highEnergyProgressAlwaysVisible || controlsTransition.currentState || controlsTransition.targetState)
         ) {
             // 使用同一套 Insets 消费规则测量可用区域，不叠加控制区内边距。
             Box(
@@ -975,7 +977,7 @@ fun BoloPlayerControls(
                 shownTrackBounds = { highEnergyTrackBounds },
                 hiddenBounds = { highEnergyHiddenBounds },
                 modifier = Modifier.matchParentSize().graphicsLayer {
-                    alpha = if (settings.playerHighEnergyProgressAlwaysVisible) 1f else controlsReveal
+                    alpha = if (playerSettings.playback.highEnergyProgressAlwaysVisible) 1f else controlsReveal
                 },
             )
         }
@@ -1065,7 +1067,7 @@ fun BoloPlayerControls(
                                     (fraction.toDouble() * durationMs.toDouble())
                                         .roundToLong()
                                         .coerceIn(0L, durationMs)
-                                viewModel.seekToMs(targetPositionMs, autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled)
+                                viewModel.seekToMs(targetPositionMs, autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled)
                                 sliderPreviewFraction = null
                             }
                         },
@@ -1173,7 +1175,7 @@ fun BoloPlayerControls(
                                     currentChapter = currentChapter,
                                     seekEnabled = playState.isSeekable && !playState.isPlaybackSuspended,
                                     onChapterSelected = {
-                                        viewModel.seekToMs(it.startMs, autoPlayAfterSeek = settings.playerAutoPlayAfterSeekEnabled)
+                                        viewModel.seekToMs(it.startMs, autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled)
                                     },
                                     onExpandedChange = { chapterMenuOpen = it },
                                     modifier = Modifier.layoutId("chapter"),
@@ -1243,8 +1245,8 @@ fun BoloPlayerControls(
                             ) {
                                 VolumeSliderPopup(
                                     visible = "volume" !in hiddenControls,
-                                    volumePercent = settings.playerDesktopVolumePercent,
-                                    muted = settings.playerDesktopMuted,
+                                    volumePercent = playerSettings.controls.desktopVolumePercent,
+                                    muted = playerSettings.controls.desktopMuted,
                                     isFullscreen = isFullscreen,
                                     onVolumeSelected = {
                                         viewModel.setDesktopVolume(it)
@@ -1281,7 +1283,7 @@ fun BoloPlayerControls(
                                 )
                             }
 
-                            if (!settings.playerHideAudioQualitySelectorEnabled && audioQualities.isNotEmpty()) {
+                            if (!settings.playback.hideAudioQualitySelectorEnabled && audioQualities.isNotEmpty()) {
                                 Box(
                                     Modifier.layoutId("audio")
                                         .focusProperties { canFocus = "audio" !in hiddenControls }
@@ -1448,16 +1450,16 @@ fun BoloPlayerControls(
         }
         if (showExtendedControls) {
             BoloPlayerSettingsSheet(
-                resumeAfterBackgroundEnabled = settings.playerResumeAfterBackgroundEnabled,
-                onResumeAfterBackgroundEnabledChange = { settings.playerResumeAfterBackgroundEnabled = it },
-                autoPlayAfterSeekEnabled = settings.playerAutoPlayAfterSeekEnabled,
-                onAutoPlayAfterSeekEnabledChange = { settings.playerAutoPlayAfterSeekEnabled = it },
-                highEnergyProgressEnabled = settings.playerHighEnergyProgressEnabled,
-                onHighEnergyProgressEnabledChange = { settings.playerHighEnergyProgressEnabled = it },
-                highEnergyProgressAlwaysVisible = settings.playerHighEnergyProgressAlwaysVisible,
-                onHighEnergyProgressAlwaysVisibleChange = { settings.playerHighEnergyProgressAlwaysVisible = it },
-                mergeAudioChannelsEnabled = settings.playerMergeAudioChannelsEnabled,
-                onMergeAudioChannelsEnabledChange = { settings.playerMergeAudioChannelsEnabled = it },
+                resumeAfterBackgroundEnabled = playerSettings.playback.resumeAfterBackgroundEnabled,
+                onResumeAfterBackgroundEnabledChange = { playerSettings.playback.resumeAfterBackgroundEnabled = it },
+                autoPlayAfterSeekEnabled = playerSettings.playback.autoPlayAfterSeekEnabled,
+                onAutoPlayAfterSeekEnabledChange = { playerSettings.playback.autoPlayAfterSeekEnabled = it },
+                highEnergyProgressEnabled = playerSettings.playback.highEnergyProgressEnabled,
+                onHighEnergyProgressEnabledChange = { playerSettings.playback.highEnergyProgressEnabled = it },
+                highEnergyProgressAlwaysVisible = playerSettings.playback.highEnergyProgressAlwaysVisible,
+                onHighEnergyProgressAlwaysVisibleChange = { playerSettings.playback.highEnergyProgressAlwaysVisible = it },
+                mergeAudioChannelsEnabled = playerSettings.playback.mergeAudioChannelsEnabled,
+                onMergeAudioChannelsEnabledChange = { playerSettings.playback.mergeAudioChannelsEnabled = it },
                 rebuildEnabled = !playState.isRebuilding && !playState.isPlaybackSuspended,
                 onRebuild = {
                     viewModel.controller.rebuild()
@@ -1469,58 +1471,58 @@ fun BoloPlayerControls(
                 isOpen = settingsOpen,
                 supportsDeviceGestures = deviceControls.supportsDeviceGestures,
                 desktopDoubleClickPauseEnabled = desktopDoubleClickPauseEnabled,
-                onDesktopDoubleClickPauseEnabledChange = { settings.playerDesktopDoubleClickPauseEnabled = it },
+                onDesktopDoubleClickPauseEnabledChange = { playerSettings.playback.desktopDoubleClickPauseEnabled = it },
                 desktopDefaultWindowFullscreenEnabled = desktopDefaultWindowFullscreenEnabled,
-                onDesktopDefaultWindowFullscreenEnabledChange = { settings.playerDesktopDefaultWindowFullscreenEnabled = it },
+                onDesktopDefaultWindowFullscreenEnabledChange = { playerSettings.playback.desktopDefaultWindowFullscreenEnabled = it },
                 desktopFastForwardHoldSpeedEnabled = desktopFastForwardHoldSpeedEnabled,
-                onDesktopFastForwardHoldSpeedEnabledChange = { settings.playerDesktopFastForwardHoldSpeedEnabled = it },
+                onDesktopFastForwardHoldSpeedEnabledChange = { playerSettings.playback.desktopFastForwardHoldSpeedEnabled = it },
                 seekGestureEnabled = seekGestureEnabled,
-                onSeekGestureEnabledChange = { settings.playerSeekGestureEnabled = it },
+                onSeekGestureEnabledChange = { playerSettings.playback.seekGestureEnabled = it },
                 brightnessGestureEnabled = brightnessGestureEnabled,
-                onBrightnessGestureEnabledChange = { settings.playerBrightnessGestureEnabled = it },
+                onBrightnessGestureEnabledChange = { playerSettings.playback.brightnessGestureEnabled = it },
                 volumeGestureEnabled = volumeGestureEnabled,
-                onVolumeGestureEnabledChange = { settings.playerVolumeGestureEnabled = it },
-                sideDoubleTapSeekEnabled = settings.playerSideDoubleTapSeekEnabled,
-                onSideDoubleTapSeekEnabledChange = { settings.playerSideDoubleTapSeekEnabled = it },
-                doubleTapSeekSeconds = settings.playerDoubleTapSeekSeconds,
-                onDoubleTapSeekSecondsChange = { settings.playerDoubleTapSeekSeconds = it },
+                onVolumeGestureEnabledChange = { playerSettings.playback.volumeGestureEnabled = it },
+                sideDoubleTapSeekEnabled = playerSettings.playback.sideDoubleTapSeekEnabled,
+                onSideDoubleTapSeekEnabledChange = { playerSettings.playback.sideDoubleTapSeekEnabled = it },
+                doubleTapSeekSeconds = playerSettings.playback.doubleTapSeekSeconds,
+                onDoubleTapSeekSecondsChange = { playerSettings.playback.doubleTapSeekSeconds = it },
                 longPressSpeedGestureEnabled = longPressSpeedGestureEnabled,
-                onLongPressSpeedGestureEnabledChange = { settings.playerLongPressSpeedGestureEnabled = it },
+                onLongPressSpeedGestureEnabledChange = { playerSettings.playback.longPressSpeedGestureEnabled = it },
                 longPressSpeed = longPressSpeed,
-                onLongPressSpeedChange = { settings.playerLongPressSpeed = it },
-                danmakuFilterLevel = settings.danmakuFilterLevel,
-                onDanmakuFilterLevelChange = { settings.danmakuFilterLevel = it },
-                danmakuScale = settings.danmakuScale,
-                onDanmakuScaleChange = { settings.danmakuScale = it },
-                danmakuAlpha = settings.danmakuAlpha,
-                onDanmakuAlphaChange = { settings.danmakuAlpha = it },
-                onDanmakuAlphaPreview = settings::previewDanmakuAlpha,
-                danmakuSpeed = settings.danmakuSpeed,
-                onDanmakuSpeedChange = { settings.danmakuSpeed = it },
-                danmakuDisplayAreaRatio = settings.danmakuDisplayAreaRatio,
-                onDanmakuDisplayAreaRatioChange = { settings.danmakuDisplayAreaRatio = it },
-                danmakuTopBottomScrollEnabled = settings.danmakuTopBottomScrollEnabled,
-                onDanmakuTopBottomScrollEnabledChange = { settings.danmakuTopBottomScrollEnabled = it },
-                danmakuExtraLineSpacingEnabled = settings.danmakuExtraLineSpacingEnabled,
-                onDanmakuExtraLineSpacingEnabledChange = { settings.danmakuExtraLineSpacingEnabled = it },
-                danmakuScrollEnabled = settings.danmakuScrollEnabled,
-                onDanmakuScrollEnabledChange = { settings.danmakuScrollEnabled = it },
-                danmakuTopEnabled = settings.danmakuTopEnabled,
-                onDanmakuTopEnabledChange = { settings.danmakuTopEnabled = it },
-                danmakuBottomEnabled = settings.danmakuBottomEnabled,
-                onDanmakuBottomEnabledChange = { settings.danmakuBottomEnabled = it },
-                subtitleScale = settings.subtitleScale,
-                onSubtitleScaleChange = { settings.subtitleScale = it },
-                onSubtitleScalePreview = settings::previewSubtitleScale,
-                subtitleHeightRatio = settings.subtitleHeightRatio,
-                onSubtitleHeightRatioChange = { settings.subtitleHeightRatio = it },
-                onSubtitleHeightRatioPreview = settings::previewSubtitleHeightRatio,
-                subtitleTextAlpha = settings.subtitleTextAlpha,
-                onSubtitleTextAlphaChange = { settings.subtitleTextAlpha = it },
-                onSubtitleTextAlphaPreview = settings::previewSubtitleTextAlpha,
-                subtitleBackgroundAlpha = settings.subtitleBackgroundAlpha,
-                onSubtitleBackgroundAlphaChange = { settings.subtitleBackgroundAlpha = it },
-                onSubtitleBackgroundAlphaPreview = settings::previewSubtitleBackgroundAlpha,
+                onLongPressSpeedChange = { playerSettings.playback.longPressSpeed = it },
+                danmakuFilterLevel = playerSettings.danmaku.filterLevel,
+                onDanmakuFilterLevelChange = { playerSettings.danmaku.filterLevel = it },
+                danmakuScale = playerSettings.danmaku.scale,
+                onDanmakuScaleChange = { playerSettings.danmaku.scale = it },
+                danmakuAlpha = playerSettings.danmaku.alpha,
+                onDanmakuAlphaChange = { playerSettings.danmaku.alpha = it },
+                onDanmakuAlphaPreview = playerSettings.danmaku::previewAlpha,
+                danmakuSpeed = playerSettings.danmaku.speed,
+                onDanmakuSpeedChange = { playerSettings.danmaku.speed = it },
+                danmakuDisplayAreaRatio = playerSettings.danmaku.displayAreaRatio,
+                onDanmakuDisplayAreaRatioChange = { playerSettings.danmaku.displayAreaRatio = it },
+                danmakuTopBottomScrollEnabled = playerSettings.danmaku.topBottomScrollEnabled,
+                onDanmakuTopBottomScrollEnabledChange = { playerSettings.danmaku.topBottomScrollEnabled = it },
+                danmakuExtraLineSpacingEnabled = playerSettings.danmaku.extraLineSpacingEnabled,
+                onDanmakuExtraLineSpacingEnabledChange = { playerSettings.danmaku.extraLineSpacingEnabled = it },
+                danmakuScrollEnabled = playerSettings.danmaku.scrollEnabled,
+                onDanmakuScrollEnabledChange = { playerSettings.danmaku.scrollEnabled = it },
+                danmakuTopEnabled = playerSettings.danmaku.topEnabled,
+                onDanmakuTopEnabledChange = { playerSettings.danmaku.topEnabled = it },
+                danmakuBottomEnabled = playerSettings.danmaku.bottomEnabled,
+                onDanmakuBottomEnabledChange = { playerSettings.danmaku.bottomEnabled = it },
+                subtitleScale = playerSettings.subtitle.scale,
+                onSubtitleScaleChange = { playerSettings.subtitle.scale = it },
+                onSubtitleScalePreview = playerSettings.subtitle::previewScale,
+                subtitleHeightRatio = playerSettings.subtitle.heightRatio,
+                onSubtitleHeightRatioChange = { playerSettings.subtitle.heightRatio = it },
+                onSubtitleHeightRatioPreview = playerSettings.subtitle::previewHeightRatio,
+                subtitleTextAlpha = playerSettings.subtitle.textAlpha,
+                onSubtitleTextAlphaChange = { playerSettings.subtitle.textAlpha = it },
+                onSubtitleTextAlphaPreview = playerSettings.subtitle::previewTextAlpha,
+                subtitleBackgroundAlpha = playerSettings.subtitle.backgroundAlpha,
+                onSubtitleBackgroundAlphaChange = { playerSettings.subtitle.backgroundAlpha = it },
+                onSubtitleBackgroundAlphaPreview = playerSettings.subtitle::previewBackgroundAlpha,
                 onDismissRequest = {
                     settingsOpen = false
                     controlsVisible = true

@@ -19,6 +19,7 @@ import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.base.BoloVideoPlayer
 import tv.hsrui.bolo.player.controls.BoloPlayerControls
 import tv.hsrui.bolo.player.danmaku.BoloDanmakuLayer
+import tv.hsrui.bolo.player.settings.BoloPlayerSettings
 import tv.hsrui.bolo.player.subtitle.BoloSubtitleLayer
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 
@@ -34,32 +35,33 @@ fun VideoPlayer(
     episodeNavigationEnabled: Boolean = true,
 ) {
     val settings: BoloSettings = koinInject()
-    LaunchedEffect(viewModel, settings.playerMergeAudioChannelsEnabled) {
-        viewModel.controller.setMergeAudioChannelsEnabled(settings.playerMergeAudioChannelsEnabled)
+    val playerSettings: BoloPlayerSettings = koinInject()
+    LaunchedEffect(viewModel, playerSettings.playback.mergeAudioChannelsEnabled) {
+        viewModel.controller.setMergeAudioChannelsEnabled(playerSettings.playback.mergeAudioChannelsEnabled)
     }
     LaunchedEffect(
-        viewModel, settings.playerLoudnessMode, settings.playerDynamicLoudnessEnabled,
-        settings.playerDynamicLoudnessTargetLufs, settings.playerDynamicLoudnessRangeLu,
-        settings.playerDynamicLoudnessTruePeakDbtp,
+        viewModel, settings.playback.loudnessMode, settings.playback.dynamicLoudnessEnabled,
+        settings.playback.dynamicLoudnessTargetLufs, settings.playback.dynamicLoudnessRangeLu,
+        settings.playback.dynamicLoudnessTruePeakDbtp,
     ) {
         viewModel.controller.setLoudnessSettings(
-            settings.playerLoudnessMode, settings.playerDynamicLoudnessEnabled,
-            settings.playerDynamicLoudnessTargetLufs.toDouble(), settings.playerDynamicLoudnessRangeLu.toDouble(),
-            settings.playerDynamicLoudnessTruePeakDbtp.toDouble(),
+            settings.playback.loudnessMode, settings.playback.dynamicLoudnessEnabled,
+            settings.playback.dynamicLoudnessTargetLufs.toDouble(), settings.playback.dynamicLoudnessRangeLu.toDouble(),
+            settings.playback.dynamicLoudnessTruePeakDbtp.toDouble(),
         )
     }
     LaunchedEffect(
         viewModel.subtitleController,
-        settings.subtitleAlwaysOn,
-        settings.subtitleSmartEnabled,
-        settings.subtitleAutoChineseOnly,
-        settings.subtitleAutoExcludeAi,
+        settings.playback.subtitleAlwaysOn,
+        settings.playback.subtitleSmartEnabled,
+        settings.playback.subtitleAutoChineseOnly,
+        settings.playback.subtitleAutoExcludeAi,
     ) {
         // 先同步过滤条件，避免启用自动字幕时短暂选中不符合条件的轨道。
-        viewModel.subtitleController.autoChineseOnly = settings.subtitleAutoChineseOnly
-        viewModel.subtitleController.autoExcludeAi = settings.subtitleAutoExcludeAi
-        viewModel.subtitleController.smartEnabled = settings.subtitleSmartEnabled
-        viewModel.subtitleController.alwaysOn = settings.subtitleAlwaysOn
+        viewModel.subtitleController.autoChineseOnly = settings.playback.subtitleAutoChineseOnly
+        viewModel.subtitleController.autoExcludeAi = settings.playback.subtitleAutoExcludeAi
+        viewModel.subtitleController.smartEnabled = settings.playback.subtitleSmartEnabled
+        viewModel.subtitleController.alwaysOn = settings.playback.subtitleAlwaysOn
     }
 
     Box(modifier.fillMaxSize().background(Color.Black)) {

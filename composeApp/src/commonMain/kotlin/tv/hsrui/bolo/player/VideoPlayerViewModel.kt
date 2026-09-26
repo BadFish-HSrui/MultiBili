@@ -37,6 +37,7 @@ import tv.hsrui.bolo.player.base.load
 import tv.hsrui.bolo.player.danmaku.BoloDanmakuController
 import tv.hsrui.bolo.player.danmaku.BoloDanmakuItem
 import tv.hsrui.bolo.player.danmaku.BoloDanmakuMode
+import tv.hsrui.bolo.player.settings.BoloPlayerSettings
 import tv.hsrui.bolo.player.subtitle.BoloSubtitleController
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.network.feature.danmaku.DanmakuMode
@@ -63,6 +64,7 @@ class VideoPlayerViewModel(
     private val initialPlayerInfo: PlayerInfoResponse? = null,
 ) : ViewModel() {
     private val settings: BoloSettings = getKoin().get()
+    private val playerSettings: BoloPlayerSettings = getKoin().get()
     private val loginStorage: LoginStorage = getKoin().get()
     var avid: Long = avid
         private set
@@ -147,7 +149,7 @@ class VideoPlayerViewModel(
 
     var videoQuality: VideoQuality = VideoQuality.best
     var audioQuality: AudioQuality? = AudioQuality.best
-    private var currentVideoCodec = settings.playerDefaultVideoCodec
+    private var currentVideoCodec = settings.playback.defaultVideoCodec
 
     var isLoading: Boolean = false
     private var playbackLoadJob: Job? = null
@@ -167,7 +169,7 @@ class VideoPlayerViewModel(
         if (getPlatform().type == PlatformType.Desktop) {
             viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
                 snapshotFlow {
-                    if (settings.playerDesktopMuted) 0 else settings.playerDesktopVolumePercent
+                    if (playerSettings.controls.desktopMuted) 0 else playerSettings.controls.desktopVolumePercent
                 }.collect(controller::setVolumeGain)
             }
         }
@@ -218,10 +220,10 @@ class VideoPlayerViewModel(
             singleEpisodeLoopEnabled = false
             playerInfo = (initialPlayerInfo ?: this.initialPlayerInfo).takeIf { sourceGeneration == 0L }
             lastConfirmedPositionMs = null
-            autoPlayOnOpen = settings.playerAutoPlayOnOpenEnabled
-            resumeFromHistoryOnOpen = settings.playerResumeFromHistoryEnabled
-            videoQuality = settings.playerDefaultVideoQuality
-            audioQuality = settings.playerDefaultAudioQuality
+            autoPlayOnOpen = settings.playback.autoPlayOnOpenEnabled
+            resumeFromHistoryOnOpen = settings.playback.resumeFromHistoryEnabled
+            videoQuality = settings.playback.defaultVideoQuality
+            audioQuality = settings.playback.defaultAudioQuality
         }
         playbackReportController.beforeReload(controller.state.value, controller.backend.value != null)
         playbackReportController.openMedia(avid, cid)
@@ -236,7 +238,7 @@ class VideoPlayerViewModel(
         this.episodeId = episodeId
         resetDanmaku()
         if (opensNewMedia) {
-            setDanmakuVisible(settings.playerAutoEnableDanmakuOnOpenEnabled || settings.danmakuEnabled)
+            setDanmakuVisible(settings.playback.autoEnableDanmakuOnOpenEnabled || playerSettings.controls.danmakuEnabled)
         }
         _uiState.value = VideoPlayerUiState.Loading
         sourceLoadJob = viewModelScope.launch {
@@ -251,7 +253,7 @@ class VideoPlayerViewModel(
     fun setDanmakuVisible(visible: Boolean) {
         if (_danmakuClosed.value) return
         danmakuController.setVisible(visible)
-        settings.danmakuEnabled = visible
+        playerSettings.controls.danmakuEnabled = visible
     }
 
     fun openDanmakuInput() {
@@ -362,23 +364,23 @@ class VideoPlayerViewModel(
     fun setDesktopVolume(percent: Int) {
         if (getPlatform().type != PlatformType.Desktop) return
         Snapshot.withMutableSnapshot {
-            settings.playerDesktopVolumePercent = percent
-            settings.playerDesktopMuted = false
+            playerSettings.controls.desktopVolumePercent = percent
+            playerSettings.controls.desktopMuted = false
         }
     }
 
     fun adjustDesktopVolume(delta: Int) {
-        setDesktopVolume(settings.playerDesktopVolumePercent + delta)
+        setDesktopVolume(playerSettings.controls.desktopVolumePercent + delta)
     }
 
     fun toggleDesktopMuted() {
         if (getPlatform().type != PlatformType.Desktop) return
         Snapshot.withMutableSnapshot {
-            if (settings.playerDesktopVolumePercent == 0) {
-                settings.playerDesktopVolumePercent = 100
-                settings.playerDesktopMuted = false
+            if (playerSettings.controls.desktopVolumePercent == 0) {
+                playerSettings.controls.desktopVolumePercent = 100
+                playerSettings.controls.desktopMuted = false
             } else {
-                settings.playerDesktopMuted = !settings.playerDesktopMuted
+                playerSettings.controls.desktopMuted = !playerSettings.controls.desktopMuted
             }
         }
     }
@@ -388,7 +390,7 @@ class VideoPlayerViewModel(
         if (currentState !is VideoPlayerUiState.Success) return
         playbackReportController.beforeReload(controller.state.value, controller.backend.value != null)
 
-        val video = currentState.videoSource.getVideo(quality = videoQuality, codec = settings.playerDefaultVideoCodec)
+        val video = currentState.videoSource.getVideo(quality = videoQuality, codec = settings.playback.defaultVideoCodec)
         val audio = currentState.videoSource.getAudio(quality = audioQuality)
         currentVideoCodec = video.codec
 
@@ -406,16 +408,16 @@ class VideoPlayerViewModel(
         val intentRevision = controller.playIntentRevision
         playbackLoadJob = viewModelScope.launch {
             controller.setLoudnessSettings(
-                settings.playerLoudnessMode, settings.playerDynamicLoudnessEnabled,
-                settings.playerDynamicLoudnessTargetLufs.toDouble(), settings.playerDynamicLoudnessRangeLu.toDouble(),
-                settings.playerDynamicLoudnessTruePeakDbtp.toDouble(),
+                settings.playback.loudnessMode, settings.playback.dynamicLoudnessEnabled,
+                settings.playback.dynamicLoudnessTargetLufs.toDouble(), settings.playback.dynamicLoudnessRangeLu.toDouble(),
+                settings.playback.dynamicLoudnessTruePeakDbtp.toDouble(),
             )
             controller.load(
                 video = video,
                 audio = audio,
                 startPositionMs = startPositionMs,
                 loudness = currentState.videoSource.loudness,
-                sortCdn = settings.playerOptimizePlaybackSourceEnabled,
+                sortCdn = settings.playback.optimizePlaybackSourceEnabled,
             )
             currentCoroutineContext().ensureActive()
             if (generation != sourceGeneration) return@launch
@@ -461,7 +463,7 @@ class VideoPlayerViewModel(
     fun switchQuality(newVideoQuality: VideoQuality) {
         val source = (uiState.value as? VideoPlayerUiState.Success)?.videoSource ?: return
         if (newVideoQuality == currentVideoQuality.value || newVideoQuality !in source.videoQualities) return
-        if (settings.playerRecordQualitySelectionEnabled) settings.playerDefaultVideoQuality = newVideoQuality
+        if (settings.playback.recordQualitySelectionEnabled) settings.playback.defaultVideoQuality = newVideoQuality
         videoQuality = newVideoQuality
         playVideo(controller.state.value.displayPositionMs)
     }
@@ -469,7 +471,7 @@ class VideoPlayerViewModel(
     fun switchAudioQuality(newAudioQuality: AudioQuality) {
         val source = (uiState.value as? VideoPlayerUiState.Success)?.videoSource ?: return
         if (newAudioQuality == currentAudioQuality.value || newAudioQuality !in source.audioQualities) return
-        if (settings.playerRecordQualitySelectionEnabled) settings.playerDefaultAudioQuality = newAudioQuality
+        if (settings.playback.recordQualitySelectionEnabled) settings.playback.defaultAudioQuality = newAudioQuality
         audioQuality = newAudioQuality
         playVideo(controller.state.value.displayPositionMs)
     }
@@ -509,7 +511,7 @@ class VideoPlayerViewModel(
             _currentVideoQuality.value = videoQuality
             _currentAudioQuality.value = audioQuality
             _uiState.value = VideoPlayerUiState.Success(result)
-            return BoloPlayerSource(video, audio, result.loudness, settings.playerOptimizePlaybackSourceEnabled)
+            return BoloPlayerSource(video, audio, result.loudness, settings.playback.optimizePlaybackSourceEnabled)
         }
         throw IllegalStateException("播放地址刷新失败，请重试")
     }
@@ -518,7 +520,7 @@ class VideoPlayerViewModel(
         if (!resumeFromHistoryOnOpen || !loginStorage.isLoggedIn) return 0L
         val info = playerInfo?.takeIf { it.matchesRequest(avid, cid, loginStorage.cookies.sessData) } ?: return 0L
         val source = (uiState.value as? VideoPlayerUiState.Success)?.videoSource ?: return 0L
-        val durationSeconds = maxOf(source.getVideo(videoQuality, settings.playerDefaultVideoCodec).duration,
+        val durationSeconds = maxOf(source.getVideo(videoQuality, settings.playback.defaultVideoCodec).duration,
             source.getAudio(audioQuality)?.duration ?: 0L)
         val durationMs = durationSeconds.coerceIn(0L, Long.MAX_VALUE / 1000L) * 1000L
         return info.resumePositionMs(cid, durationMs)
@@ -532,10 +534,10 @@ class VideoPlayerViewModel(
         val requestedIsMedia = episodeId != null
         subtitleLoadJob?.cancel()
         subtitleController.clear()
-        subtitleController.autoChineseOnly = settings.subtitleAutoChineseOnly
-        subtitleController.autoExcludeAi = settings.subtitleAutoExcludeAi
-        subtitleController.smartEnabled = settings.subtitleSmartEnabled
-        subtitleController.alwaysOn = settings.subtitleAlwaysOn
+        subtitleController.autoChineseOnly = settings.playback.subtitleAutoChineseOnly
+        subtitleController.autoExcludeAi = settings.playback.subtitleAutoExcludeAi
+        subtitleController.smartEnabled = settings.playback.subtitleSmartEnabled
+        subtitleController.alwaysOn = settings.playback.subtitleAlwaysOn
         val subtitleGeneration = subtitleController.beginSubtitleLoad(requestedAvid, requestedCid) {
             loginStorage.cookies.sessData == requestedSession
         }

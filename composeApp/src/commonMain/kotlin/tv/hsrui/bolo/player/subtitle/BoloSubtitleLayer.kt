@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.koin.compose.koinInject
-import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.player.settings.BoloPlayerSettings
 import kotlin.math.roundToInt
 
 @Composable
@@ -33,11 +33,11 @@ fun BoloSubtitleLayer(
     modifier: Modifier = Modifier,
 ) {
     val state by controller.state.collectAsState()
-    val settings: BoloSettings = koinInject()
-    val scale = settings.effectiveSubtitleScale
-    val heightRatio = settings.effectiveSubtitleHeightRatio
-    val textAlpha = settings.effectiveSubtitleTextAlpha
-    val backgroundAlpha = settings.effectiveSubtitleBackgroundAlpha
+    val playerSettings: BoloPlayerSettings = koinInject()
+    val scale = playerSettings.subtitle.effectiveScale
+    val heightRatio = playerSettings.subtitle.effectiveHeightRatio
+    val textAlpha = playerSettings.subtitle.effectiveTextAlpha
+    val backgroundAlpha = playerSettings.subtitle.effectiveBackgroundAlpha
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
     val baseStyle = MaterialTheme.typography.bodyLarge.copy(

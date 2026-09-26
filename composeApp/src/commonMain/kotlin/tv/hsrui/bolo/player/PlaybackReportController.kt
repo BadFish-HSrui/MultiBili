@@ -61,7 +61,7 @@ class PlaybackReportController {
         playedTime = Duration.ZERO
         lastSuccessfulProgress = null
         immediateReportAccountSession = loginStorage.cookies.sessData.takeIf {
-            settings.playerReportProgressImmediatelyEnabled && it.isNotEmpty()
+            settings.playback.reportProgressImmediatelyEnabled && it.isNotEmpty()
         }
         reportStart()
     }
@@ -131,7 +131,7 @@ class PlaybackReportController {
 
     private fun advanceClock() {
         val now = TimeSource.Monotonic.markNow()
-        if (settings.playerReportProgressMode == PlaybackProgressReportMode.EveryMinute) {
+        if (settings.playback.reportProgressMode == PlaybackProgressReportMode.EveryMinute) {
             if (countingPlayback) playedTime += now - lastUpdate
         } else {
             playedTime = Duration.ZERO
@@ -141,7 +141,7 @@ class PlaybackReportController {
 
     private fun reportStart() {
         val target = media ?: return
-        if (closed || !settings.playerReportStartEnabled || !loginStorage.isLoggedIn) return
+        if (closed || !settings.playback.reportStartEnabled || !loginStorage.isLoggedIn) return
         val accountSession = loginStorage.cookies.sessData
         pendingRequests += 1
         requestScope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -149,7 +149,7 @@ class PlaybackReportController {
                 withPlaybackReportBackgroundExecution {
                     requestMutex.withLock {
                         repeat(3) { attempt ->
-                            if (!settings.playerReportStartEnabled || !loginStorage.isLoggedIn ||
+                            if (!settings.playback.reportStartEnabled || !loginStorage.isLoggedIn ||
                                 loginStorage.cookies.sessData != accountSession
                             ) return@withLock
                             try {
@@ -180,8 +180,8 @@ class PlaybackReportController {
         val target = media ?: return
         if (closed || !loginStorage.isLoggedIn) return
         if (immediately) {
-            if (!settings.playerReportProgressImmediatelyEnabled) return
-        } else if (!hasPlayed || settings.playerReportProgressMode == PlaybackProgressReportMode.Off) {
+            if (!settings.playback.reportProgressImmediatelyEnabled) return
+        } else if (!hasPlayed || settings.playback.reportProgressMode == PlaybackProgressReportMode.Off) {
             return
         }
         val progressSeconds = positionMs / 1_000L
@@ -195,9 +195,9 @@ class PlaybackReportController {
                     requestMutex.withLock {
                         repeat(3) { attempt ->
                             val enabled = if (immediately) {
-                                settings.playerReportProgressImmediatelyEnabled
+                                settings.playback.reportProgressImmediatelyEnabled
                             } else {
-                                settings.playerReportProgressMode != PlaybackProgressReportMode.Off
+                                settings.playback.reportProgressMode != PlaybackProgressReportMode.Off
                             }
                             if (!enabled || !loginStorage.isLoggedIn || loginStorage.cookies.sessData != accountSession
                             ) return@withLock

@@ -343,7 +343,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
                     val initialInfo = fetchPlayerInfo(video.avid, video.cid)
                     if (version != generation) return@launch
                     playerInfo = initialInfo
-                    if (settings.playerResumeFromHistoryEnabled &&
+                    if (settings.playback.resumeFromHistoryEnabled &&
                         accountSession.isNotEmpty() && loginStorage.cookies.sessData == accountSession &&
                         initialInfo.matchesRequest(video.avid, video.cid, accountSession)
                     ) {
@@ -354,7 +354,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
                             playerInfo = fetchPlayerInfo(video.avid, video.cid)
                         }
                     }
-                    if (!settings.playerResumeFromHistoryEnabled || loginStorage.cookies.sessData != accountSession) {
+                    if (!settings.playback.resumeFromHistoryEnabled || loginStorage.cookies.sessData != accountSession) {
                         video = originalVideo
                         playerInfo = initialInfo
                     }

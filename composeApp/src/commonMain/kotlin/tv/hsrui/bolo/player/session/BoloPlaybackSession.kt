@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.player.settings.BoloPlayerSettings
 import tv.hsrui.bolo.boloSetting.PlaybackEndBehavior
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.player.VideoPlayerUiState
@@ -31,6 +32,7 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
     val player = VideoPlayerViewModel(0L, 0L)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val settings: BoloSettings = getKoin().get()
+    private val playerSettings: BoloPlayerSettings = getKoin().get()
     private val mutableState = MutableStateFlow(BoloSystemMediaState())
     val state = mutableState.asStateFlow()
     private var adapter: BoloSystemMediaSession? = null
@@ -59,7 +61,7 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
     init {
         player.onPlaybackPageEntered()
         scope.launch {
-            snapshotFlow { settings.playerBackgroundPlaybackEnabled to settings.playerResumeAfterBackgroundEnabled }
+            snapshotFlow { settings.playback.backgroundPlaybackEnabled to playerSettings.playback.resumeAfterBackgroundEnabled }
                 .collect { (background, resume) ->
                     player.controller.setBackgroundPlaybackEnabled(background && getPlatform().type != PlatformType.Desktop)
                     player.controller.setResumeAfterBackgroundEnabled(resume)
@@ -78,7 +80,7 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
                 publish()
                 if (ended) {
                     val behavior = if (player.singleEpisodeLoopEnabled) PlaybackEndBehavior.Replay
-                        else settings.playerPlaybackEndBehavior
+                        else settings.playback.endBehavior
                     when (behavior) {
                         PlaybackEndBehavior.Off -> Unit
                         PlaybackEndBehavior.Replay -> player.play()
@@ -90,7 +92,7 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
         scope.launch { player.uiState.collect { publish(force = true) } }
         scope.launch { snapshotFlow { player.pendingPlayWhenReady }.collect { publish(force = true) } }
         scope.launch {
-            snapshotFlow { settings.playerDesktopVolumePercent to settings.playerDesktopMuted }
+            snapshotFlow { playerSettings.controls.desktopVolumePercent to playerSettings.controls.desktopMuted }
                 .collect { publish(force = true) }
         }
         scope.launch { while (isActive) { delay(1_000); publish(force = true) } }
@@ -153,7 +155,7 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
         val revision = interruptionRevision
         interruptionRevision = null
         if (allowed && revision != null && !closed && interruptionMedia == metadata.mediaId &&
-            player.controller.playIntentRevision == revision && (foreground || settings.playerBackgroundPlaybackEnabled)) {
+            player.controller.playIntentRevision == revision && (foreground || settings.playback.backgroundPlaybackEnabled)) {
             player.play()
         }
     }
@@ -192,7 +194,7 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
         val playback = player.controller.state.value
         val hasMedia = metadata.mediaId.isNotEmpty()
         val loading = player.uiState.value is VideoPlayerUiState.Loading || player.pendingPlayWhenReady != null
-        val permitted = hasMedia && !playback.isPlaybackSuspended && (foreground || settings.playerBackgroundPlaybackEnabled)
+        val permitted = hasMedia && !playback.isPlaybackSuspended && (foreground || settings.playback.backgroundPlaybackEnabled)
         val status = when {
             !hasMedia || stopped -> BoloSystemMediaPlaybackStatus.Stopped
             player.uiState.value is VideoPlayerUiState.Error -> BoloSystemMediaPlaybackStatus.Error
@@ -207,7 +209,7 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
             metadata, status, permitted && (player.pendingPlayWhenReady ?: playback.playWhenReady),
             if (loading) 0 else playback.currentPositionMs.coerceAtLeast(0), if (loading) 0 else playback.durationMs.coerceAtLeast(0),
             playback.playbackSpeed.toDouble(),
-            if (settings.playerDesktopMuted) 0.0 else settings.playerDesktopVolumePercent / 100.0,
+            if (playerSettings.controls.desktopMuted) 0.0 else playerSettings.controls.desktopVolumePercent / 100.0,
             canPlay = permitted && (loading || player.uiState.value is VideoPlayerUiState.Success),
             canPause = permitted,
             canSeek = permitted && !loading && playback.isSeekable && playback.hasConfirmedPosition,

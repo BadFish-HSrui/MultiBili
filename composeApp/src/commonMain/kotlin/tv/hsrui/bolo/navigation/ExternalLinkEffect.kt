@@ -48,8 +48,8 @@ fun ExternalLinkEffect() {
     val handler = remember(settings, navigator, clipboard, scope) {
         ExternalLinkHandler(
             scope = scope,
-            clipboardEnabled = { settings.appClipboardLinkRecognitionEnabled },
-            systemLinksEnabled = { platform == PlatformType.Android && settings.appSystemLinkHandlingEnabled },
+            clipboardEnabled = { settings.general.clipboardLinkRecognitionEnabled },
+            systemLinksEnabled = { platform == PlatformType.Android && settings.general.systemLinkHandlingEnabled },
             readClipboard = { clipboard.getText() },
             isCurrentRoute = { navigator.backStack.lastOrNull() == it },
             navigate = navigator::navigateTo,
@@ -57,15 +57,15 @@ fun ExternalLinkEffect() {
         )
     }
 
-    LaunchedEffect(settings.appSystemLinkHandlingEnabled) {
-        if (platform == PlatformType.Android && !setSystemLinkHandlingEnabled(settings.appSystemLinkHandlingEnabled)) {
-            settings.appSystemLinkHandlingEnabled = isSystemLinkHandlingEnabled()
+    LaunchedEffect(settings.general.systemLinkHandlingEnabled) {
+        if (platform == PlatformType.Android && !setSystemLinkHandlingEnabled(settings.general.systemLinkHandlingEnabled)) {
+            settings.general.systemLinkHandlingEnabled = isSystemLinkHandlingEnabled()
             snackbar.showMessage("系统链接设置失败")
         }
     }
     // 显式订阅两个设置，开关关闭时立即取消相应的读取、弹窗和待完成请求。
-    val clipboardEnabled = settings.appClipboardLinkRecognitionEnabled
-    val systemLinksEnabled = settings.appSystemLinkHandlingEnabled
+    val clipboardEnabled = settings.general.clipboardLinkRecognitionEnabled
+    val systemLinksEnabled = settings.general.systemLinkHandlingEnabled
     SideEffect {
         if (!clipboardEnabled || !systemLinksEnabled) handler.onSettingsChanged()
     }

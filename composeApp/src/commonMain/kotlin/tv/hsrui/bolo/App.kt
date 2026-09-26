@@ -62,7 +62,7 @@ fun App() {
     KoinApplication(configuration = configuration) {
         val settings: BoloSettings = koinInject()
         val systemDarkTheme = isSystemInDarkTheme()
-        val isDarkTheme = when (settings.appThemeMode) {
+        val isDarkTheme = when (settings.general.themeMode) {
             AppThemeMode.Dark -> true
             AppThemeMode.Light -> false
             AppThemeMode.Auto -> systemDarkTheme

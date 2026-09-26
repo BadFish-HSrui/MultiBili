@@ -181,40 +181,40 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                             if (getPlatform().type != PlatformType.Desktop) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                        value = settings.playerBackgroundPlaybackEnabled,
+                                        value = settings.playback.backgroundPlaybackEnabled,
                                         role = Role.Switch,
-                                        onValueChange = { settings.playerBackgroundPlaybackEnabled = it },
+                                        onValueChange = { settings.playback.backgroundPlaybackEnabled = it },
                                     ).padding(horizontal = 16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text("后台播放", style = MaterialTheme.typography.bodyLarge)
                                     Spacer(Modifier.weight(1f))
-                                    Switch(checked = settings.playerBackgroundPlaybackEnabled, onCheckedChange = null)
+                                    Switch(checked = settings.playback.backgroundPlaybackEnabled, onCheckedChange = null)
                                 }
                                 HorizontalDivider()
                             }
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                    value = settings.playerAutoPlayOnOpenEnabled,
+                                    value = settings.playback.autoPlayOnOpenEnabled,
                                     role = Role.Switch,
-                                    onValueChange = { settings.playerAutoPlayOnOpenEnabled = it },
+                                    onValueChange = { settings.playback.autoPlayOnOpenEnabled = it },
                                 ).padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text("打开视频自动播放", style = MaterialTheme.typography.bodyLarge)
                                 Spacer(Modifier.weight(1f))
                                 Switch(
-                                    checked = settings.playerAutoPlayOnOpenEnabled,
+                                    checked = settings.playback.autoPlayOnOpenEnabled,
                                     onCheckedChange = null
                                 )
                             }
                             HorizontalDivider()
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                    value = settings.playerAutoEnableDanmakuOnOpenEnabled,
+                                    value = settings.playback.autoEnableDanmakuOnOpenEnabled,
                                     role = Role.Switch,
                                     onValueChange = {
-                                        settings.playerAutoEnableDanmakuOnOpenEnabled = it
+                                        settings.playback.autoEnableDanmakuOnOpenEnabled = it
                                     },
                                 ).padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -235,23 +235,23 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 }
                                 Spacer(Modifier.weight(1f))
                                 Switch(
-                                    checked = settings.playerAutoEnableDanmakuOnOpenEnabled,
+                                    checked = settings.playback.autoEnableDanmakuOnOpenEnabled,
                                     onCheckedChange = null
                                 )
                             }
                             HorizontalDivider()
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                    value = settings.playerResumeFromHistoryEnabled,
+                                    value = settings.playback.resumeFromHistoryEnabled,
                                     role = Role.Switch,
-                                    onValueChange = { settings.playerResumeFromHistoryEnabled = it },
+                                    onValueChange = { settings.playback.resumeFromHistoryEnabled = it },
                                 ).padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text("从播放记录继续", style = MaterialTheme.typography.bodyLarge)
                                 Spacer(Modifier.weight(1f))
                                 Switch(
-                                    checked = settings.playerResumeFromHistoryEnabled,
+                                    checked = settings.playback.resumeFromHistoryEnabled,
                                     onCheckedChange = null
                                 )
                             }
@@ -268,8 +268,8 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     val behaviors = PlaybackEndBehavior.entries
                                     behaviors.forEachIndexed { index, behavior ->
                                         SegmentedButton(
-                                            selected = behavior == settings.playerPlaybackEndBehavior,
-                                            onClick = { settings.playerPlaybackEndBehavior = behavior },
+                                            selected = behavior == settings.playback.endBehavior,
+                                            onClick = { settings.playback.endBehavior = behavior },
                                             shape = SegmentedButtonDefaults.itemShape(
                                                 index = index,
                                                 count = behaviors.size,
@@ -294,8 +294,8 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     val codecs = listOf(VideoCodec.AVC, VideoCodec.HEVC, VideoCodec.AV1)
                                     codecs.forEachIndexed { index, codec ->
                                         SegmentedButton(
-                                            selected = codec == settings.playerDefaultVideoCodec,
-                                            onClick = { settings.playerDefaultVideoCodec = codec },
+                                            selected = codec == settings.playback.defaultVideoCodec,
+                                            onClick = { settings.playback.defaultVideoCodec = codec },
                                             shape = SegmentedButtonDefaults.itemShape(
                                                 index = index,
                                                 count = codecs.size,
@@ -316,14 +316,14 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 HorizontalDivider()
                                 val title = if (isVideo) "默认播放画质" else "默认播放音质"
                                 val qualities: List<Quality> = if (isVideo) VideoQuality.entries else audioQualities
-                                val savedQuality = if (isVideo) settings.playerDefaultVideoQuality else settings.playerDefaultAudioQuality
+                                val savedQuality = if (isVideo) settings.playback.defaultVideoQuality else settings.playback.defaultAudioQuality
                                 val savedIndex = qualities.indexOfFirst { it.code == savedQuality.code }
                                 var previewIndex by remember(isVideo, savedIndex) { mutableStateOf<Int?>(null) }
                                 val displayedIndex = previewIndex ?: savedIndex
                                 val valueText = qualities[displayedIndex].shortTitle
                                 val saveIndex: (Int) -> Unit = { index ->
-                                    if (isVideo) settings.playerDefaultVideoQuality = VideoQuality.entries[index]
-                                    else settings.playerDefaultAudioQuality = audioQualities[index]
+                                    if (isVideo) settings.playback.defaultVideoQuality = VideoQuality.entries[index]
+                                    else settings.playback.defaultAudioQuality = audioQualities[index]
                                 }
                                 Row(
                                     modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp),
@@ -377,9 +377,9 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                             HorizontalDivider()
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                    value = settings.playerRecordQualitySelectionEnabled,
+                                    value = settings.playback.recordQualitySelectionEnabled,
                                     role = Role.Switch,
-                                    onValueChange = { settings.playerRecordQualitySelectionEnabled = it },
+                                    onValueChange = { settings.playback.recordQualitySelectionEnabled = it },
                                 ).padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -395,27 +395,27 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     )
                                 }
                                 Spacer(Modifier.weight(1f))
-                                Switch(checked = settings.playerRecordQualitySelectionEnabled, onCheckedChange = null)
+                                Switch(checked = settings.playback.recordQualitySelectionEnabled, onCheckedChange = null)
                             }
                             HorizontalDivider()
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                    value = settings.playerHideAudioQualitySelectorEnabled,
+                                    value = settings.playback.hideAudioQualitySelectorEnabled,
                                     role = Role.Switch,
-                                    onValueChange = { settings.playerHideAudioQualitySelectorEnabled = it },
+                                    onValueChange = { settings.playback.hideAudioQualitySelectorEnabled = it },
                                 ).padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text("隐藏播放器音质选项", style = MaterialTheme.typography.bodyLarge)
                                 Spacer(Modifier.weight(1f))
-                                Switch(checked = settings.playerHideAudioQualitySelectorEnabled, onCheckedChange = null)
+                                Switch(checked = settings.playback.hideAudioQualitySelectorEnabled, onCheckedChange = null)
                             }
                             HorizontalDivider()
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                    value = settings.playerOptimizePlaybackSourceEnabled,
+                                    value = settings.playback.optimizePlaybackSourceEnabled,
                                     role = Role.Switch,
-                                    onValueChange = { settings.playerOptimizePlaybackSourceEnabled = it },
+                                    onValueChange = { settings.playback.optimizePlaybackSourceEnabled = it },
                                 ).padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -431,7 +431,7 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     )
                                 }
                                 Spacer(Modifier.weight(1f))
-                                Switch(checked = settings.playerOptimizePlaybackSourceEnabled, onCheckedChange = null)
+                                Switch(checked = settings.playback.optimizePlaybackSourceEnabled, onCheckedChange = null)
                             }
                         }
                     }
@@ -463,8 +463,8 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 SingleChoiceSegmentedButtonRow(modifier = Modifier.widthIn(max = 220.dp)) {
                                     val modes = listOf("关闭", "智能", "总是")
                                     val selectedIndex = when {
-                                        settings.subtitleAlwaysOn -> 2
-                                        settings.subtitleSmartEnabled -> 1
+                                        settings.playback.subtitleAlwaysOn -> 2
+                                        settings.playback.subtitleSmartEnabled -> 1
                                         else -> 0
                                     }
                                     modes.forEachIndexed { index, title ->
@@ -473,11 +473,11 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                             onClick = {
                                                 when (index) {
                                                     0 -> {
-                                                        settings.subtitleSmartEnabled = false
-                                                        settings.subtitleAlwaysOn = false
+                                                        settings.playback.subtitleSmartEnabled = false
+                                                        settings.playback.subtitleAlwaysOn = false
                                                     }
-                                                    1 -> settings.subtitleSmartEnabled = true
-                                                    2 -> settings.subtitleAlwaysOn = true
+                                                    1 -> settings.playback.subtitleSmartEnabled = true
+                                                    2 -> settings.playback.subtitleAlwaysOn = true
                                                 }
                                             },
                                             shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
@@ -488,34 +488,34 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     }
                                 }
                             }
-                            if (settings.subtitleAlwaysOn) {
+                            if (settings.playback.subtitleAlwaysOn) {
                                 HorizontalDivider()
                                 Row(
                                     modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                        value = settings.subtitleAutoChineseOnly,
+                                        value = settings.playback.subtitleAutoChineseOnly,
                                         role = Role.Switch,
-                                        onValueChange = { settings.subtitleAutoChineseOnly = it },
+                                        onValueChange = { settings.playback.subtitleAutoChineseOnly = it },
                                     ).padding(horizontal = 16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text("仅自动开启中文字幕", style = MaterialTheme.typography.bodyLarge)
                                     Spacer(Modifier.weight(1f))
-                                    Switch(checked = settings.subtitleAutoChineseOnly, onCheckedChange = null)
+                                    Switch(checked = settings.playback.subtitleAutoChineseOnly, onCheckedChange = null)
                                 }
                             }
-                            if (settings.subtitleSmartEnabled || settings.subtitleAlwaysOn) {
+                            if (settings.playback.subtitleSmartEnabled || settings.playback.subtitleAlwaysOn) {
                                 HorizontalDivider()
                                 Row(
                                     modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                        value = settings.subtitleAutoExcludeAi,
+                                        value = settings.playback.subtitleAutoExcludeAi,
                                         role = Role.Switch,
-                                        onValueChange = { settings.subtitleAutoExcludeAi = it },
+                                        onValueChange = { settings.playback.subtitleAutoExcludeAi = it },
                                     ).padding(horizontal = 16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text("不自动开启AI字幕", style = MaterialTheme.typography.bodyLarge)
                                     Spacer(Modifier.weight(1f))
-                                    Switch(checked = settings.subtitleAutoExcludeAi, onCheckedChange = null)
+                                    Switch(checked = settings.playback.subtitleAutoExcludeAi, onCheckedChange = null)
                                 }
                             }
                         }
@@ -531,9 +531,9 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                         Card(Modifier.fillMaxWidth()) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                    value = settings.playerDynamicLoudnessEnabled,
+                                    value = settings.playback.dynamicLoudnessEnabled,
                                     role = Role.Switch,
-                                    onValueChange = { settings.playerDynamicLoudnessEnabled = it },
+                                    onValueChange = { settings.playback.dynamicLoudnessEnabled = it },
                                 ).padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -553,11 +553,11 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 }
                                 Spacer(Modifier.weight(1f))
                                 Switch(
-                                    checked = settings.playerDynamicLoudnessEnabled,
+                                    checked = settings.playback.dynamicLoudnessEnabled,
                                     onCheckedChange = null
                                 )
                             }
-                            if (settings.playerDynamicLoudnessEnabled) {
+                            if (settings.playback.dynamicLoudnessEnabled) {
                                 HorizontalDivider()
                                 listOf(
                                     Triple("目标音量", -20f..-8f, 1f),
@@ -565,17 +565,17 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     Triple("峰值音量", -4f..0f, 0.5f),
                                 ).forEachIndexed { index, (title, range, step) ->
                                     val savedValue = when (index) {
-                                        0 -> settings.playerDynamicLoudnessTargetLufs
-                                        1 -> settings.playerDynamicLoudnessRangeLu
-                                        else -> settings.playerDynamicLoudnessTruePeakDbtp
+                                        0 -> settings.playback.dynamicLoudnessTargetLufs
+                                        1 -> settings.playback.dynamicLoudnessRangeLu
+                                        else -> settings.playback.dynamicLoudnessTruePeakDbtp
                                     }
                                     val defaultValue = (range.start + range.endInclusive) / 2f
                                     var previewValue by remember(index, savedValue) { mutableStateOf<Float?>(null) }
                                     val saveValue: (Float) -> Unit = { value ->
                                         when (index) {
-                                            0 -> settings.playerDynamicLoudnessTargetLufs = value
-                                            1 -> settings.playerDynamicLoudnessRangeLu = value
-                                            else -> settings.playerDynamicLoudnessTruePeakDbtp = value
+                                            0 -> settings.playback.dynamicLoudnessTargetLufs = value
+                                            1 -> settings.playback.dynamicLoudnessRangeLu = value
+                                            else -> settings.playback.dynamicLoudnessTruePeakDbtp = value
                                         }
                                     }
                                     val displayedValue = previewValue ?: savedValue
@@ -601,7 +601,7 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                                 value = displayedValue,
                                                 onValueChange = { previewValue = ((it / step).roundToInt() * step).coerceIn(range) },
                                                 onValueChangeFinished = {
-                                                    if (settings.playerDynamicLoudnessEnabled) {
+                                                    if (settings.playback.dynamicLoudnessEnabled) {
                                                         previewValue?.let(saveValue)
                                                     }
                                                     previewValue = null
@@ -643,8 +643,8 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                         val modes = PlaybackLoudnessMode.entries
                                         modes.forEachIndexed { index, mode ->
                                             SegmentedButton(
-                                                selected = mode == settings.playerLoudnessMode,
-                                                onClick = { settings.playerLoudnessMode = mode },
+                                                selected = mode == settings.playback.loudnessMode,
+                                                onClick = { settings.playback.loudnessMode = mode },
                                                 shape = SegmentedButtonDefaults.itemShape(
                                                     index = index,
                                                     count = modes.size
@@ -674,9 +674,9 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                         Card(Modifier.fillMaxWidth()) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                    value = settings.playerReportStartEnabled,
+                                    value = settings.playback.reportStartEnabled,
                                     role = Role.Switch,
-                                    onValueChange = { settings.playerReportStartEnabled = it },
+                                    onValueChange = { settings.playback.reportStartEnabled = it },
                                 ).padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -693,7 +693,7 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 }
                                 Box(Modifier.weight(1f))
                                 Switch(
-                                    checked = settings.playerReportStartEnabled,
+                                    checked = settings.playback.reportStartEnabled,
                                     onCheckedChange = null
                                 )
                             }
@@ -710,9 +710,9 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     val modes = PlaybackProgressReportMode.entries
                                     modes.forEachIndexed { index, mode ->
                                         SegmentedButton(
-                                            selected = mode == settings.playerReportProgressMode,
+                                            selected = mode == settings.playback.reportProgressMode,
                                             onClick = {
-                                                settings.playerReportProgressMode = mode
+                                                settings.playback.reportProgressMode = mode
                                             },
                                             shape = SegmentedButtonDefaults.itemShape(
                                                 index = index,
@@ -732,9 +732,9 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                             HorizontalDivider()
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                    value = settings.playerReportProgressImmediatelyEnabled,
+                                    value = settings.playback.reportProgressImmediatelyEnabled,
                                     role = Role.Switch,
-                                    onValueChange = { settings.playerReportProgressImmediatelyEnabled = it },
+                                    onValueChange = { settings.playback.reportProgressImmediatelyEnabled = it },
                                 ).padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -751,7 +751,7 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 }
                                 Box(Modifier.weight(1f))
                                 Switch(
-                                    checked = settings.playerReportProgressImmediatelyEnabled,
+                                    checked = settings.playback.reportProgressImmediatelyEnabled,
                                     onCheckedChange = null
                                 )
                             }

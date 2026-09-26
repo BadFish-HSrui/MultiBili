@@ -69,8 +69,8 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
                                 SingleChoiceSegmentedButtonRow(modifier = Modifier.widthIn(max = 220.dp)) {
                                     AppThemeMode.entries.forEachIndexed { index, mode ->
                                         SegmentedButton(
-                                            selected = mode == settings.appThemeMode,
-                                            onClick = { settings.appThemeMode = mode },
+                                            selected = mode == settings.general.themeMode,
+                                            onClick = { settings.general.themeMode = mode },
                                             shape = SegmentedButtonDefaults.itemShape(
                                                 index = index,
                                                 count = AppThemeMode.entries.size,
@@ -87,30 +87,30 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
                         Card(Modifier.fillMaxWidth()) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                    value = settings.appClipboardLinkRecognitionEnabled,
+                                    value = settings.general.clipboardLinkRecognitionEnabled,
                                     role = Role.Switch,
-                                    onValueChange = { settings.appClipboardLinkRecognitionEnabled = it },
+                                    onValueChange = { settings.general.clipboardLinkRecognitionEnabled = it },
                                 ).padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text("识别剪贴板链接", style = MaterialTheme.typography.bodyLarge)
                                 Spacer(Modifier.weight(1f))
-                                Switch(checked = settings.appClipboardLinkRecognitionEnabled, onCheckedChange = null)
+                                Switch(checked = settings.general.clipboardLinkRecognitionEnabled, onCheckedChange = null)
                             }
                             if (getPlatform().type == PlatformType.Android) {
                                 HorizontalDivider()
                                 Row(
                                     modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                        value = settings.appSystemLinkHandlingEnabled,
+                                        value = settings.general.systemLinkHandlingEnabled,
                                         role = Role.Switch,
                                         onValueChange = { enabled ->
                                             if (setSystemLinkHandlingEnabled(enabled)) {
-                                                settings.appSystemLinkHandlingEnabled = enabled
+                                                settings.general.systemLinkHandlingEnabled = enabled
                                                 if (enabled && !openSystemLinkSettings()) {
                                                     snackbar.showMessage("无法打开系统设置")
                                                 }
                                             } else {
-                                                settings.appSystemLinkHandlingEnabled = isSystemLinkHandlingEnabled()
+                                                settings.general.systemLinkHandlingEnabled = isSystemLinkHandlingEnabled()
                                                 snackbar.showMessage("系统链接设置失败")
                                             }
                                         },
@@ -119,7 +119,7 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
                                 ) {
                                     Text("接收系统链接跳转", style = MaterialTheme.typography.bodyLarge)
                                     Spacer(Modifier.weight(1f))
-                                    Switch(checked = settings.appSystemLinkHandlingEnabled, onCheckedChange = null)
+                                    Switch(checked = settings.general.systemLinkHandlingEnabled, onCheckedChange = null)
                                 }
                             }
                         }

@@ -34,7 +34,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
-import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.player.settings.BoloPlayerSettings
 import tv.hsrui.bolo.ui.theme.BiliColor
 
 @Composable
@@ -42,17 +42,17 @@ fun BoloDanmakuLayer(
     controller: BoloDanmakuController,
     modifier: Modifier = Modifier,
 ) {
-    val settings: BoloSettings = koinInject()
-    val danmakuScale = settings.danmakuScale
-    val danmakuAlpha = settings.effectiveDanmakuAlpha
-    val danmakuSpeed = settings.danmakuSpeed
-    val danmakuDisplayAreaRatio = settings.danmakuDisplayAreaRatio
-    val danmakuTopBottomScrollEnabled = settings.danmakuTopBottomScrollEnabled
-    val danmakuFilterLevel = settings.danmakuFilterLevel
-    val danmakuExtraLineSpacingEnabled = settings.danmakuExtraLineSpacingEnabled
-    val danmakuScrollEnabled = settings.danmakuScrollEnabled
-    val danmakuTopEnabled = settings.danmakuTopEnabled
-    val danmakuBottomEnabled = settings.danmakuBottomEnabled
+    val playerSettings: BoloPlayerSettings = koinInject()
+    val danmakuScale = playerSettings.danmaku.scale
+    val danmakuAlpha = playerSettings.danmaku.effectiveAlpha
+    val danmakuSpeed = playerSettings.danmaku.speed
+    val danmakuDisplayAreaRatio = playerSettings.danmaku.displayAreaRatio
+    val danmakuTopBottomScrollEnabled = playerSettings.danmaku.topBottomScrollEnabled
+    val danmakuFilterLevel = playerSettings.danmaku.filterLevel
+    val danmakuExtraLineSpacingEnabled = playerSettings.danmaku.extraLineSpacingEnabled
+    val danmakuScrollEnabled = playerSettings.danmaku.scrollEnabled
+    val danmakuTopEnabled = playerSettings.danmaku.topEnabled
+    val danmakuBottomEnabled = playerSettings.danmaku.bottomEnabled
     val fontFamily = MaterialTheme.typography.bodyLarge.fontFamily
     val measurer = rememberTextMeasurer(cacheSize = 512)
     val density = LocalDensity.current
