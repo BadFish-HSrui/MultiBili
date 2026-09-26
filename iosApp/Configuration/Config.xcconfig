@@ -1,10 +1,8 @@
 #include "../../version.properties"
-#include? "GeneratedVersion.xcconfig"
 
 TEAM_ID=
 
 PRODUCT_NAME = Multi Bili
 PRODUCT_BUNDLE_IDENTIFIER=tv.hsrui.bolo.MultiBili$(TEAM_ID)
 
-CURRENT_PROJECT_VERSION=$(APP_BUILD_NUMBER)
 MARKETING_VERSION=$(APP_VERSION_CORE)

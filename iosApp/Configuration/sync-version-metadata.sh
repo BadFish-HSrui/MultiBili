@@ -3,28 +3,15 @@
 set -eu
 
 REPO_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
-VERSION_PROPERTIES="${REPO_ROOT}/version.properties"
-OUTPUT="${REPO_ROOT}/iosApp/Configuration/GeneratedVersion.xcconfig"
+OUTPUT="${SCRIPT_OUTPUT_FILE_0:-}"
 
-if [ ! -f "${VERSION_PROPERTIES}" ]; then
-    echo "error: Missing version.properties at ${VERSION_PROPERTIES}." >&2
+if [ -z "${OUTPUT}" ]; then
+    echo "error: Missing output path for the iOS version header." >&2
     exit 1
 fi
 
-version_value() {
-    key="$1"
-    awk -F= -v key="${key}" '
-        $1 == key {
-            count++
-            value=$2
-        }
-        END {
-            if (count != 1 || value == "") exit 1
-            print value
-        }' "${VERSION_PROPERTIES}"
-}
-
-APP_VERSION_CORE="$(version_value APP_VERSION_CORE)"
+# 避免 Xcode 的 Swift 调试环境变量污染 Git 输出。
+unset SWIFT_DEBUG_INFORMATION_FORMAT SWIFT_DEBUG_INFORMATION_VERSION
 
 if [ "$(git -C "${REPO_ROOT}" rev-parse --is-shallow-repository)" = "true" ]; then
     echo "error: iOS version metadata requires a complete Git history." >&2
@@ -35,7 +22,7 @@ APP_BUILD_NUMBER="$(git -C "${REPO_ROOT}" rev-list --count HEAD)"
 APP_COMMIT_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 
 case "${APP_BUILD_NUMBER}" in
-    ''|*[!0-9]*)
+    ''|0|*[!0-9]*)
         echo "error: Git did not return a valid iOS build number." >&2
         exit 1
         ;;
@@ -48,14 +35,18 @@ case "${APP_COMMIT_SHA}" in
         ;;
 esac
 
+mkdir -p "$(dirname -- "${OUTPUT}")"
 TEMP_OUTPUT="$(mktemp "${OUTPUT}.tmp.XXXXXX")"
 trap 'rm -f "${TEMP_OUTPUT}"' EXIT
 
 {
-    printf 'APP_VERSION_CORE = %s\n' "${APP_VERSION_CORE}"
-    printf 'APP_BUILD_NUMBER = %s\n' "${APP_BUILD_NUMBER}"
-    printf 'APP_COMMIT_SHA = %s\n' "${APP_COMMIT_SHA}"
+    printf '// Git commit: %s\n' "${APP_COMMIT_SHA}"
+    printf '#define BOLO_APP_BUILD_NUMBER %s\n' "${APP_BUILD_NUMBER}"
 } > "${TEMP_OUTPUT}"
 
-mv "${TEMP_OUTPUT}" "${OUTPUT}"
+if [ -f "${OUTPUT}" ] && cmp -s "${TEMP_OUTPUT}" "${OUTPUT}"; then
+    rm -f "${TEMP_OUTPUT}"
+else
+    mv "${TEMP_OUTPUT}" "${OUTPUT}"
+fi
 trap - EXIT
