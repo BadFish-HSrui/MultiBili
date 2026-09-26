@@ -14,8 +14,8 @@ EXTERNAL SOURCES:
     :path: "../composeApp"
 
 SPEC CHECKSUMS:
-  BoloNativePlayer: 4945ab71ccf52ec0936adb5387331568fde99867
-  composeApp: 7521300682d7d23bafa979967fabcba7f78d0d8e
+  BoloNativePlayer: 20c7e68926c43cfc868d2c3797cdc45dec317946
+  composeApp: 9c6a24bcb8c4fb2573e829fdc944bff247c282b4
 
 PODFILE CHECKSUM: 0bc09d8c90741f912d08d431e443dc8b5572431c
 

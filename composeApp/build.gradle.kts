@@ -53,6 +53,7 @@ kotlin {
 
     cocoapods {
         version = appVersionMetadata.releaseVersion
+        license = "GPL-3.0"
         summary = "Bolo Compose App"
         homepage = "https://hsrui.tv/bolo"
         ios.deploymentTarget = iosDeploymentTarget

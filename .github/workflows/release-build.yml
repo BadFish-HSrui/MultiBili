@@ -20,6 +20,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  source:
+    uses: ./.github/workflows/build-source.yml
+
   linux:
     uses: ./.github/workflows/build-Linux.yml
     with:
@@ -47,6 +50,7 @@ jobs:
 
   summary:
     needs:
+      - source
       - linux
       - android
       - macos
@@ -58,6 +62,7 @@ jobs:
       - name: 生成构建概览看板
         shell: bash
         env:
+          SOURCE_RESULT: ${{ needs.source.result }}
           LINUX_RESULT: ${{ needs.linux.result }}
           ANDROID_RESULT: ${{ needs.android.result }}
           MACOS_RESULT: ${{ needs.macos.result }}
@@ -84,6 +89,7 @@ jobs:
             echo
             echo "| 平台 | 构建状态 | 产物 Artifact 名称 | 包含格式 |"
             echo "| --- | --- | --- | --- |"
+            echo "| 源码 | $(format_status "$SOURCE_RESULT") | \`Source\` | tar.gz |"
             echo "| Linux | $(format_status "$LINUX_RESULT") | \`Linux-deb\` / \`Linux-rpm\` | DEB, RPM |"
             echo "| Android | $(format_status "$ANDROID_RESULT") | \`Android-apk\` | APK |"
             echo "| macOS | $(format_status "$MACOS_RESULT") | \`Mac-dmg\` | DMG |"
@@ -93,7 +99,7 @@ jobs:
             echo "产物已作为独立 Artifact 上传，可直接在当前 Actions 运行页面下载对应的目标格式。"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [[ "$LINUX_RESULT" != "success" || "$ANDROID_RESULT" != "success" || "$MACOS_RESULT" != "success" || "$IOS_RESULT" != "success" || "$WINDOWS_RESULT" != "success" ]]; then
-            echo "部分平台构建未成功完成。" >&2
+          if [[ "$SOURCE_RESULT" != "success" || "$LINUX_RESULT" != "success" || "$ANDROID_RESULT" != "success" || "$MACOS_RESULT" != "success" || "$IOS_RESULT" != "success" || "$WINDOWS_RESULT" != "success" ]]; then
+            echo "部分构建任务未成功完成。" >&2
             exit 1
           fi

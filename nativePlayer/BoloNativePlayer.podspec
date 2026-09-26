@@ -3,7 +3,7 @@ Pod::Spec.new do |spec|
   spec.version = '0.41.0'
   spec.summary = 'Bolo libmpv native player bridge.'
   spec.homepage = 'https://github.com/BadFish-HSrui/MultiBili'
-  spec.license = { :type => 'LGPL-2.1-or-later', :text => File.read(File.join(__dir__, 'licenses/mpv__LICENSE.LGPL')) }
+  spec.license = { :type => 'GPL-3.0', :text => File.read(File.join(__dir__, 'licenses/bolo__LICENSE')) }
   spec.author = 'BadFish-HSrui'
   spec.source = { :git => 'https://github.com/BadFish-HSrui/MultiBili.git' }
   spec.ios.deployment_target = '16.0'

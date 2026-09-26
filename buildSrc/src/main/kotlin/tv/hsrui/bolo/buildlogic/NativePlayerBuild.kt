@@ -150,10 +150,12 @@ internal class NativePlayerBuild(
                     libraries.compile()
                     val licenses = work.resolve("licenses").apply { mkdirs() }
                     nativeFiles(libraries.sources).filter { it.isFile && it.name.lowercase().let { name ->
-                        name.startsWith("copying") || name.startsWith("copyright") || name.startsWith("license")
+                        name.startsWith("copying") || name.startsWith("copyright") || name.startsWith("license") ||
+                            name.startsWith("notice") || name == "ftl.txt"
                     } }.forEach { file ->
                         nativeCopyFile(file, licenses.resolve(file.relativeTo(libraries.sources).invariantSeparatorsPath.replace("/", "__")))
                     }
+                    collectSupplementalLicenses(libraries.sources, licenses)
                     if (sourceIdentity() != source) throw GradleException("Sources changed during library build; retry")
                     val stage = work.resolve("library-package").apply { mkdirs() }
                     nativeCopyTree(libraries.prefix, stage.resolve("prefix"))
@@ -253,8 +255,43 @@ internal class NativePlayerBuild(
         return packageDir
     }
 
+    private fun collectSupplementalLicenses(sources: File, licenses: File) {
+        val requiredFiles = listOf(
+            "freetype/docs/FTL.TXT", "freetype/src/bdf/README", "freetype/src/pcf/README",
+            "freetype/src/base/fthash.c", "freetype/include/freetype/internal/fthash.h",
+            "freetype/src/autofit/ft-hb.c", "freetype/src/autofit/ft-hb.h", "freetype/src/gzip/zlib.h",
+            "ffmpeg/libavcodec/jfdctfst.c", "ffmpeg/libavcodec/jfdctint_template.c", "ffmpeg/libavcodec/jrevdct.c",
+            "mpv/ta/ta.c", "mpv/misc/thread_tools.c", "mpv/osdep/timer-darwin.c",
+            "mpv/osdep/android/strnlen.c", "mpv/osdep/dirent-win.h", "mpv/video/out/filter_kernels.c",
+            "harfbuzz/src/hb-algs.hh", "harfbuzz/src/hb-ucd.cc",
+        )
+        requiredFiles.forEach { relative ->
+            val file = sources.resolve(relative)
+            if (!file.isFile) throw GradleException("Missing required license source: $relative")
+            val text = file.readText()
+            val target = licenses.resolve(relative.replace("/", "__"))
+            if (file.extension in listOf("c", "h", "cc", "hh")) {
+                val notice = Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL).findAll(text)
+                    .map { it.value }.filter { it.contains("copyright", ignoreCase = true) }.joinToString("\n\n")
+                if (notice.isBlank()) throw GradleException("Missing copyright notice: $relative")
+                target.writeText(notice + "\n")
+            } else {
+                nativeCopyFile(file, target)
+            }
+        }
+    }
+
     private fun prepare(command: String, bundles: Map<String, File>) {
+        val projectLicenseDirectory = root.parentFile.resolve("LICENSE.COPYING")
+        val projectLicenseFiles = projectLicenseDirectory.listFiles().orEmpty()
+            .filter { it.isFile && !nativeMetadataEntry(it.name) }
+            .associateBy { "bolo__${it.name}" } + mapOf("bolo__LICENSE" to root.parentFile.resolve("LICENSE"))
+        listOf("bolo__LICENSE", "bolo__COPYING.OFL", "bolo__NOTICE").forEach { name ->
+            if (projectLicenseFiles[name]?.isFile != true) throw GradleException("Missing required project license: $name")
+        }
+        val projectLicenses = projectLicenseFiles.mapValues { (_, file) -> nativeSha(file) }
         val key = nativeHash(nativeJson(mapOf("bundles" to bundles.mapValues { it.value.name },
+            "projectLicenses" to projectLicenses,
             "podspec" to if (command == "ios") nativeSha(root.resolve("BoloNativePlayer.podspec")) else null)))
         val output = buildDirectory.resolve(command)
         if (nativeValidBundle(output, key)) {
@@ -263,19 +300,42 @@ internal class NativePlayerBuild(
         }
         val stage = Files.createTempDirectory(buildDirectory.apply { mkdirs() }.toPath(), ".prepare-$command-").toFile()
         try {
+            fun copyProjectLicenses(directory: File) {
+                projectLicenses.forEach { (name, sha) ->
+                    val target = directory.resolve(name)
+                    nativeCopyFile(projectLicenseFiles.getValue(name), target)
+                    if (nativeSha(target) != sha) throw GradleException("Project license changed while preparing output: $name")
+                }
+            }
             when (command) {
                 "android" -> {
                     val mapping = mapOf("android-arm64" to "arm64-v8a", "android-armv7" to "armeabi-v7a", "android-x86" to "x86", "android-x64" to "x86_64")
-                    bundles.forEach { (target, bundle) ->
-                        val abi = mapping.getValue(target)
+                    val referenceLicenses = bundles.getValue("android-arm64").resolve("licenses")
+                    val playerLicenses = nativeManifest(referenceLicenses) - "ffmpeg-config.h"
+                    if (playerLicenses.isEmpty()) throw GradleException("Missing Android license files for arm64-v8a")
+                    mapping.forEach { (target, abi) ->
+                        val bundle = bundles.getValue(target)
+                        val licenses = bundle.resolve("licenses")
+                        val actual = nativeManifest(licenses) - "ffmpeg-config.h"
+                        val differences = (playerLicenses.keys + actual.keys).filter { playerLicenses[it] != actual[it] }.sorted()
+                        if (differences.isNotEmpty()) {
+                            throw GradleException("Android licenses differ for $abi from arm64-v8a: ${differences.joinToString(", ")}")
+                        }
                         nativeCopyFile(bundle.resolve("libbolo_mpv.so"), stage.resolve("jniLibs/$abi/libbolo_mpv.so"))
-                        nativeCopyTree(bundle.resolve("licenses"), stage.resolve("licenses/$abi"))
+                        nativeCopyFile(licenses.resolve("ffmpeg-config.h"), stage.resolve("licenses/bolo__player/$abi/ffmpeg-config.h"))
                     }
+                    playerLicenses.forEach { (name, sha) ->
+                        val target = stage.resolve("licenses/bolo__player/$name")
+                        nativeCopyFile(referenceLicenses.resolve(name), target)
+                        if (nativeSha(target) != sha) throw GradleException("Android license changed while preparing output: $name")
+                    }
+                    copyProjectLicenses(stage.resolve("licenses"))
                 }
                 "ios" -> {
                     host.run("xcodebuild", "-create-xcframework", "-framework", bundles.getValue("ios-arm64").resolve("BoloNativePlayer.framework"),
                         "-framework", bundles.getValue("iossim-arm64").resolve("BoloNativePlayer.framework"), "-output", stage.resolve("BoloNativePlayer.xcframework"))
-                    nativeCopyTree(bundles.getValue("ios-arm64").resolve("licenses"), stage.resolve("licenses"))
+                    nativeCopyTree(bundles.getValue("ios-arm64").resolve("licenses"), stage.resolve("licenses/bolo__player"))
+                    copyProjectLicenses(stage.resolve("licenses"))
                     nativeCopyFile(root.resolve("BoloNativePlayer.podspec"), stage.resolve("BoloNativePlayer.podspec"))
                 }
                 "desktop" -> {
@@ -284,7 +344,8 @@ internal class NativePlayerBuild(
                     val files = bundle.listFiles().orEmpty().filter { it.extension in listOf("so", "dll", "dylib") }
                     files.forEach { nativeCopyFile(it, resources.resolve(it.name)) }
                     resources.resolve("files.txt").writeText(files.joinToString("\n", postfix = "\n") { nativeSha(it) + "  " + it.name })
-                    nativeCopyTree(bundle.resolve("licenses"), resources.resolve("licenses"))
+                    nativeCopyTree(bundle.resolve("licenses"), resources.resolve("licenses/bolo__player"))
+                    copyProjectLicenses(resources.resolve("licenses"))
                     nativeCopyFile(bundle.resolve("build-info.json"), resources.resolve("build-info.json"))
                 }
             }
