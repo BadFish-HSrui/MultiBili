@@ -26,6 +26,7 @@ internal object BoloMpvNative {
     external fun caFile(handle: Long, path: String): Int
     external fun surface(handle: Long, surface: Any?): Int
     external fun surfaceSize(handle: Long, width: Int, height: Int): Int
+    external fun displayFps(handle: Long, fps: Double): Int
     external fun renderCreate(handle: Long): Int
     external fun renderDirty(handle: Long): Boolean
     external fun render(handle: Long, fbo: Int, width: Int, height: Int, flip: Boolean): Int

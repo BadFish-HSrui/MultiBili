@@ -51,6 +51,7 @@ JNIEXPORT jint JNICALL JNI(mergeAudioChannels)(JNIEnv *env, jobject self, jlong 
 JNIEXPORT jint JNICALL JNI(seek)(JNIEnv *env, jobject self, jlong p, jdouble value, jlong request) { return bolo_mpv_seek(PLAYER(p)->core, value, request); }
 JNIEXPORT jint JNICALL JNI(stop)(JNIEnv *env, jobject self, jlong p) { return bolo_mpv_stop(PLAYER(p)->core); }
 JNIEXPORT jint JNICALL JNI(surfaceSize)(JNIEnv *env, jobject self, jlong p, jint width, jint height) { return bolo_mpv_surface_size(PLAYER(p)->core, width, height); }
+JNIEXPORT jint JNICALL JNI(displayFps)(JNIEnv *env, jobject self, jlong p, jdouble fps) { return bolo_mpv_display_fps(PLAYER(p)->core, fps); }
 JNIEXPORT jint JNICALL JNI(caFile)(JNIEnv *env, jobject self, jlong handle, jstring path) {
     const char *value = (*env)->GetStringUTFChars(env, path, NULL);
     int result = bolo_mpv_ca_file(PLAYER(handle)->core, value);

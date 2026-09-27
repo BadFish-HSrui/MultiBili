@@ -1,8 +1,18 @@
 package tv.hsrui.bolo.player.base
 
-import android.graphics.SurfaceTexture
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.hardware.display.DisplayManager
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.Display
 import android.view.Surface
-import android.view.TextureView
+import android.view.SurfaceHolder
+import android.view.SurfaceView
+import android.view.View
+import android.view.Window
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -11,8 +21,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import tv.hsrui.bolo.utils.url.AppContext
 import tv.hsrui.bolo.player.session.BoloMediaSessionService
@@ -23,110 +32,228 @@ internal actual class BoloMpvBackend actual constructor() {
         try { configureBoloMpvCertificates(handle, java.io.File(AppContext.instance.cacheDir, "mpv-certificates")) }
         catch (error: Exception) { BoloMpvNative.destroy(handle); throw error }
     }
-    private val outputMutex = Mutex()
+    private val outputScope = CoroutineScope(SupervisorJob() + boloMpvDispatcher)
+    private var outputJob: Job? = null
     private var outputReady = CompletableDeferred<Unit>()
-    private val resizeScope = CoroutineScope(SupervisorJob() + boloMpvDispatcher)
-    private var resizeJob: Job? = null
-    private var outputWidth = 0
-    private var outputHeight = 0
-    private var texture: TextureView? = null
+    private var view: SurfaceView? = null
+    private var callback: SurfaceHolder.Callback? = null
     private var surface: Surface? = null
-    private var retainedTexture: SurfaceTexture? = null
-    private var surfaceBound = false
+    private var foreground = true
+    private var requestedFrameRate = 0f
+    private var appliedFrameRateRequest: Float? = null
+    private var displayManager: DisplayManager? = null
+    private var refreshWindow: Window? = null
+    private var originalWindowFrameRate = 0f
+    private var displayId = Display.INVALID_DISPLAY
+    @Volatile private var outputRevision = 0L
+    @Volatile private var displayRevision = 0L
     @Volatile private var closing = false
-    private var destroyed = false // 仅由串行 native dispatcher 访问。
+    // 以下字段仅由串行 native dispatcher 访问。
+    private var boundRevision = -1L
+    private var videoRequested = true
+    private var destroyed = false
+    private var appliedDisplayFps = 0.0
+    private var appliedDisplayId = Display.INVALID_DISPLAY
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(id: Int) { refreshDisplay() }
+        override fun onDisplayRemoved(id: Int) { refreshDisplay() }
+        override fun onDisplayChanged(id: Int) {
+            if (id == displayId || id == view?.display?.displayId) refreshDisplay()
+        }
+    }
+    private val attachmentListener = object : View.OnAttachStateChangeListener {
+        override fun onViewAttachedToWindow(host: View) { refreshDisplay() }
+        override fun onViewDetachedFromWindow(host: View) { refreshDisplay() }
+    }
 
     actual suspend fun bind(output: Any) = withContext(Dispatchers.Main.immediate + NonCancellable) {
-        outputMutex.withLock {
-            if (closing || texture === output) return@withLock
+        if (closing || view === output) return@withContext
+        detachView()
+        val host = output as SurfaceView
+        view = host
+        host.addOnAttachStateChangeListener(attachmentListener)
+        displayManager = host.context.getSystemService(DisplayManager::class.java).also { manager ->
+            if (Build.VERSION.SDK_INT >= 36) {
+                manager.registerDisplayListener(host.context.mainExecutor,
+                    DisplayManager.EVENT_TYPE_DISPLAY_ADDED or DisplayManager.EVENT_TYPE_DISPLAY_REMOVED or
+                        DisplayManager.EVENT_TYPE_DISPLAY_CHANGED or DisplayManager.EVENT_TYPE_DISPLAY_REFRESH_RATE,
+                    displayListener)
+            } else {
+                manager.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
+            }
+        }
+        if (Build.VERSION.SDK_INT < 30) {
+            refreshWindow = host.context.playerWindow()
+            originalWindowFrameRate = refreshWindow?.attributes?.preferredRefreshRate ?: 0f
+        }
+        val listener = object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                if (view !== host || closing) return
+                resetOutput()
+                surface = holder.surface
+                appliedFrameRateRequest = null
+                configureOutput(holder.surfaceFrame.width(), holder.surfaceFrame.height())
+                refreshDisplay()
+            }
+            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                if (view === host && !closing) configureOutput(width, height)
+            }
+            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                if (view === host) disconnectSurface()
+            }
+        }
+        callback = listener
+        host.holder.addCallback(listener)
+        if (host.holder.surface.isValid) listener.surfaceCreated(host.holder)
+    }
+
+    private fun resetOutput() {
+        outputRevision++
+        outputJob?.cancel()
+        val previous = outputReady
+        outputReady = CompletableDeferred()
+        // 唤醒旧代等待者，让 awaitOutput 重新等待当前 Surface。
+        previous.complete(Unit)
+    }
+
+    private fun configureOutput(width: Int, height: Int) {
+        val output = surface ?: return
+        if (closing || width <= 0 || height <= 0 || !output.isValid) return
+        val revision = outputRevision
+        val ready = outputReady
+        outputJob?.cancel()
+        outputJob = outputScope.launch {
+            if (destroyed || closing || revision != outputRevision) return@launch
             try {
-                texture?.surfaceTextureListener = null
-                val view = output as TextureView
-                if (closing) return@withLock
-                texture = view
-                view.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-                    override fun onSurfaceTextureAvailable(value: SurfaceTexture, width: Int, height: Int) { resize(width, height); connect(view, value) }
-                    override fun onSurfaceTextureSizeChanged(value: SurfaceTexture, width: Int, height: Int) { resize(width, height) }
-                    override fun onSurfaceTextureUpdated(value: SurfaceTexture) { }
-                    // TextureView 临时离开窗口时保留输出；native 销毁完成后统一释放。
-                    override fun onSurfaceTextureDestroyed(value: SurfaceTexture) = false
+                check(BoloMpvNative.surfaceSize(handle, width, height) >= 0) { "视频 Surface 尺寸更新失败" }
+                if (boundRevision != revision) {
+                    check(BoloMpvNative.surface(handle, output) >= 0) { "视频 Surface 绑定失败" }
+                    boundRevision = revision
+                    check(BoloMpvNative.videoEnabled(handle, videoRequested) >= 0) { "视频输出恢复失败" }
                 }
-                view.surfaceTexture?.let { resize(view.width, view.height); connect(view, it) }
-            } catch (error: Exception) { outputReady.completeExceptionally(error) }
+                ready.complete(Unit)
+            } catch (error: Exception) { ready.completeExceptionally(error) }
         }
     }
 
-    private fun resize(width: Int, height: Int) {
-        if (closing || width <= 0 || height <= 0) return
-        outputWidth = width
-        outputHeight = height
-        resizeJob?.cancel()
-        resizeJob = resizeScope.launch {
-            if (!destroyed) BoloMpvNative.surfaceSize(handle, width, height)
+    private fun disconnectSurface() {
+        applyFrameRateRequest(0f)
+        resetOutput()
+        surface = null
+        displayRevision++
+        displayId = Display.INVALID_DISPLAY
+        // SurfaceHolder 销毁回调返回前必须停止使用输出。此串行段不得切回 Main。
+        runBlocking(boloMpvDispatcher) {
+            if (!destroyed) {
+                val disabled = BoloMpvNative.videoEnabled(handle, false)
+                val detached = BoloMpvNative.surface(handle, null)
+                if (disabled < 0 || detached < 0) {
+                    destroy()
+                    outputReady.completeExceptionally(IllegalStateException("视频 Surface 解绑失败，播放器已关闭"))
+                } else BoloMpvNative.displayFps(handle, 0.0)
+                appliedDisplayFps = 0.0
+                appliedDisplayId = Display.INVALID_DISPLAY
+                boundRevision = -1L
+            }
         }
     }
 
-    private fun connect(view: TextureView, value: SurfaceTexture) {
+    private fun detachView() {
+        val host = view ?: return
+        displayManager?.unregisterDisplayListener(displayListener)
+        displayManager = null
+        host.removeOnAttachStateChangeListener(attachmentListener)
+        callback?.let { host.holder.removeCallback(it) }
+        disconnectSurface()
+        refreshWindow?.let { window ->
+            window.attributes = window.attributes.apply { preferredRefreshRate = originalWindowFrameRate }
+        }
+        refreshWindow = null
+        requestedFrameRate = 0f
+        callback = null
+        view = null
+    }
+
+    // 请求值只送给 Android；传给 mpv 的值必须重新读取当前应用的 Display 回报。
+    fun requestFrameRate(output: SurfaceView, fps: Float) {
+        if (view !== output || closing) return
+        requestedFrameRate = fps.takeIf { it.isFinite() && it > 0f } ?: 0f
+        refreshDisplay()
+    }
+
+    fun setOutputForeground(output: SurfaceView, active: Boolean) {
+        if (view !== output || closing) return
+        foreground = active
+        refreshDisplay()
+    }
+
+    private fun applyFrameRateRequest(fps: Float) {
+        if (appliedFrameRateRequest == fps) return
+        val output = surface?.takeIf { it.isValid } ?: return
+        val applied = runCatching {
+            when {
+                Build.VERSION.SDK_INT >= 31 -> output.setFrameRate(fps,
+                    Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE, Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS)
+                Build.VERSION.SDK_INT >= 30 -> output.setFrameRate(fps, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE)
+                else -> refreshWindow?.let { window ->
+                    window.attributes = window.attributes.apply { preferredRefreshRate = fps }
+                }
+            }
+        }.isSuccess
+        if (applied) appliedFrameRateRequest = fps
+    }
+
+    private fun refreshDisplay() {
+        val host = view ?: return
         if (closing) return
-        val retained = retainedTexture
-        if (retained != null) {
-            if (value !== retained) view.setSurfaceTexture(retained)
-            return
+        val active = foreground && host.isAttachedToWindow && surface?.isValid == true
+        applyFrameRateRequest(if (active) requestedFrameRate else 0f)
+        val display = host.display?.takeIf { active && it.isValid }
+        val nextId = display?.displayId ?: Display.INVALID_DISPLAY
+        displayId = nextId
+        // mode.refreshRate 可能是峰值；refreshRate 包含系统对当前应用的帧率限制。
+        val actualFps = display?.refreshRate?.toDouble()?.takeIf { it.isFinite() && it > 0 } ?: 0.0
+        val revision = ++displayRevision
+        val output = outputRevision
+        outputScope.launch {
+            if (closing || destroyed || revision != displayRevision || output != outputRevision) return@launch
+            if (appliedDisplayId != nextId) {
+                if (appliedDisplayFps != 0.0 && BoloMpvNative.displayFps(handle, 0.0) < 0) return@launch
+                appliedDisplayFps = 0.0
+                appliedDisplayId = nextId
+            }
+            if (appliedDisplayFps != actualFps && BoloMpvNative.displayFps(handle, actualFps) >= 0)
+                appliedDisplayFps = actualFps
         }
-        retainedTexture = value
-        surface = Surface(value)
-        // wid 尚未加载媒体，只保存稳定的 Surface 引用；普通 native 调用由 awaitOutput 串行提交。
-        outputReady.complete(Unit)
     }
 
     actual suspend fun detachOutput(output: Any) = withContext(NonCancellable + Dispatchers.Main.immediate) {
-        outputMutex.withLock {
-            if (texture !== output || closing) return@withLock
-            withContext(boloMpvDispatcher) {
-                if (!destroyed) { videoEnabled(false); BoloMpvNative.surface(handle, null) }
-            }
-            resizeJob?.cancel()
-            texture?.surfaceTextureListener = null
-            surface?.release()
-            if (texture?.isAvailable != true) retainedTexture?.release()
-            texture = null
-            retainedTexture = null
-            surface = null
-            surfaceBound = false
-            if (outputReady.isCompleted) outputReady = CompletableDeferred()
-        }
+        if (view === output) detachView()
     }
 
-    actual suspend fun unbind() = withContext(Dispatchers.Main.immediate) {
-        outputMutex.withLock {
-            closing = true
-            // 先等待 core 退出，确保 TextureView 重新接管纹理后可安全销毁它。
-            withContext(boloMpvDispatcher) { destroy() }
-            surface?.release()
-            surface = null
-            texture?.surfaceTextureListener = null
-            // 是否脱离窗口只在 Main 判断，涵盖等待 core 销毁期间发生的 detach。
-            if (texture?.isAvailable != true) retainedTexture?.release()
-            retainedTexture = null
-            texture = null
-        }
+    actual suspend fun unbind() = withContext(NonCancellable + Dispatchers.Main.immediate) {
+        closing = true
+        detachView()
+        outputReady.completeExceptionally(IllegalStateException("播放器已关闭"))
+        withContext(boloMpvDispatcher) { destroy() }
     }
-    actual suspend fun awaitOutput() {
-        outputReady.await()
-        val output = surface ?: error("视频 Surface 不可用")
-        val width = outputWidth
-        val height = outputHeight
-        withContext(boloMpvDispatcher) {
-            check(!destroyed) { "播放器已关闭" }
-            check(BoloMpvNative.surfaceSize(handle, width, height) >= 0) { "视频 Surface 尺寸更新失败" }
-            if (!surfaceBound) {
-                check(BoloMpvNative.surface(handle, output) >= 0) { "视频 Surface 绑定失败" }
-                surfaceBound = true
-            }
+
+    actual suspend fun awaitOutput(): Unit = withContext(Dispatchers.Main.immediate) {
+        while (true) {
+            check(!closing) { "播放器已关闭" }
+            val revision = outputRevision
+            outputReady.await()
+            if (revision != outputRevision) continue
+            val bound = withContext(boloMpvDispatcher) { !destroyed && boundRevision == revision }
+            if (bound && revision == outputRevision) return@withContext
         }
     }
     actual fun load(video: String, audio: String?, startSeconds: Double, generation: Long, userAgent: String, referrer: String) = if (destroyed) -3 else BoloMpvNative.load(handle, video, audio, startSeconds, generation, userAgent, referrer)
-    actual fun videoEnabled(enabled: Boolean) = if (destroyed) -3 else BoloMpvNative.videoEnabled(handle, enabled)
+    actual fun videoEnabled(enabled: Boolean): Int {
+        if (destroyed) return -3
+        videoRequested = enabled
+        return BoloMpvNative.videoEnabled(handle, enabled && boundRevision == outputRevision)
+    }
     actual fun pause(paused: Boolean) = if (destroyed) -3 else BoloMpvNative.pause(handle, paused)
     actual fun speed(speed: Double) = if (destroyed) -3 else BoloMpvNative.speed(handle, speed)
     actual fun volume(volume: Double) = if (destroyed) -3 else BoloMpvNative.volume(handle, volume)
@@ -141,10 +268,16 @@ internal actual class BoloMpvBackend actual constructor() {
     actual fun destroy() {
         if (destroyed) return
         destroyed = true
-        resizeScope.cancel()
+        outputScope.cancel()
         BoloMpvNative.destroy(handle)
     }
     actual suspend fun setAudioActive(active: Boolean): Boolean = withContext(Dispatchers.Main.immediate) {
         BoloMediaSessionService.setAudioActive(this@BoloMpvBackend, active)
     }
+}
+
+private tailrec fun Context.playerWindow(): Window? = when (this) {
+    is Activity -> window
+    is ContextWrapper -> baseContext.playerWindow()
+    else -> null
 }

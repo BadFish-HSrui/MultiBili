@@ -36,6 +36,7 @@ void bolo_mpv_info_free(char *);
 void bolo_mpv_destroy(bolo_mpv *);
 int bolo_mpv_surface(bolo_mpv *, int64_t surface);
 int bolo_mpv_surface_size(bolo_mpv *, int width, int height);
+int bolo_mpv_display_fps(bolo_mpv *, double fps);
 int bolo_mpv_ca_file(bolo_mpv *, const char *path);
 int bolo_mpv_render_create(bolo_mpv *, void *(*get_proc)(void *, const char *), void *context);
 int bolo_mpv_render_dirty(bolo_mpv *);

@@ -89,7 +89,7 @@ private class BoloHostingViewController(
         size: CValue<CGSize>,
         withTransitionCoordinator: UIViewControllerTransitionCoordinatorProtocol,
     ) {
-        fullscreen.transitionStarted(size)
+        fullscreen.transitionStarted()
         super.viewWillTransitionToSize(size, withTransitionCoordinator)
         withTransitionCoordinator.animateAlongsideTransition(
             animation = null,

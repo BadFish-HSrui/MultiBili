@@ -9,7 +9,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
-import kotlinx.cinterop.CValue
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +18,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import platform.CoreGraphics.CGSize
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.QuartzCore.CACurrentMediaTime
@@ -63,7 +61,6 @@ internal class IosPlayerFullscreenCoordinator {
         set(value) { hostReference = value?.let(::WeakReference) }
     private class Viewport(val size: IntSize, val density: Float)
     private class Request(
-        val serial: Long,
         val owner: PlayerFullscreenState?,
         val generation: Long,
         val target: Boolean,
@@ -82,7 +79,6 @@ internal class IosPlayerFullscreenCoordinator {
     private var timer: Job? = null
     private val observers = mutableListOf<NSObjectProtocol>()
     private var request: Request? = null
-    private var serial = 0L
     private var transitions = 0
     private var restorePortrait = false
     private var needsReconcile = false
@@ -96,7 +92,6 @@ internal class IosPlayerFullscreenCoordinator {
         needsReconcile = true
         state.onIosFullscreenRequest = {
             if (owner === state) {
-                log("intent generation=${state.iosFullscreenGeneration} target=${state.iosFullscreenTarget}")
                 needsReconcile = true
                 reconcile()
             }
@@ -123,7 +118,6 @@ internal class IosPlayerFullscreenCoordinator {
                 }
             }
         }
-        log("bind target=${state.iosFullscreenTarget}")
         reconcile()
     }
 
@@ -133,7 +127,6 @@ internal class IosPlayerFullscreenCoordinator {
         viewports.remove(state)
         restorePortrait = owners.isEmpty()
         needsReconcile = true
-        log("unbind restore=$restorePortrait")
         reconcile()
     }
 
@@ -143,21 +136,18 @@ internal class IosPlayerFullscreenCoordinator {
         if (previous?.size == size && previous.density == density) return
         viewports[state] = Viewport(size, density)
         if (owner === state) {
-            log("viewport generation=${state.iosFullscreenGeneration} size=${size.width}x${size.height}")
             reconcile()
         }
     }
 
     fun geometryChanged() = reconcile()
 
-    fun transitionStarted(size: CValue<CGSize>) {
+    fun transitionStarted() {
         transitions++
-        size.useContents { log("transition_start request=${request?.serial} size=${width}x${height}") }
     }
 
     fun transitionFinished() {
         transitions = (transitions - 1).coerceAtLeast(0)
-        log("transition_end request=${request?.serial}")
         needsReconcile = owner != null || restorePortrait
         reconcile()
     }
@@ -223,7 +213,6 @@ internal class IosPlayerFullscreenCoordinator {
                     owner?.let { state ->
                         if (state === active.owner && state.isFullscreen != observed) {
                             state.updateIosFullscreenLayout(observed)
-                            log("layout request=${active.serial} fullscreen=$observed")
                         }
                     }
                     if (transitions == 0) {
@@ -235,7 +224,6 @@ internal class IosPlayerFullscreenCoordinator {
                     }
                 }
                 if (request != null && (active.error != null || active.remainingSeconds <= 0.0)) {
-                    log("request_failed request=${active.serial} reason=${active.error ?: "timeout"}")
                     if (owner === active.owner) {
                         owner?.let { state ->
                             state.completeIosFullscreenRequest(active.generation, observed ?: state.isFullscreen)
@@ -273,11 +261,10 @@ internal class IosPlayerFullscreenCoordinator {
             val controller = host ?: return
             val scene = controller.view.window?.windowScene ?: return
             val needsRotation = observedLayout(null) != target
-            val pending = Request(++serial, state, state?.iosFullscreenGeneration ?: 0L, target, needsRotation, now)
+            val pending = Request(state, state?.iosFullscreenGeneration ?: 0L, target, needsRotation, now)
             request = pending
             needsReconcile = false
             if (needsRotation) {
-                log("request serial=${pending.serial} generation=${pending.generation} target=$target")
                 controller.setNeedsUpdateOfSupportedInterfaceOrientations()
                 scene.requestGeometryUpdateWithPreferences(
                     UIWindowSceneGeometryPreferencesIOS(
@@ -287,8 +274,6 @@ internal class IosPlayerFullscreenCoordinator {
                         if (request === pending) pending.error = error?.localizedDescription ?: "rotation rejected"
                     },
                 )
-            } else {
-                log("wait_viewport serial=${pending.serial} generation=${pending.generation} target=$target")
             }
             startTimer()
         } finally {
@@ -319,9 +304,5 @@ internal class IosPlayerFullscreenCoordinator {
         scope = null
         timer = null
         sceneIsActive = null
-    }
-
-    private fun log(message: String) {
-        println("[PlayerFullscreen] t=${CACurrentMediaTime()} $message")
     }
 }

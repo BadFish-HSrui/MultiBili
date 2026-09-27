@@ -385,6 +385,11 @@ int bolo_mpv_surface_size(bolo_mpv *p, int width, int height) {
     snprintf(size, sizeof(size), "%dx%d", width, height);
     return mpv_set_property_string(p->player, "android-surface-size", size);
 }
+int bolo_mpv_display_fps(bolo_mpv *p, double fps) {
+    // 0 清除覆盖值；正值只能来自宿主实际生效的显示刷新率。
+    if (!isfinite(fps) || fps < 0) return MPV_ERROR_INVALID_PARAMETER;
+    return mpv_set_property(p->player, "display-fps-override", MPV_FORMAT_DOUBLE, &fps);
+}
 int bolo_mpv_ca_file(bolo_mpv *p, const char *path) {
     return mpv_set_property_string(p->player, "tls-ca-file", path);
 }
