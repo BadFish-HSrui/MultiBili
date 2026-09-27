@@ -770,7 +770,6 @@ fun BoloPlayerControls(
                         val playback = viewModel.controller.state.value
                         if (
                             controlsVisible ||
-                            !showExtendedControls ||
                             !longPressSpeedGestureEnabled ||
                             !playback.isPlaying ||
                             playback.isPlaybackSuspended
@@ -811,7 +810,7 @@ fun BoloPlayerControls(
                     brightnessGestureEnabled,
                     volumeGestureEnabled,
                 ) {
-                    if (isDesktop || !showExtendedControls || settingsOpen) return@pointerInput
+                    if (isDesktop || settingsOpen) return@pointerInput
                     try {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
