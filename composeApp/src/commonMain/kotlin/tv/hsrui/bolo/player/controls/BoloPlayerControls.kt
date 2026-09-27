@@ -510,11 +510,11 @@ fun BoloPlayerControls(
     val keyboardPlayWhenReady = viewModel.pendingPlayWhenReady ?: playState.playWhenReady
     LaunchedEffect(
         keyboardPlayWhenReady, playState.isEnded, playState.isPlaybackSuspended, playState.isRebuilding,
-        keyboardBlocked, infoOpen, windowFocused,
+        keyboardBlocked, windowFocused,
     ) {
         // 缓冲时的暂时未播放不取消长按；主动暂停仍须结束临时倍速。
         if (!keyboardPlayWhenReady || playState.isEnded || playState.isPlaybackSuspended || playState.isRebuilding ||
-            keyboardBlocked || infoOpen || !windowFocused) cancelKeyboardInteraction()
+            keyboardBlocked || !windowFocused) cancelKeyboardInteraction()
     }
     val onPlayerKeyEvent: (KeyEvent) -> Boolean = { event ->
         if (viewModel.playbackClosed) {
@@ -540,7 +540,6 @@ fun BoloPlayerControls(
             cancelled || handled
         } else if (
             event.type != KeyEventType.KeyDown || keyboardBlocked || !windowFocused ||
-            (infoOpen && event.key != Key.Spacebar) ||
             event.isCtrlPressed || event.isAltPressed || event.isMetaPressed
         ) {
             false
@@ -608,7 +607,7 @@ fun BoloPlayerControls(
     val devicePreview = brightnessPreview ?: volumePreview
     val deviceFeedbackVisible = devicePreview != null || desktopVolumeFeedbackVisible
     val onDesktopVolumeScroll by rememberUpdatedState<(Float) -> Boolean> { delta ->
-        if (isDesktop && windowFocused && !keyboardBlocked && !infoOpen && delta != 0f) {
+        if (isDesktop && windowFocused && !keyboardBlocked && delta != 0f) {
             adjustDesktopVolume(if (delta < 0f) 2 else -2)
             true
         } else false
@@ -661,8 +660,12 @@ fun BoloPlayerControls(
                         // 父容器观察鼠标；仅符合条件的音量滚轮会消费事件。
                         val event = awaitPointerEvent(PointerEventPass.Initial)
                         if (event.type == PointerEventType.Scroll) {
-                            val delta = event.changes.sumOf { it.scrollDelta.y.toDouble() }.toFloat()
-                            if (onDesktopVolumeScroll(delta)) event.changes.forEach { it.consume() }
+                            // 先让子控件处理滚动，避免播放信息滚动时同时改变音量。
+                            val scrollEvent = awaitPointerEvent(PointerEventPass.Main)
+                            if (scrollEvent.changes.none { it.isConsumed }) {
+                                val delta = scrollEvent.changes.sumOf { it.scrollDelta.y.toDouble() }.toFloat()
+                                if (onDesktopVolumeScroll(delta)) scrollEvent.changes.forEach { it.consume() }
+                            }
                         }
                         val mouse = event.changes.firstOrNull { it.type == PointerType.Mouse } ?: continue
                         mousePressed = event.changes.any { it.type == PointerType.Mouse && it.pressed }
@@ -769,7 +772,6 @@ fun BoloPlayerControls(
                         }
                         val playback = viewModel.controller.state.value
                         if (
-                            controlsVisible ||
                             !longPressSpeedGestureEnabled ||
                             !playback.isPlaying ||
                             playback.isPlaybackSuspended
