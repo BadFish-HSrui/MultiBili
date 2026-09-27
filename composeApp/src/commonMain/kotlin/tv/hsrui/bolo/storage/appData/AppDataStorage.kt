@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class AppDataStorage(appDataKSafe: KSafePlain) {
     val searchHistory = SearchHistory(appDataKSafe)
+    val oneTimeWarnings = OneTimeWarnings(appDataKSafe)
 }
 
 class SearchHistory internal constructor(
