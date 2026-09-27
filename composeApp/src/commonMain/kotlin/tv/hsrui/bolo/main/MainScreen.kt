@@ -1,6 +1,8 @@
 package tv.hsrui.bolo.main
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -104,31 +106,41 @@ fun MainScreen(modifier: Modifier = Modifier) {
                     .padding(innerPadding.calculateWithoutBottom())
             ) {
                 if (!isVerticalLayout) {
-                    NavigationRail(
-                        modifier = Modifier.fillMaxHeight()
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(modifier = Modifier.fillMaxHeight()) {
+                        NavigationRail(
+                            modifier = Modifier.fillMaxHeight(),
+                            windowInsets = WindowInsets()
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxHeight(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                MainTab.entries.forEach { tab ->
+                                    NavigationRailItem(
+                                        selected = selectedTab == tab,
+                                        onClick = { onClick(tab) },
+                                        icon = {
+                                            Icon(
+                                                imageVector = tab.icon,
+                                                contentDescription = tab.title
+                                            )
+                                        },
+                                        label = { Text(tab.title) }
+                                    )
+                                }
+                            }
+                        }
+                        Column(
+                            modifier = Modifier.align(Alignment.TopCenter),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                             LoginOrAvatarImage(modifier = Modifier.size(48.dp))
                             Spacer(Modifier.size(8.dp))
                             ShowSearchButton(
                                 onClick = onSearchClick,
                                 modifier = Modifier.size(48.dp)
                             )
-                            Spacer(Modifier.weight(0.8F))
-                            MainTab.entries.forEach { tab ->
-                                NavigationRailItem(
-                                    selected = selectedTab == tab,
-                                    onClick = { onClick(tab) },
-                                    icon = {
-                                        Icon(
-                                            imageVector = tab.icon,
-                                            contentDescription = tab.title
-                                        )
-                                    },
-                                    label = { Text(tab.title) }
-                                )
-                            }
-                            Spacer(Modifier.weight(1F))
                         }
                     }
                 }
