@@ -16,13 +16,18 @@ fun VideoReplyPage(
     modifier: Modifier = Modifier,
     videoRepliesViewModel: RepliesViewModel = viewModel(key = "reply_${videoInfo.bvid}") {
         RepliesViewModel(ReplySectionType.VideoReply(videoInfo.avid))
-    }
+    },
+    content: @Composable (
+        mainContent: @Composable () -> Unit,
+        overlayContent: @Composable () -> Unit,
+    ) -> Unit,
 ) {
     val videoRepliesUiState by videoRepliesViewModel.uiState.collectAsState()
     RepliesGridPage(
         viewModel = videoRepliesViewModel,
         uiState = videoRepliesUiState,
         upMid = videoInfo.upMid,
-        modifier = modifier
+        modifier = modifier,
+        content = content,
     )
 }

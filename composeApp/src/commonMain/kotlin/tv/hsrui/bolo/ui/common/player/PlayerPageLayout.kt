@@ -71,7 +71,12 @@ private fun Modifier.playerBounds(
 fun PlayerPageLayout(
     fullscreenState: PlayerFullscreenState,
     descContent: @Composable () -> Unit,
-    replyContent: @Composable () -> Unit,
+    replyContent: @Composable (
+        content: @Composable (
+            mainContent: @Composable () -> Unit,
+            overlayContent: @Composable () -> Unit,
+        ) -> Unit,
+    ) -> Unit,
     modifier: Modifier = Modifier,
     replyCount: Long? = null,
     videoAspectRatio: Float? = null,
@@ -90,37 +95,48 @@ fun PlayerPageLayout(
             val pagerState = rememberPagerState { tabs.size }
             val coroutineScope = rememberCoroutineScope()
 
-            Column {
-                PrimaryTabRow(
-                    selectedTabIndex = pagerState.currentPage,
-                    modifier = Modifier.widthIn(max = 224.dp),
-                    divider = {}
-                ) {
-                    tabs.forEachIndexed { index, tab ->
-                        Tab(
-                            selected = (pagerState.currentPage == index),
-                            onClick = { coroutineScope.launch { pagerState.animateScrollToPage(index) } },
-                            text = {
-                                Text(tab.title + currentReplyCount?.takeIf { tab == PlayerInfoTab.Reply }
-                                    ?.let { "(${it.formatCountToString()})" }.orEmpty())
-                            },
-                            modifier = Modifier.height(32.dp)
-                        )
+            // 评论宿主按稿件或剧集切换时，保留信息区和简介的布局状态。
+            val infoContent = remember {
+                movableContentOf<@Composable () -> Unit, @Composable () -> Unit> { mainContent, overlayContent ->
+                    Box(Modifier.fillMaxSize()) {
+                        Column {
+                            PrimaryTabRow(
+                                selectedTabIndex = pagerState.currentPage,
+                                modifier = Modifier.widthIn(max = 224.dp),
+                                divider = {}
+                            ) {
+                                tabs.forEachIndexed { index, tab ->
+                                    Tab(
+                                        selected = (pagerState.currentPage == index),
+                                        onClick = { coroutineScope.launch { pagerState.animateScrollToPage(index) } },
+                                        text = {
+                                            Text(tab.title + currentReplyCount?.takeIf { tab == PlayerInfoTab.Reply }
+                                                ?.let { "(${it.formatCountToString()})" }.orEmpty())
+                                        },
+                                        modifier = Modifier.height(32.dp)
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider()
+
+                            HorizontalPager(
+                                state = pagerState,
+                                modifier = Modifier.fillMaxSize(),
+                                beyondViewportPageCount = 1
+                            ) { page ->
+                                when (tabs[page]) {
+                                    PlayerInfoTab.Desc -> currentDescContent()
+                                    PlayerInfoTab.Reply -> mainContent()
+                                }
+                            }
+                        }
+                        overlayContent()
                     }
                 }
-
-                HorizontalDivider()
-
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    beyondViewportPageCount = 1
-                ) { page ->
-                    when (tabs[page]) {
-                        PlayerInfoTab.Desc -> currentDescContent()
-                        PlayerInfoTab.Reply -> currentReplyContent()
-                    }
-                }
+            }
+            currentReplyContent { mainContent, overlayContent ->
+                infoContent(mainContent, overlayContent)
             }
         }
     }

@@ -99,7 +99,7 @@ fun MediaPlaybackPage(
     PlayerPageLayout(
         fullscreenState = fullscreenState,
         descContent = { MediaDescPage(uiState = uiState, viewModel = viewModel, modifier = Modifier.fillMaxSize()) },
-        replyContent = {
+        replyContent = { content ->
             key(episode?.episodeId) {
                 if (repliesViewModel != null && repliesUiState != null) {
                     CompositionLocalProvider(LocalViewModelStoreOwner provides replyOwner) {
@@ -108,10 +108,16 @@ fun MediaPlaybackPage(
                             uiState = repliesUiState,
                             upMid = uiState.media.upMid,
                             modifier = Modifier.fillMaxSize(),
+                            content = content,
                         )
                     }
                 } else {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("暂无剧集评论") }
+                    content(
+                        {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("暂无剧集评论") }
+                        },
+                        {},
+                    )
                 }
             }
         },

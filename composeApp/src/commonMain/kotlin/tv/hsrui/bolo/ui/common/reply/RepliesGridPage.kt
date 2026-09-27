@@ -70,7 +70,11 @@ fun RepliesGridPage(
     viewModel: RepliesViewModel,
     uiState: RepliesUiState,
     modifier: Modifier = Modifier,
-    upMid: Long = 0L
+    upMid: Long = 0L,
+    content: @Composable (
+        mainContent: @Composable () -> Unit,
+        overlayContent: @Composable () -> Unit,
+    ) -> Unit,
 ) {
     var viewingImageUrls by remember(viewModel) { mutableStateOf<List<String>>(emptyList()) }
     var viewingImageIndex by remember(viewModel) { mutableStateOf(0) }
@@ -95,14 +99,11 @@ fun RepliesGridPage(
         viewModel.loadMoreReplies()
     }
 
-    PullToRefreshBox(
-        isRefreshing = false,
-        onRefresh = {
-            viewModel.refreshReplies()
-        }
-    ) {
-        when (uiState) {
-            is RepliesUiState.Loading -> {
+    val mainContent: @Composable () -> Unit
+    val overlayContent: @Composable () -> Unit
+    when (uiState) {
+        is RepliesUiState.Loading -> {
+            mainContent = {
                 Box(
                     modifier = modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -110,75 +111,81 @@ fun RepliesGridPage(
                     CircularProgressIndicator()
                 }
             }
+            overlayContent = {}
+        }
 
-            is RepliesUiState.Error -> {
+        is RepliesUiState.Error -> {
+            mainContent = {
                 ShowErrorContent(
                     message = uiState.message,
                     retry = { viewModel.refreshReplies() }
                 )
             }
+            overlayContent = {}
+        }
 
-            is RepliesUiState.Success -> {
-                val effectiveUpMid = uiState.upMid.takeIf { it > 0 } ?: upMid
-                val canDeleteReply: (ReplyItem) -> Boolean = { reply ->
-                    val currentState = viewModel.uiState.value as? RepliesUiState.Success
-                    val mid = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L
-                    val ownerMid = currentState?.upMid?.takeIf { it > 0 } ?: upMid
-                    currentState != null && mid > 0 && mid == currentUserMid && ownerMid > 0 &&
-                        reply.rpid > 0 && viewModel.replySection.oid > 0 &&
-                        (mid == reply.userMid || mid == ownerMid ||
-                            (currentState.isAssist && currentState.permissionUserMid == mid))
+        is RepliesUiState.Success -> {
+            val effectiveUpMid = uiState.upMid.takeIf { it > 0 } ?: upMid
+            val canDeleteReply: (ReplyItem) -> Boolean = { reply ->
+                val currentState = viewModel.uiState.value as? RepliesUiState.Success
+                val mid = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L
+                val ownerMid = currentState?.upMid?.takeIf { it > 0 } ?: upMid
+                currentState != null && mid > 0 && mid == currentUserMid && ownerMid > 0 &&
+                    reply.rpid > 0 && viewModel.replySection.oid > 0 &&
+                    (mid == reply.userMid || mid == ownerMid ||
+                        (currentState.isAssist && currentState.permissionUserMid == mid))
+            }
+            var deleteTarget by remember { mutableStateOf<ReplyItem?>(null) }
+            var inputRootReply by remember { mutableStateOf(false) }
+            val rootReplyText = rememberSaveable { mutableStateOf("") }
+            val subReplyText = rememberSaveable { mutableStateOf("") }
+            var lastSubReplyId by rememberSaveable { mutableStateOf(0L) }
+            var replyTarget by remember { mutableStateOf<ReplyItem?>(null) }
+            val scope = rememberCoroutineScope()
+            val subRepliesSurfaceState = rememberSubRepliesSurfaceState()
+            val onReplyDeleted: (ReplyItem) -> Unit = { deletedReply ->
+                viewModel.removeReply(deletedReply)
+                if (replyTarget?.rpid == deletedReply.rpid || replyTarget?.rootRpid == deletedReply.rpid) {
+                    replyTarget = null
                 }
-                var deleteTarget by remember { mutableStateOf<ReplyItem?>(null) }
-                var inputRootReply by remember { mutableStateOf(false) }
-                val rootReplyText = rememberSaveable { mutableStateOf("") }
-                val subReplyText = rememberSaveable { mutableStateOf("") }
-                var lastSubReplyId by rememberSaveable { mutableStateOf(0L) }
-                var replyTarget by remember { mutableStateOf<ReplyItem?>(null) }
-                val scope = rememberCoroutineScope()
-                val subRepliesSurfaceState = rememberSubRepliesSurfaceState()
-                val onReplyDeleted: (ReplyItem) -> Unit = { deletedReply ->
-                    viewModel.removeReply(deletedReply)
-                    if (replyTarget?.rpid == deletedReply.rpid || replyTarget?.rootRpid == deletedReply.rpid) {
-                        replyTarget = null
-                    }
-                    if (subRepliesSurfaceState.currentReply?.rpid == deletedReply.rpid) {
-                        scope.launch { subRepliesSurfaceState.dismiss() }
-                    }
+                if (subRepliesSurfaceState.currentReply?.rpid == deletedReply.rpid) {
+                    scope.launch { subRepliesSurfaceState.dismiss() }
                 }
-                val subRepliesBackState = rememberNavigationEventState(NavigationEventInfo.None)
-                val latestPredictiveBackProgress = remember { FloatArray(1) }
-                val predictiveBackProgress =
-                    when (val state = subRepliesBackState.transitionState) {
-                        is NavigationEventTransitionState.InProgress -> state.latestEvent.progress
-                        is NavigationEventTransitionState.Idle -> null
-                    }
-
-                SideEffect {
-                    predictiveBackProgress?.let { progress ->
-                        latestPredictiveBackProgress[0] = progress
-                    }
+            }
+            val subRepliesBackState = rememberNavigationEventState(NavigationEventInfo.None)
+            val latestPredictiveBackProgress = remember { FloatArray(1) }
+            val predictiveBackProgress =
+                when (val state = subRepliesBackState.transitionState) {
+                    is NavigationEventTransitionState.InProgress -> state.latestEvent.progress
+                    is NavigationEventTransitionState.Idle -> null
                 }
 
-                NavigationBackHandler(
-                    state = subRepliesBackState,
-                    isBackEnabled = subRepliesSurfaceState.isVisible && viewingImageUrls.isEmpty(),
-                    onBackCancelled = {
-                        val progress = latestPredictiveBackProgress[0]
-                        latestPredictiveBackProgress[0] = 0f
-                        scope.launch {
-                            subRepliesSurfaceState.cancelPredictiveBack(progress)
-                        }
-                    },
-                    onBackCompleted = {
-                        val progress = latestPredictiveBackProgress[0]
-                        latestPredictiveBackProgress[0] = 0f
-                        scope.launch {
-                            subRepliesSurfaceState.dismissFromPredictiveBack(progress)
-                        }
-                    }
-                )
+            SideEffect {
+                predictiveBackProgress?.let { progress ->
+                    latestPredictiveBackProgress[0] = progress
+                }
+            }
 
+            NavigationBackHandler(
+                state = subRepliesBackState,
+                isBackEnabled = subRepliesSurfaceState.isVisible && viewingImageUrls.isEmpty(),
+                onBackCancelled = {
+                    val progress = latestPredictiveBackProgress[0]
+                    latestPredictiveBackProgress[0] = 0f
+                    scope.launch {
+                        subRepliesSurfaceState.cancelPredictiveBack(progress)
+                    }
+                },
+                onBackCompleted = {
+                    val progress = latestPredictiveBackProgress[0]
+                    latestPredictiveBackProgress[0] = 0f
+                    scope.launch {
+                        subRepliesSurfaceState.dismissFromPredictiveBack(progress)
+                    }
+                }
+            )
+
+            mainContent = {
                 Box(modifier = modifier.fillMaxSize()) {
                     Column(Modifier.fillMaxSize()) {
                         Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
@@ -305,117 +312,130 @@ fun RepliesGridPage(
                             }
                         }
                     }
-
-                    SubRepliesSurface(
-                        state = subRepliesSurfaceState,
-                        predictiveBackProgress = predictiveBackProgress,
-                        onDismissRequest = {
-                            scope.launch {
-                                subRepliesSurfaceState.dismiss()
-                            }
+                }
+            }
+            overlayContent = {
+                SubRepliesSurface(
+                    state = subRepliesSurfaceState,
+                    predictiveBackProgress = predictiveBackProgress,
+                    onDismissRequest = {
+                        scope.launch {
+                            subRepliesSurfaceState.dismiss()
                         }
-                    ) { viewingReply ->
-                        val subRepliesViewModel = viewModel(key = viewingReply.rpid.toString()) {
-                            SubRepliesViewModel(
-                                replySection = viewModel.replySection,
-                                rootReply = viewingReply
-                            )
-                        }
-                        val subRepliesUiState by subRepliesViewModel.uiState.collectAsState()
-
-                        SubRepliesGridPage(
-                            viewModel = subRepliesViewModel,
-                            uiState = subRepliesUiState,
-                            upMid = effectiveUpMid,
-                            canDeleteReply = canDeleteReply,
-                            onReplyDeleted = onReplyDeleted,
-                            modifier = Modifier.fillMaxSize(),
-                            imageAnimationEnabled = viewingImageUrls.isEmpty(),
-                            onImageClick = onImageClick,
+                    }
+                ) { viewingReply ->
+                    val subRepliesViewModel = viewModel(key = viewingReply.rpid.toString()) {
+                        SubRepliesViewModel(
+                            replySection = viewModel.replySection,
+                            rootReply = viewingReply
                         )
                     }
-                }
+                    val subRepliesUiState by subRepliesViewModel.uiState.collectAsState()
 
-                deleteTarget?.let { target ->
-                    ShowDeleteReplyDialog(
-                        replyInfo = target,
-                        replySection = viewModel.replySection,
-                        canDelete = { canDeleteReply(target) },
-                        onCancel = { deleteTarget = null },
-                        onDeleted = {
-                            deleteTarget = null
-                            onReplyDeleted(target)
-                        },
-                    )
-                }
-
-                replyTarget?.let { target ->
-                    if (lastSubReplyId != target.rpid) {
-                        subReplyText.value = ""
-                        lastSubReplyId = target.rpid
-                    }
-
-                    ShowReplyInput(
-                        text = subReplyText,
-                        labelText = "回复 @${target.userName}",
-                        onSend = { message ->
-                            scope.launch {
-                                try {
-                                    val result = sendSubReply(
-                                        message = message,
-                                        replySection = viewModel.replySection,
-                                        targetReply = target
-                                    )
-                                    if (result.isSuccess) {
-                                        viewModel.updateReply(target.copy(replyCount = target.replyCount + 1))
-                                        subReplyText.value = ""
-                                        showSnackbarMessage("评论发送成功")
-                                    } else {
-                                        showSnackbarMessage("[${result.code}]: ${result.message}")
-                                    }
-                                } catch (e: Exception) {
-                                    showSnackbarMessage(e.message ?: "其他网络错误")
-                                } finally {
-                                    replyTarget = null
-                                }
-                            }
-                        },
-                        onDismiss = { replyTarget = null }
-                    )
-                }
-
-                if (inputRootReply) {
-                    ShowReplyInput(
-                        text = rootReplyText,
-                        labelText = viewModel.replyLabelText,
-                        onSend = { message ->
-                            scope.launch {
-                                try {
-                                    val result = sendRootReply(
-                                        message = message,
-                                        replySection = viewModel.replySection
-                                    )
-                                    if (result.isSuccess) {
-                                        delay(200.milliseconds)
-                                        rootReplyText.value = ""
-                                        showSnackbarMessage("评论发送成功")
-                                        viewModel.setSortType(ReplySort.Latest)
-                                    } else {
-                                        showSnackbarMessage("[${result.code}]: ${result.message}")
-                                    }
-                                } catch (e: Exception) {
-                                    showSnackbarMessage(e.message ?: "其他网络错误")
-                                } finally {
-                                    inputRootReply = false
-                                }
-                            }
-                        },
-                        onDismiss = { inputRootReply = false }
+                    SubRepliesGridPage(
+                        viewModel = subRepliesViewModel,
+                        uiState = subRepliesUiState,
+                        upMid = effectiveUpMid,
+                        canDeleteReply = canDeleteReply,
+                        onReplyDeleted = onReplyDeleted,
+                        modifier = Modifier.fillMaxSize(),
+                        imageAnimationEnabled = viewingImageUrls.isEmpty(),
+                        onImageClick = onImageClick,
                     )
                 }
             }
+
+            deleteTarget?.let { target ->
+                ShowDeleteReplyDialog(
+                    replyInfo = target,
+                    replySection = viewModel.replySection,
+                    canDelete = { canDeleteReply(target) },
+                    onCancel = { deleteTarget = null },
+                    onDeleted = {
+                        deleteTarget = null
+                        onReplyDeleted(target)
+                    },
+                )
+            }
+
+            replyTarget?.let { target ->
+                if (lastSubReplyId != target.rpid) {
+                    subReplyText.value = ""
+                    lastSubReplyId = target.rpid
+                }
+
+                ShowReplyInput(
+                    text = subReplyText,
+                    labelText = "回复 @${target.userName}",
+                    onSend = { message ->
+                        scope.launch {
+                            try {
+                                val result = sendSubReply(
+                                    message = message,
+                                    replySection = viewModel.replySection,
+                                    targetReply = target
+                                )
+                                if (result.isSuccess) {
+                                    viewModel.updateReply(target.copy(replyCount = target.replyCount + 1))
+                                    subReplyText.value = ""
+                                    showSnackbarMessage("评论发送成功")
+                                } else {
+                                    showSnackbarMessage("[${result.code}]: ${result.message}")
+                                }
+                            } catch (e: Exception) {
+                                showSnackbarMessage(e.message ?: "其他网络错误")
+                            } finally {
+                                replyTarget = null
+                            }
+                        }
+                    },
+                    onDismiss = { replyTarget = null }
+                )
+            }
+
+            if (inputRootReply) {
+                ShowReplyInput(
+                    text = rootReplyText,
+                    labelText = viewModel.replyLabelText,
+                    onSend = { message ->
+                        scope.launch {
+                            try {
+                                val result = sendRootReply(
+                                    message = message,
+                                    replySection = viewModel.replySection
+                                )
+                                if (result.isSuccess) {
+                                    delay(200.milliseconds)
+                                    rootReplyText.value = ""
+                                    showSnackbarMessage("评论发送成功")
+                                    viewModel.setSortType(ReplySort.Latest)
+                                } else {
+                                    showSnackbarMessage("[${result.code}]: ${result.message}")
+                                }
+                            } catch (e: Exception) {
+                                showSnackbarMessage(e.message ?: "其他网络错误")
+                            } finally {
+                                inputRootReply = false
+                            }
+                        }
+                    },
+                    onDismiss = { inputRootReply = false }
+                )
+            }
         }
     }
+
+    content(
+        {
+            PullToRefreshBox(
+                isRefreshing = false,
+                onRefresh = { viewModel.refreshReplies() }
+            ) {
+                mainContent()
+            }
+        },
+        overlayContent,
+    )
 
     if (viewingImageUrls.isNotEmpty()) {
         ShowImageViewer(

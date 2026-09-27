@@ -4,7 +4,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,7 +31,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.coroutineScope
@@ -161,14 +159,8 @@ internal fun SubRepliesSurface(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    do {
-                        val event = awaitPointerEvent(PointerEventPass.Final)
-                        event.changes.forEach { change -> change.consume() }
-                    } while (event.changes.any { change -> change.pressed })
-                }
-            }
+            // 固定命中整个信息区，动画露出的区域也不向下层 Pager 透传事件。
+            .pointerInput(Unit) {}
     ) {
         Surface(
             modifier = Modifier

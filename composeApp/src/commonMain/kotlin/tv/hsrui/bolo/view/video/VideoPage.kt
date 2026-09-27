@@ -55,10 +55,14 @@ fun VideoPage(
                 }
             }
         },
-        replyContent = {
+        replyContent = { content ->
             CompositionLocalProvider(LocalViewModelStoreOwner provides detailOwner) {
                 key(videoInfo.avid) {
-                    VideoReplyPage(videoInfo = videoInfo, modifier = Modifier.fillMaxSize())
+                    VideoReplyPage(
+                        videoInfo = videoInfo,
+                        modifier = Modifier.fillMaxSize(),
+                        content = content,
+                    )
                 }
             }
         },
