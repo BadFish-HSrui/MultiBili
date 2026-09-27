@@ -9,6 +9,11 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
 import tv.hsrui.bolo.boloSetting.PlaybackLoudnessMode
 import tv.hsrui.network.feature.player.VideoLoudnessData
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.DurationUnit
+import kotlin.time.TimeSource
 
 /** 独立于播放控制状态；null 表示未知，码率为 bit/s，下载速度为 B/s。 */
 data class BoloPlayerInfo(
@@ -19,6 +24,12 @@ data class BoloPlayerInfo(
     val videoOutput: String? = null,
     val audioOutput: String? = null,
     val downloadBytesPerSecond: Long? = null,
+    val decoderDroppedFrames: Long? = null,
+    val outputDroppedFrames: Long? = null,
+    val decoderDroppedFramesPerSecond: Double? = null,
+    val outputDroppedFramesPerSecond: Double? = null,
+    /** mpv 的 A/V 差值，单位 ms；正值表示音频领先，包含同步补偿。 */
+    val avSyncDifferenceMs: Double? = null,
 )
 
 data class BoloPlayerVideoInfo(
@@ -80,6 +91,7 @@ internal data class BoloMpvInfoSnapshot(
             if (source.number("entryId") != expectedEntry) return null
             val video = source["video"] as? JsonObject
             val audio = source["audio"] as? JsonObject
+            val diagnostics = envelope["diagnostics"] as? JsonObject
             BoloMpvInfoSnapshot(
                 instance = instance,
                 generation = generation,
@@ -118,6 +130,10 @@ internal data class BoloMpvInfoSnapshot(
                     videoOutput = source.string("videoOutput"),
                     audioOutput = source.string("audioOutput"),
                     downloadBytesPerSecond = source.number("downloadBytesPerSecond"),
+                    decoderDroppedFrames = diagnostics?.number("decoderDroppedFrames"),
+                    outputDroppedFrames = diagnostics?.number("outputDroppedFrames"),
+                    avSyncDifferenceMs = (diagnostics?.get("avSyncDifferenceMs") as? JsonPrimitive)
+                        ?.doubleOrNull?.takeIf(Double::isFinite),
                 ),
             )
         }.getOrNull()
@@ -140,7 +156,44 @@ internal fun BoloPlayerInfo.withoutDynamicValues(): BoloPlayerInfo = copy(
     video = video.copy(playbackBitrateBps = null, fragmentIndex = null, downloadBytesPerSecond = null),
     audio = audio?.copy(playbackBitrateBps = null, fragmentIndex = null, downloadBytesPerSecond = null),
     downloadBytesPerSecond = null,
+    decoderDroppedFrames = null,
+    outputDroppedFrames = null,
+    decoderDroppedFramesPerSecond = null,
+    outputDroppedFramesPerSecond = null,
+    avSyncDifferenceMs = null,
 )
+
+/** 仅在信息面板可见时采样；原生累计回退或采样中断后重新建立约一秒窗口。 */
+internal class BoloPlayerDiagnosticsSampler(timeSource: TimeSource = TimeSource.Monotonic) {
+    private val origin = timeSource.markNow()
+    private val samples = ArrayDeque<Pair<Duration, BoloPlayerInfo>>()
+
+    fun reset() = samples.clear()
+
+    fun sample(info: BoloPlayerInfo): BoloPlayerInfo {
+        val now = origin.elapsedNow()
+        val previous = samples.lastOrNull()
+        if (previous != null && (now - previous.first > 1500.milliseconds ||
+            counterReset(previous.second.decoderDroppedFrames, info.decoderDroppedFrames) ||
+            counterReset(previous.second.outputDroppedFrames, info.outputDroppedFrames))) reset()
+        samples.addLast(now to info)
+        while (samples.size > 1 && now - samples[1].first >= 1.seconds) samples.removeFirst()
+        val (start, first) = samples.first()
+        val elapsed = now - start
+        val seconds = elapsed.toDouble(DurationUnit.SECONDS)
+        fun rate(before: Long?, after: Long?): Double? =
+            if (elapsed in 1.seconds..2.seconds && before != null && after != null && after >= before) {
+                (after - before) / seconds
+            } else null
+        return info.copy(
+            decoderDroppedFramesPerSecond = rate(first.decoderDroppedFrames, info.decoderDroppedFrames),
+            outputDroppedFramesPerSecond = rate(first.outputDroppedFrames, info.outputDroppedFrames),
+        )
+    }
+
+    private fun counterReset(before: Long?, after: Long?): Boolean =
+        (before == null) != (after == null) || (before != null && after != null && after < before)
+}
 
 internal fun parsePlayerFrameRate(value: String): Double? {
     val parts = value.split('/')

@@ -219,15 +219,31 @@ int bolo_mpv_merge_audio_channels(bolo_mpv *p, int enabled) {
     else apply_audio_merge(p, p->merge_audio_channels);
     return r;
 }
-char *bolo_mpv_info(bolo_mpv *p) {
+char *bolo_mpv_info(bolo_mpv *p, int include_diagnostics) {
     if (p->expected_entry < 0) return NULL;
     char *info = mpv_get_property_string(p->player, "playback-info");
     if (!info) return NULL;
-    const char *format = "{\"generation\":%lld,\"expectedEntry\":%lld,\"info\":%s}";
-    int size = snprintf(NULL, 0, format, (long long)p->generation, (long long)p->expected_entry, info);
+    char decoder_drops[32] = "null", output_drops[32] = "null", av_sync[64] = "null";
+    if (include_diagnostics) {
+        int64_t count;
+        if (mpv_get_property(p->player, "decoder-frame-drop-count", MPV_FORMAT_INT64, &count) >= 0 && count >= 0)
+            snprintf(decoder_drops, sizeof(decoder_drops), "%lld", (long long)count);
+        if (mpv_get_property(p->player, "frame-drop-count", MPV_FORMAT_INT64, &count) >= 0 && count >= 0)
+            snprintf(output_drops, sizeof(output_drops), "%lld", (long long)count);
+        double seconds;
+        if (mpv_get_property(p->player, "avsync", MPV_FORMAT_DOUBLE, &seconds) >= 0 && isfinite(seconds * 1000.0)) {
+            snprintf(av_sync, sizeof(av_sync), "%.17g", seconds * 1000.0);
+            for (char *c = av_sync; *c; ++c) if (*c == ',') *c = '.';
+        }
+    }
+    const char *format = "{\"generation\":%lld,\"expectedEntry\":%lld,\"info\":%s,"
+        "\"diagnostics\":{\"decoderDroppedFrames\":%s,\"outputDroppedFrames\":%s,\"avSyncDifferenceMs\":%s}}";
+    int size = snprintf(NULL, 0, format, (long long)p->generation, (long long)p->expected_entry,
+                        info, decoder_drops, output_drops, av_sync);
     char *result = size < 0 ? NULL : malloc((size_t)size + 1);
     if (result) snprintf(result, (size_t)size + 1, format,
-                         (long long)p->generation, (long long)p->expected_entry, info);
+                         (long long)p->generation, (long long)p->expected_entry,
+                         info, decoder_drops, output_drops, av_sync);
     mpv_free(info);
     return result;
 }

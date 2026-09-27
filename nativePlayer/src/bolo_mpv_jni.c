@@ -65,8 +65,8 @@ JNIEXPORT jdoubleArray JNICALL JNI(poll)(JNIEnv *env, jobject self, jlong p) {
     if (result) (*env)->SetDoubleArrayRegion(env, result, 0, 5, values);
     return result;
 }
-JNIEXPORT jbyteArray JNICALL JNI(info)(JNIEnv *env, jobject self, jlong handle) {
-    char *info = bolo_mpv_info(PLAYER(handle)->core);
+JNIEXPORT jbyteArray JNICALL JNI(info)(JNIEnv *env, jobject self, jlong handle, jboolean include_diagnostics) {
+    char *info = bolo_mpv_info(PLAYER(handle)->core, include_diagnostics);
     if (!info) return NULL;
     size_t size = strlen(info);
     jbyteArray result = size <= INT32_MAX ? (*env)->NewByteArray(env, (jsize)size) : NULL;

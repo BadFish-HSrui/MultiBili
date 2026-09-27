@@ -111,9 +111,9 @@ internal actual class BoloMpvBackend actual constructor() {
         else BoloMpvEvent(event.type, event.generation, event.request, event.error, event.value)
     }
     actual fun stop() = if (destroyed) -3 else bolo_mpv_stop(handle)
-    actual fun info(): BoloMpvInfoSnapshot? {
+    actual fun info(includeDiagnostics: Boolean): BoloMpvInfoSnapshot? {
         if (destroyed) return null
-        val text = bolo_mpv_info(handle) ?: return null
+        val text = bolo_mpv_info(handle, if (includeDiagnostics) 1 else 0) ?: return null
         return try { BoloMpvInfoSnapshot.parse(text.toKString(), this) }
         finally { bolo_mpv_info_free(text) }
     }

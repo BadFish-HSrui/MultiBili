@@ -21,7 +21,7 @@ internal object BoloMpvNative {
     external fun mergeAudioChannels(handle: Long, enabled: Boolean): Int
     external fun seek(handle: Long, seconds: Double, request: Long): Int
     external fun poll(handle: Long): DoubleArray?
-    external fun info(handle: Long): ByteArray?
+    external fun info(handle: Long, includeDiagnostics: Boolean): ByteArray?
     external fun stop(handle: Long): Int
     external fun caFile(handle: Long, path: String): Int
     external fun surface(handle: Long, surface: Any?): Int

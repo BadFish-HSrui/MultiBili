@@ -50,6 +50,8 @@ class BoloPlayerController(
     private var mediaInfo = BoloPlayerInfo()
     private var infoPanelVisible = false
     private var lastInfoSample: TimeMark? = null
+    private val diagnosticsSampler = BoloPlayerDiagnosticsSampler()
+    private var diagnosticsRevision = 0L
     private val mutableBackend = MutableStateFlow<BoloMpvBackend?>(null)
     internal val backend: StateFlow<BoloMpvBackend?> = mutableBackend.asStateFlow()
     private val coordinator = BoloPlayerSeekCoordinator()
@@ -100,6 +102,7 @@ class BoloPlayerController(
         private set
     private var playWhenReady = autoPlay
         set(value) {
+            if (field != value) resetDiagnostics()
             field = value
             mutableState.value = state.value.copy(playWhenReady = value)
         }
@@ -110,6 +113,10 @@ class BoloPlayerController(
     private var volumeGain = 100
     private var speedRevision = 0L
     private var nativeSeeking = false
+        set(value) {
+            if (field != value) resetDiagnostics()
+            field = value
+        }
     private var requestSequence = 0L
     private var activeSeekRequest = 0L
 
@@ -350,16 +357,28 @@ class BoloPlayerController(
         scope.launch {
             if (disposed) return@launch
             infoPanelVisible = visible
+            resetDiagnostics()
             lastInfoSample = null
             mutableInfo.value = info.value.withoutDynamicValues()
         }
     }
 
     private fun resetInfo() {
+        resetDiagnostics()
         lastInfoSample = null
         loudnessConfigured = null
         appliedLoudnessGainDb = null
         mutableInfo.value = mediaInfo.withLoudnessInfo()
+    }
+
+    private fun resetDiagnostics() {
+        diagnosticsRevision++
+        diagnosticsSampler.reset()
+        mutableInfo.value = info.value.copy(
+            decoderDroppedFramesPerSecond = null,
+            outputDroppedFramesPerSecond = null,
+            avSyncDifferenceMs = null,
+        )
     }
 
     private fun BoloPlayerInfo.withLoudnessInfo(): BoloPlayerInfo = copy(
@@ -385,6 +404,7 @@ class BoloPlayerController(
         if (disposed || inBackground || mutableBackend.value !== engine ||
             (!infoPanelVisible && !state.value.isBuffering)) {
             if (lastInfoSample != null) {
+                resetDiagnostics()
                 lastInfoSample = null
                 mutableInfo.value = info.value.withoutDynamicValues()
             }
@@ -394,26 +414,38 @@ class BoloPlayerController(
         lastInfoSample = TimeSource.Monotonic.markNow()
         val expected = generation
         val audioRevision = mergeAudioRevision
+        val diagnosticsVersion = diagnosticsRevision
+        val includeDiagnostics = infoPanelVisible
         val snapshot = try {
-            withContext(boloMpvDispatcher) { engine.info() }
+            withContext(boloMpvDispatcher) { engine.info(includeDiagnostics) }
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
             null
         }
-        if (disposed || playbackBlocked || generation != expected || mutableBackend.value !== engine ||
-            audioRevision != mergeAudioRevision) return
+        if (disposed || inBackground || playbackBlocked || generation != expected || mutableBackend.value !== engine ||
+            audioRevision != mergeAudioRevision || diagnosticsVersion != diagnosticsRevision) return
         if (!infoPanelVisible && !state.value.isBuffering) {
             mutableInfo.value = info.value.withoutDynamicValues()
             return
         }
         if (snapshot == null || snapshot.instance !== engine || snapshot.generation != expected) {
+            resetDiagnostics()
             mutableInfo.value = mediaInfo.withLoudnessInfo()
             return
         }
-        val native = snapshot.info
         val seeking = state.value.isSeeking
+        val diagnosticsActive = includeDiagnostics && ready && videoOutputActive && playWhenReady &&
+            state.value.hasConfirmedPosition && !seeking && !nativeSeeking &&
+            !state.value.isEnded && !state.value.isRebuilding
+        val native = if (diagnosticsActive) {
+            diagnosticsSampler.sample(snapshot.info)
+        } else {
+            diagnosticsSampler.reset()
+            snapshot.info
+        }
         mutableInfo.value = native.copy(
+            avSyncDifferenceMs = native.avSyncDifferenceMs.takeIf { diagnosticsActive && state.value.isPlaying },
             video = native.video.copy(
                 nominalBitrateBps = mediaInfo.video.nominalBitrateBps,
                 width = native.video.width ?: mediaInfo.video.width,
@@ -440,6 +472,7 @@ class BoloPlayerController(
     private fun handleEvent(event: BoloMpvEvent) {
         when (event.type) {
             BoloMpvEvent.Loaded -> {
+                resetDiagnostics()
                 ready = true
                 loadJob?.cancel()
                 val target = state.value.pendingSeekPositionMs ?: state.value.currentPositionMs
@@ -463,6 +496,7 @@ class BoloPlayerController(
                     isPlaying = playWhenReady && !buffering && !state.value.isSeeking && !state.value.isEnded)
             }
             BoloMpvEvent.Paused -> if (ready && !playbackBlocked) {
+                if (event.value != 0.0) resetDiagnostics()
                 mutableState.value = state.value.copy(isPlaying = event.value == 0.0 && playWhenReady &&
                     !state.value.isBuffering && !state.value.isSeeking && !state.value.isEnded)
             }
@@ -536,6 +570,7 @@ class BoloPlayerController(
         if (!speed.isFinite() || speed <= 0f) return
         scope.launch {
             if (disposed) return@launch
+            if (state.value.playbackSpeed != speed) resetDiagnostics()
             mutableState.value = state.value.copy(playbackSpeed = speed)
             val revision = ++speedRevision
             val engine = mutableBackend.value ?: return@launch
@@ -653,6 +688,7 @@ class BoloPlayerController(
             }
             val expected = generation
             val lifecycle = lifecycleRevision
+            resetDiagnostics()
             mutableState.value = state.value.copy(isRebuilding = true, hasConfirmedPosition = false)
             rebuildJob = scope.launch(start = CoroutineStart.LAZY) {
                 try {
@@ -722,6 +758,7 @@ class BoloPlayerController(
     fun seekToMs(positionMs: Long, autoPlayAfterSeek: Boolean = false) {
         scope.launch {
             if (disposed || playbackBlocked) return@launch
+            resetDiagnostics()
             allowSourceRecovery()
             endedBeforeSeek = endedBeforeSeek || state.value.isEnded
             if (autoPlayAfterSeek) {
@@ -821,6 +858,7 @@ class BoloPlayerController(
         scope.launch {
             if (disposed || (!force && inBackground == !foreground)) return@launch
             inBackground = !foreground
+            resetDiagnostics()
             val lifecycle = ++lifecycleRevision
             backgroundJob?.cancel()
             if (backgroundPlaybackEnabled) {
@@ -915,6 +953,7 @@ class BoloPlayerController(
 
     internal fun setVideoOutputActive(active: Boolean) {
         scope.launch {
+            if (videoOutputActive != active) resetDiagnostics()
             videoOutputActive = active
             val engine = mutableBackend.value ?: return@launch
             if (active && !inBackground) {

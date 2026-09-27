@@ -31,7 +31,7 @@ int bolo_mpv_merge_audio_channels(bolo_mpv *, int enabled);
 int bolo_mpv_seek(bolo_mpv *, double seconds, int64_t request);
 int bolo_mpv_stop(bolo_mpv *);
 int bolo_mpv_poll(bolo_mpv *, bolo_mpv_event *event);
-char *bolo_mpv_info(bolo_mpv *);
+char *bolo_mpv_info(bolo_mpv *, int include_diagnostics);
 void bolo_mpv_info_free(char *);
 void bolo_mpv_destroy(bolo_mpv *);
 int bolo_mpv_surface(bolo_mpv *, int64_t surface);

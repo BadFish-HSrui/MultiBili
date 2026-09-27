@@ -83,6 +83,10 @@ internal fun BoloPlayerInfoPanel(
                 BoloPlayerInfoRow("音频解码器", audio?.decoderDescription)
                 BoloPlayerInfoRow("音量均衡", audio?.let(::playerInfoLoudnessStatus), singleLine = true)
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Color.White.copy(alpha = 0.2f))
+                BoloPlayerInfoRow("解码丢帧", playerInfoDroppedFrames(info.decoderDroppedFrames, info.decoderDroppedFramesPerSecond))
+                BoloPlayerInfoRow("输出丢帧", playerInfoDroppedFrames(info.outputDroppedFrames, info.outputDroppedFramesPerSecond))
+                BoloPlayerInfoRow("音画偏差", info.avSyncDifferenceMs?.let(::playerInfoAvSync))
+                HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Color.White.copy(alpha = 0.2f))
                 BoloPlayerInfoRow("硬解路径", if (info.hardwareDecoder == "no") "软件解码" else info.hardwareDecoder)
                 BoloPlayerInfoRow("硬解互操作", info.hardwareInterop)
                 BoloPlayerInfoRow("视频输出", info.videoOutput)
@@ -157,6 +161,21 @@ private fun playerInfoLoudnessDecimal(value: Double): String {
 
 private fun playerInfoFragment(index: Int?, count: Int?): String =
     if (index == null && count == null) "—" else "${index ?: "—"} / ${count ?: "—"}"
+
+private fun playerInfoDroppedFrames(count: Long?, rate: Double?): String? {
+    if (count == null) return null
+    val speed = rate?.let {
+        val scaled = (it * 10).roundToLong()
+        if (scaled % 10 == 0L) "${scaled / 10}" else "${scaled / 10}.${scaled % 10}"
+    } ?: "—"
+    return "$speed/s（$count）"
+}
+
+private fun playerInfoAvSync(value: Double): String {
+    // mpv 返回音频领先量；面板以声音落后为正值。
+    val milliseconds = (-value).roundToLong()
+    return "${if (milliseconds > 0) "+" else ""}${milliseconds}ms"
+}
 
 private fun playerInfoDecimal(value: Double): String {
     val scaled = (value * 100).roundToLong()

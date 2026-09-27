@@ -134,7 +134,7 @@ internal actual class BoloMpvBackend actual constructor() {
     actual fun mergeAudioChannels(enabled: Boolean) = if (destroyed) -3 else BoloMpvNative.mergeAudioChannels(handle, enabled)
     actual fun seek(seconds: Double, request: Long) = if (destroyed) -3 else BoloMpvNative.seek(handle, seconds, request)
     actual fun poll() = if (destroyed) null else BoloMpvNative.poll(handle)?.toMpvEvent()
-    actual fun info() = if (destroyed) null else BoloMpvNative.info(handle)?.let {
+    actual fun info(includeDiagnostics: Boolean) = if (destroyed) null else BoloMpvNative.info(handle, includeDiagnostics)?.let {
         BoloMpvInfoSnapshot.parse(it.decodeToString(), this)
     }
     actual fun stop() = if (destroyed) -3 else BoloMpvNative.stop(handle)

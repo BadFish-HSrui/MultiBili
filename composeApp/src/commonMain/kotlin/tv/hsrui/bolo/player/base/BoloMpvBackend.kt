@@ -15,7 +15,7 @@ internal expect class BoloMpvBackend() {
     fun mergeAudioChannels(enabled: Boolean): Int
     fun seek(seconds: Double, request: Long): Int
     fun poll(): BoloMpvEvent?
-    fun info(): BoloMpvInfoSnapshot?
+    fun info(includeDiagnostics: Boolean): BoloMpvInfoSnapshot?
     fun stop(): Int
     fun destroy()
     suspend fun setAudioActive(active: Boolean): Boolean
