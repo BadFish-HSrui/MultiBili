@@ -1,7 +1,10 @@
 package tv.hsrui.bolo
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.PlatformTextInputInterceptor
 import androidx.compose.ui.unit.dp
@@ -51,7 +54,9 @@ fun main() {
                 }
             }
             InterceptPlatformTextInput(inputInterceptor) {
-                App()
+                Box(Modifier.onPreviewKeyEvent(DesktopPlayerKeyboard::onContentPreviewKeyEvent)) {
+                    App()
+                }
             }
         }
     }

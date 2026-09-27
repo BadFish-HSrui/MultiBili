@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.awt.awtEventOrNull
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -56,9 +57,19 @@ internal object DesktopPlayerKeyboard {
     }
 
     fun onKeyEvent(event: KeyEvent): Boolean {
+        if (event.type == KeyEventType.KeyDown && event.key == Key.Spacebar) {
+            val component = event.awtEventOrNull?.component ?: return false
+            // 编辑会话的空格留给文本输入和候选词确认，窗口兜底也不能接管。
+            if (component.inputMethodRequests != null) return false
+        }
         val handled = onKeyEvent?.invoke(event) == true
         if (handled && event.type == KeyEventType.KeyDown) pressedKeys.add(event.key)
         return handled
+    }
+
+    fun onContentPreviewKeyEvent(event: KeyEvent): Boolean {
+        // 主内容先处理空格；独立弹窗仍沿自身焦点树处理按键。
+        return event.type == KeyEventType.KeyDown && event.key == Key.Spacebar && onKeyEvent(event)
     }
 }
 
