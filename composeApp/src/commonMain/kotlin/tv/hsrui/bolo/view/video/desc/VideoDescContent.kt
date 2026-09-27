@@ -3,6 +3,9 @@ package tv.hsrui.bolo.view.video.desc
 import tv.hsrui.bolo.navigation.openUserSpace
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ShortText
@@ -29,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -38,6 +43,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -52,32 +58,82 @@ import kotlin.text.ifEmpty
 fun VideoDescContent(videoInfo: VideoInfoData) {
     Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Column(Modifier.padding(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AsyncImage(
-                    model = videoInfo.upAvatarUrl + "@96w_96h_1c.webp",
-                    contentDescription = "UP头像",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .fillMaxWidth()
-                        .aspectRatio(1F)
-                        .clip(CircleShape)
-                        .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) }
-                        .background(Color.Black)
-                )
-                Column(Modifier.padding(start = 8.dp)) {
-                    Text(
-                        text = videoInfo.upName,
-                        modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
-                        style = MaterialTheme.typography.bodyMedium
+            if (videoInfo.isCooperation && videoInfo.staff.isNotEmpty()) {
+                key(videoInfo.bvid, videoInfo.avid) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        videoInfo.staff.forEach { member ->
+                            key(member.mid) {
+                                Column(
+                                    modifier = Modifier.width(72.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    AsyncImage(
+                                        model = member.avatarUrl + "@96w_96h_1c.webp",
+                                        contentDescription = "UP头像",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(48.dp)
+                                            .clip(CircleShape)
+                                            .clickable { openUserSpace(member.mid) }
+                                            .background(Color.Black),
+                                    )
+                                    RelationButton(
+                                        upName = member.name,
+                                        mid = member.mid,
+                                        modifier = Modifier.height(24.dp),
+                                    )
+                                    Text(
+                                        text = member.name,
+                                        modifier = Modifier.fillMaxWidth().clickable { openUserSpace(member.mid) },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = member.role,
+                                        modifier = Modifier.fillMaxWidth().alpha(0.7F),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        textAlign = TextAlign.Center,
+                                        minLines = 1,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AsyncImage(
+                        model = videoInfo.upAvatarUrl + "@96w_96h_1c.webp",
+                        contentDescription = "UP头像",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .fillMaxWidth()
+                            .aspectRatio(1F)
+                            .clip(CircleShape)
+                            .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) }
+                            .background(Color.Black)
+                    )
+                    Column(Modifier.padding(start = 8.dp)) {
+                        Text(
+                            text = videoInfo.upName,
+                            modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Spacer(Modifier.weight(1F))
+                    RelationButton(
+                        upName = videoInfo.upName,
+                        mid = videoInfo.upMid,
+                        modifier = Modifier.height(24.dp)
                     )
                 }
-                Spacer(Modifier.weight(1F))
-                RelationButton(
-                    upName = videoInfo.upName,
-                    mid = videoInfo.upMid,
-                    modifier = Modifier.height(24.dp)
-                )
             }
 
             CompositionLocalProvider(

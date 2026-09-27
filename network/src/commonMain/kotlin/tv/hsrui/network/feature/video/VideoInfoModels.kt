@@ -72,6 +72,7 @@ data class VideoInfoData(
     @SerialName("is_season_display") val isSeasonDisplay: Boolean = false,
     @SerialName("ugc_season") val collection: VideoCollectionData? = null,
     @SerialName("pages") private val rawParts: List<VideoPartData> = emptyList(),
+    @SerialName("staff") private val rawStaff: List<VideoStaffData>? = null,
 ) {
     val parts by lazy { rawParts.filter { it.cid > 0 }.distinctBy { it.cid }.sortedBy { it.pageNumber } }
 
@@ -86,6 +87,7 @@ data class VideoInfoData(
     val publishDateString by lazy { publishDate.formatToDateTime() }
 
     val isCooperation: Boolean by lazy { (rights.isCooperation == 1) }
+    val staff by lazy { rawStaff.orEmpty().filter { it.mid > 0 } }
 
     val upMid by _owner::mid
     val upName by _owner::name
@@ -113,6 +115,16 @@ data class VideoInfoData(
     data class ArgueInfo(
         @SerialName("argue_msg") val message: String = ""
     )
+}
+
+@Serializable
+data class VideoStaffData(
+    @SerialName("mid") val mid: Long = 0,
+    @SerialName("name") val name: String = "",
+    @SerialName("title") val role: String = "",
+    @SerialName("face") private val face: String = "",
+) {
+    val avatarUrl by lazy { face.toHttpsUrl() }
 }
 
 @Serializable
