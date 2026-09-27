@@ -10,23 +10,49 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import tv.hsrui.bolo.ui.theme.BoloShapes
+import kotlin.time.TimeSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShowInfoDialog(
     onConfirm: () -> Unit,
     confirmEnabled: Boolean = true,
+    forcedDisplaySeconds: Int? = null,
     content: @Composable () -> Unit,
 ) {
+    var remainingSeconds by remember(forcedDisplaySeconds) {
+        mutableIntStateOf(forcedDisplaySeconds?.coerceAtLeast(0) ?: 0)
+    }
+    LaunchedEffect(forcedDisplaySeconds) {
+        val durationSeconds = forcedDisplaySeconds?.coerceAtLeast(0) ?: return@LaunchedEffect
+        if (durationSeconds == 0) return@LaunchedEffect
+
+        val startedAt = TimeSource.Monotonic.markNow()
+        val durationMillis = durationSeconds.toLong() * 1_000L
+        while (true) {
+            val remainingMillis = (durationMillis - startedAt.elapsedNow().inWholeMilliseconds)
+                .coerceAtLeast(0L)
+            remainingSeconds = ((remainingMillis + 999L) / 1_000L).toInt()
+            if (remainingSeconds == 0) break
+            delay(remainingMillis - (remainingSeconds - 1L) * 1_000L)
+        }
+    }
+
     BasicAlertDialog(
         onDismissRequest = {
-            if (confirmEnabled) onConfirm()
+            if (forcedDisplaySeconds == null && confirmEnabled) onConfirm()
         },
     ) {
         Surface(
@@ -41,9 +67,9 @@ fun ShowInfoDialog(
 
                 OutlinedButton(
                     onClick = onConfirm,
-                    enabled = confirmEnabled,
+                    enabled = confirmEnabled && remainingSeconds == 0,
                 ) {
-                    Text("确认")
+                    Text(if (remainingSeconds > 0) "${remainingSeconds}s" else "确认")
                 }
             }
         }
@@ -57,11 +83,13 @@ fun ShowInfoDialog(
     icon: @Composable (() -> Unit)? = null,
     text: String = "",
     confirmEnabled: Boolean = true,
+    forcedDisplaySeconds: Int? = null,
     content: (@Composable () -> Unit)? = null,
 ) {
     ShowInfoDialog(
         onConfirm = onConfirm,
         confirmEnabled = confirmEnabled,
+        forcedDisplaySeconds = forcedDisplaySeconds,
     ) {
         if (icon != null) icon()
 
