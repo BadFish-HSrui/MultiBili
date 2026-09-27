@@ -69,6 +69,7 @@ fun App() {
         }
         AppTheme(isDarkTheme = isDarkTheme) {
             AppSystemBarThemeEffect(isDarkTheme)
+            AppStartup()
             val navigator: Navigator = koinInject()
             val snackbarManager: SnackbarManager = koinInject()
             val snackbarHostState = remember { SnackbarHostState() }
