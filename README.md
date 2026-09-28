@@ -7,6 +7,11 @@
 
 </div>
 
+<p>
+  <img src="docs/preview/iOS.png" alt="移动端预览" width="209">
+  <img src="docs/preview/MacOS.png" alt="桌面端预览" width="531">
+</p>
+
 ### 不包含以下特性：
 
 - :thumbsup: 丝滑的使用体验
