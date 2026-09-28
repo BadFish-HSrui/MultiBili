@@ -176,21 +176,38 @@ class PlayerPlaybackSettings(settingsKSafe: KSafePlain) {
             currentSideDoubleTapSeekEnabled = value
         }
 
-    private var storedDoubleTapSeekSeconds by settingsKSafe(
+    private var storedSeekForwardSeconds by settingsKSafe(
         10,
-        key = "player_playback_double_tap_seek_seconds",
+        key = "player_playback_seek_forward_seconds",
     )
-    private var currentDoubleTapSeekSeconds by mutableIntStateOf(
-        storedDoubleTapSeekSeconds.coerceIn(5, 30),
+    private var currentSeekForwardSeconds by mutableIntStateOf(
+        storedSeekForwardSeconds.coerceIn(5, 30),
     )
 
-    var doubleTapSeekSeconds: Int
-        get() = currentDoubleTapSeekSeconds
+    var seekForwardSeconds: Int
+        get() = currentSeekForwardSeconds
         set(value) {
             val seconds = value.coerceIn(5, 30)
-            if (seconds == currentDoubleTapSeekSeconds) return
-            storedDoubleTapSeekSeconds = seconds
-            currentDoubleTapSeekSeconds = seconds
+            if (seconds == currentSeekForwardSeconds) return
+            storedSeekForwardSeconds = seconds
+            currentSeekForwardSeconds = seconds
+        }
+
+    private var storedSeekBackwardSeconds by settingsKSafe(
+        5,
+        key = "player_playback_seek_backward_seconds",
+    )
+    private var currentSeekBackwardSeconds by mutableIntStateOf(
+        storedSeekBackwardSeconds.coerceIn(5, 30),
+    )
+
+    var seekBackwardSeconds: Int
+        get() = currentSeekBackwardSeconds
+        set(value) {
+            val seconds = value.coerceIn(5, 30)
+            if (seconds == currentSeekBackwardSeconds) return
+            storedSeekBackwardSeconds = seconds
+            currentSeekBackwardSeconds = seconds
         }
 
     private var storedLongPressSpeedGestureEnabled by settingsKSafe(

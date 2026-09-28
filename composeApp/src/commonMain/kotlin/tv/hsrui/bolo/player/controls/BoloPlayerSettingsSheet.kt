@@ -135,8 +135,10 @@ fun BoloPlayerSettingsSheet(
     onVolumeGestureEnabledChange: (Boolean) -> Unit,
     sideDoubleTapSeekEnabled: Boolean,
     onSideDoubleTapSeekEnabledChange: (Boolean) -> Unit,
-    doubleTapSeekSeconds: Int,
-    onDoubleTapSeekSecondsChange: (Int) -> Unit,
+    seekForwardSeconds: Int,
+    onSeekForwardSecondsChange: (Int) -> Unit,
+    seekBackwardSeconds: Int,
+    onSeekBackwardSecondsChange: (Int) -> Unit,
     longPressSpeedGestureEnabled: Boolean,
     onLongPressSpeedGestureEnabledChange: (Boolean) -> Unit,
     longPressSpeed: Float,
@@ -466,9 +468,17 @@ fun BoloPlayerSettingsSheet(
                                                             }
                                                             HorizontalDivider(thickness = 1.dp)
                                                             PlayerSeekDurationSlider(
-                                                                seconds = doubleTapSeekSeconds,
+                                                                label = "快进时长",
+                                                                seconds = seekForwardSeconds,
                                                                 enabled = isOpen,
-                                                                onValueChange = onDoubleTapSeekSecondsChange,
+                                                                onValueChange = onSeekForwardSecondsChange,
+                                                            )
+                                                            HorizontalDivider(thickness = 1.dp)
+                                                            PlayerSeekDurationSlider(
+                                                                label = "快退时长",
+                                                                seconds = seekBackwardSeconds,
+                                                                enabled = isOpen,
+                                                                onValueChange = onSeekBackwardSecondsChange,
                                                             )
                                                         } else {
                                                             PlayerGestureSwitch(
@@ -501,9 +511,17 @@ fun BoloPlayerSettingsSheet(
                                                             if (sideDoubleTapSeekEnabled) {
                                                                 HorizontalDivider(thickness = 1.dp)
                                                                 PlayerSeekDurationSlider(
-                                                                    seconds = doubleTapSeekSeconds,
+                                                                    label = "快进时长",
+                                                                    seconds = seekForwardSeconds,
                                                                     enabled = isOpen,
-                                                                    onValueChange = onDoubleTapSeekSecondsChange,
+                                                                    onValueChange = onSeekForwardSecondsChange,
+                                                                )
+                                                                HorizontalDivider(thickness = 1.dp)
+                                                                PlayerSeekDurationSlider(
+                                                                    label = "快退时长",
+                                                                    seconds = seekBackwardSeconds,
+                                                                    enabled = isOpen,
+                                                                    onValueChange = onSeekBackwardSecondsChange,
                                                                 )
                                                             }
                                                             HorizontalDivider(thickness = 1.dp)
@@ -965,6 +983,7 @@ private fun PlayerGestureSwitch(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlayerSeekDurationSlider(
+    label: String,
     seconds: Int,
     enabled: Boolean,
     onValueChange: (Int) -> Unit,
@@ -985,7 +1004,7 @@ private fun PlayerSeekDurationSlider(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("快进快退时长", style = MaterialTheme.typography.bodyMedium)
+            Text(label, style = MaterialTheme.typography.bodyMedium)
             Text("$displayedSeconds 秒", style = MaterialTheme.typography.bodySmall)
         }
         ShowSlider(
@@ -1001,7 +1020,7 @@ private fun PlayerSeekDurationSlider(
             interactionSource = interactionSource,
             showTicks = false,
             modifier = Modifier.fillMaxWidth().semantics {
-                contentDescription = "快进快退时长"
+                contentDescription = label
                 stateDescription = "$displayedSeconds 秒"
             },
         )

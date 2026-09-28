@@ -462,8 +462,13 @@ fun BoloPlayerControls(
         val playback = viewModel.controller.state.value
         if (!playback.isSeekable || playback.durationMs <= 0L || playback.isPlaybackSuspended) return
         keyboardSeekTimes[direction] = TimeSource.Monotonic.markNow()
+        val seconds = if (direction < 0) {
+            playerSettings.playback.seekBackwardSeconds
+        } else {
+            playerSettings.playback.seekForwardSeconds
+        }
         viewModel.seekToMs(
-            (playback.displayPositionMs + direction * playerSettings.playback.doubleTapSeekSeconds * 1_000L)
+            (playback.displayPositionMs + direction * seconds * 1_000L)
                 .coerceIn(0L, playback.durationMs),
             autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled,
         )
@@ -710,7 +715,8 @@ fun BoloPlayerControls(
                     desktopDoubleClickPauseEnabled,
                     desktopDefaultWindowFullscreenEnabled,
                     playerSettings.playback.sideDoubleTapSeekEnabled,
-                    playerSettings.playback.doubleTapSeekSeconds,
+                    playerSettings.playback.seekForwardSeconds,
+                    playerSettings.playback.seekBackwardSeconds,
                 ) {
                     if (settingsOpen) return@pointerInput
                     if (isDesktop) {
@@ -752,7 +758,12 @@ fun BoloPlayerControls(
                                         else -> 0
                                     }
                                     if (direction != 0) {
-                                        val offsetMs = direction * playerSettings.playback.doubleTapSeekSeconds * 1_000L
+                                        val seconds = if (direction < 0) {
+                                            playerSettings.playback.seekBackwardSeconds
+                                        } else {
+                                            playerSettings.playback.seekForwardSeconds
+                                        }
+                                        val offsetMs = direction * seconds * 1_000L
                                         viewModel.seekToMs(
                                             (playback.displayPositionMs + offsetMs)
                                                 .coerceIn(0L, playback.durationMs),
@@ -1485,8 +1496,10 @@ fun BoloPlayerControls(
                 onVolumeGestureEnabledChange = { playerSettings.playback.volumeGestureEnabled = it },
                 sideDoubleTapSeekEnabled = playerSettings.playback.sideDoubleTapSeekEnabled,
                 onSideDoubleTapSeekEnabledChange = { playerSettings.playback.sideDoubleTapSeekEnabled = it },
-                doubleTapSeekSeconds = playerSettings.playback.doubleTapSeekSeconds,
-                onDoubleTapSeekSecondsChange = { playerSettings.playback.doubleTapSeekSeconds = it },
+                seekForwardSeconds = playerSettings.playback.seekForwardSeconds,
+                onSeekForwardSecondsChange = { playerSettings.playback.seekForwardSeconds = it },
+                seekBackwardSeconds = playerSettings.playback.seekBackwardSeconds,
+                onSeekBackwardSecondsChange = { playerSettings.playback.seekBackwardSeconds = it },
                 longPressSpeedGestureEnabled = longPressSpeedGestureEnabled,
                 onLongPressSpeedGestureEnabledChange = { playerSettings.playback.longPressSpeedGestureEnabled = it },
                 longPressSpeed = longPressSpeed,
