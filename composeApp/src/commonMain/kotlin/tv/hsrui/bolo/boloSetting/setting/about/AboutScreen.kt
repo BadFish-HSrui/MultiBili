@@ -1,7 +1,6 @@
 package tv.hsrui.bolo.boloSetting.setting.about
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
@@ -11,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +33,9 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import tv.hsrui.bolo.BuildInfo
 import tv.hsrui.bolo.getPlatform
+import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
+import tv.hsrui.bolo.utils.calculateWithoutBottom
+import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.bolo.utils.url.openUrl
 
 @Preview(showBackground = true)
@@ -42,47 +45,53 @@ fun AboutScreen(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val jvmRuntimeDescription = remember { getPlatform().jvmRuntimeDescription }
 
-    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-        Column(
-            modifier = Modifier.align(Alignment.Center).offset(y = (-32).dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Image(
-                painter = painterResource(Res.drawable.AppIconSquare),
-                contentDescription = null,
-                modifier = Modifier
-                    .sizeIn(maxWidth = 192.dp)
-                    .aspectRatio(1F)
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(percent = 20))
-            )
-            Text(
-                text = stringResource(Res.string.app_name),
-                style = MaterialTheme.typography.displayMedium,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-            Text("tv.hsrui.bolo / ${BuildInfo.appDisplayVersion}")
-            jvmRuntimeDescription?.let { description ->
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        topBar = {
+            if (!isExpanded()) ShowTopBarWithNavigationButton(title = { Text("关于") })
+        },
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) { innerPadding ->
+        Box(Modifier.fillMaxSize().padding(innerPadding.calculateWithoutBottom())) {
+            Column(
+                modifier = Modifier.align(Alignment.Center).offset(y = (-32).dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Image(
+                    painter = painterResource(Res.drawable.AppIconSquare),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .sizeIn(maxWidth = 192.dp)
+                        .aspectRatio(1F)
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(percent = 20))
+                )
                 Text(
-                    text = "JVM：$description",
+                    text = stringResource(Res.string.app_name),
+                    style = MaterialTheme.typography.displayMedium,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                Text("tv.hsrui.bolo / ${BuildInfo.appDisplayVersion}")
+                jvmRuntimeDescription?.let { description ->
+                    Text(
+                        text = "JVM：$description",
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+
+                Surface(
+                    onClick = { scope.launch { openUrl(githubRepoUrlString) } },
+                    color = Color.Transparent
+                ) { Text(text = githubRepoUrlString) }
+
+                Text(
+                    text = "本项目与哔哩哔哩官方无关\n请勿在国内社交平台公开传播",
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 16.dp)
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.alpha(0.5F)
                 )
             }
-
-            Surface(
-                onClick = { scope.launch { openUrl(githubRepoUrlString) } },
-                color = Color.Transparent
-            ) { Text(text = githubRepoUrlString) }
-
-            Text(
-                text = "本项目与哔哩哔哩官方无关\n请勿在国内社交平台公开传播",
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.alpha(0.5F)
-            )
         }
-
-
     }
 }
