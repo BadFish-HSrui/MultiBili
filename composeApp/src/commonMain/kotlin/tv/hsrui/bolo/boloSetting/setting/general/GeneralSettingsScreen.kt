@@ -83,6 +83,21 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
                                 }
                             }
                         }
+                        Text("功能设置", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))
+                        Card(Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.general.searchSuggestionsEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.general.searchSuggestionsEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("启用搜索建议", style = MaterialTheme.typography.bodyLarge)
+                                Spacer(Modifier.weight(1f))
+                                Switch(checked = settings.general.searchSuggestionsEnabled, onCheckedChange = null)
+                            }
+                        }
                         Text("外部链接", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))
                         Card(Modifier.fillMaxWidth()) {
                             Row(

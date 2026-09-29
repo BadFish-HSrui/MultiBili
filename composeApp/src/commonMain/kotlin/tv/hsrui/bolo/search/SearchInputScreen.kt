@@ -70,6 +70,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.storage.appData.AppDataStorage
@@ -84,6 +85,8 @@ fun SearchInputScreen(
     val textFieldState = rememberTextFieldState()
     val navigator: Navigator = koinInject()
     val appDataStorage: AppDataStorage = koinInject()
+    val settings: BoloSettings = koinInject()
+    val searchSuggestionsEnabled = settings.general.searchSuggestionsEnabled
     val historyItems by appDataStorage.searchHistory.items.collectAsState()
     var deleteHistoryKeyword by rememberSaveable { mutableStateOf<String?>(null) }
     var showClearHistoryDialog by rememberSaveable { mutableStateOf(false) }
@@ -107,11 +110,12 @@ fun SearchInputScreen(
     val isActive = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     var isSubmitting by remember { mutableStateOf(false) }
     var isEditing by remember { mutableStateOf(false) }
-    val suggestionsExpanded = isActive && isEditing && !isSubmitting && when (val state = suggestionsState) {
-        SearchSuggestionsUiState.Idle -> false
-        is SearchSuggestionsUiState.Success -> state.keywords.isNotEmpty()
-        is SearchSuggestionsUiState.Error -> true
-    }
+    val suggestionsExpanded = searchSuggestionsEnabled && isActive && isEditing && !isSubmitting &&
+        when (val state = suggestionsState) {
+            SearchSuggestionsUiState.Idle -> false
+            is SearchSuggestionsUiState.Success -> state.keywords.isNotEmpty()
+            is SearchSuggestionsUiState.Error -> true
+        }
     val suggestionContentHeight = with(density) {
         val height = when (val state = suggestionsState) {
             SearchSuggestionsUiState.Idle -> 0
@@ -155,7 +159,7 @@ fun SearchInputScreen(
             focusRequester.requestFocus()
             keyboardController?.show()
             val keyword = textFieldState.text.toString().trim()
-            if (keyword.isEmpty()) {
+            if (keyword.isEmpty() || !settings.general.searchSuggestionsEnabled) {
                 viewModel.clearSuggestions()
             } else {
                 viewModel.loadSuggestions(keyword)
@@ -184,7 +188,8 @@ fun SearchInputScreen(
         }
     }
 
-    LaunchedEffect(isActive, isInputReady, viewModel) {
+    LaunchedEffect(isActive, isInputReady, searchSuggestionsEnabled, viewModel) {
+        if (!searchSuggestionsEnabled) viewModel.clearSuggestions()
         if (!isActive || !isInputReady) return@LaunchedEffect
         var previousText = textFieldState.text.toString()
         snapshotFlow { textFieldState.text.toString() }
@@ -199,7 +204,7 @@ fun SearchInputScreen(
                         focusRequester.requestFocus()
                         keyboardController?.show()
                     }
-                } else {
+                } else if (settings.general.searchSuggestionsEnabled) {
                     viewModel.loadSuggestions(keyword)
                 }
             }
@@ -344,7 +349,9 @@ fun SearchInputScreen(
                         headlineContent = { Text(state.message) },
                         trailingContent = {
                             TextButton(modifier = Modifier.height(32.dp), onClick = {
-                                viewModel.loadSuggestions(textFieldState.text.toString(), immediately = true)
+                                if (settings.general.searchSuggestionsEnabled) {
+                                    viewModel.loadSuggestions(textFieldState.text.toString(), immediately = true)
+                                }
                             }) { Text("重试") }
                         },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),

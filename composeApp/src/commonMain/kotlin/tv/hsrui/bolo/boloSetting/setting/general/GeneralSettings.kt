@@ -20,6 +20,19 @@ class GeneralSettings(settingsKSafe: KSafePlain) {
             currentThemeMode = value
         }
 
+    private var storedSearchSuggestionsEnabled by settingsKSafe(
+        true, key = "bolo_general_search_suggestions_enabled",
+    )
+    private var currentSearchSuggestionsEnabled by mutableStateOf(storedSearchSuggestionsEnabled)
+
+    var searchSuggestionsEnabled: Boolean
+        get() = currentSearchSuggestionsEnabled
+        set(value) {
+            if (value == currentSearchSuggestionsEnabled) return
+            storedSearchSuggestionsEnabled = value
+            currentSearchSuggestionsEnabled = value
+        }
+
     private var storedClipboardLinkRecognitionEnabled by settingsKSafe(
         false, key = "bolo_general_clipboard_link_recognition_enabled",
     )
