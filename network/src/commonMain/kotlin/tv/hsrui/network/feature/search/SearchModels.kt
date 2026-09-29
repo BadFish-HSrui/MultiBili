@@ -6,6 +6,36 @@ import tv.hsrui.network.model.ValidVideosData
 import tv.hsrui.network.model.VideosResult
 import tv.hsrui.network.utils.toHttpsUrl
 
+@Serializable
+data class SearchSuggestionsResponse(
+    private val code: Int = -1,
+    private val data: SearchSuggestionsData? = null,
+) {
+    val isSuccess: Boolean get() = code == 3 || (code == 0 && data?.isSuccess == true)
+    val keywords: List<String> get() = if (code == 0) data?.keywords.orEmpty() else emptyList()
+}
+
+@Serializable
+data class SearchSuggestionsData(
+    private val code: Int = -1,
+    private val result: SearchSuggestionsResult? = null,
+) {
+    val isSuccess: Boolean get() = code == 3 || (code == 0 && result != null)
+    val keywords: List<String> get() = if (code == 0) result?.keywords.orEmpty() else emptyList()
+}
+
+@Serializable
+data class SearchSuggestionsResult(
+    @SerialName("tag") private val suggestions: List<SearchSuggestionData> = emptyList(),
+) {
+    val keywords: List<String> get() = suggestions.map { it.keyword.trim() }.filter { it.isNotEmpty() }
+}
+
+@Serializable
+data class SearchSuggestionData(
+    @SerialName("value") val keyword: String = "",
+)
+
 enum class SearchCategory(val title: String, val apiValue: String) {
     Video("视频", "video"),
     Bangumi("番剧", "media_bangumi"),
