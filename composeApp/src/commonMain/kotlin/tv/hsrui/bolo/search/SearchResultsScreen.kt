@@ -1,11 +1,14 @@
 package tv.hsrui.bolo.search
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
@@ -15,6 +18,7 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
@@ -23,12 +27,14 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
@@ -66,27 +72,31 @@ fun SearchResultsScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    SearchBarDefaults.InputField(
-                        state = textFieldState,
-                        onSearch = {},
-                        expanded = false,
-                        onExpandedChange = { expanded ->
-                            if (expanded) navigator.goBack()
-                        },
-                        readOnly = true,
-                        textStyle = MaterialTheme.typography.bodyLarge,
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Rounded.Search,
-                                contentDescription = null
-                            )
-                        },
-                        colors = inputFieldColors,
-                        modifier = Modifier
-                            .widthIn(max = 500.dp)
-                            .fillMaxWidth()
-                            .searchInputFieldHeight(SearchBarDefaults.inputFieldShape)
-                    )
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides SearchInputFieldHeight) {
+                        SearchBarDefaults.InputField(
+                            state = textFieldState,
+                            onSearch = {},
+                            expanded = false,
+                            onExpandedChange = { expanded ->
+                                if (expanded) navigator.goBack()
+                            },
+                            readOnly = true,
+                            textStyle = MaterialTheme.typography.bodyLarge,
+                            leadingIcon = {
+                                Box(
+                                    modifier = Modifier.offset(x = (-4).dp).size(SearchInputFieldHeight),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(24.dp))
+                                }
+                            },
+                            colors = inputFieldColors,
+                            modifier = Modifier
+                                .widthIn(max = 500.dp)
+                                .fillMaxWidth()
+                                .searchInputFieldHeight(SearchBarDefaults.inputFieldShape)
+                        )
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = navigator::goBack) {
