@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import tv.hsrui.bolo.ui.theme.BoloShapes
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -27,12 +28,14 @@ fun ShowConfirmDialog(
     cancelEnabled: Boolean = true,
     confirmEnabled: Boolean = true,
     confirmText: String = "确认",
+    dismissOnClickOutside: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     BasicAlertDialog(
         onDismissRequest = {
             if (cancelEnabled) onCancel()
         },
+        properties = DialogProperties(dismissOnClickOutside = dismissOnClickOutside),
     ) {
         Surface(
             modifier = Modifier.wrapContentSize(),
@@ -71,10 +74,12 @@ fun ShowConfirmDialog(
     onConfirm: () -> Unit,
     icon: @Composable (() -> Unit)? = null,
     text: String = "",
+    dismissOnClickOutside: Boolean = true,
 ) {
     ShowConfirmDialog(
         onCancel = onCancel,
         onConfirm = onConfirm,
+        dismissOnClickOutside = dismissOnClickOutside,
     ) {
         if (icon != null) icon()
 
