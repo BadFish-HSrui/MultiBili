@@ -74,7 +74,8 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
                 if (stopped && playback.playWhenReady) stopped = false
                 if (wasSeeking && !playback.isSeeking && playback.hasConfirmedPosition) seekRevision++
                 wasSeeking = playback.isSeeking
-                val ended = wasPlaying && !wasEnded && playback.isEnded && !playback.isPlaybackSuspended
+                val ended = (player.singleEpisodeLoopEnabled || wasPlaying) &&
+                    !wasEnded && playback.isEnded && !playback.isPlaybackSuspended
                 wasPlaying = playback.isPlaying && !playback.isPlaybackSuspended
                 wasEnded = playback.isEnded
                 publish()
