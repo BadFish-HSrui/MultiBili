@@ -1,6 +1,6 @@
 [versions]
 media3 = "1.11.1"
-dbus-java = "5.2.0"
+dbus-java = "5.2.2"
 commons-compress = "1.28.0"
 jogl = "2.6.0"
 agp = "9.3.1"
@@ -11,18 +11,18 @@ androidx-activity = "1.13.0"
 androidx-lifecycle = "2.11.0"
 androidx-testExt = "1.3.0"
 composeHotReload = "1.2.0"
-composeMultiplatform = "1.12.0"
-kotlin = "2.4.10"
+composeMultiplatform = "1.12.1"
+kotlin = "2.4.20"
 kotlinx-coroutines = "1.11.0"
 material3 = "1.12.0-alpha03"
-ktor = "3.5.2"
-coil = "3.6.2"
-zoomimage = "1.6.0"
+ktor = "3.6.0"
+coil = "3.6.3"
+zoomimage = "1.7.0"
 kotlinx-serialization = "1.11.0"
 materialKolor = "5.0.1"
-ksafe = "3.1.0"
-multiplatform-nav3-ui = "1.1.1"
-compose-multiplatform-adaptive = "1.3.0-beta02"
+ksafe = "3.2.0"
+multiplatform-nav3-ui = "1.1.2"
+compose-multiplatform-adaptive = "1.3.0-rc01"
 compose-multiplatform-lifecycle = "2.11.0"
 koin = "4.2.2"
 
@@ -65,7 +65,7 @@ zoomimage-compose-coil3-core = { module = "io.github.panpf.zoomimage:zoomimage-c
 material-icons = { module = "org.jetbrains.compose.material:material-icons-extended", version = "1.7.3" }
 material3-adaptive = { module = "org.jetbrains.compose.material3.adaptive:adaptive", version.ref = "compose-multiplatform-adaptive" }
 compose-webview-multiplatform = { module = "io.github.kevinnzou:compose-webview-multiplatform", version = "2.0.3" }
-qrose = { module = "io.github.alexzhirkevich:qrose", version = "1.2.1" }
+qrose = { module = "io.github.alexzhirkevich:qrose", version = "1.3.0" }
 ksafe = { module = "eu.anifantakis:ksafe", version.ref = "ksafe" }
 jetbrains-navigation3-ui = { module = "org.jetbrains.androidx.navigation3:navigation3-ui", version.ref = "multiplatform-nav3-ui" }
 jetbrains-material3-adaptiveNavigation3 = { module = "org.jetbrains.compose.material3.adaptive:adaptive-navigation3", version.ref = "compose-multiplatform-adaptive" }
@@ -82,4 +82,4 @@ composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "k
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 androidMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-buildkonfig = { id = "com.codingfeline.buildkonfig", version = "0.22.0" }
+buildkonfig = { id = "com.codingfeline.buildkonfig", version = "0.23.0" }
