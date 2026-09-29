@@ -17,7 +17,6 @@ sealed interface UserSpaceSectionState<out T> {
             Hidden -> false
             is Success -> when (data) {
                 is Collection<*> -> data.isNotEmpty()
-                is Boolean -> data
                 else -> true
             }
             else -> true

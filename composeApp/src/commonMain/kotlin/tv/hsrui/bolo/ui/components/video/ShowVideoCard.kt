@@ -2,9 +2,7 @@ package tv.hsrui.bolo.ui.components.video
 
 import tv.hsrui.bolo.navigation.openUserSpace
 import androidx.compose.foundation.clickable
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,8 +38,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -52,11 +48,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
-import org.koin.compose.koinInject
-import tv.hsrui.bolo.navigation.BoloRoute
-import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.navigation.openVideo
 import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.bolo.utils.isCompact
@@ -87,31 +79,14 @@ fun ShowVideoCard(
         coverUrl = videoInfo.coverUrl43 + "@400w_300h_1c.webp"
     }
 
-    var isFocused by remember { mutableStateOf(false) }
-
-    val animatedScale by animateFloatAsState(
-        targetValue = if (isFocused) 1.08f else 1f
-    )
-
     Card(
         shape = cardShape,
         modifier = modifier
-            .onFocusChanged { focusState ->
-                isFocused = focusState.isFocused
-            }
             .combinedClickable(
                 onClick = {
                     openVideo(videoInfo.bvid)
                 }
             )
-//            .then(
-//                if (isFocused) Modifier.zIndex(1F).scale(animatedScale).border(
-//                    width = 2.dp,
-//                    color = Color.Cyan,
-//                    shape = cardShape
-//                )
-//                else Modifier
-//            )
     ) {
         Column {
             Box(modifier = Modifier.aspectRatio(coverAspectRatio)) {

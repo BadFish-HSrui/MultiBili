@@ -69,7 +69,6 @@ kotlin {
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.kotlinx.serialization.protobuf)
                 implementation(libs.ksafe)
-                implementation(libs.ksafe.compose)
                 implementation(libs.koin.core)
                 implementation(libs.kotlinx.datetime)
             }

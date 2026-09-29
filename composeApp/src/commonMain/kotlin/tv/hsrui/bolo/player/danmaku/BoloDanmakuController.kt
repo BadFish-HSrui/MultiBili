@@ -27,13 +27,6 @@ class BoloDanmakuController {
         publish(_state.value.copy(itemCount = engine.itemCount))
     }
 
-    fun append(items: List<BoloDanmakuItem>) {
-        checkUsable()
-        engine.append(items)
-        if (!awaitingSeekSync) engine.advance(_state.value.positionMs)
-        publish(_state.value.copy(itemCount = engine.itemCount))
-    }
-
     /** 保留原始进度供回看，当前帧直接入场，不依赖媒体调度游标。 */
     fun showImmediately(item: BoloDanmakuItem) {
         checkUsable()
@@ -41,31 +34,18 @@ class BoloDanmakuController {
         publish(_state.value.copy(itemCount = engine.itemCount))
     }
 
-    fun play() {
-        checkUsable()
-        awaitingSeekSync = false
-        engine.advance(_state.value.positionMs)
-        updatePlayback(true, _state.value.playbackSpeed)
-    }
-
     fun pause() {
         checkUsable()
         updatePlayback(false, _state.value.playbackSpeed)
     }
 
-    /** 显式 Seek 清屏并定位待入场游标；下一次同步或 play 后允许新弹幕入场。 */
+    /** 显式 Seek 清屏并定位待入场游标；下一次同步后允许新弹幕入场。 */
     fun seekToMs(positionMs: Long) {
         checkUsable()
         val position = positionMs.coerceAtLeast(0)
         engine.seek(position)
         awaitingSeekSync = true
         publish(_state.value.copy(positionMs = position))
-    }
-
-    fun setPlaybackSpeed(speed: Float) {
-        checkUsable()
-        require(speed.isFinite() && speed > 0f)
-        updatePlayback(_state.value.isPlaying, speed)
     }
 
     /** 外部位置只用于入场；discontinuity 仅表示明确的 Seek。 */
