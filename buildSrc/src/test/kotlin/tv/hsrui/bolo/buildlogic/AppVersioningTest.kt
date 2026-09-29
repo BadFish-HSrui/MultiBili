@@ -19,7 +19,7 @@ class AppVersioningTest {
                 """
                 APP_VERSION_CORE=1.2.3
                 APP_RELEASE_CHANNEL=beta
-                APP_PRERELEASE_NUMBER=4
+                APP_PRERELEASE_NUMBER=0
                 """.trimIndent(),
             )
 
@@ -27,7 +27,7 @@ class AppVersioningTest {
                 VersionConfig(
                     core = "1.2.3",
                     channel = ReleaseChannel.BETA,
-                    prereleaseNumber = 4,
+                    prereleaseNumber = 0,
                 ),
                 loadVersionConfig(file),
             )
@@ -44,7 +44,7 @@ class AppVersioningTest {
                 """
                 APP_VERSION_CORE=1.2.3
                 APP_RELEASE_CHANNEL=alpha
-                APP_PRERELEASE_NUMBER=1
+                APP_PRERELEASE_NUMBER=0
                 APP_BUILD_NUMBER=7
                 """.trimIndent(),
             )
@@ -72,11 +72,11 @@ class AppVersioningTest {
             val versionConfig = VersionConfig(
                 core = "1.2.3",
                 channel = channel,
-                prereleaseNumber = 5,
+                prereleaseNumber = 0,
             )
             val metadata = resolveVersionMetadata(versionConfig, gitMetadata)
 
-            assertEquals("1.2.3-${channel.name.lowercase()}.5", metadata.releaseVersion)
+            assertEquals("1.2.3-${channel.name.lowercase()}", metadata.releaseVersion)
             assertEquals(expectedDisplayVersion, metadata.appDisplayVersion)
         }
     }
@@ -114,10 +114,10 @@ class AppVersioningTest {
     @Test
     fun `rejects malformed core channel and prerelease combinations`() {
         listOf(
-            VersionConfig("1.2", ReleaseChannel.ALPHA, 1),
-            VersionConfig("01.2.3", ReleaseChannel.ALPHA, 1),
-            VersionConfig("1.2.3-beta", ReleaseChannel.BETA, 1),
-            VersionConfig("1.2.3", ReleaseChannel.BETA, 0),
+            VersionConfig("1.2", ReleaseChannel.ALPHA, 0),
+            VersionConfig("01.2.3", ReleaseChannel.ALPHA, 0),
+            VersionConfig("1.2.3-beta", ReleaseChannel.BETA, 0),
+            VersionConfig("1.2.3", ReleaseChannel.BETA, 1),
             VersionConfig("1.2.3", ReleaseChannel.RC, -1),
             VersionConfig("1.2.3", ReleaseChannel.STABLE, 1),
         ).forEach { versionConfig ->
@@ -149,7 +149,7 @@ class AppVersioningTest {
             VersionConfig(
                 core = "1.0.0",
                 channel = ReleaseChannel.ALPHA,
-                prereleaseNumber = 1,
+                prereleaseNumber = 0,
             ),
             GitMetadata(
                 commitSha = commitSha,
@@ -162,7 +162,7 @@ class AppVersioningTest {
     }
 
     @Test
-    fun `requires zero prerelease number only for stable`() {
+    fun `requires a positive prerelease number only for rc`() {
         assertFailsWith<IllegalArgumentException> {
             formatReleaseVersion(
                 VersionConfig(
@@ -176,7 +176,7 @@ class AppVersioningTest {
             formatReleaseVersion(
                 VersionConfig(
                     core = "1.0.0",
-                    channel = ReleaseChannel.ALPHA,
+                    channel = ReleaseChannel.RC,
                     prereleaseNumber = 0,
                 ),
             )

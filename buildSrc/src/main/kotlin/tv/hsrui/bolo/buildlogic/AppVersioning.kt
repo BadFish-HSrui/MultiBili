@@ -166,8 +166,9 @@ fun formatReleaseVersion(versionConfig: VersionConfig): String {
     return when (versionConfig.releaseChannel) {
         ReleaseChannel.ALPHA,
         ReleaseChannel.BETA,
-        ReleaseChannel.RC,
-        -> "${versionConfig.coreVersion}-${versionConfig.releaseChannel.propertyValue}.${versionConfig.prereleaseNumber}"
+        -> "${versionConfig.coreVersion}-${versionConfig.releaseChannel.propertyValue}"
+
+        ReleaseChannel.RC -> "${versionConfig.coreVersion}-rc.${versionConfig.prereleaseNumber}"
 
         ReleaseChannel.STABLE -> versionConfig.coreVersion
     }
@@ -213,13 +214,13 @@ private fun validateVersionConfig(versionConfig: VersionConfig) {
     requireNotNull(minor) { "APP_VERSION_CORE minor component is too large" }
     require(major <= 255) { "APP_VERSION_CORE major component must not exceed 255" }
     require(minor <= 255) { "APP_VERSION_CORE minor component must not exceed 255" }
-    if (versionConfig.channel == ReleaseChannel.STABLE) {
-        require(versionConfig.prereleaseNumber == 0) {
-            "APP_PRERELEASE_NUMBER must be 0 for stable releases"
+    if (versionConfig.channel == ReleaseChannel.RC) {
+        require(versionConfig.prereleaseNumber > 0) {
+            "APP_PRERELEASE_NUMBER must be a positive integer for rc releases"
         }
     } else {
-        require(versionConfig.prereleaseNumber > 0) {
-            "APP_PRERELEASE_NUMBER must be a positive integer for prereleases"
+        require(versionConfig.prereleaseNumber == 0) {
+            "APP_PRERELEASE_NUMBER must be 0 for non-rc releases"
         }
     }
 }
