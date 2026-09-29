@@ -12,6 +12,7 @@ import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneSt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
@@ -67,7 +68,12 @@ fun App() {
             AppThemeMode.Light -> false
             AppThemeMode.Auto -> systemDarkTheme
         }
-        AppTheme(isDarkTheme = isDarkTheme) {
+        AppTheme(
+            isDarkTheme = isDarkTheme,
+            seedColor = Color(settings.general.effectiveSeedColorRgb or 0xFF000000.toInt()),
+            specVersion = settings.general.effectiveColorSpec,
+            style = settings.general.effectivePaletteStyle,
+        ) {
             AppSystemBarThemeEffect(isDarkTheme)
             AppStartup()
             val navigator: Navigator = koinInject()
