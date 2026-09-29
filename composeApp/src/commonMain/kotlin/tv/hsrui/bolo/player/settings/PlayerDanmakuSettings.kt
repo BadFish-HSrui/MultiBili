@@ -64,7 +64,7 @@ class PlayerDanmakuSettings(settingsKSafe: KSafePlain) {
             currentSpeed = speed
         }
 
-    private var storedDisplayAreaRatio by settingsKSafe(1.0f, key = "player_danmaku_display_area_ratio")
+    private var storedDisplayAreaRatio by settingsKSafe(0.5f, key = "player_danmaku_display_area_ratio")
     private var currentDisplayAreaRatio by mutableFloatStateOf(
         normalizeDisplayAreaRatio(storedDisplayAreaRatio),
     )
@@ -78,7 +78,7 @@ class PlayerDanmakuSettings(settingsKSafe: KSafePlain) {
         }
 
     private fun normalizeDisplayAreaRatio(value: Float): Float =
-        if (!value.isFinite()) 1.0f else (value.coerceIn(0.2f, 1.0f) * 20f).roundToInt() / 20f
+        if (!value.isFinite()) 0.5f else (value.coerceIn(0.2f, 1.0f) * 20f).roundToInt() / 20f
 
     private var storedTopBottomScrollEnabled by settingsKSafe(
         false,

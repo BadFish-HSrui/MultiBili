@@ -29,7 +29,7 @@ class PlaybackSettings(settingsKSafe: KSafePlain) {
         }
 
     private var storedAutoEnableDanmakuOnOpenEnabled by settingsKSafe(
-        true,
+        false,
         key = "bolo_playback_auto_enable_danmaku_on_open_enabled",
     )
     private var currentAutoEnableDanmakuOnOpenEnabled by mutableStateOf(storedAutoEnableDanmakuOnOpenEnabled)

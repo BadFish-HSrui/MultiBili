@@ -227,7 +227,7 @@ class PlayerPlaybackSettings(settingsKSafe: KSafePlain) {
         }
 
     private var storedLongPressSpeedPercent by settingsKSafe(
-        300,
+        200,
         key = "player_playback_long_press_speed_percent",
     )
     private var currentLongPressSpeedPercent by mutableIntStateOf(
@@ -244,7 +244,7 @@ class PlayerPlaybackSettings(settingsKSafe: KSafePlain) {
         }
 
     private fun normalizeLongPressSpeedPercent(value: Int): Int {
-        if (value <= 0) return 300
+        if (value <= 0) return 200
         val stepsFromMinimum = ((value - 125) / 25f).roundToInt()
         return (125 + stepsFromMinimum * 25).coerceIn(125, 300)
     }
