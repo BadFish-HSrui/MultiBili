@@ -108,7 +108,7 @@ internal class IosPlayerFullscreenCoordinator {
         get() {
             if (!isPhone) return UIInterfaceOrientationMaskAll
             val state = owner
-            if (state == null) return if (restorePortrait) UIInterfaceOrientationMaskPortrait else UIInterfaceOrientationMaskAllButUpsideDown
+            if (state == null) return UIInterfaceOrientationMaskPortrait
             val target = request?.target ?: state.iosFullscreenTarget
             return if (request != null || state.isChangingIosFullscreen ||
                 state.manualOrientationTarget != null || autoRotate[state] != true

@@ -10,7 +10,7 @@ import platform.UIKit.UIViewController
 import platform.UIKit.UIWindow
 import platform.UIKit.UIInterfaceOrientationMask
 import platform.UIKit.UIInterfaceOrientationMaskAll
-import platform.UIKit.UIInterfaceOrientationMaskAllButUpsideDown
+import platform.UIKit.UIInterfaceOrientationMaskPortrait
 import platform.UIKit.addChildViewController
 import platform.UIKit.childViewControllers
 import platform.UIKit.didMoveToParentViewController
@@ -117,7 +117,7 @@ fun playerSupportedInterfaceOrientations(window: UIWindow?): UIInterfaceOrientat
         return null
     }
     return findHost(window?.rootViewController)?.playerSupportedOrientations
-        ?: if (getPlatform().isPhone) UIInterfaceOrientationMaskAllButUpsideDown else UIInterfaceOrientationMaskAll
+        ?: if (getPlatform().isPhone) UIInterfaceOrientationMaskPortrait else UIInterfaceOrientationMaskAll
 }
 
 fun MainViewController(): UIViewController {
