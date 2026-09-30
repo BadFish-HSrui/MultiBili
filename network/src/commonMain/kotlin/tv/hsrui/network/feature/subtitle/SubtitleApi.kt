@@ -1,8 +1,6 @@
 package tv.hsrui.network.feature.subtitle
 
-import io.ktor.client.HttpClient
 import io.ktor.client.request.get
-import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
@@ -20,13 +18,6 @@ import tv.hsrui.network.constant.ApiUrls
 import tv.hsrui.network.model.BaseResponse
 import tv.hsrui.network.utils.toHttpsUrl
 
-private const val SUBTITLE_USER_AGENT =
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
-        "AppleWebKit/537.36 (KHTML, like Gecko) " +
-        "Chrome/140.0.0.0 Safari/537.36"
-
-// 字幕 CDN 请求不携带登录 API 的 Cookie。
-private val subtitleContentClient by lazy { HttpClient() }
 private val subtitleContentJson = Json {
     ignoreUnknownKeys = true
     isLenient = true
@@ -81,10 +72,7 @@ suspend fun fetchSubtitleContent(url: String, isAss: Boolean = false): SubtitleC
         "字幕地址必须包含有效的 HTTP(S) 主机"
     }
 
-    val response = subtitleContentClient.get(normalizedUrl) {
-        header("User-Agent", SUBTITLE_USER_AGENT)
-        header("Referer", "https://www.bilibili.com/")
-    }
+    val response = ApiClient.httpClient.get(normalizedUrl)
     check(response.status.isSuccess()) { "字幕内容请求失败：HTTP ${response.status.value}" }
     parseSubtitleContent(response.bodyAsText(), isAss)
 } ?: error("字幕内容请求超时")

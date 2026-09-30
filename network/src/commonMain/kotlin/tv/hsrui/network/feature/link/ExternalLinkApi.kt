@@ -9,6 +9,7 @@ import io.ktor.http.URLProtocol
 import io.ktor.http.Url
 import io.ktor.http.takeFrom
 import kotlinx.coroutines.withTimeoutOrNull
+import tv.hsrui.network.constant.BOLO_UA
 
 private val externalLinkHosts = setOf(
     "bilibili.com", "www.bilibili.com", "m.bilibili.com",
@@ -36,7 +37,7 @@ fun isBilibiliShortLink(value: String): Boolean {
 
 suspend fun fetchExternalLinkRedirect(url: String): String? = fetchExternalLinkRedirect(url) { current ->
     externalLinkClient.prepareGet(current) {
-        header(HttpHeaders.UserAgent, "Mozilla/5.0")
+        header(HttpHeaders.UserAgent, BOLO_UA)
     }.execute { response ->
         response.status.value to response.headers[HttpHeaders.Location]
     }
