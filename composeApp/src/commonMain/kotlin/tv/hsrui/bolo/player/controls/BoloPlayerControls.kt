@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.recalculateWindowInsets
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -195,13 +196,30 @@ fun BoloPlayerControls(
 ) {
     val isFullscreen = fullscreenState.isFullscreen
     val isDesktop = fullscreenState.isDesktop
+    val platform = getPlatform()
+    val isIpad = platform.type == PlatformType.Ios && !platform.isPhone
     val windowSize = LocalWindowInfo.current.containerSize
     val controlsInsets = if (
-        getPlatform().type == PlatformType.Ios && isFullscreen && windowSize.width > windowSize.height
+        platform.type == PlatformType.Ios && platform.isPhone && isFullscreen && windowSize.width > windowSize.height
     ) {
         WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
     } else {
         WindowInsets.safeDrawing
+    }
+    val applyControlsInsets = isFullscreen || isIpad
+    val topControlsInsets = if (isIpad) {
+        controlsInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+    } else controlsInsets
+    val bottomControlsInsets = if (isIpad) {
+        controlsInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
+    } else controlsInsets
+    // 仅恢复控制层所在区域的剩余安全区，不改变视频和手势背景的边界。
+    val controlsModifier = modifier.fillMaxSize()
+        .then(if (isIpad) Modifier.recalculateWindowInsets() else Modifier)
+    if (isIpad) {
+        DisposableEffect(fullscreenState) {
+            onDispose { fullscreenState.hasVisibleControls = true }
+        }
     }
     val showExtendedControls = isFullscreen || isExpanded()
     val navigator: Navigator = koinInject()
@@ -247,10 +265,11 @@ fun BoloPlayerControls(
         }
     }
     if (navigationOnly) {
-        Box(modifier.fillMaxSize()) {
+        if (isIpad) SideEffect { fullscreenState.hasVisibleControls = true }
+        Box(controlsModifier) {
             Row(
                 modifier = Modifier.align(Alignment.TopStart)
-                    .then(if (isFullscreen) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
+                    .then(if (applyControlsInsets) Modifier.windowInsetsPadding(topControlsInsets) else Modifier)
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -335,6 +354,11 @@ fun BoloPlayerControls(
     var chapterMenuOpen by remember { mutableStateOf(false) }
     val controlsInteractionActive = mousePressed || sliderPreviewFraction != null ||
         settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen || audioQualityMenuOpen || subtitleMenuOpen || chapterMenuOpen || danmakuInputOpen
+    if (isIpad) {
+        val hasVisibleControls = controlsTransition.currentState || controlsTransition.targetState ||
+            infoOpen || controlsInteractionActive
+        SideEffect { fullscreenState.hasVisibleControls = hasVisibleControls }
+    }
     val latestControlsInteractionActive by rememberUpdatedState(controlsInteractionActive)
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     LaunchedEffect(isDesktop, mouseInside, mouseMovementRevision, controlsInteractionActive) {
@@ -650,7 +674,7 @@ fun BoloPlayerControls(
         .orEmpty()
 
     Box(
-        modifier = modifier.fillMaxSize().onGloballyPositioned {
+        modifier = controlsModifier.onGloballyPositioned {
             controlsRootCoordinates = it
             updateHighEnergyTrackBounds()
         }.onPreviewKeyEvent { event ->
@@ -913,7 +937,7 @@ fun BoloPlayerControls(
         if (showExtendedControls && infoOpen) {
             BoxWithConstraints(
                 Modifier.fillMaxSize()
-                    .then(if (isFullscreen) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
+                    .then(if (applyControlsInsets) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
                     .padding(16.dp),
             ) {
                 BoloPlayerInfoPanel(
@@ -977,7 +1001,7 @@ fun BoloPlayerControls(
             // 使用同一套 Insets 消费规则测量可用区域，不叠加控制区内边距。
             Box(
                 Modifier.matchParentSize()
-                    .then(if (isFullscreen) Modifier.windowInsetsPadding(controlsInsets) else Modifier),
+                    .then(if (applyControlsInsets) Modifier.windowInsetsPadding(controlsInsets) else Modifier),
             ) {
                 Box(Modifier.matchParentSize().onGloballyPositioned { coordinates ->
                     val root = controlsRootCoordinates
@@ -1013,7 +1037,7 @@ fun BoloPlayerControls(
                             exit = slideOutVertically(tween(200)) { -it },
                         )
                         .fillMaxWidth()
-                        .then(if (isFullscreen) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
+                        .then(if (applyControlsInsets) Modifier.windowInsetsPadding(topControlsInsets) else Modifier)
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1063,7 +1087,7 @@ fun BoloPlayerControls(
                             updateHighEnergyTrackBounds()
                         }
                         .fillMaxWidth()
-                        .then(if (isFullscreen) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
+                        .then(if (applyControlsInsets) Modifier.windowInsetsPadding(bottomControlsInsets) else Modifier)
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     val sliderColors = SliderDefaults.colors(

@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -176,7 +179,9 @@ fun BoloPlayerSettingsSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val isDesktop = getPlatform().type == PlatformType.Desktop
+    val platform = getPlatform()
+    val isDesktop = platform.type == PlatformType.Desktop
+    val isIpad = platform.type == PlatformType.Ios && !platform.isPhone
     val pagerState = rememberPagerState { BoloPlayerSettingsTab.entries.size }
     val pagerScope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -300,7 +305,9 @@ fun BoloPlayerSettingsSheet(
                         ModalDrawerSheet(
                             modifier = Modifier.width(sheetWidth).fillMaxHeight(),
                             drawerShape = AbsoluteRoundedCornerShape(topLeft = 16.dp, bottomLeft = 16.dp),
-                            windowInsets = WindowInsets(),
+                            windowInsets = if (isIpad) {
+                                WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Right)
+                            } else WindowInsets(),
                         ) {
                             Column(Modifier.fillMaxSize()) {
                                 PrimaryTabRow(selectedTabIndex = pagerState.currentPage) {

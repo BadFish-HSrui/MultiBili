@@ -25,15 +25,42 @@ import kotlin.experimental.ExperimentalNativeApi
 import kotlin.native.ref.WeakReference
 import tv.hsrui.bolo.player.IosPlayerFullscreenCoordinator
 import tv.hsrui.bolo.player.LocalIosPlayerFullscreenCoordinator
+import tv.hsrui.bolo.player.PlayerFullscreenState
 
 @OptIn(ExperimentalNativeApi::class)
-internal class StatusBarAppearance {
+internal class StatusBarAppearance(private val onStatusBarHiddenChanged: (Boolean) -> Unit) {
     private var controllerReference: WeakReference<UIViewController>? = null
     var controller: UIViewController?
         get() = controllerReference?.get()
         set(value) { controllerReference = value?.let(::WeakReference) }
     private var requests = 0
     private var isDarkTheme: Boolean? = null
+    private val playerHiddenRequests = linkedMapOf<PlayerFullscreenState, Boolean>()
+    private var isHidden = false
+
+    fun bindPlayer(owner: PlayerFullscreenState, hidden: Boolean) {
+        if (owner in playerHiddenRequests) return
+        playerHiddenRequests[owner] = hidden
+        updateHidden()
+    }
+
+    fun updatePlayer(owner: PlayerFullscreenState, hidden: Boolean) {
+        if (owner !in playerHiddenRequests) return
+        playerHiddenRequests[owner] = hidden
+        updateHidden()
+    }
+
+    fun unbindPlayer(owner: PlayerFullscreenState) {
+        playerHiddenRequests.remove(owner)
+        updateHidden()
+    }
+
+    private fun updateHidden() {
+        val hidden = playerHiddenRequests.values.lastOrNull() ?: false
+        if (isHidden == hidden) return
+        isHidden = hidden
+        onStatusBarHiddenChanged(hidden)
+    }
 
     val preferredStyle: UIStatusBarStyle?
         get() = when {
@@ -120,8 +147,8 @@ fun playerSupportedInterfaceOrientations(window: UIWindow?): UIInterfaceOrientat
         ?: if (getPlatform().isPhone) UIInterfaceOrientationMaskPortrait else UIInterfaceOrientationMaskAll
 }
 
-fun MainViewController(): UIViewController {
-    val appearance = StatusBarAppearance()
+fun MainViewController(onStatusBarHiddenChanged: (Boolean) -> Unit = {}): UIViewController {
+    val appearance = StatusBarAppearance(onStatusBarHiddenChanged)
     val fullscreen = IosPlayerFullscreenCoordinator()
     val contentController = ComposeUIViewController {
         CompositionLocalProvider(

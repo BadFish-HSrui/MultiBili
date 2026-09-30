@@ -20,6 +20,9 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
     internal val isPhone = platform.isPhone
     private val usesIosFullscreen = platform.type == PlatformType.Ios && isPhone
 
+    // 没有完整控制层时，加载、错误或空内容仍保留返回入口。
+    internal var hasVisibleControls by mutableStateOf(true)
+
     // 手动操作暂时约束方向，等设备姿态追上目标后再交回系统自动旋转。
     internal var manualOrientationTarget by mutableStateOf<Boolean?>(true.takeIf { isPhone && initialFullscreen })
         private set

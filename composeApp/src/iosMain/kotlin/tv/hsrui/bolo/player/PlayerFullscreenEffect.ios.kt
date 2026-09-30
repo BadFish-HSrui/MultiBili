@@ -45,6 +45,7 @@ import platform.UIKit.setNeedsUpdateOfSupportedInterfaceOrientations
 import platform.darwin.NSObjectProtocol
 import kotlin.math.abs
 import kotlin.native.ref.WeakReference
+import tv.hsrui.bolo.LocalStatusBarAppearance
 import tv.hsrui.bolo.getPlatform
 
 internal val LocalIosPlayerFullscreenCoordinator = staticCompositionLocalOf<IosPlayerFullscreenCoordinator> {
@@ -53,8 +54,17 @@ internal val LocalIosPlayerFullscreenCoordinator = staticCompositionLocalOf<IosP
 
 @Composable
 actual fun PlayerFullscreenEffect(fullscreenState: PlayerFullscreenState, autoFullscreenOnRotateEnabled: Boolean) {
-    // 平板全屏只改变布局；不绑定方向请求，也不在离页时恢复竖屏。
-    if (!fullscreenState.isPhone) return
+    if (!fullscreenState.isPhone) {
+        val appearance = LocalStatusBarAppearance.current
+        val hidden = fullscreenState.isFullscreen && !fullscreenState.hasVisibleControls
+        DisposableEffect(appearance, fullscreenState) {
+            appearance.bindPlayer(fullscreenState, hidden)
+            onDispose { appearance.unbindPlayer(fullscreenState) }
+        }
+        SideEffect { appearance.updatePlayer(fullscreenState, hidden) }
+        // 平板不绑定方向请求，也不在离页时恢复竖屏。
+        return
+    }
     val coordinator = LocalIosPlayerFullscreenCoordinator.current
     val viewport = LocalWindowInfo.current.containerSize
     val density = LocalDensity.current.density
