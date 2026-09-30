@@ -296,7 +296,17 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     }
                                 }
                             }
-                            HorizontalDivider()
+                        }
+                    }
+                }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "音画设置",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                        Card(Modifier.fillMaxWidth()) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(64.dp)
                                     .padding(horizontal = 16.dp),
