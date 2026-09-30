@@ -11,8 +11,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import tv.hsrui.bolo.utils.url.AppContext
 import tv.hsrui.bolo.player.session.BoloPlaybackSession
 import tv.hsrui.bolo.navigation.ExternalLinkHandler
-import kotlin.math.max
-import kotlin.math.min
 
 class MainActivity : ComponentActivity() {
     private fun receiveExternalLink(intent: Intent) {
@@ -50,14 +48,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         receiveExternalLink(intent)
 
-        val widthDp = resources.configuration.screenWidthDp
-        val heightDP = resources.configuration.screenHeightDp
-        val maxScreenDp = max(widthDp, heightDP)
-        val minScreenDp = min(widthDp, heightDP)
-        val isPhone = (minScreenDp < 600 && maxScreenDp < 840)
-
-        if (isPhone)
-            this.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
+        requestedOrientation = if (getPlatform().isPhone) {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+        }
 
         setContent {
             App()

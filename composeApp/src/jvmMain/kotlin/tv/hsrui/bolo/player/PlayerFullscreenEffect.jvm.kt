@@ -330,7 +330,7 @@ internal object DesktopPlayerFullscreenWindow {
 }
 
 @Composable
-actual fun PlayerFullscreenEffect(fullscreenState: PlayerFullscreenState) {
+actual fun PlayerFullscreenEffect(fullscreenState: PlayerFullscreenState, autoFullscreenOnRotateEnabled: Boolean) {
     val window = DesktopPlayerFullscreenWindow.window
     DisposableEffect(window, fullscreenState) {
         if (window != null) DesktopPlayerFullscreenWindow.bindPlayer(fullscreenState)

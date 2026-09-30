@@ -193,6 +193,21 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 }
                                 HorizontalDivider()
                             }
+                            if (getPlatform().isPhone) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                        value = settings.playback.autoFullscreenOnRotateEnabled,
+                                        role = Role.Switch,
+                                        onValueChange = { settings.playback.autoFullscreenOnRotateEnabled = it },
+                                    ).padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("旋转自动全屏", style = MaterialTheme.typography.bodyLarge)
+                                    Spacer(Modifier.weight(1f))
+                                    Switch(checked = settings.playback.autoFullscreenOnRotateEnabled, onCheckedChange = null)
+                                }
+                                HorizontalDivider()
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
                                     value = settings.playback.autoPlayOnOpenEnabled,

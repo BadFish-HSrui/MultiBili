@@ -7,7 +7,12 @@ import platform.UIKit.UIStatusBarStyle
 import platform.UIKit.UIStatusBarStyleLightContent
 import platform.UIKit.UIStatusBarStyleDarkContent
 import platform.UIKit.UIViewController
+import platform.UIKit.UIWindow
+import platform.UIKit.UIInterfaceOrientationMask
+import platform.UIKit.UIInterfaceOrientationMaskAll
+import platform.UIKit.UIInterfaceOrientationMaskAllButUpsideDown
 import platform.UIKit.addChildViewController
+import platform.UIKit.childViewControllers
 import platform.UIKit.didMoveToParentViewController
 import platform.UIKit.UIViewAutoresizingFlexibleWidth
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
@@ -15,6 +20,7 @@ import platform.UIKit.UIViewControllerTransitionCoordinatorProtocol
 import platform.CoreGraphics.CGSize
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.useContents
 import kotlin.experimental.ExperimentalNativeApi
 import kotlin.native.ref.WeakReference
 import tv.hsrui.bolo.player.IosPlayerFullscreenCoordinator
@@ -75,6 +81,8 @@ private class BoloHostingViewController(
     override fun preferredStatusBarStyle(): UIStatusBarStyle =
         appearance.preferredStyle ?: super.preferredStatusBarStyle()
 
+    val playerSupportedOrientations get() = fullscreen.supportedOrientations
+
     override fun viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         fullscreen.geometryChanged()
@@ -89,13 +97,27 @@ private class BoloHostingViewController(
         size: CValue<CGSize>,
         withTransitionCoordinator: UIViewControllerTransitionCoordinatorProtocol,
     ) {
-        fullscreen.transitionStarted()
+        fullscreen.transitionStarted(size.useContents { width > height })
         super.viewWillTransitionToSize(size, withTransitionCoordinator)
         withTransitionCoordinator.animateAlongsideTransition(
             animation = null,
             completion = { fullscreen.transitionFinished() },
         )
     }
+}
+
+// UIKit 的方向 category 在 Kotlin 中不可重写，由 Swift 应用代理按窗口转发。
+@OptIn(ExperimentalForeignApi::class)
+fun playerSupportedInterfaceOrientations(window: UIWindow?): UIInterfaceOrientationMask {
+    fun findHost(controller: UIViewController?): BoloHostingViewController? {
+        if (controller is BoloHostingViewController) return controller
+        controller?.childViewControllers?.filterIsInstance<UIViewController>()?.forEach { child ->
+            findHost(child)?.let { return it }
+        }
+        return null
+    }
+    return findHost(window?.rootViewController)?.playerSupportedOrientations
+        ?: if (getPlatform().isPhone) UIInterfaceOrientationMaskAllButUpsideDown else UIInterfaceOrientationMaskAll
 }
 
 fun MainViewController(): UIViewController {

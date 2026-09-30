@@ -15,9 +15,14 @@ import tv.hsrui.bolo.getPlatform
 
 @Stable
 class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = false) {
-    private val platform = getPlatform().type
-    val isDesktop = platform == PlatformType.Desktop
-    private val usesIosFullscreen = platform == PlatformType.Ios
+    private val platform = getPlatform()
+    val isDesktop = platform.type == PlatformType.Desktop
+    internal val isPhone = platform.isPhone
+    private val usesIosFullscreen = platform.type == PlatformType.Ios && isPhone
+
+    // 手动操作暂时约束方向，等设备姿态追上目标后再交回系统自动旋转。
+    internal var manualOrientationTarget by mutableStateOf<Boolean?>(true.takeIf { isPhone && initialFullscreen })
+        private set
 
     internal var iosFullscreenTarget by mutableStateOf(initialFullscreen)
         private set
@@ -55,6 +60,7 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
             return
         }
         isFullscreen = !isFullscreen
+        if (isPhone) manualOrientationTarget = isFullscreen
         if (isDesktop && !isFullscreen && isSystemFullscreenOwnedByPlayer) {
             isSystemFullscreenOwnedByPlayer = false
             releaseSystemFullscreenOwnership?.invoke()
@@ -75,13 +81,17 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
             isManualSystemFullscreen -> Unit
             isChangingSystemFullscreen -> Unit
             isSystemFullscreen -> requestSystemFullscreen(false)
-            else -> isFullscreen = false
+            else -> {
+                isFullscreen = false
+                if (isPhone) manualOrientationTarget = false
+            }
         }
     }
 
     private fun requestIosFullscreen(fullscreen: Boolean) {
         if (iosFullscreenTarget == fullscreen) return
         iosFullscreenTarget = fullscreen
+        manualOrientationTarget = fullscreen
         iosFullscreenGeneration++
         isChangingIosFullscreen = true
         onIosFullscreenRequest?.invoke()
@@ -97,6 +107,18 @@ class PlayerFullscreenState internal constructor(initialFullscreen: Boolean = fa
         isFullscreen = fullscreen
         iosFullscreenTarget = fullscreen
         isChangingIosFullscreen = false
+        if (manualOrientationTarget != null) manualOrientationTarget = fullscreen
+    }
+
+    internal fun releaseManualOrientationTarget(landscape: Boolean) {
+        if (!isChangingIosFullscreen && manualOrientationTarget == landscape) manualOrientationTarget = null
+    }
+
+    // 同步系统允许的界面方向，不触发新的方向请求。
+    internal fun updateFullscreenFromRotation(fullscreen: Boolean) {
+        if (!isPhone || isDesktop || manualOrientationTarget != null || isChangingIosFullscreen) return
+        isFullscreen = fullscreen
+        if (usesIosFullscreen) iosFullscreenTarget = fullscreen
     }
 
     private fun requestSystemFullscreen(fullscreen: Boolean) {

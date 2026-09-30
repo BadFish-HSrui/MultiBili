@@ -19,6 +19,8 @@ import androidx.compose.runtime.remember
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.PlayerFullscreenEffect
 import tv.hsrui.bolo.player.rememberPlayerFullscreenState
 import tv.hsrui.bolo.player.session.BoloPlaybackSession
@@ -40,7 +42,8 @@ fun MediaPlaybackScreen(
     val uiState by viewModel.uiState.collectAsState()
     val fullscreenState = rememberPlayerFullscreenState()
     val fullscreenBackState = rememberNavigationEventState(NavigationEventInfo.None)
-    PlayerFullscreenEffect(fullscreenState)
+    val settings = koinInject<BoloSettings>()
+    PlayerFullscreenEffect(fullscreenState, settings.playback.autoFullscreenOnRotateEnabled)
     NavigationBackHandler(
         state = fullscreenBackState,
         isBackEnabled = fullscreenState.shouldHandleFullscreenBack,

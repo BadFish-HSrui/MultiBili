@@ -3,4 +3,4 @@ package tv.hsrui.bolo.player
 import androidx.compose.runtime.Composable
 
 @Composable
-expect fun PlayerFullscreenEffect(fullscreenState: PlayerFullscreenState)
+expect fun PlayerFullscreenEffect(fullscreenState: PlayerFullscreenState, autoFullscreenOnRotateEnabled: Boolean)

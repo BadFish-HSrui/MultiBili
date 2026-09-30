@@ -4,6 +4,8 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.*
 import platform.posix.uname
 import platform.posix.utsname
+import platform.UIKit.UIDevice
+import platform.UIKit.UIUserInterfaceIdiomPhone
 
 @OptIn(ExperimentalForeignApi::class)
 actual fun getPlatform(): Platform = Platform(
@@ -12,5 +14,6 @@ actual fun getPlatform(): Platform = Platform(
         uname(utsname.ptr)
         utsname.machine.toKString()
     },
-    type = PlatformType.Ios
+    type = PlatformType.Ios,
+    isPhone = UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone,
 )

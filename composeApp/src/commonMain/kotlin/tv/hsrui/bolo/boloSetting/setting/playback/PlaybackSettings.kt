@@ -269,6 +269,20 @@ class PlaybackSettings(settingsKSafe: KSafePlain) {
             currentBackgroundPlaybackEnabled = value
         }
 
+    private var storedAutoFullscreenOnRotateEnabled by settingsKSafe(
+        true,
+        key = "bolo_playback_auto_fullscreen_on_rotate_enabled",
+    )
+    private var currentAutoFullscreenOnRotateEnabled by mutableStateOf(storedAutoFullscreenOnRotateEnabled)
+
+    var autoFullscreenOnRotateEnabled: Boolean
+        get() = currentAutoFullscreenOnRotateEnabled
+        set(value) {
+            if (value == currentAutoFullscreenOnRotateEnabled) return
+            storedAutoFullscreenOnRotateEnabled = value
+            currentAutoFullscreenOnRotateEnabled = value
+        }
+
     private var storedEndBehavior by settingsKSafe("off", key = "bolo_playback_end_behavior")
     private var currentEndBehavior by mutableStateOf(
         PlaybackEndBehavior.entries.firstOrNull { it.storedValue == storedEndBehavior }

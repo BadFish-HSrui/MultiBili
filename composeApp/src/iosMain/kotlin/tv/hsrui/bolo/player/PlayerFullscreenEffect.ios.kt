@@ -21,12 +21,20 @@ import kotlinx.coroutines.launch
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.QuartzCore.CACurrentMediaTime
+import platform.UIKit.UIDevice
+import platform.UIKit.UIDeviceOrientationDidChangeNotification
+import platform.UIKit.UIDeviceOrientation.UIDeviceOrientationLandscapeLeft
+import platform.UIKit.UIDeviceOrientation.UIDeviceOrientationLandscapeRight
+import platform.UIKit.UIDeviceOrientation.UIDeviceOrientationPortrait
 import platform.UIKit.UIInterfaceOrientationLandscapeLeft
 import platform.UIKit.UIInterfaceOrientationLandscapeRight
 import platform.UIKit.UIInterfaceOrientationPortrait
 import platform.UIKit.UIInterfaceOrientationPortraitUpsideDown
 import platform.UIKit.UIInterfaceOrientationMaskLandscape
 import platform.UIKit.UIInterfaceOrientationMaskPortrait
+import platform.UIKit.UIInterfaceOrientationMask
+import platform.UIKit.UIInterfaceOrientationMaskAll
+import platform.UIKit.UIInterfaceOrientationMaskAllButUpsideDown
 import platform.UIKit.UISceneActivationStateForegroundActive
 import platform.UIKit.UISceneDidActivateNotification
 import platform.UIKit.UISceneWillDeactivateNotification
@@ -36,25 +44,32 @@ import platform.UIKit.setNeedsUpdateOfSupportedInterfaceOrientations
 import platform.darwin.NSObjectProtocol
 import kotlin.math.abs
 import kotlin.native.ref.WeakReference
+import tv.hsrui.bolo.getPlatform
 
 internal val LocalIosPlayerFullscreenCoordinator = staticCompositionLocalOf<IosPlayerFullscreenCoordinator> {
     error("Missing iOS fullscreen coordinator")
 }
 
 @Composable
-actual fun PlayerFullscreenEffect(fullscreenState: PlayerFullscreenState) {
+actual fun PlayerFullscreenEffect(fullscreenState: PlayerFullscreenState, autoFullscreenOnRotateEnabled: Boolean) {
+    // 平板全屏只改变布局；不绑定方向请求，也不在离页时恢复竖屏。
+    if (!fullscreenState.isPhone) return
     val coordinator = LocalIosPlayerFullscreenCoordinator.current
     val viewport = LocalWindowInfo.current.containerSize
     val density = LocalDensity.current.density
     DisposableEffect(coordinator, fullscreenState) {
-        coordinator.bind(fullscreenState)
+        coordinator.bind(fullscreenState, autoFullscreenOnRotateEnabled)
         onDispose { coordinator.unbind(fullscreenState) }
     }
-    SideEffect { coordinator.updateViewport(fullscreenState, viewport, density) }
+    SideEffect {
+        coordinator.updateAutoRotate(fullscreenState, autoFullscreenOnRotateEnabled)
+        coordinator.updateViewport(fullscreenState, viewport, density)
+    }
 }
 
 // 一个宿主串行协调窗口请求；页面只提交目标，原生几何和 Compose 视口共同确认展示状态。
 internal class IosPlayerFullscreenCoordinator {
+    private val isPhone = getPlatform().isPhone
     private var hostReference: WeakReference<UIViewController>? = null
     var host: UIViewController?
         get() = hostReference?.get()
@@ -65,6 +80,7 @@ internal class IosPlayerFullscreenCoordinator {
         val generation: Long,
         val target: Boolean,
         val submitted: Boolean,
+        val userInitiated: Boolean,
         var checkedAt: Double,
     ) {
         var remainingSeconds = 3.0
@@ -74,6 +90,7 @@ internal class IosPlayerFullscreenCoordinator {
 
     private val owners = mutableListOf<PlayerFullscreenState>()
     private val viewports = mutableMapOf<PlayerFullscreenState, Viewport>()
+    private val autoRotate = mutableMapOf<PlayerFullscreenState, Boolean>()
     private val owner get() = owners.lastOrNull()
     private var scope: CoroutineScope? = null
     private var timer: Job? = null
@@ -84,15 +101,69 @@ internal class IosPlayerFullscreenCoordinator {
     private var needsReconcile = false
     private var reconciling = false
     private var sceneIsActive: Boolean? = null
+    private var orientationObserver: NSObjectProtocol? = null
+    private var appliedOrientations: UIInterfaceOrientationMask? = null
 
-    fun bind(state: PlayerFullscreenState) {
+    val supportedOrientations: UIInterfaceOrientationMask
+        get() {
+            if (!isPhone) return UIInterfaceOrientationMaskAll
+            val state = owner
+            if (state == null) return if (restorePortrait) UIInterfaceOrientationMaskPortrait else UIInterfaceOrientationMaskAllButUpsideDown
+            val target = request?.target ?: state.iosFullscreenTarget
+            return if (request != null || state.isChangingIosFullscreen ||
+                state.manualOrientationTarget != null || autoRotate[state] != true
+            ) {
+                if (target) UIInterfaceOrientationMaskLandscape else UIInterfaceOrientationMaskPortrait
+            } else UIInterfaceOrientationMaskAllButUpsideDown
+        }
+
+    private fun updateOrientationPolicy() {
+        val mask = supportedOrientations
+        if (appliedOrientations == mask) return
+        appliedOrientations = mask
+        host?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        host?.view?.window?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+    }
+
+    private fun releaseManualOrientation() {
+        val state = owner ?: return
+        if (!isForeground() || autoRotate[state] != true || request != null || transitions > 0) return
+        val landscape = when (UIDevice.currentDevice.orientation) {
+            UIDeviceOrientationLandscapeLeft, UIDeviceOrientationLandscapeRight -> true
+            UIDeviceOrientationPortrait -> false
+            else -> return
+        }
+        if (observedLayout(state) == landscape) {
+            state.releaseManualOrientationTarget(landscape)
+            updateOrientationPolicy()
+        }
+    }
+
+    private fun updateOrientationObservation() {
+        val shouldObserve = isPhone && owner != null && autoRotate[owner] == true && isForeground()
+        if (shouldObserve && orientationObserver == null) {
+            UIDevice.currentDevice.beginGeneratingDeviceOrientationNotifications()
+            orientationObserver = NSNotificationCenter.defaultCenter.addObserverForName(
+                UIDeviceOrientationDidChangeNotification, UIDevice.currentDevice, NSOperationQueue.mainQueue,
+            ) { releaseManualOrientation() }
+        } else if (!shouldObserve && orientationObserver != null) {
+            NSNotificationCenter.defaultCenter.removeObserver(orientationObserver!!)
+            orientationObserver = null
+            UIDevice.currentDevice.endGeneratingDeviceOrientationNotifications()
+        }
+    }
+
+    fun bind(state: PlayerFullscreenState, autoFullscreenOnRotateEnabled: Boolean) {
+        if (!isPhone) return
         if (state in owners) return
         owners.add(state)
+        autoRotate[state] = autoFullscreenOnRotateEnabled
         restorePortrait = false
         needsReconcile = true
         state.onIosFullscreenRequest = {
             if (owner === state) {
                 needsReconcile = true
+                updateOrientationPolicy()
                 reconcile()
             }
         }
@@ -118,15 +189,28 @@ internal class IosPlayerFullscreenCoordinator {
                 }
             }
         }
+        updateOrientationPolicy()
         reconcile()
+    }
+
+    fun updateAutoRotate(state: PlayerFullscreenState, enabled: Boolean) {
+        if (state !in owners || autoRotate[state] == enabled) return
+        autoRotate[state] = enabled
+        if (owner === state) {
+            needsReconcile = true
+            updateOrientationPolicy()
+            reconcile()
+        }
     }
 
     fun unbind(state: PlayerFullscreenState) {
         if (!owners.remove(state)) return
         state.onIosFullscreenRequest = null
         viewports.remove(state)
+        autoRotate.remove(state)
         restorePortrait = owners.isEmpty()
         needsReconcile = true
+        updateOrientationPolicy()
         reconcile()
     }
 
@@ -142,13 +226,16 @@ internal class IosPlayerFullscreenCoordinator {
 
     fun geometryChanged() = reconcile()
 
-    fun transitionStarted() {
+    fun transitionStarted(landscape: Boolean) {
         transitions++
+        val state = owner ?: return
+        if (!isForeground() || request != null || autoRotate[state] != true) return
+        // 使用 UIKit 已允许的目标方向，在系统转场内同步布局；手动请求与防回弹仍由状态层保护。
+        state.updateFullscreenFromRotation(landscape)
     }
 
     fun transitionFinished() {
         transitions = (transitions - 1).coerceAtLeast(0)
-        needsReconcile = owner != null || restorePortrait
         reconcile()
     }
 
@@ -188,6 +275,7 @@ internal class IosPlayerFullscreenCoordinator {
                 return
             }
             val foreground = isForeground()
+            updateOrientationObservation()
             val now = CACurrentMediaTime()
             request?.let {
                 if (it.wasForeground) it.remainingSeconds -= now - it.checkedAt
@@ -226,7 +314,9 @@ internal class IosPlayerFullscreenCoordinator {
                 if (request != null && (active.error != null || active.remainingSeconds <= 0.0)) {
                     if (owner === active.owner) {
                         owner?.let { state ->
-                            state.completeIosFullscreenRequest(active.generation, observed ?: state.isFullscreen)
+                            // 策略恢复失败不能把关闭开关后的横屏误判为自动全屏。
+                            val fallback = if (active.userInitiated) observed ?: state.isFullscreen else state.isFullscreen
+                            state.completeIosFullscreenRequest(active.generation, fallback)
                         }
                     }
                     if (owner == null && active.owner == null) restorePortrait = false
@@ -242,16 +332,26 @@ internal class IosPlayerFullscreenCoordinator {
             }
 
             if (transitions > 0) return
+            releaseManualOrientation()
             val state = owner
             val target = state?.iosFullscreenTarget ?: false
             if (state == null && !restorePortrait) {
                 stopObserving()
                 return
             }
+            if (state != null && !state.isChangingIosFullscreen && autoRotate[state] == true) {
+                // 首次布局、回前台及转场收尾只校准实际几何，不追逐旋转前的全屏目标。
+                observedLayout(state)?.let(state::updateFullscreenFromRotation)
+                needsReconcile = false
+                updateOrientationPolicy()
+                return
+            }
             if (!needsReconcile && state?.isChangingIosFullscreen != true) return
             if (observedLayout(state) == target) {
                 state?.completeIosFullscreenRequest(state.iosFullscreenGeneration, target)
                 needsReconcile = false
+                releaseManualOrientation()
+                updateOrientationPolicy()
                 if (state == null) {
                     restorePortrait = false
                     stopObserving()
@@ -260,10 +360,15 @@ internal class IosPlayerFullscreenCoordinator {
             }
             val controller = host ?: return
             val scene = controller.view.window?.windowScene ?: return
-            val needsRotation = observedLayout(null) != target
-            val pending = Request(state, state?.iosFullscreenGeneration ?: 0L, target, needsRotation, now)
+            val nativeLayout = observedLayout(null) ?: return
+            val needsRotation = nativeLayout != target
+            val pending = Request(
+                state, state?.iosFullscreenGeneration ?: 0L, target, needsRotation,
+                state?.isChangingIosFullscreen == true, now,
+            )
             request = pending
             needsReconcile = false
+            updateOrientationPolicy()
             if (needsRotation) {
                 controller.setNeedsUpdateOfSupportedInterfaceOrientations()
                 scene.requestGeometryUpdateWithPreferences(
@@ -295,14 +400,21 @@ internal class IosPlayerFullscreenCoordinator {
         request = null
         timer?.cancel()
         timer = null
+        updateOrientationPolicy()
     }
 
     private fun stopObserving() {
+        orientationObserver?.let {
+            NSNotificationCenter.defaultCenter.removeObserver(it)
+            UIDevice.currentDevice.endGeneratingDeviceOrientationNotifications()
+        }
+        orientationObserver = null
         observers.forEach(NSNotificationCenter.defaultCenter::removeObserver)
         observers.clear()
         scope?.cancel()
         scope = null
         timer = null
         sceneIsActive = null
+        updateOrientationPolicy()
     }
 }
