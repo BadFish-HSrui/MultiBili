@@ -27,6 +27,8 @@ import tv.hsrui.bolo.utils.url.AppContext
 import tv.hsrui.bolo.player.session.BoloMediaSessionService
 
 internal actual class BoloMpvBackend actual constructor() {
+    actual val retainsPausedResources: Boolean get() = false
+    actual fun retainedPosition(generation: Long, positionMs: Long): Long? = null
     private val handle = BoloMpvNative.create("android").also { check(it != 0L) { "libmpv 初始化失败" } }
     init {
         try { configureBoloMpvCertificates(handle, java.io.File(AppContext.instance.cacheDir, "mpv-certificates")) }

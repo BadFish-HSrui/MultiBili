@@ -23,6 +23,8 @@ enum {
 bolo_mpv *bolo_mpv_create(const char *platform);
 int bolo_mpv_load(bolo_mpv *, const char *video, const char *audio, double start, int64_t generation, const char *user_agent, const char *referrer);
 int bolo_mpv_video_enabled(bolo_mpv *player, int enabled);
+void bolo_mpv_background(bolo_mpv *, int background);
+double bolo_mpv_retained_position(bolo_mpv *, int64_t generation, double target);
 int bolo_mpv_pause(bolo_mpv *, int paused);
 int bolo_mpv_speed(bolo_mpv *, double speed);
 int bolo_mpv_volume(bolo_mpv *, double volume);
@@ -40,6 +42,8 @@ int bolo_mpv_display_fps(bolo_mpv *, double fps);
 int bolo_mpv_ca_file(bolo_mpv *, const char *path);
 int bolo_mpv_render_create(bolo_mpv *, void *(*get_proc)(void *, const char *), void *context);
 int bolo_mpv_render_dirty(bolo_mpv *);
+void bolo_mpv_render_resume(bolo_mpv *);
+int bolo_mpv_render_frame_ready(bolo_mpv *);
 int bolo_mpv_render(bolo_mpv *, int fbo, int width, int height, int flip);
 void bolo_mpv_render_free(bolo_mpv *);
 

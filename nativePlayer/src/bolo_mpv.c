@@ -18,6 +18,11 @@ struct bolo_mpv {
     int report_eof;
     int loaded, needs_audio;
     atomic_int video_enabled;
+    int video_requested;
+    atomic_int video_frame_ready;
+    atomic_int background, paused;
+    int64_t resume_render_started_ns; // 仅渲染队列访问。
+    int ios;
     int merge_audio_channels;
 };
 
@@ -38,6 +43,11 @@ bolo_mpv *bolo_mpv_create(const char *platform) {
     p->player = mpv_create();
     p->expected_entry = p->playing_entry = -1;
     atomic_init(&p->video_enabled, 1);
+    p->video_requested = 1;
+    atomic_init(&p->video_frame_ready, 0);
+    atomic_init(&p->background, 0);
+    atomic_init(&p->paused, 1);
+    p->ios = strcmp(platform, "ios") == 0;
     atomic_init(&p->dirty, 0);
     if (!p->player) { free(p); return NULL; }
     const char *opts[][2] = {
@@ -85,6 +95,7 @@ static int flag(mpv_node *node, const char *key) {
 }
 
 int bolo_mpv_load(bolo_mpv *p, const char *video, const char *audio, double start, int64_t generation, const char *user_agent, const char *referrer) {
+    atomic_store(&p->video_frame_ready, 0);
     for (int i = BOLO_POSITION; i <= BOLO_EOF; ++i)
         mpv_unobserve_property(p->player, ((uint64_t)p->generation << 8) | i);
     p->generation = generation;
@@ -97,6 +108,7 @@ int bolo_mpv_load(bolo_mpv *p, const char *video, const char *audio, double star
     int paused = 1;
     int r = mpv_set_property(p->player, "pause", MPV_FORMAT_FLAG, &paused);
     if (r < 0) return r;
+    atomic_store(&p->paused, 1);
     r = mpv_set_property_string(p->player, "user-agent", user_agent);
     if (r < 0) return r;
     r = mpv_set_property_string(p->player, "referrer", referrer);
@@ -128,15 +140,44 @@ int bolo_mpv_load(bolo_mpv *p, const char *video, const char *audio, double star
 }
 
 int bolo_mpv_pause(bolo_mpv *p, int paused) {
-    return mpv_set_property(p->player, "pause", MPV_FORMAT_FLAG, &paused);
+    int result = mpv_set_property(p->player, "pause", MPV_FORMAT_FLAG, &paused);
+    if (result >= 0) atomic_store(&p->paused, paused);
+    if (result >= 0 && p->ios && !paused && atomic_load(&p->background) && !p->video_requested)
+        result = bolo_mpv_video_enabled(p, 0);
+    return result;
 }
 int bolo_mpv_speed(bolo_mpv *p, double speed) {
     return mpv_set_property(p->player, "speed", MPV_FORMAT_DOUBLE, &speed);
 }
 int bolo_mpv_video_enabled(bolo_mpv *p, int enabled) {
+    p->video_requested = enabled;
+    // iOS 后台暂停仅停止消费帧，保留解码器；后台继续音频时仍正常关轨。
+    if (p->ios && !enabled && p->loaded && atomic_load(&p->background) &&
+        atomic_load(&p->video_enabled)) {
+        int paused = 0;
+        if (mpv_get_property(p->player, "pause", MPV_FORMAT_FLAG, &paused) >= 0 && paused)
+            return 0;
+    }
+    if (!enabled) atomic_store(&p->video_frame_ready, 0);
     int result = mpv_set_property_string(p->player, "vid", enabled ? "auto" : "no");
     if (result >= 0) p->video_enabled = enabled;
     return result;
+}
+void bolo_mpv_background(bolo_mpv *p, int background) {
+    atomic_store(&p->background, background);
+}
+double bolo_mpv_retained_position(bolo_mpv *p, int64_t generation, double target) {
+    if (!p->ios || !p->loaded || p->generation != generation ||
+        p->expected_entry != p->playing_entry || !atomic_load(&p->video_enabled) ||
+        !atomic_load(&p->video_frame_ready)) return -1;
+    int paused = 0, seeking = 1, eof = 1;
+    double position = -1;
+    if (mpv_get_property(p->player, "pause", MPV_FORMAT_FLAG, &paused) < 0 || !paused ||
+        mpv_get_property(p->player, "seeking", MPV_FORMAT_FLAG, &seeking) < 0 || seeking ||
+        mpv_get_property(p->player, "eof-reached", MPV_FORMAT_FLAG, &eof) < 0 || eof ||
+        mpv_get_property(p->player, "time-pos", MPV_FORMAT_DOUBLE, &position) < 0 ||
+        !isfinite(position) || position < 0 || fabs(position - target) > 0.25) return -1;
+    return position;
 }
 
 int bolo_mpv_volume(bolo_mpv *p, double volume) {
@@ -263,6 +304,7 @@ int bolo_mpv_seek(bolo_mpv *p, double seconds, int64_t request) {
     return mpv_command_node_async(p->player, (uint64_t)request, &cmd);
 }
 int bolo_mpv_stop(bolo_mpv *p) {
+    atomic_store(&p->video_frame_ready, 0);
     p->loaded = 0;
     p->expected_entry = -1;
     const char *args[] = {"stop", NULL};
@@ -273,6 +315,16 @@ int bolo_mpv_poll(bolo_mpv *p, bolo_mpv_event *out) {
     for (int count = 0; count < 128; ++count) {
         mpv_event *e = mpv_wait_event(p->player, 0);
         if (e->event_id == MPV_EVENT_NONE) {
+            // 仅在 iOS 首帧等待期间查询；普通属性调用不进入 GL 队列。
+            // 暂停视频的首帧可能已由 VO 缓存，不再产生新的 render 回调。
+            if (p->ios && p->loaded && atomic_load(&p->video_enabled) &&
+                !atomic_load(&p->video_frame_ready)) {
+                int interlaced = 0;
+                if (mpv_get_property(p->player, "video-frame-info/interlaced", MPV_FORMAT_FLAG, &interlaced) >= 0) {
+                    atomic_store(&p->video_frame_ready, 1);
+                    atomic_store(&p->dirty, 1);
+                }
+            }
             // 在最新命令回执之后读取当前媒体的位置，避免用队列中的旧 time-pos 确认 seek。
             if (p->loaded && p->seek_reply && p->seek_reply == p->seek_request) {
                 int seeking = 1;
@@ -341,6 +393,8 @@ int bolo_mpv_poll(bolo_mpv *p, bolo_mpv_event *out) {
             if (prop->format == MPV_FORMAT_DOUBLE) out->value = *(double *)prop->data;
             else if (prop->format == MPV_FORMAT_FLAG) out->value = *(int *)prop->data;
             else break;
+            if (out->generation == p->generation && out->type == BOLO_PAUSED)
+                atomic_store(&p->paused, out->value != 0);
             return 1;
         }
         case MPV_EVENT_COMMAND_REPLY:
@@ -411,6 +465,48 @@ int bolo_mpv_render_create(bolo_mpv *p, void *(*get_proc)(void *, const char *),
     return r;
 }
 int bolo_mpv_render_dirty(bolo_mpv *p) { return atomic_exchange(&p->dirty, 0); }
+void bolo_mpv_render_resume(bolo_mpv *p) {
+    p->resume_render_started_ns = mpv_get_time_ns(p->player);
+}
+int bolo_mpv_render_frame_ready(bolo_mpv *p) {
+    if (!p->render || !atomic_load(&p->video_enabled)) return 0;
+    mpv_render_context_update(p->render);
+    mpv_render_frame_info frame = {0};
+    mpv_render_param info = {MPV_RENDER_PARAM_NEXT_FRAME_INFO, &frame};
+    if (mpv_render_context_get_info(p->render, info) < 0) return 0;
+    if (p->resume_render_started_ns) {
+        int64_t now = mpv_get_time_ns(p->player);
+        int current = (frame.flags & MPV_RENDER_FRAME_INFO_PRESENT) &&
+            !(frame.flags & (MPV_RENDER_FRAME_INFO_REDRAW | MPV_RENDER_FRAME_INFO_REPEAT)) &&
+            frame.target_time >= now - 20000000;
+        if (atomic_load(&p->paused) || current || now - p->resume_render_started_ns >= 100000000) {
+            p->resume_render_started_ns = 0;
+        } else {
+            // 仅在恢复前台后消费过期帧；SKIP_RENDERING 仍可能执行 GL，后台不能调用。
+            if (frame.flags & MPV_RENDER_FRAME_INFO_PRESENT) {
+                int skip = 1, block = 0;
+                mpv_render_param params[] = {{MPV_RENDER_PARAM_SKIP_RENDERING, &skip},
+                    {MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &block}, {0, NULL}};
+                mpv_render_context_render(p->render, params);
+            }
+            atomic_store(&p->dirty, 1);
+            return 0;
+        }
+    }
+    if (atomic_load(&p->video_frame_ready)) return 1;
+    if ((frame.flags & MPV_RENDER_FRAME_INFO_PRESENT) &&
+        !(frame.flags & (MPV_RENDER_FRAME_INFO_REDRAW | MPV_RENDER_FRAME_INFO_REPEAT))) return 1;
+    if (frame.flags & MPV_RENDER_FRAME_INFO_PRESENT) {
+        // 消费初始化空重绘，避免阻塞 VO；首个视频帧到来前不改写屏幕。
+        int skip = 1, block = 0;
+        mpv_render_param params[] = {
+            {MPV_RENDER_PARAM_SKIP_RENDERING, &skip},
+            {MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &block}, {0, NULL}
+        };
+        mpv_render_context_render(p->render, params);
+    }
+    return 0;
+}
 int bolo_mpv_render(bolo_mpv *p, int fbo, int width, int height, int flip) {
     if (!p->render || width <= 0 || height <= 0) return 0;
     mpv_opengl_fbo target = {.fbo = fbo, .w = width, .h = height};
@@ -422,6 +518,8 @@ int bolo_mpv_render(bolo_mpv *p, int fbo, int width, int height, int flip) {
 }
 void bolo_mpv_render_free(bolo_mpv *p) {
     if (!p->render) return;
+    p->resume_render_started_ns = 0;
+    atomic_store(&p->video_frame_ready, 0);
     mpv_render_context_set_update_callback(p->render, NULL, NULL);
     mpv_render_context_free(p->render);
     p->render = NULL;

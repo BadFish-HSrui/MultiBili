@@ -907,9 +907,11 @@ class BoloPlayerController(
                         engine.setAudioActive(false)
                 }
                 if (lifecycle != lifecycleRevision || !inBackground) return@launch
-                backgroundJob = scope.launch {
-                    delay(60_000)
-                    if (lifecycle == lifecycleRevision && inBackground) releaseEngine()
+                if (mutableBackend.value?.retainsPausedResources != true) {
+                    backgroundJob = scope.launch {
+                        delay(60_000)
+                        if (lifecycle == lifecycleRevision && inBackground) releaseEngine()
+                    }
                 }
             } else if (videoUrls.isNotEmpty()) {
                 restoring = true
@@ -924,6 +926,8 @@ class BoloPlayerController(
                 }
                 if (ready && mutableBackend.value != null) {
                     val engine = mutableBackend.value!!
+                    val expected = generation
+                    val seekRevision = coordinator.currentRevision
                     val mergeChannels = mergeAudioChannelsEnabled
                     try { withTimeout(8_000) { engine.awaitOutput() } }
                     catch (error: TimeoutCancellationException) {
@@ -943,6 +947,20 @@ class BoloPlayerController(
                     if (result < 0) onError(BoloPlayerError.UnknownError("合并多声道配置失败（$result）"))
                     applyLoudness(engine)
                     if (lifecycle != lifecycleRevision || inBackground || disposed || mutableBackend.value !== engine) return@launch
+                    val retainedPosition = withContext(boloMpvDispatcher) { engine.retainedPosition(expected, position) }
+                    if (lifecycle != lifecycleRevision || inBackground || disposed || mutableBackend.value !== engine ||
+                        generation != expected || coordinator.currentRevision != seekRevision) return@launch
+                    if (retainedPosition != null) {
+                        // 连接层确认同一媒体仍暂停在目标附近，不破坏现有解码和缓冲状态。
+                        nativeSeeking = false
+                        restoring = false
+                        recoveryAttempted = false
+                        mutableState.value = state.value.copy(currentPositionMs = retainedPosition,
+                            pendingSeekPositionMs = null, hasConfirmedPosition = true, isPlaybackSuspended = false,
+                            isBuffering = false, isRebuilding = false)
+                        applyPlayIntent()
+                        return@launch
+                    }
                     coordinator.requestSeek(position)
                     mutableState.value = state.value.copy(pendingSeekPositionMs = position)
                     submitSeek()

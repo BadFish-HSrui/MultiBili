@@ -36,8 +36,13 @@ internal actual fun createBoloSystemMediaSession(session: BoloPlaybackSession): 
             bind(center.stopCommand, BoloSystemMediaAction.Stop)
             center.skipBackwardCommand.enabled = false
             center.skipForwardCommand.enabled = false
-            observe(UIApplicationWillResignActiveNotification) { session.player.controller.setVideoOutputActive(false) }
-            observe(UIApplicationDidEnterBackgroundNotification) { session.setForeground(false) }
+            observe(UIApplicationWillResignActiveNotification) {
+                session.player.controller.backend.value?.suspendOutput()
+            }
+            observe(UIApplicationDidEnterBackgroundNotification) {
+                session.player.controller.backend.value?.suspendOutput(background = true)
+                session.setForeground(false)
+            }
             observe(UIApplicationDidBecomeActiveNotification) {
                 session.player.controller.backend.value?.resumeRendering()
                 session.setForeground(true)
@@ -60,6 +65,10 @@ internal actual fun createBoloSystemMediaSession(session: BoloPlaybackSession): 
                     session.interruptAudio(mayResume = false)
             }
             observe(AVAudioSessionMediaServicesWereResetNotification) { session.player.controller.rebuild() }
+            // 会话可能在系统面板展开或后台自动切集时创建，先同步当前门禁。
+            val applicationState = UIApplication.sharedApplication.applicationState
+            session.player.controller.setVideoOutputActive(applicationState == UIApplicationState.UIApplicationStateActive)
+            session.setForeground(applicationState != UIApplicationState.UIApplicationStateBackground)
         }
 
         private fun observe(name: String?, action: () -> Unit) {

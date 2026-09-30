@@ -2,6 +2,8 @@ package tv.hsrui.bolo.player.base
 
 /** 普通 native 调用由串行 dispatcher 执行；GL 只在平台渲染上下文执行。 */
 internal expect class BoloMpvBackend() {
+    val retainsPausedResources: Boolean
+    fun retainedPosition(generation: Long, positionMs: Long): Long?
     suspend fun bind(output: Any)
     suspend fun detachOutput(output: Any)
     suspend fun unbind()

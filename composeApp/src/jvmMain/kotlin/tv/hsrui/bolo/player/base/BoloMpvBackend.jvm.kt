@@ -12,6 +12,8 @@ import kotlinx.coroutines.withTimeout
 import tv.hsrui.bolo.player.DesktopPlayerFullscreenWindow
 
 internal actual class BoloMpvBackend actual constructor() {
+    actual val retainsPausedResources: Boolean get() = false
+    actual fun retainedPosition(generation: Long, positionMs: Long): Long? = null
     private val handle = BoloMpvNative.create("desktop").also { check(it != 0L) { "libmpv 初始化失败" } }
     init {
         if (System.getProperty("os.name").startsWith("Linux")) {
