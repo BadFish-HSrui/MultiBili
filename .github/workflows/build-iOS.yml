@@ -21,7 +21,7 @@ jobs:
   build:
     env:
       # 缓存布局或键形状变更时递增，可用于一次性作废旧条目。
-      BOLO_CACHE_VERSION: v2
+      BOLO_CACHE_VERSION: v3
     runs-on: macos-latest
     steps:
       - name: 检出源码
@@ -67,10 +67,10 @@ jobs:
           MPV_COMMIT="$(git -C nativePlayer/vendor/mpv rev-parse HEAD)"
           NATIVE_SOURCE_HASH="$(printf '%s\n' "$NATIVE_SOURCE_HASH" "$FFMPEG_COMMIT" "$MPV_COMMIT" | git hash-object --stdin)"
           # 恢复键：clean_cache 时用 -disabled-<run_id> 让恢复必定落空（本次不使用缓存）
-          echo "native=$CACHE_RUNNER-ios-native-$BOLO_CACHE_VERSION-$NATIVE_SOURCE_HASH$CACHE_SUFFIX" >> "$GITHUB_OUTPUT"
+          echo "native=$CACHE_RUNNER-ios-arm64-native-$BOLO_CACHE_VERSION-$NATIVE_SOURCE_HASH$CACHE_SUFFIX" >> "$GITHUB_OUTPUT"
           echo "gradle=$CACHE_RUNNER-gradle-$BOLO_CACHE_VERSION-$GRADLE_INPUT_HASH$CACHE_SUFFIX" >> "$GITHUB_OUTPUT"
           # 保存键：本平台缓存的真实键，clean_cache 时同样尝试保存；已有条目不可覆盖
-          echo "native-save=$CACHE_RUNNER-ios-native-$BOLO_CACHE_VERSION-$NATIVE_SOURCE_HASH" >> "$GITHUB_OUTPUT"
+          echo "native-save=$CACHE_RUNNER-ios-arm64-native-$BOLO_CACHE_VERSION-$NATIVE_SOURCE_HASH" >> "$GITHUB_OUTPUT"
           echo "gradle-save=$CACHE_RUNNER-gradle-$BOLO_CACHE_VERSION-$GRADLE_INPUT_HASH" >> "$GITHUB_OUTPUT"
 
       - name: 恢复原生播放器缓存
@@ -79,8 +79,8 @@ jobs:
         with:
           path: |
             nativePlayer/build/cache/downloads/*.tar.gz
-            nativePlayer/build/cache/libraries/*/*
-            nativePlayer/build/cache/bundles/*/*
+            nativePlayer/build/cache/libraries/ios-arm64/*
+            nativePlayer/build/cache/bundles/ios-arm64/*
             !nativePlayer/build/cache/**/.staging-*/**
           key: ${{ steps.cache-keys.outputs.native }}
           restore-keys: |
@@ -106,20 +106,16 @@ jobs:
         if: ${{ inputs.clean_cache }}
         run: ./gradlew :nativePlayer:clean
 
-      - name: 编译 CocoaPods 产物
-        run: |
-          set -euo pipefail
-          ./gradlew :composeApp:podInstall
-
       - name: 编译无签名 iOS App
         working-directory: iosApp
         run: |
           set -euo pipefail
           xcodebuild build \
-            -workspace iosApp.xcworkspace \
+            -project iosApp.xcodeproj \
             -scheme iosApp \
             -configuration Release \
             -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -133,6 +129,7 @@ jobs:
           METADATA_FILE: build/version/build-metadata.json
         run: |
           set -euo pipefail
+          ./gradlew :writeBuildMetadata
           if [[ ! -s "$METADATA_FILE" ]]; then
             echo "缺少本地构建元数据 ${METADATA_FILE}，请通过 Gradle 构建任务生成" >&2
             exit 1
@@ -208,7 +205,7 @@ jobs:
         with:
           path: |
             nativePlayer/build/cache/downloads/*.tar.gz
-            nativePlayer/build/cache/libraries/*/*
-            nativePlayer/build/cache/bundles/*/*
+            nativePlayer/build/cache/libraries/ios-arm64/*
+            nativePlayer/build/cache/bundles/ios-arm64/*
             !nativePlayer/build/cache/**/.staging-*/**
           key: ${{ steps.cache-keys.outputs.native-save }}

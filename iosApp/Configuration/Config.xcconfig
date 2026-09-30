@@ -6,3 +6,10 @@ PRODUCT_NAME = Multi Bili
 PRODUCT_BUNDLE_IDENTIFIER=tv.hsrui.bolo.MultiBili$(TEAM_ID)
 
 MARKETING_VERSION=$(APP_VERSION_CORE)
+
+ARCHS = arm64
+ENABLE_USER_SCRIPT_SANDBOXING = NO
+BOLO_IOS_NATIVE_TARGET[sdk=iphoneos*] = ios-arm64
+BOLO_IOS_NATIVE_TARGET[sdk=iphonesimulator*] = iossim-arm64
+FRAMEWORK_SEARCH_PATHS = $(inherited) "$(BUILT_PRODUCTS_DIR)" "$(SRCROOT)/../nativePlayer/build/$(BOLO_IOS_NATIVE_TARGET)"
+OTHER_LDFLAGS = $(inherited) -ObjC -lc++ -liconv -lz -lbz2 -framework ComposeApp -framework BoloNativePlayer -framework UIKit -framework Foundation -framework AVFoundation -framework AudioToolbox -framework CoreAudio -framework CoreGraphics -framework CoreMedia -framework CoreVideo -framework VideoToolbox -framework OpenGLES -framework QuartzCore -framework Security -framework CoreFoundation

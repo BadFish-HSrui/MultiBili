@@ -27,7 +27,7 @@ internal class NativePlayerBuild(
         if (command == "check-sources") { logger.lifecycle(nativeJson(sourceIdentity())); return }
         val targets = when (command) {
             "android" -> listOf("android-arm64", "android-armv7", "android-x86", "android-x64")
-            "ios" -> listOf("ios-arm64", "iossim-arm64")
+            "ios-arm64", "iossim-arm64" -> listOf(command)
             "desktop" -> listOf((if (host.mac) "macos" else if (host.windows) "windows" else "linux") + "-" +
                 when (System.getProperty("os.arch")) { "aarch64", "arm64" -> "arm64"; "amd64", "x86_64" -> "x64"; else -> error("Unsupported desktop architecture") })
             else -> throw GradleException("Unknown native command: $command")
@@ -291,8 +291,7 @@ internal class NativePlayerBuild(
         }
         val projectLicenses = projectLicenseFiles.mapValues { (_, file) -> nativeSha(file) }
         val key = nativeHash(nativeJson(mapOf("bundles" to bundles.mapValues { it.value.name },
-            "projectLicenses" to projectLicenses,
-            "podspec" to if (command == "ios") nativeSha(root.resolve("BoloNativePlayer.podspec")) else null)))
+            "projectLicenses" to projectLicenses)))
         val output = buildDirectory.resolve(command)
         if (nativeValidBundle(output, key)) {
             logger.lifecycle("Native output verified: {}", command)
@@ -331,12 +330,11 @@ internal class NativePlayerBuild(
                     }
                     copyProjectLicenses(stage.resolve("licenses"))
                 }
-                "ios" -> {
-                    host.run("xcodebuild", "-create-xcframework", "-framework", bundles.getValue("ios-arm64").resolve("BoloNativePlayer.framework"),
-                        "-framework", bundles.getValue("iossim-arm64").resolve("BoloNativePlayer.framework"), "-output", stage.resolve("BoloNativePlayer.xcframework"))
-                    nativeCopyTree(bundles.getValue("ios-arm64").resolve("licenses"), stage.resolve("licenses/bolo__player"))
+                "ios-arm64", "iossim-arm64" -> {
+                    val bundle = bundles.getValue(command)
+                    nativeCopyTree(bundle.resolve("BoloNativePlayer.framework"), stage.resolve("BoloNativePlayer.framework"))
+                    nativeCopyTree(bundle.resolve("licenses"), stage.resolve("licenses/bolo__player"))
                     copyProjectLicenses(stage.resolve("licenses"))
-                    nativeCopyFile(root.resolve("BoloNativePlayer.podspec"), stage.resolve("BoloNativePlayer.podspec"))
                 }
                 "desktop" -> {
                     val bundle = bundles.values.single()

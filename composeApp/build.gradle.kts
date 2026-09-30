@@ -1,7 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.targets.native.tasks.AbstractPodInstallTask
-import org.jetbrains.kotlin.gradle.targets.native.tasks.PodBuildTask
 import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.BOOLEAN
 import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.INT
 import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING
@@ -15,12 +13,9 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.composeHotReload)
     alias(libs.plugins.buildkonfig)
-    // CocoaPods 管理本地播放器 XCFramework 并生成 cinterop
-    kotlin("native.cocoapods")
 }
 
 val appVersionMetadata = rootProject.extra["appVersionMetadata"] as ResolvedVersionMetadata
-val iosDeploymentTarget = "16.0"
 val isMacHost = System.getProperty("os.name").startsWith("Mac")
 val (appVersionMajor, appVersionMinor) = appVersionMetadata.coreVersion.split('.')
 val windowsPackageVersion =
@@ -41,32 +36,37 @@ kotlin {
         }
     }
 
+    val nativePlayer = project(":nativePlayer")
+    val nativeHeaders = nativePlayer.layout.projectDirectory.dir("src")
+    val nativeFrameworks = listOf(
+        "UIKit", "Foundation", "AVFoundation", "AudioToolbox", "CoreAudio", "CoreGraphics",
+        "CoreMedia", "CoreVideo", "VideoToolbox", "OpenGLES", "QuartzCore", "Security", "CoreFoundation",
+    )
     listOf(
-        iosArm64(),
-        iosSimulatorArm64()
-    ).forEach { iosTarget ->
+        Triple(iosArm64(), "ios-arm64", "prepareIosArm64Native"),
+        Triple(iosSimulatorArm64(), "iossim-arm64", "prepareIosSimulatorArm64Native"),
+    ).forEach { (iosTarget, nativeTarget, prepareTask) ->
+        val nativeFrameworkDirectory = nativePlayer.layout.buildDirectory.dir(nativeTarget)
+        val interop = iosTarget.compilations.getByName("main").cinterops.create("BoloNativePlayer") {
+            definitionFile.set(project.file("src/nativeInterop/cinterop/BoloNativePlayer.def"))
+            includeDirs(nativeHeaders)
+        }
+        tasks.named(interop.interopProcessingTaskName).configure {
+            inputs.files(nativeHeaders.file("bolo_mpv.h"), nativeHeaders.file("BoloMpvView.h"))
+            enabled = isMacHost
+        }
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
         }
-    }
-
-    cocoapods {
-        version = appVersionMetadata.releaseVersion
-        license = "GPL-3.0"
-        summary = "Bolo Compose App"
-        homepage = "https://hsrui.tv/bolo"
-        ios.deploymentTarget = iosDeploymentTarget
-        podfile = project.file("../iosApp/Podfile")
-
-        pod("BoloNativePlayer") {
-            version = "0.41.0"
-            source = path(project.file("../nativePlayer/build/ios"))
-        }
-
-        framework {
-            baseName = "ComposeApp"
-            isStatic = true
+        iosTarget.binaries.configureEach {
+            linkerOpts("-F${nativeFrameworkDirectory.get().asFile.absolutePath}", "-framework", "BoloNativePlayer", "-ObjC")
+            linkerOpts(nativeFrameworks.flatMap { listOf("-framework", it) })
+            linkerOpts("-lc++", "-liconv", "-lz", "-lbz2")
+            linkTaskProvider.configure {
+                if (isMacHost) dependsOn(":nativePlayer:$prepareTask")
+                inputs.dir(nativeFrameworkDirectory)
+            }
         }
     }
 
@@ -135,13 +135,6 @@ kotlin {
     }
 }
 
-tasks.withType<PodBuildTask>().configureEach {
-    // Pod 子任务只编译库，使用对应平台的通用目标，不继承 Xcode Run 的真机 UDID。
-    targetDeviceIdentifier.unsetConvention()
-    xcodeBuildSettings.put("IPHONEOS_DEPLOYMENT_TARGET", iosDeploymentTarget)
-    xcodeBuildSettings.put("ARCHS", "arm64")
-}
-
 dependencies {
     androidRuntimeClasspath(libs.compose.uiTooling)
 }
@@ -207,26 +200,4 @@ val desktopNativeResources = project(":nativePlayer").layout.buildDirectory.dir(
 kotlin.sourceSets.named("jvmMain") { resources.srcDir(desktopNativeResources) }
 tasks.matching { it.name == "jvmProcessResources" }.configureEach {
     dependsOn(":nativePlayer:prepareDesktopNative")
-}
-if (isMacHost) {
-    // Xcode 的 PATH 可能不含 Homebrew；普通及 synthetic Pod 安装共用自动查找结果。
-    val cocoaPodsExecutable = providers.environmentVariable("PATH").orElse("").map { path ->
-        (path.split(File.pathSeparator) + listOf("/opt/homebrew/bin", "/usr/local/bin"))
-            .filter(String::isNotBlank)
-            .map { File(it, "pod") }
-            .firstOrNull { it.isFile && it.canExecute() }
-    }
-    tasks.withType<AbstractPodInstallTask>().configureEach {
-        if (!podExecutablePath.isPresent) {
-            podExecutablePath.set(layout.file(cocoaPodsExecutable))
-        }
-    }
-}
-tasks.matching { it.name == "podspec" || it.name.startsWith("podGen") || it.name == "podInstall" || it.name.startsWith("podInstallSynthetic") || it.name == "generateDefBoloNativePlayer" || it.name.startsWith("cinteropBoloNativePlayer") }.configureEach {
-    if (isMacHost) {
-        dependsOn(":nativePlayer:prepareIosNative")
-    } else {
-        // 非 macOS 无法生成本地 Pod；同时跳过任务，避免校验尚未生成的输入目录。
-        enabled = false
-    }
 }

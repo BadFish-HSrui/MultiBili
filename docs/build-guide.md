@@ -73,18 +73,6 @@ SDK 位置需通过 `ANDROID_HOME`、`ANDROID_SDK_ROOT` 或 `local.properties` �
 
 手动安装时版本要求不低于26
 
-### CocoaPods (可选)
-编译iOS目标时需要
-
-**Homebrew**
-```bash
-brew install cocoapods
-```
-**RubyGems**
-```bash
-sudo gem install cocoapods
-```
-
 ## 编译目标
 
 初始化源码：
@@ -93,15 +81,15 @@ git submodule update --init --recursive
 ```
 
 ### iOS
-> **仅限macOS,需安装[Xcode](#xcode-可选)和[CocoaPods](#cocoapods-可选)**
+> **仅限macOS,需安装[Xcode](#xcode-可选)**
 ```bash
-./gradlew :composeApp:podInstall
 cd iosApp
 xcodebuild build \
-  -workspace iosApp.xcworkspace \
+  -project iosApp.xcodeproj \
   -scheme iosApp \
   -configuration Release \
   -sdk iphoneos \
+  -destination 'generic/platform=iOS' \
   -derivedDataPath build \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \

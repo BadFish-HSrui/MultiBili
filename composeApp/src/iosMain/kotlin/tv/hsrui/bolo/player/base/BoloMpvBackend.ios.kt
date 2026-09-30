@@ -2,7 +2,7 @@
 
 package tv.hsrui.bolo.player.base
 
-import cocoapods.BoloNativePlayer.*
+import tv.hsrui.bolo.player.nativeinterop.*
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
