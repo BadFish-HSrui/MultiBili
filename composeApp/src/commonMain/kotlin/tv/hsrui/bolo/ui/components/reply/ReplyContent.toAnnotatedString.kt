@@ -53,7 +53,8 @@ fun ReplyItem.ReplyContent.toRichString(scope: CoroutineScope): Pair<AnnotatedSt
             when {
                 emote.contains(keyText) -> {
                     val emoteItem = emote.getValue(keyText)
-                    appendInlineContent(id = keyText, alternateText = emoteItem.text)
+                    // 使用单字符占位，保持行内图片前后文本与链接范围的偏移一致。
+                    appendInlineContent(id = keyText)
                     inlineContentMap[keyText] = InlineTextContent(
                         placeholder = Placeholder(
                             width = if (emoteItem.isBig) 3.em else (1.2).em,
