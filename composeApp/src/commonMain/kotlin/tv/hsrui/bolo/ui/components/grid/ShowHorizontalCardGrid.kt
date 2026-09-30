@@ -34,6 +34,7 @@ fun <T> ShowHorizontalCardGrid(
     topContent: @Composable (() -> Unit)? = null,
     bottomContent: @Composable (() -> Unit)? = null,
     staggeredGridState: LazyStaggeredGridState? = null,
+    columns: GridCells = GridCells.Adaptive(325.dp),
     howToShow: @Composable (T) -> Unit
 ) {
     val contentPadding: Dp
@@ -83,7 +84,7 @@ fun <T> ShowHorizontalCardGrid(
                 }
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(325.dp),
+                    columns = columns,
                     contentPadding = PaddingValues(if (noContentPadding) 0.dp else contentPadding),
                     verticalArrangement = Arrangement.spacedBy(if (noContentSpacing) 0.dp else contentSpacing),
                     horizontalArrangement = Arrangement.spacedBy(if (noContentSpacing) 0.dp else contentSpacing),
