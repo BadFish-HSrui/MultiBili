@@ -36,6 +36,7 @@ import platform.UIKit.UIInterfaceOrientationMask
 import platform.UIKit.UIInterfaceOrientationMaskAll
 import platform.UIKit.UIInterfaceOrientationMaskAllButUpsideDown
 import platform.UIKit.UISceneActivationStateForegroundActive
+import platform.UIKit.UISceneActivationStateForegroundInactive
 import platform.UIKit.UISceneDidActivateNotification
 import platform.UIKit.UISceneWillDeactivateNotification
 import platform.UIKit.UIViewController
@@ -229,7 +230,7 @@ internal class IosPlayerFullscreenCoordinator {
     fun transitionStarted(landscape: Boolean) {
         transitions++
         val state = owner ?: return
-        if (!isForeground() || request != null || autoRotate[state] != true) return
+        if (!isSceneInForeground() || request != null || autoRotate[state] != true) return
         // 使用 UIKit 已允许的目标方向，在系统转场内同步布局；手动请求与防回弹仍由状态层保护。
         state.updateFullscreenFromRotation(landscape)
     }
@@ -242,6 +243,18 @@ internal class IosPlayerFullscreenCoordinator {
     private fun isForeground(): Boolean =
         sceneIsActive != false &&
             host?.view?.window?.windowScene?.activationState == UISceneActivationStateForegroundActive
+
+    private fun isSceneInForeground(): Boolean =
+        when (host?.view?.window?.windowScene?.activationState) {
+            UISceneActivationStateForegroundActive, UISceneActivationStateForegroundInactive -> true
+            else -> false
+        }
+
+    private fun syncAutomaticLayout() {
+        val state = owner ?: return
+        if (!isSceneInForeground() || request != null || transitions > 0 || autoRotate[state] != true) return
+        observedLayout(state)?.let(state::updateFullscreenFromRotation)
+    }
 
     private fun observedLayout(state: PlayerFullscreenState?): Boolean? {
         val controller = host ?: return null
@@ -283,6 +296,8 @@ internal class IosPlayerFullscreenCoordinator {
                 it.wasForeground = foreground
             }
             if (!foreground) {
+                // 控制中心等前台失活期间仍跟随实际几何；方向请求和超时继续暂停。
+                syncAutomaticLayout()
                 timer?.cancel()
                 timer = null
                 return
@@ -341,7 +356,7 @@ internal class IosPlayerFullscreenCoordinator {
             }
             if (state != null && !state.isChangingIosFullscreen && autoRotate[state] == true) {
                 // 首次布局、回前台及转场收尾只校准实际几何，不追逐旋转前的全屏目标。
-                observedLayout(state)?.let(state::updateFullscreenFromRotation)
+                syncAutomaticLayout()
                 needsReconcile = false
                 updateOrientationPolicy()
                 return

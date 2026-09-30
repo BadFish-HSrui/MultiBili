@@ -132,7 +132,8 @@ private class AndroidPlayerFullscreenController(
 
     private fun apply() {
         if (applying) return
-        val shouldObserve = configured && active && state.isPhone && autoRotate && rotationAllowed
+        val shouldSyncLayout = configured && active && state.isPhone && autoRotate
+        val shouldObserve = shouldSyncLayout && rotationAllowed
         if (shouldObserve != sensorEnabled) {
             sensorEnabled = shouldObserve
             deviceLandscape = null
@@ -153,7 +154,8 @@ private class AndroidPlayerFullscreenController(
                 else -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             }
             if (activity.requestedOrientation != orientation) activity.requestedOrientation = orientation
-            if (shouldObserve && observed != null) state.updateFullscreenFromRotation(observed)
+            // 系统锁定只停止传感器监听；已发生的界面旋转仍须同步全屏布局。
+            if (shouldSyncLayout && observed != null) state.updateFullscreenFromRotation(observed)
             if (appliedFullscreen != state.isFullscreen) {
                 appliedFullscreen = state.isFullscreen
                 if (state.isFullscreen) hideSystemBars(activity)
