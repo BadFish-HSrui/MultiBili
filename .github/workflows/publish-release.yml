@@ -61,7 +61,7 @@ jobs:
               raise SystemExit('构建提交 SHA 无效')
           pages = json.loads((temp / 'build-artifacts.json').read_text())
           artifacts = [item for page in pages for item in page['artifacts']]
-          expected = ['Source', 'Android-apk', 'Mac-dmg', 'IOS-ipa', 'Win-exe', 'Win-msi', 'Linux-deb', 'Linux-rpm']
+          expected = ['Android-apk', 'Mac-dmg', 'IOS-ipa', 'Win-exe', 'Win-msi', 'Linux-deb', 'Linux-rpm']
           ids = []
           now = datetime.datetime.now(datetime.timezone.utc)
           for name in expected:
@@ -106,7 +106,7 @@ jobs:
         working-directory: source
         run: ./gradlew --no-daemon :writeBuildMetadata
 
-      - name: 准备标题和发布正文
+      - name: 准备 Tag、标题和发布正文
         id: version
         working-directory: source
         env:
@@ -129,6 +129,18 @@ jobs:
           version = metadata['appDisplayVersion']
           if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-(?:alpha|beta)-[0-9a-f]{7}|-rc[1-9][0-9]*)?', version):
               raise SystemExit('应用显示版本格式无效')
+          default_tag = f'v{version}'
+          tags = subprocess.check_output([
+              'git', 'tag', '--points-at', os.environ['BUILD_SHA'], '--format=%(refname:strip=2)',
+          ], text=True).splitlines()
+          if default_tag in tags:
+              tag = default_tag
+          elif len(tags) == 1:
+              tag = tags[0]
+          elif tags:
+              raise SystemExit(f'构建提交对应多个 Tag，无法唯一确定发布 Tag：{", ".join(tags)}')
+          else:
+              tag = default_tag
           properties = subprocess.check_output(['git', 'show', 'HEAD:version.properties']).decode('utf-8')
           channels = re.findall(r'^APP_RELEASE_CHANNEL\s*=\s*(\w+)\s*$', properties, re.MULTILINE)
           if len(channels) != 1 or channels[0] not in {'alpha', 'beta', 'rc', 'stable'}:
@@ -142,7 +154,7 @@ jobs:
           (pathlib.Path(os.environ['RUNNER_TEMP']) / 'release-notes.md').write_bytes(notes)
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(f'display_version={version}\n')
-              output.write(f'tag=v{version}\n')
+              output.write(f'tag={tag}\n')
               output.write(f'channel={channels[0]}\n')
           PY
 
@@ -156,7 +168,7 @@ jobs:
           path: ${{ runner.temp }}/release-artifacts
           merge-multiple: false
 
-      - name: 校验十二个发布附件
+      - name: 校验十一个发布附件
         env:
           DISPLAY_VERSION: ${{ steps.version.outputs.display_version }}
         run: |
@@ -171,7 +183,6 @@ jobs:
           root = temp / 'release-artifacts'
           version = re.escape(os.environ['DISPLAY_VERSION'])
           groups = {
-              'Source': ('source', r'source\.tar\.gz', 1),
               'Android-apk': ('android', rf'multi-bili-android-(arm64|arm32|x86|x64|universal)-{version}\.apk', 5),
               'Mac-dmg': ('macos', rf'multi-bili-macos-(arm64|x64)-{version}\.dmg', 1),
               'IOS-ipa': ('ios', rf'multi-bili-ios-(arm64)-{version}\.ipa', 1),
@@ -195,14 +206,14 @@ jobs:
                   match = re.fullmatch(pattern, path.name)
                   if path.is_symlink() or not path.is_file() or path.stat().st_size == 0 or not match:
                       raise SystemExit(f'附件类型、版本或内容无效：{path.name}')
-                  if platform not in {'source', 'android'}:
+                  if platform != 'android':
                       arch = match.group(1)
                       if platform in arches and arches[platform] != arch:
                           raise SystemExit(f'同平台安装包架构不一致：{platform}')
                       arches[platform] = arch
                   assets.append({'path': str(path), 'name': path.name, 'size': path.stat().st_size})
-          if len(assets) != 12 or len({item['name'] for item in assets}) != 12:
-              raise SystemExit('必须提供十二个不重名的发布附件')
+          if len(assets) != 11 or len({item['name'] for item in assets}) != 11:
+              raise SystemExit('必须提供十一个不重名的发布附件')
           (temp / 'release-assets.json').write_text(json.dumps(assets))
           PY
 
@@ -222,7 +233,8 @@ jobs:
             echo "Release 已存在（含草稿），请手动处理：$RELEASE_TAG" >&2
             exit 1
           fi
-          gh api --paginate --slurp "repos/$GH_REPO/git/matching-refs/tags/$RELEASE_TAG" > "$RUNNER_TEMP/tag-refs.json"
+          tag_path="$(jq -rn --arg tag "$RELEASE_TAG" '$tag | @uri')"
+          gh api --paginate --slurp "repos/$GH_REPO/git/matching-refs/tags/$tag_path" > "$RUNNER_TEMP/tag-refs.json"
           tag_object="$(jq -c --arg ref "refs/tags/$RELEASE_TAG" '[.[][] | select(.ref == $ref)] | if length == 0 then null elif length == 1 then .[0].object else error("重复的 tag") end' "$RUNNER_TEMP/tag-refs.json")"
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           create_args=("$RELEASE_TAG" --draft --target "$BUILD_SHA" --title "$DISPLAY_VERSION" --notes-file "$NOTES_FILE")
@@ -249,7 +261,7 @@ jobs:
           while IFS= read -r asset; do
             assets+=("$asset")
           done < <(jq -r '.[].path' "$RUNNER_TEMP/release-assets.json")
-          test "${#assets[@]}" -eq 12
+          test "${#assets[@]}" -eq 11
           gh release create "${create_args[@]}"
           gh release upload "$RELEASE_TAG" "${assets[@]}"
           gh release view "$RELEASE_TAG" --json assets,isDraft > "$RUNNER_TEMP/uploaded-release.json"
@@ -262,7 +274,7 @@ jobs:
           expected = json.loads((temp / 'release-assets.json').read_text())
           release = json.loads((temp / 'uploaded-release.json').read_text())
           actual = release['assets']
-          if (not release['isDraft'] or len(actual) != 12
+          if (not release['isDraft'] or len(actual) != 11
                   or {item['name']: item['size'] for item in actual} != {item['name']: item['size'] for item in expected}
                   or any(item['state'] != 'uploaded' for item in actual)):
               raise SystemExit('草稿附件不完整，保留草稿并停止发布')
@@ -285,5 +297,5 @@ jobs:
             printf -- '- Tag：`%s`\n' "$RELEASE_TAG"
             printf -- '- 构建：[运行 %s](%s)\n' "$BUILD_RUN_ID" "$BUILD_URL"
             printf -- '- Release：[查看发布](%s)\n' "$RELEASE_URL"
-            echo '- 已上传十二个附件。'
+            echo '- 已上传十一个附件。'
           } >> "$GITHUB_STEP_SUMMARY"
