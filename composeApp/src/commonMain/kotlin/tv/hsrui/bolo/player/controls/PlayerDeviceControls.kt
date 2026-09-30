@@ -7,7 +7,9 @@ internal interface PlayerDeviceControls {
     fun readBrightness(): Float?
     fun setBrightness(value: Float)
     fun readVolume(): Float?
-    fun setVolume(value: Float)
+    fun beginVolumeAdjustment(): Float? = readVolume()
+    fun setVolume(value: Float): Boolean
+    fun endVolumeAdjustment() = Unit
 }
 
 @Composable

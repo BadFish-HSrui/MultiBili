@@ -77,7 +77,7 @@ internal actual fun rememberPlayerDeviceControls(): PlayerDeviceControls {
                 return if (max > 0) audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max else null
             }
 
-            override fun setVolume(value: Float) {
+            override fun setVolume(value: Float): Boolean =
                 runCatching {
                     val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                     val min = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -85,8 +85,7 @@ internal actual fun rememberPlayerDeviceControls(): PlayerDeviceControls {
                     } else 0
                     audio.setStreamVolume(AudioManager.STREAM_MUSIC,
                         (value.coerceIn(0f, 1f) * max).roundToInt().coerceIn(min, max), 0)
-                }.onFailure { showSnackbarMessage("无法修改系统媒体音量") }
-            }
+                }.onFailure { showSnackbarMessage("无法修改系统媒体音量") }.isSuccess
         }
     }
     DisposableEffect(controls, lifecycleOwner) {

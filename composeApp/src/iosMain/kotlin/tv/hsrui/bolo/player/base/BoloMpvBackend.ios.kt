@@ -27,7 +27,49 @@ import platform.UIKit.UIViewAutoresizingFlexibleWidth
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
-private var audioSessionOwner: BoloMpvBackend? = null
+/** 仅在 Main 使用；播放和手势分别持有会话，互不释放对方的使用权。 */
+internal object IosPlayerAudioSession {
+    private var playbackOwner: BoloMpvBackend? = null
+    private val volumeOwners = mutableSetOf<Any>()
+    private var active = false
+
+    private fun activate(): Boolean {
+        val session = AVAudioSession.sharedInstance()
+        val configured = session.setCategory(AVAudioSessionCategoryPlayback, AVAudioSessionModeMoviePlayback, 0u, null)
+        val activated = configured && session.setActive(true, null)
+        if (activated) active = true
+        return activated
+    }
+
+    private fun deactivateIfUnused(): Boolean {
+        if (!active || playbackOwner != null || volumeOwners.isNotEmpty()) return true
+        val deactivated = AVAudioSession.sharedInstance().setActive(false, null)
+        if (deactivated) active = false
+        return deactivated
+    }
+
+    fun setPlaybackActive(owner: BoloMpvBackend, active: Boolean): Boolean {
+        if (active) {
+            if (!activate()) return false
+            playbackOwner = owner
+            return true
+        }
+        if (playbackOwner !== owner) return true
+        playbackOwner = null
+        return deactivateIfUnused()
+    }
+
+    fun beginVolumeAdjustment(owner: Any): Boolean {
+        if (owner in volumeOwners) return true
+        if (!activate()) return false
+        volumeOwners.add(owner)
+        return true
+    }
+
+    fun endVolumeAdjustment(owner: Any) {
+        if (volumeOwners.remove(owner)) deactivateIfUnused()
+    }
+}
 
 internal actual class BoloMpvBackend actual constructor() {
     private val handle = checkNotNull(bolo_mpv_create("ios")) { "libmpv 初始化失败" }
@@ -160,17 +202,7 @@ internal actual class BoloMpvBackend actual constructor() {
     }
     actual fun destroy() { if (!destroyed) { destroyed = true; bolo_mpv_destroy(handle) } }
     actual suspend fun setAudioActive(active: Boolean): Boolean = withContext(Dispatchers.Main.immediate) {
-        val session = AVAudioSession.sharedInstance()
         if (active && closed) false
-        else if (active) {
-            val configured = session.setCategory(AVAudioSessionCategoryPlayback, AVAudioSessionModeMoviePlayback, 0u, null)
-            val activated = configured && session.setActive(true, null)
-            if (activated) audioSessionOwner = this@BoloMpvBackend
-            activated
-        } else if (audioSessionOwner === this@BoloMpvBackend) {
-            val result = session.setActive(false, null)
-            if (result) audioSessionOwner = null
-            result
-        } else true
+        else IosPlayerAudioSession.setPlaybackActive(this@BoloMpvBackend, active)
     }
 }

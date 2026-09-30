@@ -831,9 +831,8 @@ fun BoloPlayerControls(
                             val leftSide = down.position.x < size.width / 2f
                             val deviceGestureEnabled = deviceControls.supportsDeviceGestures &&
                                 if (leftSide) brightnessGestureEnabled else volumeGestureEnabled
-                            val startDeviceValue = if (deviceGestureEnabled) {
-                                if (leftSide) deviceControls.readBrightness() else deviceControls.readVolume()
-                            } else null
+                            var startDeviceValue = if (deviceGestureEnabled && leftSide) deviceControls.readBrightness() else null
+                            var volumeAdjustmentStarted = false
                             var movement = Offset.Zero
                             var horizontal: Boolean? = null
                             var completed = false
@@ -859,7 +858,12 @@ fun BoloPlayerControls(
                                                 latestPlayState.durationMs <= 0L
                                             ) break
                                         } else {
-                                            if (!deviceGestureEnabled || startDeviceValue == null) break
+                                            if (!deviceGestureEnabled) break
+                                            if (!leftSide) {
+                                                volumeAdjustmentStarted = true
+                                                startDeviceValue = deviceControls.beginVolumeAdjustment()
+                                            }
+                                            if (startDeviceValue == null) break
                                         }
                                     }
                                     change.consume()
@@ -879,7 +883,7 @@ fun BoloPlayerControls(
                                             deviceControls.setBrightness(value)
                                             brightnessPreview = value
                                         } else {
-                                            deviceControls.setVolume(value)
+                                            if (!deviceControls.setVolume(value)) break
                                             volumePreview = value
                                         }
                                     }
@@ -893,6 +897,7 @@ fun BoloPlayerControls(
                                     }
                                 }
                             } finally {
+                                if (volumeAdjustmentStarted) deviceControls.endVolumeAdjustment()
                                 gesturePreviewMs = null
                                 brightnessPreview = null
                                 volumePreview = null
