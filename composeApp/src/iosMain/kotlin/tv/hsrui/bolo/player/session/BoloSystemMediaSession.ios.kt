@@ -71,8 +71,10 @@ internal actual fun createBoloSystemMediaSession(session: BoloPlaybackSession): 
             command.enabled = false
             val token = command.addTargetWithHandler { event ->
                 val value = session.state.value
-                if (value.metadata.mediaId.isEmpty()) {
+                if (closed || BoloPlaybackSession.current !== session || value.metadata.mediaId.isEmpty()) {
                     MPRemoteCommandHandlerStatusNoSuchContent
+                } else if (!command.enabled) {
+                    MPRemoteCommandHandlerStatusCommandFailed
                 } else {
                     val position = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime
                     session.dispatch(BoloSystemMediaCommand(action, value.metadata.mediaId,

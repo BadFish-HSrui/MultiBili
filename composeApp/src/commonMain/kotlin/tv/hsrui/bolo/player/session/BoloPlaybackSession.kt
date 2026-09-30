@@ -163,8 +163,8 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
 
     fun dispatch(command: BoloSystemMediaCommand) {
         scope.launch {
-            if (closed || command.mediaId != metadata.mediaId || metadata.mediaId.isEmpty()) return@launch
             val snapshot = state.value
+            if (closed || command.mediaId != snapshot.metadata.mediaId || snapshot.metadata.mediaId.isEmpty()) return@launch
             when (command.action) {
                 BoloSystemMediaAction.Play -> if (snapshot.canPlay) { stopped = false; player.play() }
                 BoloSystemMediaAction.Pause -> if (snapshot.canPause) player.pause()
@@ -206,7 +206,9 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
             playback.isPlaying -> BoloSystemMediaPlaybackStatus.Playing
             else -> BoloSystemMediaPlaybackStatus.Paused
         }
-        val value = BoloSystemMediaState(
+        // 只清空系统媒体输出，保留应用内媒体与进度，回到前台后重新发布。
+        val hideMedia = getPlatform().type != PlatformType.Desktop && !foreground && !settings.playback.backgroundPlaybackEnabled
+        val value = if (hideMedia) BoloSystemMediaState() else BoloSystemMediaState(
             metadata, status, permitted && (player.pendingPlayWhenReady ?: playback.playWhenReady),
             if (loading) 0 else playback.currentPositionMs.coerceAtLeast(0), if (loading) 0 else playback.durationMs.coerceAtLeast(0),
             playback.playbackSpeed.toDouble(),
