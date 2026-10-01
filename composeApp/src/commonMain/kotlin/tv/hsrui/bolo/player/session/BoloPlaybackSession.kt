@@ -1,5 +1,10 @@
 package tv.hsrui.bolo.player.session
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModel
@@ -249,6 +254,17 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
             current?.takeIf { it.key == key && !it.closed }?.let { return it }
             current?.close()
             return BoloPlaybackSession(key).also { current = it; it.connect() }
+        }
+
+        /** 预见式返回只预览页面；确认成为栈顶后才获取会话，离场动画保留原引用。 */
+        @Composable
+        internal fun <T : ViewModel> rememberViewModel(key: String, isActive: Boolean, create: () -> T): T? {
+            var retained by remember(key) { mutableStateOf<Pair<BoloPlaybackSession, T>?>(null) }
+            if (isActive && retained?.first?.closed != false) {
+                val session = obtain(key)
+                retained = session to session.getViewModel(key, create)
+            }
+            return retained?.second
         }
     }
 }

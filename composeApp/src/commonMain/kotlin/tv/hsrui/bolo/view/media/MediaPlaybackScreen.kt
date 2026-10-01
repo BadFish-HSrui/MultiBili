@@ -12,10 +12,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.runtime.remember
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
@@ -33,20 +31,19 @@ fun MediaPlaybackScreen(
     seasonId: Long = 0,
     modifier: Modifier = Modifier,
     episodeId: Long = 0,
-    viewModel: MediaPlaybackViewModel = remember(seasonId, episodeId) {
-        BoloPlaybackSession.obtain("media_${seasonId}_$episodeId").getViewModel("media_${seasonId}_$episodeId") {
-            MediaPlaybackViewModel(seasonId, episodeId)
-        }
+    isActive: Boolean = true,
+    viewModel: MediaPlaybackViewModel? = BoloPlaybackSession.rememberViewModel("media_${seasonId}_$episodeId", isActive) {
+        MediaPlaybackViewModel(seasonId, episodeId)
     },
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState = viewModel?.uiState?.collectAsState()?.value ?: MediaPlaybackUiState.Loading
     val fullscreenState = rememberPlayerFullscreenState()
     val fullscreenBackState = rememberNavigationEventState(NavigationEventInfo.None)
     val settings = koinInject<BoloSettings>()
-    PlayerFullscreenEffect(fullscreenState, settings.playback.autoFullscreenOnRotateEnabled)
+    if (isActive) PlayerFullscreenEffect(fullscreenState, settings.playback.autoFullscreenOnRotateEnabled)
     NavigationBackHandler(
         state = fullscreenBackState,
-        isBackEnabled = fullscreenState.shouldHandleFullscreenBack,
+        isBackEnabled = isActive && fullscreenState.shouldHandleFullscreenBack,
         onBackCompleted = fullscreenState::exitFullscreen,
     )
     Box(
@@ -61,7 +58,7 @@ fun MediaPlaybackScreen(
             when (val state = uiState) {
                 is MediaPlaybackUiState.Success -> MediaPlaybackPage(
                     uiState = state,
-                    viewModel = viewModel,
+                    viewModel = checkNotNull(viewModel),
                     fullscreenState = fullscreenState,
                 )
                 else -> Column(Modifier.fillMaxSize()) {
@@ -74,7 +71,7 @@ fun MediaPlaybackScreen(
                             MediaPlaybackUiState.Loading -> CircularProgressIndicator()
                             is MediaPlaybackUiState.Error -> ShowErrorContent(
                                 message = state.message,
-                                retry = viewModel::loadMedia,
+                                retry = { viewModel?.loadMedia() },
                             )
                             is MediaPlaybackUiState.Success -> Unit
                         }

@@ -13,10 +13,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.runtime.remember
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
@@ -32,19 +30,20 @@ import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 @Composable
 fun VideoScreen(
     request: VideoPlaybackRequest,
-    viewModel: VideoViewModel = remember(request.key) {
-        BoloPlaybackSession.obtain(request.key).getViewModel(request.key) { VideoViewModel(request = request) }
+    isActive: Boolean = true,
+    viewModel: VideoViewModel? = BoloPlaybackSession.rememberViewModel(request.key, isActive) {
+        VideoViewModel(request = request)
     },
     modifier: Modifier = Modifier
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState = viewModel?.uiState?.collectAsState()?.value ?: VideoUiState.Loading
     val fullscreenState = rememberPlayerFullscreenState()
     val fullscreenBackState = rememberNavigationEventState(NavigationEventInfo.None)
     val settings = koinInject<BoloSettings>()
-    PlayerFullscreenEffect(fullscreenState, settings.playback.autoFullscreenOnRotateEnabled)
+    if (isActive) PlayerFullscreenEffect(fullscreenState, settings.playback.autoFullscreenOnRotateEnabled)
     NavigationBackHandler(
         state = fullscreenBackState,
-        isBackEnabled = fullscreenState.shouldHandleFullscreenBack,
+        isBackEnabled = isActive && fullscreenState.shouldHandleFullscreenBack,
         onBackCompleted = fullscreenState::exitFullscreen,
     )
 
@@ -59,7 +58,7 @@ fun VideoScreen(
         Surface(modifier = Modifier.fillMaxSize()) {
             when (val state = uiState) {
                 is VideoUiState.Success -> {
-                    VideoPage(uiState = state, videoViewModel = viewModel, fullscreenState = fullscreenState)
+                    VideoPage(uiState = state, videoViewModel = checkNotNull(viewModel), fullscreenState = fullscreenState)
                 }
                 else -> Column(Modifier.fillMaxSize()) {
                     ShowTopBarWithNavigationButton(
@@ -71,7 +70,7 @@ fun VideoScreen(
                             is VideoUiState.Loading -> CircularProgressIndicator()
                             is VideoUiState.Error -> ShowErrorContent(
                                 message = state.message,
-                                retry = viewModel::loadPlayback,
+                                retry = { viewModel?.loadPlayback() },
                             )
                             VideoUiState.Empty -> Text("暂无可播放视频")
                             is VideoUiState.Success -> Unit

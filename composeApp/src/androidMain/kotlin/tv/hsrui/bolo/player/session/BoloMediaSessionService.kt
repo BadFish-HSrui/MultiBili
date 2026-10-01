@@ -34,6 +34,7 @@ class BoloMediaSessionService : MediaSessionService() {
     private var hasFocus = false
     private var transientLoss = false
     private var receiverRegistered = false
+    private var stopping = false
     private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
         when (change) {
             AudioManager.AUDIOFOCUS_GAIN -> {
@@ -82,7 +83,7 @@ class BoloMediaSessionService : MediaSessionService() {
         // startForegroundService 的首个通知也带 MediaSession token，不依赖普通通知权限。
         promote()
         ready.complete(this)
-        if (owner == null) stopSelf()
+        if (owner == null) stopPlaybackService()
     }
 
     private fun install(session: BoloPlaybackSession) {
@@ -110,7 +111,8 @@ class BoloMediaSessionService : MediaSessionService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        desired?.let { install(it) } ?: stopSelf()
+        if (stopping) return START_NOT_STICKY
+        desired?.let { install(it) } ?: stopPlaybackService()
         super.onStartCommand(intent, flags, startId)
         return START_NOT_STICKY
     }
@@ -119,7 +121,7 @@ class BoloMediaSessionService : MediaSessionService() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         owner?.close()
-        stopSelf()
+        stopPlaybackService()
     }
 
     private fun publishState(state: BoloSystemMediaState) {
@@ -164,6 +166,16 @@ class BoloMediaSessionService : MediaSessionService() {
         if (::wakeLock.isInitialized && wakeLock.isHeld) wakeLock.release()
     }
 
+    private fun stopPlaybackService() {
+        if (stopping) return
+        stopping = true
+        // stopSelf 的销毁回调异步到达；停止中的实例不能再接管新会话。
+        if (instance === this) { instance = null; ready = CompletableDeferred() }
+        releaseSession()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
     override fun onDestroy() {
         val previous = owner
         releaseSession()
@@ -172,6 +184,8 @@ class BoloMediaSessionService : MediaSessionService() {
         if (desired === previous) { desired = null; previous?.close() }
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
+        // 新的 start 可能已交给正在停止的旧实例，销毁完成后接续尚有效的请求。
+        if (stopping && instance == null) desired?.let { attach(it) }
     }
 
     companion object {
@@ -197,13 +211,14 @@ class BoloMediaSessionService : MediaSessionService() {
         internal fun detach(session: BoloPlaybackSession) {
             if (desired !== session) return
             desired = null
-            instance?.let { it.releaseSession(); it.stopForeground(STOP_FOREGROUND_REMOVE); it.stopSelf() }
+            instance?.stopPlaybackService()
         }
 
         internal suspend fun setAudioActive(owner: Any, active: Boolean): Boolean {
             if (!active) return instance?.audioActive(owner, false) ?: true
-            if (desired == null) return false
+            val session = desired ?: return false
             val service = instance ?: withTimeoutOrNull(5_000) { ready.await() } ?: return false
+            if (desired !== session || instance !== service || service.owner !== session || service.stopping) return false
             return service.audioActive(owner, true)
         }
     }

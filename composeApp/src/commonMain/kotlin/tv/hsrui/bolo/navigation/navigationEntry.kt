@@ -3,6 +3,7 @@ package tv.hsrui.bolo.navigation
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
 import androidx.navigation3.runtime.NavEntry
+import org.koin.compose.koinInject
 import tv.hsrui.bolo.accountFeature.AccountFeaturesScreen
 import tv.hsrui.bolo.favorite.FavoriteScreen
 import tv.hsrui.bolo.favorite.videos.FavoriteVideosScreen
@@ -121,13 +122,23 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
 
         is BoloRoute.View -> when (route) {
             is BoloRoute.View.Video -> NavEntry(key = route) {
-                VideoScreen(request = VideoPlaybackRequest.Single(route.vid))
+                val navigator: Navigator = koinInject()
+                VideoScreen(
+                    request = VideoPlaybackRequest.Single(route.vid),
+                    isActive = navigator.backStack.lastOrNull() == route,
+                )
             }
             is BoloRoute.View.VideoList -> NavEntry(key = route) {
-                VideoScreen(request = route.request)
+                val navigator: Navigator = koinInject()
+                VideoScreen(request = route.request, isActive = navigator.backStack.lastOrNull() == route)
             }
             is BoloRoute.View.Media -> NavEntry(key = route) {
-                MediaPlaybackScreen(seasonId = route.seasonId, episodeId = route.episodeId)
+                val navigator: Navigator = koinInject()
+                MediaPlaybackScreen(
+                    seasonId = route.seasonId,
+                    episodeId = route.episodeId,
+                    isActive = navigator.backStack.lastOrNull() == route,
+                )
             }
         }
     }
