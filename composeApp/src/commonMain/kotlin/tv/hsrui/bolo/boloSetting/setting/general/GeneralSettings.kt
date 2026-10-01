@@ -130,6 +130,19 @@ class GeneralSettings(settingsKSafe: KSafePlain) {
             currentSearchSuggestionsEnabled = value
         }
 
+    private var storedSearchTrendingEnabled by settingsKSafe(
+        true, key = "bolo_general_search_trending_enabled",
+    )
+    private var currentSearchTrendingEnabled by mutableStateOf(storedSearchTrendingEnabled)
+
+    var searchTrendingEnabled: Boolean
+        get() = currentSearchTrendingEnabled
+        set(value) {
+            if (value == currentSearchTrendingEnabled) return
+            storedSearchTrendingEnabled = value
+            currentSearchTrendingEnabled = value
+        }
+
     private var storedClipboardLinkRecognitionEnabled by settingsKSafe(
         false, key = "bolo_general_clipboard_link_recognition_enabled",
     )

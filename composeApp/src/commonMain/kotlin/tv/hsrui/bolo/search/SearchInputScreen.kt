@@ -89,21 +89,21 @@ import tv.hsrui.bolo.utils.isCompact
 fun SearchInputScreen(
     modifier: Modifier = Modifier,
     viewModel: SearchSuggestionsViewModel = viewModel { SearchSuggestionsViewModel() },
-    trendingViewModel: SearchTrendingViewModel = viewModel { SearchTrendingViewModel() },
 ) {
     val textFieldState = rememberTextFieldState()
     val navigator: Navigator = koinInject()
     val appDataStorage: AppDataStorage = koinInject()
     val settings: BoloSettings = koinInject()
     val searchSuggestionsEnabled = settings.general.searchSuggestionsEnabled
+    val searchTrendingEnabled = settings.general.searchTrendingEnabled
     val historyItems by appDataStorage.searchHistory.items.collectAsState()
     var deleteHistoryKeyword by rememberSaveable { mutableStateOf<String?>(null) }
     var showClearHistoryDialog by rememberSaveable { mutableStateOf(false) }
     val historyScrollState = rememberScrollState()
+    val historyOnlyScrollState = rememberScrollState()
     val trendingScrollState = rememberScrollState()
     val compactScrollState = rememberScrollState()
     val compact = isCompact()
-    val trendingState by trendingViewModel.uiState.collectAsState()
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -278,55 +278,73 @@ fun SearchInputScreen(
                 )
             }
         ) { innerPadding ->
-            if (compact) {
-                Column(
+            if (!searchTrendingEnabled) {
+                Box(
                     modifier = Modifier.fillMaxSize().padding(innerPadding)
-                        .verticalScroll(compactScrollState).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                        .verticalScroll(historyOnlyScrollState).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    contentAlignment = Alignment.TopCenter,
                 ) {
-                    ShowSearchTrending(
-                        state = trendingState,
-                        compact = true,
-                        onClick = submitSearch,
-                        onRetry = trendingViewModel::loadTrending,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
                     ShowSearchHistory(
                         items = historyItems,
                         onClick = submitSearch,
                         onLongClick = { deleteHistoryKeyword = it },
                         onClear = { showClearHistoryDialog = true },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.widthIn(max = 1000.dp).fillMaxWidth(),
                     )
                 }
             } else {
-                Row(Modifier.fillMaxSize().padding(innerPadding)) {
-                    Box(
-                        modifier = Modifier.weight(1f).fillMaxHeight()
-                            .verticalScroll(trendingScrollState).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                        contentAlignment = Alignment.TopEnd,
+                val trendingViewModel: SearchTrendingViewModel = viewModel { SearchTrendingViewModel() }
+                val trendingState by trendingViewModel.uiState.collectAsState()
+                if (compact) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(innerPadding)
+                            .verticalScroll(compactScrollState).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(24.dp),
                     ) {
                         ShowSearchTrending(
                             state = trendingState,
-                            compact = false,
+                            compact = true,
                             onClick = submitSearch,
                             onRetry = trendingViewModel::loadTrending,
-                            modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                    }
-                    VerticalDivider(Modifier.fillMaxHeight())
-                    Box(
-                        modifier = Modifier.weight(1f).fillMaxHeight()
-                            .verticalScroll(historyScrollState).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                        contentAlignment = Alignment.TopStart,
-                    ) {
                         ShowSearchHistory(
                             items = historyItems,
                             onClick = submitSearch,
                             onLongClick = { deleteHistoryKeyword = it },
                             onClear = { showClearHistoryDialog = true },
-                            modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
+                    }
+                } else {
+                    Row(Modifier.fillMaxSize().padding(innerPadding)) {
+                        Box(
+                            modifier = Modifier.weight(1f).fillMaxHeight()
+                                .verticalScroll(trendingScrollState).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            contentAlignment = Alignment.TopEnd,
+                        ) {
+                            ShowSearchTrending(
+                                state = trendingState,
+                                compact = false,
+                                onClick = submitSearch,
+                                onRetry = trendingViewModel::loadTrending,
+                                modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(),
+                            )
+                        }
+                        VerticalDivider(Modifier.fillMaxHeight())
+                        Box(
+                            modifier = Modifier.weight(1f).fillMaxHeight()
+                                .verticalScroll(historyScrollState).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            contentAlignment = Alignment.TopStart,
+                        ) {
+                            ShowSearchHistory(
+                                items = historyItems,
+                                onClick = submitSearch,
+                                onLongClick = { deleteHistoryKeyword = it },
+                                onClear = { showClearHistoryDialog = true },
+                                modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(),
+                            )
+                        }
                     }
                 }
             }

@@ -188,6 +188,19 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
                                 Spacer(Modifier.weight(1f))
                                 Switch(checked = settings.general.searchSuggestionsEnabled, onCheckedChange = null)
                             }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.general.searchTrendingEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.general.searchTrendingEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("显示热搜", style = MaterialTheme.typography.bodyLarge)
+                                Spacer(Modifier.weight(1f))
+                                Switch(checked = settings.general.searchTrendingEnabled, onCheckedChange = null)
+                            }
                         }
                         Text("外部链接", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))
                         Card(Modifier.fillMaxWidth()) {
