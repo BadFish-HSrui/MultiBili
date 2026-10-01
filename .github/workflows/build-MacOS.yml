@@ -25,7 +25,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: 检出源码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: recursive
@@ -75,7 +75,7 @@ jobs:
 
       - name: 恢复原生播放器缓存
         id: restore-native
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             nativePlayer/build/cache/downloads/*.tar.gz
@@ -88,7 +88,7 @@ jobs:
 
       - name: 恢复 Gradle 缓存
         id: restore-gradle
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.gradle/caches/modules-2
@@ -182,7 +182,7 @@ jobs:
           git diff --cached --exit-code
 
       - name: 上传 macOS 构建产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Mac-dmg
           path: staging/macos/multi-bili-macos-*-*.dmg
@@ -198,7 +198,7 @@ jobs:
       # clean_cache 让本次运行忽略已有缓存，仍按真实键尝试保存；已有同键条目不可覆盖。
       - name: 保存 Gradle 缓存
         if: ${{ !cancelled() && steps.restore-gradle.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             ~/.gradle/caches/modules-2
@@ -211,7 +211,7 @@ jobs:
 
       - name: 保存原生播放器缓存
         if: ${{ !cancelled() && steps.restore-native.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             nativePlayer/build/cache/downloads/*.tar.gz

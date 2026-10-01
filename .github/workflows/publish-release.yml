@@ -1,4 +1,4 @@
-name: 发布 GitHub Release
+name: 创建 GitHub Release 草稿
 
 on:
   workflow_dispatch:
@@ -84,7 +84,7 @@ jobs:
           PY
 
       - name: 检出构建提交
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.build.outputs.sha }}
           path: source
@@ -106,7 +106,7 @@ jobs:
         working-directory: source
         run: ./gradlew --no-daemon :writeBuildMetadata
 
-      - name: 准备 Tag、标题和发布正文
+      - name: 准备 Tag 和标题
         id: version
         working-directory: source
         env:
@@ -145,13 +145,6 @@ jobs:
           channels = re.findall(r'^APP_RELEASE_CHANNEL\s*=\s*(\w+)\s*$', properties, re.MULTILINE)
           if len(channels) != 1 or channels[0] not in {'alpha', 'beta', 'rc', 'stable'}:
               raise SystemExit('发布渠道无效')
-          notes_path = pathlib.Path('RELEASE.md')
-          if notes_path.is_symlink() or not notes_path.is_file():
-              raise SystemExit('构建提交必须包含普通文件 RELEASE.md')
-          notes = subprocess.check_output(['git', 'show', 'HEAD:RELEASE.md'])
-          if not notes.decode('utf-8').strip():
-              raise SystemExit('RELEASE.md 不能为空或仅包含空白')
-          (pathlib.Path(os.environ['RUNNER_TEMP']) / 'release-notes.md').write_bytes(notes)
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(f'display_version={version}\n')
               output.write(f'tag={tag}\n')
@@ -159,7 +152,7 @@ jobs:
           PY
 
       - name: 下载所选构建产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
@@ -217,7 +210,7 @@ jobs:
           (temp / 'release-assets.json').write_text(json.dumps(assets))
           PY
 
-      - name: 创建并发布 Release
+      - name: 创建草稿并上传附件
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -236,9 +229,7 @@ jobs:
           tag_path="$(jq -rn --arg tag "$RELEASE_TAG" '$tag | @uri')"
           gh api --paginate --slurp "repos/$GH_REPO/git/matching-refs/tags/$tag_path" > "$RUNNER_TEMP/tag-refs.json"
           tag_object="$(jq -c --arg ref "refs/tags/$RELEASE_TAG" '[.[][] | select(.ref == $ref)] | if length == 0 then null elif length == 1 then .[0].object else error("重复的 tag") end' "$RUNNER_TEMP/tag-refs.json")"
-          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
-          create_args=("$RELEASE_TAG" --draft --target "$BUILD_SHA" --title "$DISPLAY_VERSION" --notes-file "$NOTES_FILE")
-          publish_args=("$RELEASE_TAG" --draft=false)
+          create_args=("$RELEASE_TAG" --draft --title "$DISPLAY_VERSION" --notes "")
           if [[ "$tag_object" != 'null' ]]; then
             depth=0
             while [[ "$(jq -r '.type' <<< "$tag_object")" == 'tag' ]]; do
@@ -252,10 +243,11 @@ jobs:
               exit 1
             fi
             create_args+=(--verify-tag)
+          else
+            create_args+=(--target "$BUILD_SHA")
           fi
           if [[ "$RELEASE_CHANNEL" != 'stable' ]]; then
             create_args+=(--prerelease --latest=false)
-            publish_args+=(--prerelease --latest=false)
           fi
           assets=()
           while IFS= read -r asset; do
@@ -264,7 +256,7 @@ jobs:
           test "${#assets[@]}" -eq 11
           gh release create "${create_args[@]}"
           gh release upload "$RELEASE_TAG" "${assets[@]}"
-          gh release view "$RELEASE_TAG" --json assets,isDraft > "$RUNNER_TEMP/uploaded-release.json"
+          gh release view "$RELEASE_TAG" --json assets,isDraft,body,url > "$RUNNER_TEMP/uploaded-release.json"
           python3 - <<'PY'
           import json
           import os
@@ -273,18 +265,17 @@ jobs:
           temp = pathlib.Path(os.environ['RUNNER_TEMP'])
           expected = json.loads((temp / 'release-assets.json').read_text())
           release = json.loads((temp / 'uploaded-release.json').read_text())
+          if not release['isDraft'] or release['body']:
+              raise SystemExit('Release 必须保持草稿且正文为空，停止后续操作')
           actual = release['assets']
-          if (not release['isDraft'] or len(actual) != 11
+          if (len(actual) != 11
                   or {item['name']: item['size'] for item in actual} != {item['name']: item['size'] for item in expected}
                   or any(item['state'] != 'uploaded' for item in actual)):
-              raise SystemExit('草稿附件不完整，保留草稿并停止发布')
+              raise SystemExit('草稿附件不完整，保留草稿并停止后续操作')
           PY
-          gh release edit "${publish_args[@]}"
-          gh release view "$RELEASE_TAG" --json url,isDraft > "$RUNNER_TEMP/published-release.json"
-          jq -e '.isDraft == false' "$RUNNER_TEMP/published-release.json" > /dev/null
-          printf 'url=%s\n' "$(jq -r '.url' "$RUNNER_TEMP/published-release.json")" >> "$GITHUB_OUTPUT"
+          printf 'url=%s\n' "$(jq -r '.url' "$RUNNER_TEMP/uploaded-release.json")" >> "$GITHUB_OUTPUT"
 
-      - name: 输出发布摘要
+      - name: 输出草稿摘要
         env:
           DISPLAY_VERSION: ${{ steps.version.outputs.display_version }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
@@ -292,10 +283,11 @@ jobs:
           RELEASE_URL: ${{ steps.release.outputs.url }}
         run: |
           {
-            echo '## 发布成功'
+            echo '## 草稿创建成功'
             printf '\n- 标题：`%s`\n' "$DISPLAY_VERSION"
             printf -- '- Tag：`%s`\n' "$RELEASE_TAG"
             printf -- '- 构建：[运行 %s](%s)\n' "$BUILD_RUN_ID" "$BUILD_URL"
-            printf -- '- Release：[查看发布](%s)\n' "$RELEASE_URL"
+            printf -- '- Release：[查看草稿](%s)\n' "$RELEASE_URL"
             echo '- 已上传十一个附件。'
+            echo '- 请在 GitHub 页面手动填写正文并发布。'
           } >> "$GITHUB_STEP_SUMMARY"
