@@ -1,9 +1,6 @@
 package tv.hsrui.bolo.player.session
 
 import androidx.compose.runtime.snapshotFlow
-import androidx.lifecycle.ViewModelStore
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelStoreOwner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,8 +24,7 @@ import tv.hsrui.network.feature.player.fetchSystemMediaArtwork
 import kotlin.time.TimeSource
 
 /** 页面与系统服务共享所有权，输出宿主的创建/销毁不改变会话寿命。仅在 Main 使用。 */
-class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreOwner {
-    override val viewModelStore = ViewModelStore()
+class BoloPlaybackSession private constructor(val key: String) {
     val player = VideoPlayerViewModel(0L, 0L)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val settings: BoloSettings = getKoin().get()
@@ -53,10 +49,7 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
     private var wasEnded = false
     private var lastPublish = TimeSource.Monotonic.markNow()
 
-    fun <T : ViewModel> getViewModel(key: String, create: () -> T): T {
-        @Suppress("UNCHECKED_CAST")
-        return (viewModelStore[key] as? T) ?: create().also { viewModelStore.put(key, it) }
-    }
+    internal fun bindPlayback(block: suspend CoroutineScope.() -> Unit) = scope.launch(block = block)
 
     init {
         player.onPlaybackPageEntered()
@@ -237,7 +230,6 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
         try { adapter?.close() } catch (error: Exception) { println("系统媒体会话释放失败：${error.message}") }
         adapter = null
         scope.cancel()
-        viewModelStore.clear()
         player.closePlayback()
     }
 

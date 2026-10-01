@@ -20,6 +20,7 @@ object ApiUrls {
     const val HISTORY_DELETE = "x/v2/history/delete" //删除历史记录
     const val DYNAMIC = "x/polymer/web-dynamic/v1/feed/all" //动态
     const val VIDEO_INFO = "x/web-interface/wbi/view" //视频播放信息
+    const val VIDEO_TAGS = "x/web-interface/view/detail/tag" //视频标签
     const val VIDEO_COLLECTION = "x/polymer/web-space/seasons_archives_list" //视频合集内容
     const val VIDEO_SERIES = "x/series/series" //视频系列信息
     const val VIDEO_SERIES_VIDEOS = "x/series/archives" //视频系列内容

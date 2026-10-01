@@ -89,12 +89,11 @@ fun PlayerPageLayout(
     var rootOffsetInRoot by remember { mutableStateOf(IntOffset.Zero) }
     var playerBoundsInRoot by remember { mutableStateOf(IntRect.Zero) }
 
+    val tabs = PlayerInfoTab.entries
+    val pagerState = rememberPagerState { tabs.size }
+    val coroutineScope = rememberCoroutineScope()
     val videoInfoBar = remember {
         movableContentOf {
-            val tabs = PlayerInfoTab.entries
-            val pagerState = rememberPagerState { tabs.size }
-            val coroutineScope = rememberCoroutineScope()
-
             // 评论宿主按稿件或剧集切换时，保留信息区和简介的布局状态。
             val infoContent = remember {
                 movableContentOf<@Composable () -> Unit, @Composable () -> Unit> { mainContent, overlayContent ->

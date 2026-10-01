@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -13,7 +14,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import tv.hsrui.bolo.utils.isCompact
 
 @Composable
 fun ShowSearchHistory(
@@ -31,13 +32,12 @@ fun ShowSearchHistory(
     modifier: Modifier = Modifier
 ) {
     Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier
     ) {
         Row(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().height(if (isCompact()) 48.dp else 64.dp)
         ) {
             Text(
                 text = "历史记录",
@@ -52,7 +52,7 @@ fun ShowSearchHistory(
         if (items.isNotEmpty()) {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items.forEach { keyword ->
                     ShowSearchHistoryLabel(
@@ -78,7 +78,6 @@ fun ShowSearchHistoryLabel(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = modifier
             .widthIn(max = 240.dp)
-            .minimumInteractiveComponentSize()
             .clip(CircleShape)
             .combinedClickable(
                 role = Role.Button,

@@ -19,6 +19,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.utils.isMedium
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.bolo.view.video.VideoUiState
@@ -43,6 +46,9 @@ fun VideoDescPage(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val tagsViewModel = viewModel(key = "video_tags_${videoInfo.avid}") { VideoTagsViewModel(videoInfo.avid) }
+    val tags by tagsViewModel.tags.collectAsState()
+    val navigator: Navigator = koinInject()
     val columns = if (isMedium()) 2 else 1
     val videoList = collectionState.videoList
     val collection = videoInfo.collection?.takeIf { it.seasonId > 0 }
@@ -53,7 +59,13 @@ fun VideoDescPage(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = if (columns == 2) modifier.fillMaxWidth() else modifier.widthIn(max = 512.dp)
     ) {
-        item(key = "desc") { VideoDescContent(videoInfo) }
+        item(key = "desc") {
+            VideoDescContent(
+                videoInfo = videoInfo,
+                tags = tags,
+                onTagClick = { navigator.navigateTo(BoloRoute.Search.Results(it)) },
+            )
+        }
         if (videoList != null) {
             item(key = "video_list") {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

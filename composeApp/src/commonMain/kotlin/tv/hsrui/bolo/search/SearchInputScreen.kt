@@ -2,9 +2,13 @@ package tv.hsrui.bolo.search
 
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.absoluteOffset
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -12,6 +16,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +39,7 @@ import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -48,6 +54,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.AbsoluteAlignment
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
@@ -75,6 +82,7 @@ import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.storage.appData.AppDataStorage
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
+import tv.hsrui.bolo.utils.isCompact
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -87,10 +95,15 @@ fun SearchInputScreen(
     val appDataStorage: AppDataStorage = koinInject()
     val settings: BoloSettings = koinInject()
     val searchSuggestionsEnabled = settings.general.searchSuggestionsEnabled
+    val searchTrendingEnabled = settings.general.searchTrendingEnabled
     val historyItems by appDataStorage.searchHistory.items.collectAsState()
     var deleteHistoryKeyword by rememberSaveable { mutableStateOf<String?>(null) }
     var showClearHistoryDialog by rememberSaveable { mutableStateOf(false) }
     val historyScrollState = rememberScrollState()
+    val historyOnlyScrollState = rememberScrollState()
+    val trendingScrollState = rememberScrollState()
+    val compactScrollState = rememberScrollState()
+    val compact = isCompact()
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -265,19 +278,76 @@ fun SearchInputScreen(
                 )
             }
         ) { innerPadding ->
-            ShowSearchHistory(
-                items = historyItems,
-                onClick = submitSearch,
-                onLongClick = { keyword ->
-                    deleteHistoryKeyword = keyword
-                },
-                onClear = { showClearHistoryDialog = true },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .verticalScroll(historyScrollState)
-                    .padding(16.dp)
-            )
+            if (!searchTrendingEnabled) {
+                Box(
+                    modifier = Modifier.fillMaxSize().padding(innerPadding)
+                        .verticalScroll(historyOnlyScrollState).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    ShowSearchHistory(
+                        items = historyItems,
+                        onClick = submitSearch,
+                        onLongClick = { deleteHistoryKeyword = it },
+                        onClear = { showClearHistoryDialog = true },
+                        modifier = Modifier.widthIn(max = 1000.dp).fillMaxWidth(),
+                    )
+                }
+            } else {
+                val trendingViewModel: SearchTrendingViewModel = viewModel { SearchTrendingViewModel() }
+                val trendingState by trendingViewModel.uiState.collectAsState()
+                if (compact) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(innerPadding)
+                            .verticalScroll(compactScrollState).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(24.dp),
+                    ) {
+                        ShowSearchTrending(
+                            state = trendingState,
+                            compact = true,
+                            onClick = submitSearch,
+                            onRetry = trendingViewModel::loadTrending,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        ShowSearchHistory(
+                            items = historyItems,
+                            onClick = submitSearch,
+                            onLongClick = { deleteHistoryKeyword = it },
+                            onClear = { showClearHistoryDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                } else {
+                    Row(Modifier.fillMaxSize().padding(innerPadding)) {
+                        Box(
+                            modifier = Modifier.weight(1f).fillMaxHeight()
+                                .verticalScroll(trendingScrollState).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            contentAlignment = Alignment.TopEnd,
+                        ) {
+                            ShowSearchTrending(
+                                state = trendingState,
+                                compact = false,
+                                onClick = submitSearch,
+                                onRetry = trendingViewModel::loadTrending,
+                                modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(),
+                            )
+                        }
+                        VerticalDivider(Modifier.fillMaxHeight())
+                        Box(
+                            modifier = Modifier.weight(1f).fillMaxHeight()
+                                .verticalScroll(historyScrollState).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            contentAlignment = Alignment.TopStart,
+                        ) {
+                            ShowSearchHistory(
+                                items = historyItems,
+                                onClick = submitSearch,
+                                onLongClick = { deleteHistoryKeyword = it },
+                                onClear = { showClearHistoryDialog = true },
+                                modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         searchBounds?.let { bounds ->

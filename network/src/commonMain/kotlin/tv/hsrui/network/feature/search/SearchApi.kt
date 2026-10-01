@@ -9,6 +9,17 @@ import tv.hsrui.network.constant.ApiUrls
 import tv.hsrui.network.login.ensureBuvid3
 import tv.hsrui.network.wbi.buildWithWbi
 
+suspend fun fetchSearchTrending(): SearchTrendingResponse {
+    val response = ApiClient.httpClient.get(ApiUrls.BASE + "x/web-interface/wbi/search/square") {
+        buildWithWbi {
+            parameter("limit", 50)
+            parameter("platform", "web")
+        }
+    }
+    check(response.status.isSuccess()) { "热搜加载失败" }
+    return response.body()
+}
+
 suspend fun fetchSearchSuggestions(keyword: String): SearchSuggestionsResponse {
     val term = keyword.trim()
     require(term.isNotEmpty())

@@ -6,7 +6,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -27,15 +29,17 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,7 +59,11 @@ import tv.hsrui.network.utils.formatToDateTime
 import kotlin.text.ifEmpty
 
 @Composable
-fun VideoDescContent(videoInfo: VideoInfoData) {
+fun VideoDescContent(
+    videoInfo: VideoInfoData,
+    tags: List<String>,
+    onTagClick: (String) -> Unit,
+) {
     Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Column(Modifier.padding(8.dp)) {
             if (videoInfo.isCooperation && videoInfo.staff.isNotEmpty()) {
@@ -184,7 +192,7 @@ fun VideoDescContent(videoInfo: VideoInfoData) {
                 }
             }
 
-            var isDescExpand by remember { mutableStateOf(false) }
+            var isDescExpand by rememberSaveable { mutableStateOf(false) }
 
             Row(modifier = Modifier.padding(top = 4.dp)) {
                 Text(
@@ -207,22 +215,51 @@ fun VideoDescContent(videoInfo: VideoInfoData) {
             if (isDescExpand) {
                 Text(
                     text = videoInfo.description.ifEmpty { "——" },
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = 4.dp).alpha(0.67F)
                 )
                 if (videoInfo.dynamicDescription.isNotEmpty()) {
                     OutlinedCard(Modifier.padding(4.dp).fillMaxWidth()) {
                         Text(
                             text = "动态简介:",
-                            style = MaterialTheme.typography.labelLarge,
+                            style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(start = 4.dp, top = 4.dp)
                         )
                         Text(
                             text = videoInfo.dynamicDescription,
-                            style = MaterialTheme.typography.labelLarge,
+                            style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(horizontal = 8.dp)
                                 .alpha(0.67F)
                         )
+                    }
+                }
+                if (tags.isNotEmpty()) {
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 24.dp) {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            tags.forEach { tag ->
+                                Surface(
+                                    onClick = { onTagClick(tag) },
+                                    modifier = Modifier.height(24.dp),
+                                    shape = CircleShape,
+                                ) {
+                                    Box(
+                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = tag,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

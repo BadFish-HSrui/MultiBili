@@ -14,6 +14,7 @@ import tv.hsrui.network.feature.video.VideoInfoData
 fun VideoReplyPage(
     videoInfo: VideoInfoData,
     modifier: Modifier = Modifier,
+    isActive: Boolean = true,
     videoRepliesViewModel: RepliesViewModel = viewModel(key = "reply_${videoInfo.bvid}") {
         RepliesViewModel(ReplySectionType.VideoReply(videoInfo.avid))
     },
@@ -27,6 +28,7 @@ fun VideoReplyPage(
         viewModel = videoRepliesViewModel,
         uiState = videoRepliesUiState,
         upMid = videoInfo.upMid,
+        isActive = isActive,
         modifier = modifier,
         content = content,
     )

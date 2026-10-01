@@ -25,7 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +32,8 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import tv.hsrui.network.feature.reply.ReplyItem
@@ -43,7 +44,7 @@ private const val PredictiveBackTranslationFactor = 0.75f
 private const val PredictiveBackAlphaFactor = 0.3f
 
 @Stable
-internal class SubRepliesSurfaceState {
+internal class SubRepliesSurfaceState : ViewModel() {
     private val animatedTranslationFraction = Animatable(1f)
     private val animatedAlpha = Animatable(1f)
 
@@ -138,7 +139,7 @@ internal class SubRepliesSurfaceState {
 
 @Composable
 internal fun rememberSubRepliesSurfaceState(): SubRepliesSurfaceState =
-    remember { SubRepliesSurfaceState() }
+    viewModel { SubRepliesSurfaceState() }
 
 @Composable
 internal fun SubRepliesSurface(
