@@ -7,6 +7,41 @@ import tv.hsrui.network.model.VideosResult
 import tv.hsrui.network.utils.toHttpsUrl
 
 @Serializable
+data class SearchTrendingResponse(
+    private val code: Int = -1,
+    private val data: SearchTrendingData? = null,
+) {
+    val isSuccess: Boolean get() = code == 0 && data?.isSuccess == true
+    val items: List<SearchTrendingItemData> get() = data?.items.orEmpty()
+}
+
+@Serializable
+data class SearchTrendingData(
+    private val trending: SearchTrendingListData? = null,
+) {
+    val isSuccess: Boolean get() = trending?.isSuccess == true
+    val items: List<SearchTrendingItemData> get() = trending?.items.orEmpty()
+}
+
+@Serializable
+data class SearchTrendingListData(
+    @SerialName("list") private val entries: List<SearchTrendingItemData>? = null,
+) {
+    val isSuccess: Boolean get() = entries != null
+    val items: List<SearchTrendingItemData> get() = entries.orEmpty().filter { it.keyword.isNotBlank() }
+}
+
+@Serializable
+data class SearchTrendingItemData(
+    val keyword: String = "",
+    @SerialName("show_name") private val showName: String = "",
+    @SerialName("icon") private val icon: String = "",
+) {
+    val displayName: String get() = showName.ifBlank { keyword }
+    val iconUrl: String get() = icon.toHttpsUrl()
+}
+
+@Serializable
 data class SearchSuggestionsResponse(
     private val code: Int = -1,
     private val data: SearchSuggestionsData? = null,
