@@ -3,14 +3,14 @@ package tv.hsrui.bolo.view.video
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.ViewModelStore
-import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.player.VideoPlayer
@@ -24,17 +24,21 @@ fun VideoPage(
     uiState: VideoUiState.Success,
     videoViewModel: VideoViewModel,
     fullscreenState: PlayerFullscreenState,
+    isActive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val videoInfo = uiState.video
-    val viewModel = videoViewModel.playbackSession.player
-    val playerUiState by viewModel.uiState.collectAsState()
-    val playerInfo by viewModel.controller.info.collectAsState()
-    // 简介操作、推荐和评论按稿件保留；同视频切 P 复用，换视频或离页时清理。
-    val detailOwner = remember(videoInfo.avid) {
-        object : ViewModelStoreOwner { override val viewModelStore = ViewModelStore() }
+    val viewModel = videoViewModel.playbackSession?.player
+    val playerUiState = viewModel?.uiState?.collectAsState()?.value
+    val playerInfo = viewModel?.controller?.info?.collectAsState()?.value
+    var videoAspectRatio by rememberSaveable(videoInfo.avid, videoInfo.cid) { mutableStateOf<Float?>(null) }
+    SideEffect {
+        if (playerUiState is VideoPlayerUiState.Success) {
+            playerInfo?.video?.aspectRatio?.takeIf { it.isFinite() && it > 0F }?.let { videoAspectRatio = it }
+        }
     }
-    DisposableEffect(detailOwner) { onDispose { detailOwner.viewModelStore.clear() } }
+    // 稿件详情随导航页面保留；同视频切 P 复用，换稿件或移出返回栈时清理。
+    val detailOwner = videoViewModel.getDetailOwner(videoInfo.avid)
     PlayerPageLayout(
         fullscreenState = fullscreenState,
         descContent = {
@@ -60,6 +64,7 @@ fun VideoPage(
                 key(videoInfo.avid) {
                     VideoReplyPage(
                         videoInfo = videoInfo,
+                        isActive = isActive,
                         modifier = Modifier.fillMaxSize(),
                         content = content,
                     )
@@ -67,10 +72,10 @@ fun VideoPage(
             }
         },
         replyCount = videoInfo.stateCount.reply.toLong(),
-        videoAspectRatio = playerInfo.video.aspectRatio.takeIf { playerUiState is VideoPlayerUiState.Success },
+        videoAspectRatio = videoAspectRatio,
         modifier = modifier,
     ) {
-        VideoPlayer(
+        if (viewModel != null && playerUiState != null) VideoPlayer(
             title = videoInfo.title,
             viewModel = viewModel,
             uiState = playerUiState,

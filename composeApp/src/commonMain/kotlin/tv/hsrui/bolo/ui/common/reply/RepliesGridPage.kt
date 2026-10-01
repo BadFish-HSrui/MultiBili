@@ -71,6 +71,7 @@ fun RepliesGridPage(
     uiState: RepliesUiState,
     modifier: Modifier = Modifier,
     upMid: Long = 0L,
+    isActive: Boolean = true,
     content: @Composable (
         mainContent: @Composable () -> Unit,
         overlayContent: @Composable () -> Unit,
@@ -168,7 +169,7 @@ fun RepliesGridPage(
 
             NavigationBackHandler(
                 state = subRepliesBackState,
-                isBackEnabled = subRepliesSurfaceState.isVisible && viewingImageUrls.isEmpty(),
+                isBackEnabled = isActive && subRepliesSurfaceState.isVisible && viewingImageUrls.isEmpty(),
                 onBackCancelled = {
                     val progress = latestPredictiveBackProgress[0]
                     latestPredictiveBackProgress[0] = 0f

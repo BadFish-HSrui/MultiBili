@@ -1,5 +1,10 @@
 package tv.hsrui.bolo.view.video
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -39,27 +44,62 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
     private var listGeneration = 0
     private var listState: VideoListUiState? = null
     private var hasOpenedVideo = false
+    private var hasBoundPlayback = false
 
-    val playbackSession = BoloPlaybackSession.obtain(request.key)
+    var playbackSession by mutableStateOf<BoloPlaybackSession?>(null)
+        private set
+    private var detailKey: Long? = null
+    private val detailOwner = object : ViewModelStoreOwner {
+        override val viewModelStore = ViewModelStore()
+    }
 
     init {
-        viewModelScope.launch {
-            uiState.collectLatest { value ->
-                val state = value as? VideoUiState.Success ?: return@collectLatest
-                val video = state.video
-                val player = playbackSession.player
-                player.switchMedia(video.avid, video.cid, initialPlayerInfo = state.initialPlayerInfo)
-                playbackSession.updateMedia(
-                    BoloSystemMediaMetadata("${video.avid}:${video.cid}", video.title, video.upName, artworkUrl = video.coverUrl),
-                    if (state.hasPreviousEpisode) ::selectPreviousEpisode else null,
-                    if (state.hasNextEpisode) ::selectNextEpisode else null,
-                    state.episodeNavigationEnabled,
-                )
-                val result = player.uiState.first { it !is VideoPlayerUiState.Loading }
-                onEpisodePlaybackResult(video.avid, video.cid, result is VideoPlayerUiState.Error)
+        loadPlayback()
+    }
+
+    // 页面数据属于导航条目；只有栈顶页面绑定可释放的播放会话。
+    fun bindPlayback() {
+        if (playbackSession?.player?.playbackClosed == false) return
+        val session = BoloPlaybackSession.obtain(request.key)
+        playbackSession = session
+        val useInitialPlayerInfo = !hasBoundPlayback
+        hasBoundPlayback = true
+        session.bindPlayback {
+            try {
+                uiState.collectLatest { value ->
+                    val state = value as? VideoUiState.Success ?: return@collectLatest
+                    val video = state.video
+                    val player = session.player
+                    player.switchMedia(video.avid, video.cid, initialPlayerInfo = state.initialPlayerInfo.takeIf { useInitialPlayerInfo })
+                    session.updateMedia(
+                        BoloSystemMediaMetadata("${video.avid}:${video.cid}", video.title, video.upName, artworkUrl = video.coverUrl),
+                        if (state.hasPreviousEpisode) ::selectPreviousEpisode else null,
+                        if (state.hasNextEpisode) ::selectNextEpisode else null,
+                        state.episodeNavigationEnabled,
+                    )
+                    val result = player.uiState.first { it !is VideoPlayerUiState.Loading }
+                    onEpisodePlaybackResult(video.avid, video.cid, result is VideoPlayerUiState.Error)
+                }
+            } finally {
+                if (playbackSession === session) {
+                    playbackSession = null
+                    cancelEpisodeNavigation()
+                }
             }
         }
-        loadPlayback()
+    }
+
+    fun getDetailOwner(key: Long?): ViewModelStoreOwner {
+        if (detailKey != key) {
+            detailOwner.viewModelStore.clear()
+            detailKey = key
+        }
+        return detailOwner
+    }
+
+    override fun onCleared() {
+        playbackSession?.close()
+        detailOwner.viewModelStore.clear()
     }
 
     fun loadPlayback() {

@@ -1,5 +1,10 @@
 package tv.hsrui.bolo.view.media
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -7,6 +12,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -37,27 +44,64 @@ class MediaPlaybackViewModel(
     private var seasonGeneration = 0L
     private var recommendationsGeneration = 0L
 
-    val playbackSession = BoloPlaybackSession.obtain("media_${seasonId}_$episodeId")
+    var playbackSession by mutableStateOf<BoloPlaybackSession?>(null)
+        private set
+    private var detailKey: Long? = null
+    private val detailOwner = object : ViewModelStoreOwner {
+        override val viewModelStore = ViewModelStore()
+    }
 
     init {
         viewModelScope.launch {
-            uiState.collectLatest { value ->
-                val state = value as? MediaPlaybackUiState.Success ?: return@collectLatest
-                val episode = state.episode ?: return@collectLatest
-                val player = playbackSession.player
-                player.switchMedia(episode.avid, episode.cid, episode.episodeId)
-                playbackSession.updateMedia(
-                    BoloSystemMediaMetadata("${episode.avid}:${episode.cid}:${episode.episodeId}",
-                        "${state.media.title} ${episode.displayTitle}", album = state.media.title, artworkUrl = state.media.coverUrl),
-                    if (state.hasPreviousEpisode) ::selectPreviousEpisode else null,
-                    if (state.hasNextEpisode) ::selectNextEpisode else null,
-                    state.episodeNavigationEnabled,
-                )
-                val result = player.uiState.first { it !is VideoPlayerUiState.Loading }
-                onEpisodePlaybackResult(episode.episodeId, result is VideoPlayerUiState.Error)
-            }
+            uiState.map { (it as? MediaPlaybackUiState.Success)?.media?.seasonId }
+                .distinctUntilChanged()
+                .collect { it?.let(::loadRecommendations) }
         }
         loadMedia()
+    }
+
+    // 页面数据属于导航条目；只有栈顶页面绑定可释放的播放会话。
+    fun bindPlayback() {
+        if (playbackSession?.player?.playbackClosed == false) return
+        val session = BoloPlaybackSession.obtain("media_${seasonId}_$episodeId")
+        playbackSession = session
+        session.bindPlayback {
+            try {
+                uiState.collectLatest { value ->
+                    val state = value as? MediaPlaybackUiState.Success ?: return@collectLatest
+                    val episode = state.episode ?: return@collectLatest
+                    val player = session.player
+                    player.switchMedia(episode.avid, episode.cid, episode.episodeId)
+                    session.updateMedia(
+                        BoloSystemMediaMetadata("${episode.avid}:${episode.cid}:${episode.episodeId}",
+                            "${state.media.title} ${episode.displayTitle}", album = state.media.title, artworkUrl = state.media.coverUrl),
+                        if (state.hasPreviousEpisode) ::selectPreviousEpisode else null,
+                        if (state.hasNextEpisode) ::selectNextEpisode else null,
+                        state.episodeNavigationEnabled,
+                    )
+                    val result = player.uiState.first { it !is VideoPlayerUiState.Loading }
+                    onEpisodePlaybackResult(episode.episodeId, result is VideoPlayerUiState.Error)
+                }
+            } finally {
+                if (playbackSession === session) {
+                    playbackSession = null
+                    cancelEpisodeNavigation()
+                }
+            }
+        }
+    }
+
+    fun getDetailOwner(key: Long?): ViewModelStoreOwner {
+        if (detailKey != key) {
+            detailOwner.viewModelStore.clear()
+            detailKey = key
+        }
+        return detailOwner
+    }
+
+    override fun onCleared() {
+        playbackSession?.close()
+        detailOwner.viewModelStore.clear()
     }
 
     fun loadMedia() {

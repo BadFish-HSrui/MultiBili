@@ -29,13 +29,12 @@ import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,8 +43,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModelStore
-import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import coil3.compose.AsyncImage
@@ -72,25 +69,21 @@ fun MediaPlaybackPage(
     uiState: MediaPlaybackUiState.Success,
     viewModel: MediaPlaybackViewModel,
     fullscreenState: PlayerFullscreenState,
+    isActive: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val episode = uiState.episode
-    val playerViewModel = viewModel.playbackSession.player
-    val playerUiState by playerViewModel.uiState.collectAsState()
-    val playerInfo by playerViewModel.controller.info.collectAsState()
-    LaunchedEffect(uiState.media.seasonId) {
-        viewModel.loadRecommendations(uiState.media.seasonId)
-    }
-
-    // 评论及子回复只属于当前集；切集即释放，避免在同一路由的 Store 中累积旧集状态。
-    val replyOwner = remember(episode?.episodeId) {
-        object : ViewModelStoreOwner {
-            override val viewModelStore = ViewModelStore()
+    val playerViewModel = viewModel.playbackSession?.player
+    val playerUiState = playerViewModel?.uiState?.collectAsState()?.value
+    val playerInfo = playerViewModel?.controller?.info?.collectAsState()?.value
+    var videoAspectRatio by rememberSaveable(episode?.episodeId) { mutableStateOf<Float?>(null) }
+    SideEffect {
+        if (playerUiState is VideoPlayerUiState.Success) {
+            playerInfo?.video?.aspectRatio?.takeIf { it.isFinite() && it > 0F }?.let { videoAspectRatio = it }
         }
     }
-    DisposableEffect(replyOwner) {
-        onDispose { replyOwner.viewModelStore.clear() }
-    }
+    // 当前集评论随导航页面保留，切集或移出返回栈时释放。
+    val replyOwner = viewModel.getDetailOwner(episode?.episodeId)
     val repliesViewModel = if (episode != null) {
         composeViewModel(viewModelStoreOwner = replyOwner) { RepliesViewModel(ReplySectionType.VideoReply(episode.avid)) }
     } else null
@@ -107,6 +100,7 @@ fun MediaPlaybackPage(
                             viewModel = repliesViewModel,
                             uiState = repliesUiState,
                             upMid = uiState.media.upMid,
+                            isActive = isActive,
                             modifier = Modifier.fillMaxSize(),
                             content = content,
                         )
@@ -122,11 +116,10 @@ fun MediaPlaybackPage(
             }
         },
         replyCount = (repliesUiState as? RepliesUiState.Success)?.totalReplyCount,
-        videoAspectRatio = playerInfo.video.aspectRatio.takeIf {
-            episode != null && playerUiState is VideoPlayerUiState.Success
-        },
+        videoAspectRatio = videoAspectRatio,
         modifier = modifier,
     ) {
+        if (playerViewModel == null || playerUiState == null) return@PlayerPageLayout
         if (episode != null) {
             VideoPlayer(
                 title = "${uiState.media.title} ${episode.displayTitle}",
@@ -211,7 +204,7 @@ private fun MediaDescPage(
 
 @Composable
 private fun MediaDescContent(media: MediaSeasonData) {
-    var expanded by remember(media.seasonId) { mutableStateOf(false) }
+    var expanded by rememberSaveable(media.seasonId) { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

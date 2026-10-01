@@ -1,14 +1,6 @@
 package tv.hsrui.bolo.player.session
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.lifecycle.ViewModelStore
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelStoreOwner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,8 +24,7 @@ import tv.hsrui.network.feature.player.fetchSystemMediaArtwork
 import kotlin.time.TimeSource
 
 /** 页面与系统服务共享所有权，输出宿主的创建/销毁不改变会话寿命。仅在 Main 使用。 */
-class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreOwner {
-    override val viewModelStore = ViewModelStore()
+class BoloPlaybackSession private constructor(val key: String) {
     val player = VideoPlayerViewModel(0L, 0L)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val settings: BoloSettings = getKoin().get()
@@ -58,10 +49,7 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
     private var wasEnded = false
     private var lastPublish = TimeSource.Monotonic.markNow()
 
-    fun <T : ViewModel> getViewModel(key: String, create: () -> T): T {
-        @Suppress("UNCHECKED_CAST")
-        return (viewModelStore[key] as? T) ?: create().also { viewModelStore.put(key, it) }
-    }
+    internal fun bindPlayback(block: suspend CoroutineScope.() -> Unit) = scope.launch(block = block)
 
     init {
         player.onPlaybackPageEntered()
@@ -242,7 +230,6 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
         try { adapter?.close() } catch (error: Exception) { println("系统媒体会话释放失败：${error.message}") }
         adapter = null
         scope.cancel()
-        viewModelStore.clear()
         player.closePlayback()
     }
 
@@ -254,17 +241,6 @@ class BoloPlaybackSession private constructor(val key: String) : ViewModelStoreO
             current?.takeIf { it.key == key && !it.closed }?.let { return it }
             current?.close()
             return BoloPlaybackSession(key).also { current = it; it.connect() }
-        }
-
-        /** 预见式返回只预览页面；确认成为栈顶后才获取会话，离场动画保留原引用。 */
-        @Composable
-        internal fun <T : ViewModel> rememberViewModel(key: String, isActive: Boolean, create: () -> T): T? {
-            var retained by remember(key) { mutableStateOf<Pair<BoloPlaybackSession, T>?>(null) }
-            if (isActive && retained?.first?.closed != false) {
-                val session = obtain(key)
-                retained = session to session.getViewModel(key, create)
-            }
-            return retained?.second
         }
     }
 }

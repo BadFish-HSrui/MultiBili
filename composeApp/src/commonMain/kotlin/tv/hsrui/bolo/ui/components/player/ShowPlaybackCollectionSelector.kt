@@ -117,12 +117,22 @@ fun ShowPlaybackCollectionSelector(
     val currentPlayingRowIndex by rememberUpdatedState(playingRowIndex)
     var partsExpanded by rememberSaveable(playingItemId) { mutableStateOf(true) }
     val partBounds = remember(selectedGroupId, playingItemId, scrollItemsKey, scrollRevision) { mutableStateMapOf<String, Pair<Int, Int>>() }
+    var pendingItemScroll by rememberSaveable(selectedGroupId, playingItemId, playingPartId, isDescending, scrollItemsKey, scrollRevision) {
+        mutableStateOf(true)
+    }
+    var pendingPartScroll by rememberSaveable(selectedGroupId, playingItemId, playingPartId, isDescending, scrollItemsKey, scrollRevision, partsExpanded) {
+        mutableStateOf(true)
+    }
+    var pendingGroupScroll by rememberSaveable(groups, selectedGroupId) { mutableStateOf(true) }
     LaunchedEffect(selectedGroupId, playingItemId, playingPartId, isDescending, scrollItemsKey, scrollRevision, isLoading, errorMessage) {
-        if (isLoading || errorMessage != null) return@LaunchedEffect
-        if (displayedItems.isNotEmpty()) listState.scrollToItem(playingRowIndex)
+        if (!pendingItemScroll || isLoading || errorMessage != null) return@LaunchedEffect
+        if (displayedItems.isNotEmpty()) {
+            listState.scrollToItem(playingRowIndex)
+            pendingItemScroll = false
+        }
     }
     LaunchedEffect(selectedGroupId, playingItemId, playingPartId, isDescending, scrollItemsKey, scrollRevision, isLoading, errorMessage, partsExpanded) {
-        if (isLoading || errorMessage != null) return@LaunchedEffect
+        if (!pendingPartScroll || isLoading || errorMessage != null) return@LaunchedEffect
         if (partsExpanded && displayedItems.getOrNull(playingIndex)?.parts?.any { it.id == playingPartId } == true) {
             // 展开动画结束后再定位 P 行；收起不重置列表位置，避免卡片向下跳动。
             delay(200)
@@ -132,6 +142,7 @@ fun ShowPlaybackCollectionSelector(
             // 一张视频卡片可能高于整个视口；按内部 P 行定位，仍只滚动外层选集列表。
             listState.scrollToItem(currentPlayingRowIndex, (top + height - visibleHeight).coerceAtLeast(0))
         }
+        pendingPartScroll = false
     }
     LaunchedEffect(serverOrdered, items.size, scrollRevision, hasPrevious, hasNext,
         isLoadingPrevious, isLoadingNext, previousError, nextError) {
@@ -145,8 +156,12 @@ fun ShowPlaybackCollectionSelector(
         }
     }
     LaunchedEffect(groups, selectedGroupId) {
+        if (!pendingGroupScroll) return@LaunchedEffect
         val index = groups.indexOfFirst { it.id == selectedGroupId }
-        if (index >= 0) groupState.animateScrollToItem(index)
+        if (index >= 0) {
+            groupState.animateScrollToItem(index)
+            pendingGroupScroll = false
+        }
     }
 
     Card(modifier = modifier.fillMaxWidth()) {
