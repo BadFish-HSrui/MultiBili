@@ -5,6 +5,9 @@
 
 基于[Kotlin MultiPlatform & Compose MultiPlatform](https://kotlinlang.org/multiplatform/)的第三方开源多平台B站客户端
 
+[![Release](https://img.shields.io/github/v/release/BadFish-HSrui/MultiBili?display_name=tag&label=release)](https://github.com/BadFish-HSrui/MultiBili/releases/latest)
+
+
 </div>
 
 <p>
@@ -22,6 +25,8 @@
 
 > [!NOTE]
 > 由于项目目前处于早期开发阶段,可能频繁发生架构变动,暂不接受PR,有建议欢迎提交Issues
+> 
+> [开发计划](https://github.com/BadFish-HSrui/MultiBili/issues/3) [已知问题](https://github.com/BadFish-HSrui/MultiBili/issues/4)
 > 
 > 本项目目标不是实现官方客户端的所有功能,而是优先专注于视频/番剧,当前阶段不会添加关于 私信/动态/直播 的内容
 
