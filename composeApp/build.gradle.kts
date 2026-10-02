@@ -52,7 +52,7 @@ kotlin {
             includeDirs(nativeHeaders)
         }
         tasks.named(interop.interopProcessingTaskName).configure {
-            inputs.files(nativeHeaders.file("bolo_mpv.h"), nativeHeaders.file("BoloMpvView.h"))
+            inputs.files(nativeHeaders.file("bolo_mpv.h"), nativeHeaders.file("bolo_download.h"), nativeHeaders.file("BoloMpvView.h"))
             enabled = isMacHost
         }
         iosTarget.binaries.framework {

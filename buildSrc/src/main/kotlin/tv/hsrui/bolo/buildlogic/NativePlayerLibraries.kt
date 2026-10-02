@@ -83,7 +83,7 @@ internal class NativePlayerLibraries(
             "--extra-cflags=${ffFlags.joinToString(" ", transform = ::nativeQuote)}",
             "--extra-ldflags=${ffLink.joinToString(" ", transform = ::nativeQuote)}",
             "--pkg-config=${nativePath(chain.host.tool("pkg-config"))}", "--pkg-config-flags=--static", "--disable-autodetect",
-            "--disable-programs", "--disable-doc", "--disable-debug", "--disable-avdevice", "--disable-encoders", "--disable-muxers",
+            "--disable-programs", "--disable-doc", "--disable-debug", "--disable-avdevice", "--disable-encoders", "--disable-muxers", "--enable-muxer=mp4",
             "--disable-gpl", "--disable-nonfree", "--enable-static", "--disable-shared", "--enable-pic", "--enable-libdav1d", "--enable-network")
         options.addAll(when {
             mbedTls -> listOf("--enable-mbedtls", "--enable-version3")

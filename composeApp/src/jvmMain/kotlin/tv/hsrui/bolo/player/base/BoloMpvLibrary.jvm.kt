@@ -7,7 +7,11 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 
+private var libraryLoaded = false
+
+@Synchronized
 internal actual fun loadBoloMpvLibrary() {
+    if (libraryLoaded) return
     val manifest = checkNotNull(BoloMpvNative::class.java.getResourceAsStream("/bolo-native/files.txt")) {
         "缺少播放器原生资源，请先运行 :nativePlayer:prepareDesktopNative"
     }.use { it.readBytes() }
@@ -33,6 +37,7 @@ internal actual fun loadBoloMpvLibrary() {
         }
     }
     System.load(directory.resolve(System.mapLibraryName("bolo_mpv")).toAbsolutePath().toString())
+    libraryLoaded = true
 }
 
 private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
