@@ -15,6 +15,7 @@ import tv.hsrui.network.feature.player.VideoSource
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
 import tv.hsrui.network.feature.player.enumModels.VideoCodec
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
+import tv.hsrui.network.feature.player.fetchMediaPlayInfo
 import tv.hsrui.network.feature.player.fetchVideoPlayInfo
 import tv.hsrui.network.login.storage.LoginStorage
 
@@ -28,12 +29,13 @@ data class VideoDownloadUiState(
 )
 
 class VideoDownloadViewModel(
-    private val avid: Long,
+    private val id: Long,
     private val cid: Long,
     private val title: String,
     private val settings: PlaybackSettings,
     private val loginStorage: LoginStorage,
     private val manager: DownloadManager,
+    private val type: DownloadType = DownloadType.Video,
 ) : ViewModel() {
     private val _state = MutableStateFlow(VideoDownloadUiState())
     val state = _state.asStateFlow()
@@ -50,7 +52,12 @@ class VideoDownloadViewModel(
         loadJob = viewModelScope.launch {
             try {
                 check(loginStorage.isLoggedIn) { "请先登录" }
-                val source = withTimeout(15_000) { fetchVideoPlayInfo(avid, cid) }
+                val source = withTimeout(15_000) {
+                    when (type) {
+                        DownloadType.Video -> fetchVideoPlayInfo(id, cid)
+                        DownloadType.Media -> fetchMediaPlayInfo(id)
+                    }
+                }
                 if (request != generation) return@launch
                 check(session == loginStorage.cookies.sessData) { "登录状态已变化，请重试" }
                 check(source.isSuccess) { source.message }
@@ -101,7 +108,7 @@ class VideoDownloadViewModel(
         _state.value = current.copy(isSubmitting = true, error = null)
         viewModelScope.launch {
             try {
-                val submitted = manager.enqueue(DownloadRequest(avid, cid, title, spec), source)
+                val submitted = manager.enqueue(DownloadRequest(id, cid, title, spec, type), source)
                 _state.update { it.copy(isSubmitting = false, submitted = submitted) }
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) { _state.update { it.copy(isSubmitting = false, error = error.message ?: "创建下载任务失败") } }

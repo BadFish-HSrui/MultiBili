@@ -35,20 +35,27 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.download.DownloadManager
+import tv.hsrui.bolo.download.DownloadType
 import tv.hsrui.bolo.download.VideoDownloadViewModel
 import tv.hsrui.network.login.storage.LoginStorage
 
 @Composable
-fun ShowVideoDownloadDialog(avid: Long, cid: Long, title: String, onDismiss: () -> Unit) {
+fun ShowVideoDownloadDialog(
+    id: Long,
+    cid: Long,
+    title: String,
+    type: DownloadType = DownloadType.Video,
+    onDismiss: () -> Unit,
+) {
     val settings: BoloSettings = koinInject()
     val login: LoginStorage = koinInject()
     val manager: DownloadManager = koinInject()
-    val owner = remember(avid, cid) { object : ViewModelStoreOwner {
+    val owner = remember(type, id, cid) { object : ViewModelStoreOwner {
         override val viewModelStore = ViewModelStore()
     } }
     DisposableEffect(owner) { onDispose { owner.viewModelStore.clear() } }
     val model: VideoDownloadViewModel = viewModel(viewModelStoreOwner = owner) {
-        VideoDownloadViewModel(avid, cid, title, settings.playback, login, manager)
+        VideoDownloadViewModel(id, cid, title, settings.playback, login, manager, type)
     }
     val state by model.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.submitted) { if (state.submitted) onDismiss() }

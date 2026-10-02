@@ -16,19 +16,42 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import tv.hsrui.bolo.download.DownloadType
 import tv.hsrui.bolo.ui.components.dialog.ShowVideoDownloadDialog
-import tv.hsrui.network.feature.video.VideoInfoData
 
 @Composable
-fun DownloadButton(videoInfo: VideoInfoData, canClick: Boolean, modifier: Modifier = Modifier) {
-    var open by rememberSaveable(videoInfo.avid, videoInfo.cid) { mutableStateOf(false) }
-    Surface(onClick = { open = true }, enabled = canClick && videoInfo.avid > 0 && videoInfo.cid > 0,
-        color = Color.Transparent, modifier = modifier) {
+fun DownloadButton(
+    id: Long,
+    cid: Long,
+    title: String,
+    canClick: Boolean,
+    modifier: Modifier = Modifier,
+    type: DownloadType = DownloadType.Video,
+) {
+    var open by rememberSaveable(type, id, cid) { mutableStateOf(false) }
+    val enabled = canClick && id > 0 && cid > 0
+    Surface(onClick = { open = true }, enabled = enabled, color = Color.Transparent, modifier = modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Rounded.Download, contentDescription = "下载", tint = Color.Gray, modifier = Modifier.size(24.dp))
-            Text("下载", style = MaterialTheme.typography.labelSmall)
+            Icon(
+                imageVector = Icons.Rounded.Download,
+                contentDescription = "下载",
+                tint = Color.Gray,
+                modifier = Modifier.size(24.dp).graphicsLayer {
+                    scaleX = 1.16f
+                    scaleY = 1.16f
+                    translationY = 0.58.dp.toPx()
+                },
+            )
+            Text(
+                text = "下载",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
-    if (open && canClick) ShowVideoDownloadDialog(videoInfo.avid, videoInfo.cid, videoInfo.title, onDismiss = { open = false })
+    if (open && enabled) {
+        ShowVideoDownloadDialog(id = id, cid = cid, title = title, type = type, onDismiss = { open = false })
+    }
 }

@@ -26,6 +26,7 @@ import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.network.feature.download.downloadVideoStream
 import tv.hsrui.network.feature.player.VideoSource
+import tv.hsrui.network.feature.player.fetchMediaPlayInfo
 import tv.hsrui.network.feature.player.fetchVideoPlayInfo
 import tv.hsrui.network.login.storage.LoginStorage
 import kotlin.time.Clock
@@ -65,7 +66,7 @@ class DownloadManager private constructor() {
     suspend fun enqueue(request: DownloadRequest, source: VideoSource): Boolean {
         initialize()
         check(getKoin().get<LoginStorage>().isLoggedIn) { "请先登录" }
-        require(request.avid > 0 && request.cid > 0) { "视频标识无效" }
+        require(request.id > 0 && (request.type != DownloadType.Video || request.cid > 0)) { "视频标识无效" }
         validateSource(request, source)
         if (mutex.withLock { _tasks.value.any { it.request.key == request.key } }) {
             notify("已存在相同下载任务")
@@ -187,7 +188,12 @@ class DownloadManager private constructor() {
         val request = task(id).request
         val source = initialSource ?: try {
             check(getKoin().get<LoginStorage>().isLoggedIn) { "请先登录" }
-            withTimeout(15_000) { fetchVideoPlayInfo(request.avid, request.cid) }
+            withTimeout(15_000) {
+                when (request.type) {
+                    DownloadType.Video -> fetchVideoPlayInfo(request.id, request.cid)
+                    DownloadType.Media -> fetchMediaPlayInfo(request.id)
+                }
+            }
         } catch (_: TimeoutCancellationException) { error("播放信息获取超时，请重试") }
         catch (error: CancellationException) { throw error }
         catch (_: Exception) { error("播放信息获取失败，请重试") }

@@ -14,11 +14,20 @@ data class DownloadSpec(val videoQualityCode: Int, val videoCodecCode: Int, val 
 }
 
 @Serializable
-data class DownloadRequest(val avid: Long, val cid: Long, val title: String, val spec: DownloadSpec) {
-    val key: String get() = "$avid:$cid:${spec.videoQualityCode}:${spec.videoCodecCode}:${spec.audioQualityCode}"
+enum class DownloadType { Video, Media }
+
+@Serializable
+data class DownloadRequest(
+    val id: Long,
+    val cid: Long,
+    val title: String,
+    val spec: DownloadSpec,
+    val type: DownloadType = DownloadType.Video,
+) {
+    val key: String get() = "${type.name}:$id:$cid:${spec.videoQualityCode}:${spec.videoCodecCode}:${spec.audioQualityCode}"
     val fileName: String get() {
         val sanitized = title.map { if (it < ' ' || it in "<>:\"/\\|?*") '_' else it }.joinToString("")
-            .ifEmpty { "视频_$avid" }
+            .ifEmpty { "视频_$id" }
         val clean = if (Regex("(?i)^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])\\.").containsMatchIn(sanitized)) "_$sanitized" else sanitized
         val suffix = "_${spec.label}.mp4"
         var end = clean.length
