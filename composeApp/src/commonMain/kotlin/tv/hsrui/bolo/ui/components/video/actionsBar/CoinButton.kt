@@ -31,22 +31,21 @@ import org.koin.compose.koinInject
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.theme.BiliColor
-import tv.hsrui.network.feature.video.CopyrightType
-import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.video.actions.coin.modifyVideoCoin
 import tv.hsrui.network.utils.formatCountToString
 
 @Composable
 fun CoinButton(
-    videoInfo: VideoInfoData,
+    avid: Long,
+    coinCount: Long?,
+    coinLimit: Int,
     isCoined: Boolean,
     coinedCount: Int,
     canClick: Boolean,
     reloadState: suspend () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val canCoinCount =
-        (if (videoInfo.copyrightType == CopyrightType.Reprint) 1 else 2) - coinedCount
+    val canCoinCount = coinLimit - coinedCount
     var showDialog by rememberSaveable { mutableStateOf(false) }
     val snackbarManager: SnackbarManager = koinInject()
     val scope = rememberCoroutineScope()
@@ -70,7 +69,7 @@ fun CoinButton(
                     modifier = Modifier.size(24.dp)
                 )
                 Text(
-                    text = videoInfo.stateCount.coin.formatCountToString(),
+                    text = coinCount?.formatCountToString() ?: "--",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -131,7 +130,7 @@ fun CoinButton(
             onConfirm = {
                 scope.launch {
                     try {
-                        val result = modifyVideoCoin(avid = videoInfo.avid, coinCount = coinCount)
+                        val result = modifyVideoCoin(avid = avid, coinCount = coinCount)
                         if (result.isSuccess) {
                             snackbarManager.showMessage("成功投币${coinCount}枚")
                         } else {

@@ -11,6 +11,8 @@ object ApiUrls {
     const val MEDIA_CONDITIONS = "pgc/season/index/condition" //影视番剧筛选条件
     const val MEDIA_SEASON = "pgc/view/web/season" //媒体详情与分季
     const val MEDIA_RELATED = "pgc/season/web/related/recommend" //媒体推荐
+    const val MEDIA_ACTIONS = "pgc/season/episode/web/info" //当前集统计与操作状态
+    const val MEDIA_COIN_LIMIT = "pgc/season/episode/coin/user/number" //当前集投币上限
     const val MY_ACCOUNT_INFO = "x/space/v2/myinfo" //我的个人空间信息
     const val FOLLOW_STATE = "x/relation/stat" //关注与被关注
     const val USER_INFO = "x/space/wbi/acc/info" //其他用户资料

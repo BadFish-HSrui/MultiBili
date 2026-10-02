@@ -4,6 +4,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -57,9 +58,11 @@ import tv.hsrui.bolo.ui.common.reply.RepliesUiState
 import tv.hsrui.bolo.ui.common.reply.RepliesViewModel
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.media.ShowMediaCard
+import tv.hsrui.bolo.ui.components.media.actionsBar.MediaActionsBar
 import tv.hsrui.bolo.ui.components.player.PlaybackCollectionGroup
 import tv.hsrui.bolo.ui.components.player.PlaybackCollectionItem
 import tv.hsrui.bolo.ui.components.player.ShowPlaybackCollectionSelector
+import tv.hsrui.network.feature.media.MediaEpisode
 import tv.hsrui.network.feature.media.MediaSeasonData
 import tv.hsrui.network.feature.reply.ReplySectionType
 import tv.hsrui.network.utils.formatCountToString
@@ -157,7 +160,7 @@ private fun MediaDescPage(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier.widthIn(max = 512.dp),
     ) {
-        item(key = "desc") { MediaDescContent(media = uiState.media) }
+        item(key = "desc") { MediaDescContent(media = uiState.media, episode = uiState.episode) }
         item(key = "episodes") {
             ShowPlaybackCollectionSelector(
                 groups = uiState.seasons.map { PlaybackCollectionGroup(it.seasonId.toString(), it.title) },
@@ -203,28 +206,65 @@ private fun MediaDescPage(
 }
 
 @Composable
-private fun MediaDescContent(media: MediaSeasonData) {
+private fun MediaDescContent(media: MediaSeasonData, episode: MediaEpisode?) {
     var expanded by rememberSaveable(media.seasonId) { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (media.coverUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = media.coverUrl,
-                        contentDescription = "${media.title}封面",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxWidth(1f / 3f).aspectRatio(2f / 3f).clip(MaterialTheme.shapes.small),
-                    )
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(media.title, style = MaterialTheme.typography.titleSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    if (media.scoreText.isNotBlank()) Text(media.scoreText, style = MaterialTheme.typography.labelMedium)
-                    if (media.progressText.isNotBlank()) Text(media.progressText, style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        "${media.viewCount.formatCountToString()}播放 · ${media.danmakuCount.formatCountToString()}弹幕",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val coverHeight = if (media.coverUrl.isNotBlank()) maxWidth / 2f else 0.dp
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    if (media.coverUrl.isNotBlank()) {
+                        AsyncImage(
+                            model = media.coverUrl,
+                            contentDescription = "${media.title}封面",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxWidth(1f / 3f).aspectRatio(2f / 3f).clip(MaterialTheme.shapes.small),
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f).heightIn(min = coverHeight),
+                        verticalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(media.title, style = MaterialTheme.typography.titleSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            if (media.scoreText.isNotBlank() || media.progressText.isNotBlank()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (media.scoreText.isNotBlank()) {
+                                        Text(media.scoreText, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                    }
+                                    if (media.progressText.isNotBlank()) {
+                                        Text(
+                                            media.progressText,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                "${media.viewCount.formatCountToString()}播放 · ${media.danmakuCount.formatCountToString()}弹幕",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (episode != null) {
+                            MediaActionsBar(
+                                episode = episode,
+                                title = "${media.title} ${episode.displayTitle}",
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
+                    }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {

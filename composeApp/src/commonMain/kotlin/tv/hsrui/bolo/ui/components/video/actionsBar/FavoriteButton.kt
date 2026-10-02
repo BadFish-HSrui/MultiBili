@@ -50,46 +50,47 @@ import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.network.feature.favorite.FavoriteFolderInfoData
 import tv.hsrui.network.feature.favorite.fetchMyFavoriteFolders
 import tv.hsrui.network.feature.favorite.modifyVideoFavoriteFolders
-import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.utils.formatCountToString
 
 @Composable
 fun FavoriteButton(
-    videoInfo: VideoInfoData,
+    avid: Long,
+    favoriteCount: Long?,
     isFavorite: Boolean,
     canClick: Boolean,
     reloadState: suspend () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    resourceType: Int = 2,
 ) {
-    var showDialog by rememberSaveable(videoInfo.avid) { mutableStateOf(false) }
-    var loadTrigger by rememberSaveable(videoInfo.avid) { mutableStateOf(0) }
-    var folders by remember(videoInfo.avid) {
+    var showDialog by rememberSaveable(avid, resourceType) { mutableStateOf(false) }
+    var loadTrigger by rememberSaveable(avid, resourceType) { mutableStateOf(0) }
+    var folders by remember(avid, resourceType) {
         mutableStateOf(emptyList<FavoriteFolderInfoData>())
     }
-    var initialSelectedIds by remember(videoInfo.avid) {
+    var initialSelectedIds by remember(avid, resourceType) {
         mutableStateOf(emptySet<Long>())
     }
-    var selectedIds by remember(videoInfo.avid) {
+    var selectedIds by remember(avid, resourceType) {
         mutableStateOf(emptySet<Long>())
     }
-    var isLoading by remember(videoInfo.avid) { mutableStateOf(false) }
-    var loadError by remember(videoInfo.avid) { mutableStateOf<String?>(null) }
-    var isSubmitting by remember(videoInfo.avid) { mutableStateOf(false) }
-    var showCreateFolderDialog by rememberSaveable(videoInfo.avid) { mutableStateOf(false) }
-    var isRefreshingAfterCreate by remember(videoInfo.avid) { mutableStateOf(false) }
+    var isLoading by remember(avid, resourceType) { mutableStateOf(false) }
+    var loadError by remember(avid, resourceType) { mutableStateOf<String?>(null) }
+    var isSubmitting by remember(avid, resourceType) { mutableStateOf(false) }
+    var showCreateFolderDialog by rememberSaveable(avid, resourceType) { mutableStateOf(false) }
+    var isRefreshingAfterCreate by remember(avid, resourceType) { mutableStateOf(false) }
     val snackbarManager: SnackbarManager = koinInject()
     val scope = rememberCoroutineScope()
     val windowSize = LocalWindowInfo.current.containerDpSize
     val dialogContentMaxWidth = minOf(windowSize.width * 0.8F, 480.dp)
     val dialogContentMaxHeight = windowSize.height / 2
 
-    LaunchedEffect(showDialog, loadTrigger, videoInfo.avid) {
+    LaunchedEffect(showDialog, loadTrigger, avid, resourceType) {
         if (!showDialog) return@LaunchedEffect
 
         isLoading = true
         loadError = null
         try {
-            val result = fetchMyFavoriteFolders(targetAvid = videoInfo.avid)
+            val result = fetchMyFavoriteFolders(targetAvid = avid, targetType = resourceType)
             if (result.isSuccess) {
                 folders = result.folders
                 initialSelectedIds = result.folders
@@ -121,7 +122,7 @@ fun FavoriteButton(
                 showDialog = true
                 loadTrigger++
             },
-            enabled = canClick && videoInfo.avid > 0,
+            enabled = canClick && avid > 0,
             color = Color.Transparent,
         ) {
             Column(
@@ -134,7 +135,7 @@ fun FavoriteButton(
                     modifier = Modifier.size(24.dp),
                 )
                 Text(
-                    text = videoInfo.stateCount.favorite.formatCountToString(),
+                    text = favoriteCount?.formatCountToString() ?: "--",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -157,9 +158,10 @@ fun FavoriteButton(
                 scope.launch {
                     try {
                         val result = modifyVideoFavoriteFolders(
-                            avid = videoInfo.avid,
+                            avid = avid,
                             addMediaIds = addMediaIds,
                             removeMediaIds = removeMediaIds,
+                            resourceType = resourceType,
                         )
                         if (result.isSuccess) {
                             showDialog = false
@@ -311,7 +313,8 @@ fun FavoriteButton(
                 scope.launch {
                     try {
                         val refreshResult = fetchMyFavoriteFolders(
-                            targetAvid = videoInfo.avid,
+                            targetAvid = avid,
+                            targetType = resourceType,
                         )
                         if (refreshResult.isSuccess) {
                             val refreshedFolders = refreshResult.folders
