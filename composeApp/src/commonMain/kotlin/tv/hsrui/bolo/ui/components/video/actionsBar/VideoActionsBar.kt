@@ -78,5 +78,6 @@ fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
             canClick = isLogin,
             reloadState = reloadState
         )
+        DownloadButton(videoInfo = videoInfo, canClick = isLogin)
     }
 }

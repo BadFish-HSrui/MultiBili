@@ -2,20 +2,25 @@ package tv.hsrui.bolo.download
 
 import android.Manifest
 import android.content.ContentValues
+import android.content.ClipData
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import java.io.File
 import java.io.FileOutputStream
 import java.lang.ref.WeakReference
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -23,9 +28,46 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import tv.hsrui.bolo.utils.url.AppContext
 
+class DownloadFileProvider : FileProvider()
+
 actual class DownloadFiles actual constructor() {
     private val context get() = AppContext.instance
     private val temporary get() = File(context.cacheDir, "bolo-downloads")
+
+    actual suspend fun openFile(output: DownloadOutput): Boolean = openOutput(output, showDirectory = false)
+    actual suspend fun showFile(output: DownloadOutput): Boolean = openOutput(output, showDirectory = true)
+
+    private suspend fun openOutput(output: DownloadOutput, showDirectory: Boolean): Boolean = try {
+        val uri = withContext(Dispatchers.IO) {
+            val uri = if (output.location.startsWith("content://")) {
+                Uri.parse(output.location)
+            } else {
+                val file = File(output.location)
+                check(file.isAbsolute && file.isFile && file.canRead())
+                FileProvider.getUriForFile(context, "${context.packageName}.download.files", file)
+            }
+            checkNotNull(context.contentResolver.openFileDescriptor(uri, "r")).use { }
+            uri
+        }
+        withContext(Dispatchers.Main.immediate) {
+            val intent = if (showDirectory) {
+                Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS)
+            } else {
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "video/mp4")
+                    clipData = ClipData.newRawUri(output.fileName, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            true
+        }
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        false
+    }
 
     actual suspend fun requestPermission(): Boolean = withContext(Dispatchers.Main.immediate) {
         if (Build.VERSION.SDK_INT >= 29 || context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {

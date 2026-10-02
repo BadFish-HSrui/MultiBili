@@ -45,6 +45,7 @@ sealed interface BoloRoute {
         @Serializable data object HistorySearch : AccountFeature
         @Serializable data object WatchLater : AccountFeature
         @Serializable data object WatchLaterSearch : AccountFeature
+        @Serializable data object Download : AccountFeature
     }
 
     @Serializable

@@ -2,6 +2,9 @@ package tv.hsrui.bolo.download
 
 import java.io.File
 import java.io.FileOutputStream
+import java.awt.Desktop
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -10,6 +13,33 @@ import kotlinx.coroutines.withContext
 
 actual class DownloadFiles actual constructor() {
     private val temporary = File(System.getProperty("java.io.tmpdir"), "bolo-downloads")
+
+    actual suspend fun openFile(output: DownloadOutput): Boolean = openOutput(output, showDirectory = false)
+    actual suspend fun showFile(output: DownloadOutput): Boolean = openOutput(output, showDirectory = true)
+
+    private suspend fun openOutput(output: DownloadOutput, showDirectory: Boolean): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val file = File(output.location)
+            if (!file.isAbsolute || !file.isFile || !file.canRead()) return@withContext false
+            val target = if (showDirectory) file.parentFile ?: return@withContext false else file
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                Desktop.getDesktop().open(target)
+                true
+            } else if (System.getProperty("os.name").startsWith("Linux")) {
+                val process = ProcessBuilder("xdg-open", target.absolutePath)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start()
+                val finished = process.waitFor(5, TimeUnit.SECONDS)
+                currentCoroutineContext().ensureActive()
+                !finished || process.exitValue() == 0
+            } else false
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     actual suspend fun requestPermission(): Boolean = true
     actual suspend fun clearTemporaryFiles() = withContext(Dispatchers.IO) {
