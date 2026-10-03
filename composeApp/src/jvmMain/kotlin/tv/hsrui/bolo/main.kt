@@ -11,9 +11,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import io.github.vinceglb.filekit.FileKit
 import multibili.composeapp.generated.resources.Res
 import multibili.composeapp.generated.resources.jvm_icon
 import org.jetbrains.compose.resources.painterResource
+import tv.hsrui.bolo.download.DownloadFiles
 import tv.hsrui.bolo.player.DesktopPlayerFullscreenWindow
 import tv.hsrui.bolo.player.DesktopPlayerKeyboard
 import tv.hsrui.bolo.player.session.BoloPlaybackSession
@@ -21,6 +23,7 @@ import java.awt.Dimension
 
 fun main() {
     System.setProperty("compose.interop.blending", "true")
+    FileKit.init(appId = "tv.hsrui.bolo")
     application {
         val windowState = rememberWindowState(width = 1200.dp, height = 800.dp)
         Window(
@@ -48,8 +51,10 @@ fun main() {
                 window.minimumSize = Dimension(720, 600)
                 DesktopPlayerFullscreenWindow.attach(window, windowState)
                 inputMethod.attach()
+                DownloadFiles.attach(window)
                 onDispose {
                     inputMethod.close()
+                    DownloadFiles.detach(window)
                     DesktopPlayerFullscreenWindow.detach(window)
                 }
             }

@@ -26,7 +26,9 @@ fun ShowDownloadGroupCard(tasks: List<DownloadTask>, onClick: () -> Unit, modifi
     val total = tasks.distinctBy { it.episodeKey }.size
     val completed = tasks.completedDownloadEpisodes()
     val speed = tasks.filter { it.status == DownloadStatus.Downloading }.sumOf { it.bytesPerSecond }
-    val downloadedBytes = tasks.sumOf { it.output?.size ?: it.downloadedBytes }
+    val downloadedBytes = tasks.sumOf {
+        if (it.status == DownloadStatus.Completed) it.output?.size ?: it.downloadedBytes else it.downloadedBytes
+    }
     val unit = if (first.request.type == DownloadType.Media) "集" else "P"
     Card(onClick = onClick, modifier = modifier.fillMaxWidth().height(108.dp)) {
         Column(Modifier.fillMaxSize().padding(4.dp)) {

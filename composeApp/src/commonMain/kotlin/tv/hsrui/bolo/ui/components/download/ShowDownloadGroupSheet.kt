@@ -29,9 +29,7 @@ fun ShowDownloadGroupSheet(
     onRetry: (String) -> Unit,
     onCancel: (String) -> Unit,
     onRemove: (String) -> Unit,
-    isFileMissing: (DownloadTask) -> Boolean,
     isCheckingFile: (DownloadTask) -> Boolean,
-    onCheckFile: suspend (DownloadTask) -> Unit,
 ) {
     val first = tasks.firstOrNull() ?: return
     ModalBottomSheet(onDismissRequest = onDismiss,
@@ -58,9 +56,7 @@ fun ShowDownloadGroupSheet(
                     onRetry = { onRetry(task.id) },
                     onCancel = { onCancel(task.id) },
                     onRemove = { onRemove(task.id) },
-                    fileMissing = isFileMissing(task),
                     isCheckingFile = isCheckingFile(task),
-                    onCheckFile = { onCheckFile(task) },
                 )
             }
         }

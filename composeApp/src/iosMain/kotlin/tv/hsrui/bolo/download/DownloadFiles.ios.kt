@@ -117,8 +117,17 @@ actual class DownloadFiles actual constructor() {
         false
     }
 
-    actual suspend fun requestPermission(): Boolean = true
-    actual suspend fun clearTemporaryFiles() = withContext(Dispatchers.Default) {
+    actual suspend fun pickDirectory(initialDirectory: String): String? = null
+    actual suspend fun directoryDisplayName(directory: String): String = withContext(Dispatchers.Default) {
+        directory.ifEmpty {
+            val base = checkNotNull(manager.URLForDirectory(NSDocumentDirectory, NSUserDomainMask, null, true, null)?.path) {
+                "无法获取下载目录"
+            }
+            "$base/Downloads"
+        }
+    }
+    actual suspend fun requestPermission(directory: String): Boolean = true
+    actual suspend fun clearTemporaryFiles(completedOutputs: List<DownloadOutput>) = withContext(Dispatchers.Default) {
         check(!manager.fileExistsAtPath(temporary) || manager.removeItemAtPath(temporary, null)) { "下载临时文件清理失败" }
     }
     actual suspend fun prepare(id: String) = withContext(Dispatchers.Default) {
@@ -139,7 +148,7 @@ actual class DownloadFiles actual constructor() {
             }
         }
 
-    actual suspend fun publish(id: String, fileName: String, onPublished: suspend (DownloadOutput) -> Unit) = withContext(Dispatchers.Default) {
+    actual suspend fun publish(id: String, fileName: String, directory: String, onPublished: suspend (DownloadOutput) -> Unit) = withContext(Dispatchers.Default) {
         val base = checkNotNull(manager.URLForDirectory(NSDocumentDirectory, NSUserDomainMask, null, true, null)?.path)
         val directory = "$base/Downloads"
         check(manager.createDirectoryAtPath(directory, true, null, null)) { "无法创建下载目录" }
@@ -166,7 +175,7 @@ actual class DownloadFiles actual constructor() {
             }
         }
     }
-    actual suspend fun clean(id: String) = withContext(Dispatchers.Default) {
+    actual suspend fun clean(id: String, completedOutput: DownloadOutput?) = withContext(Dispatchers.Default) {
         val directory = "$temporary/$id"
         check(!manager.fileExistsAtPath(directory) || manager.removeItemAtPath(directory, null)) { "下载临时文件清理失败" }
     }

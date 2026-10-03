@@ -76,12 +76,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.materialkolor.PaletteStyle
 import com.materialkolor.dynamiccolor.ColorSpec
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.boloSetting.AppThemeMode
 import tv.hsrui.bolo.getPlatform
+import tv.hsrui.bolo.download.DownloadFiles
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
@@ -200,6 +202,56 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
                                 Text("显示热搜", style = MaterialTheme.typography.bodyLarge)
                                 Spacer(Modifier.weight(1f))
                                 Switch(checked = settings.general.searchTrendingEnabled, onCheckedChange = null)
+                            }
+                            if (getPlatform().type != PlatformType.Ios) {
+                                val files = remember { DownloadFiles() }
+                                val directory = settings.general.downloadDirectory
+                                var directoryName by remember(directory) {
+                                    mutableStateOf(directory)
+                                }
+                                var pickingDirectory by remember { mutableStateOf(false) }
+                                LaunchedEffect(directory) {
+                                    directoryName = try {
+                                        files.directoryDisplayName(directory)
+                                    } catch (error: CancellationException) {
+                                        throw error
+                                    } catch (_: Exception) {
+                                        snackbar.showMessage("无法读取下载目录，请重新选择")
+                                        directory
+                                    }
+                                }
+                                HorizontalDivider()
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().height(64.dp)
+                                        .clickable(enabled = !pickingDirectory, role = Role.Button) {
+                                            pickingDirectory = true
+                                            scope.launch {
+                                                try {
+                                                    files.pickDirectory(directory)?.let {
+                                                        settings.general.downloadDirectory = it
+                                                    }
+                                                } catch (error: CancellationException) {
+                                                    throw error
+                                                } catch (_: Exception) {
+                                                    snackbar.showMessage("无法使用所选下载目录，请重新选择")
+                                                } finally {
+                                                    pickingDirectory = false
+                                                }
+                                            }
+                                        }.padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("下载位置", style = MaterialTheme.typography.bodyLarge)
+                                    Spacer(Modifier.width(16.dp))
+                                    Text(
+                                        text = directoryName,
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.End,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
                         }
                         Text("外部链接", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))

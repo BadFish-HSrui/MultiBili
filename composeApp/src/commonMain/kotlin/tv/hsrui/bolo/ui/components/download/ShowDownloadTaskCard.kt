@@ -26,7 +26,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,14 +43,8 @@ fun ShowDownloadTaskCard(
     onRemove: () -> Unit,
     modifier: Modifier = Modifier,
     title: String = task.title,
-    fileMissing: Boolean = false,
     isCheckingFile: Boolean = false,
-    onCheckFile: suspend () -> Unit = {},
 ) {
-    LaunchedEffect(task.id, task.status, task.output) {
-        if (task.status == DownloadStatus.Completed && task.output != null) onCheckFile()
-    }
-    val missing = task.status == DownloadStatus.Completed && task.output != null && fileMissing
     val total = task.totalBytes?.takeIf { it > 0 }
     val downloadProgress = total?.let { (task.downloadedBytes.toDouble() / it).coerceIn(0.0, 1.0) } ?: 0.0
     val mergeProgress = task.mergeProgress.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f
@@ -64,9 +57,8 @@ fun ShowDownloadTaskCard(
             "—% · ${formatDownloadBytes(task.bytesPerSecond)}/s · ${formatDownloadBytes(task.downloadedBytes)} / 未知"
         }
         DownloadStatus.Merging -> "合成中 · ${(mergeProgress * 100).toInt()}%"
-        DownloadStatus.Completed -> if (missing) "文件被移动或删除"
-            else task.output?.let { "已完成 · ${formatDownloadBytes(it.size)}" } ?: "已完成"
-        DownloadStatus.Failed -> task.error?.takeIf { it.isNotBlank() }?.let { "下载失败：$it" } ?: "下载失败"
+        DownloadStatus.Completed -> task.output?.let { "已完成 · ${formatDownloadBytes(it.size)}" } ?: "已完成"
+        DownloadStatus.Failed -> task.error?.takeIf { it.isNotBlank() } ?: "下载失败"
         DownloadStatus.Queued, DownloadStatus.WaitingForMerge, DownloadStatus.Saving, DownloadStatus.Canceled -> task.status.title
     }
 
@@ -100,7 +92,7 @@ fun ShowDownloadTaskCard(
             }
             Text(
                 text = statusText,
-                color = if (task.status == DownloadStatus.Failed || missing) MaterialTheme.colorScheme.error else LocalContentColor.current,
+                color = if (task.status == DownloadStatus.Failed) MaterialTheme.colorScheme.error else LocalContentColor.current,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 softWrap = false,
@@ -109,7 +101,7 @@ fun ShowDownloadTaskCard(
             Spacer(Modifier.weight(1f))
             CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    if (task.status == DownloadStatus.Completed && !missing) {
+                    if (task.status == DownloadStatus.Completed) {
                         IconButton(onClick = onOpenFile, enabled = task.output != null && !isCheckingFile, modifier = Modifier.size(32.dp)) {
                             Icon(Icons.Rounded.OpenInNew, contentDescription = "外部打开", modifier = Modifier.size(24.dp))
                         }

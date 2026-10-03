@@ -125,6 +125,7 @@ kotlin {
             implementation(libs.kotlin.test)
         }
         jvmMain.dependencies {
+            implementation(libs.filekit.dialogs)
             implementation(libs.dbus.java.core)
             runtimeOnly(libs.dbus.java.transport)
             implementation(compose.desktop.currentOs)
@@ -142,6 +143,7 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "tv.hsrui.bolo.MainKt"
+        buildTypes.release.proguard.configurationFiles.from(project.file("desktop.pro"))
 
         nativeDistributions {
             targetFormats(
@@ -160,6 +162,7 @@ compose.desktop {
                 iconFile.set(project.file("src/jvmMain/icons/mac_icon.icns"))
             }
             linux {
+                modules("jdk.security.auth")
                 menuGroup = "AudioVideo;Video;Player;"
                 packageVersion = appVersionMetadata.coreVersion
                 appRelease = appVersionMetadata.buildNumber.toString()

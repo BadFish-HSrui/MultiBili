@@ -3,16 +3,25 @@ package tv.hsrui.bolo.download
 import java.io.File
 import java.io.FileOutputStream
 import java.awt.Desktop
+import java.awt.Window
+import java.lang.ref.WeakReference
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.TimeUnit
+import io.github.vinceglb.filekit.FileKit
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.dialogs.FileKitDialogParent
+import io.github.vinceglb.filekit.dialogs.FileKitDialogSettings
+import io.github.vinceglb.filekit.dialogs.openDirectoryPicker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.swing.Swing
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 
 actual class DownloadFiles actual constructor() {
@@ -67,8 +76,44 @@ actual class DownloadFiles actual constructor() {
         }
     }
 
-    actual suspend fun requestPermission(): Boolean = true
-    actual suspend fun clearTemporaryFiles() = withContext(Dispatchers.IO) {
+    actual suspend fun pickDirectory(initialDirectory: String): String? {
+        check(pickerMutex.tryLock()) { "文件夹选择器已打开" }
+        try {
+            val parent = withContext(Dispatchers.Swing) {
+                checkNotNull(host?.get()?.takeIf { it.isDisplayable }) { "无法打开文件夹选择器" }
+            }
+            val initial = withContext(Dispatchers.IO) {
+                (if (initialDirectory.isEmpty()) directory() else File(initialDirectory)).takeIf { it.isDirectory }
+            }
+            val selected = FileKit.openDirectoryPicker(
+                directory = initial?.let(::PlatformFile),
+                dialogSettings = FileKitDialogSettings(title = "选择下载位置", parent = FileKitDialogParent.awt(parent)),
+            ) ?: return null
+            val location = selected.file.absolutePath
+            check(requestPermission(location)) { "下载目录不可写，请重新选择" }
+            return location
+        } finally {
+            pickerMutex.unlock()
+        }
+    }
+
+    actual suspend fun directoryDisplayName(directory: String): String = withContext(Dispatchers.IO) {
+        directory.ifEmpty {
+            directory().also {
+                check(it.isDirectory || it.mkdirs()) { "无法创建系统下载目录" }
+            }.absolutePath
+        }
+    }
+
+    actual suspend fun requestPermission(directory: String): Boolean = withContext(Dispatchers.IO) {
+        if (directory.isEmpty()) return@withContext true
+        val file = File(directory)
+        require(file.isAbsolute && '\u0000' !in directory) { "下载目录路径无效" }
+        check(file.isDirectory && file.canWrite()) { "下载目录不可用或不可写，请重新选择" }
+        true
+    }
+
+    actual suspend fun clearTemporaryFiles(completedOutputs: List<DownloadOutput>) = withContext(Dispatchers.IO) {
         temporary.listFiles()?.filter(File::isDirectory)?.forEach { cleanPending(it.name) }
         check(!temporary.exists() || temporary.deleteRecursively()) { "下载临时文件清理失败" }
         Unit
@@ -119,11 +164,15 @@ actual class DownloadFiles actual constructor() {
         return result.toString().takeIf { it.startsWith('/') }
     }
 
-    actual suspend fun publish(id: String, fileName: String, onPublished: suspend (DownloadOutput) -> Unit) = withContext(Dispatchers.IO) {
-        val directory = directory()
-        check(directory.isDirectory || directory.mkdirs()) { "无法创建系统下载目录" }
+    actual suspend fun publish(id: String, fileName: String, directory: String, onPublished: suspend (DownloadOutput) -> Unit) = withContext(Dispatchers.IO) {
+        val destination = if (directory.isEmpty()) directory().also {
+            check(it.isDirectory || it.mkdirs()) { "无法创建系统下载目录" }
+        } else {
+            requestPermission(directory)
+            File(directory)
+        }
         val source = File(path(id, "output.mp4"))
-        val pending = File(directory, ".bolo-download-$id.pending")
+        val pending = File(destination, ".bolo-download-$id.pending")
         File(path(id, "publishing")).writeText(pending.absolutePath)
         check(pending.createNewFile()) { "下载保存临时文件已存在" }
         var target: File? = null
@@ -145,7 +194,7 @@ actual class DownloadFiles actual constructor() {
             withContext(NonCancellable) {
                 var suffix = 0
                 while (true) {
-                    val candidate = File(directory, if (suffix == 0) fileName else "${fileName.removeSuffix(".mp4")}_${suffix}.mp4")
+                    val candidate = File(destination, if (suffix == 0) fileName else "${fileName.removeSuffix(".mp4")}_${suffix}.mp4")
                     val result = DownloadNative.publishFile(pending.absolutePath.encodeToByteArray(), candidate.absolutePath.encodeToByteArray())
                     if (result == 0) { target = candidate; break }
                     check(result == 1) { "MP4 文件保存失败（$result）" }
@@ -161,7 +210,7 @@ actual class DownloadFiles actual constructor() {
         }
     }
 
-    actual suspend fun clean(id: String) = withContext(Dispatchers.IO) {
+    actual suspend fun clean(id: String, completedOutput: DownloadOutput?) = withContext(Dispatchers.IO) {
         cleanPending(id)
         val directory = File(temporary, id)
         check(!directory.exists() || directory.deleteRecursively()) { "下载临时文件清理失败" }
@@ -175,5 +224,13 @@ actual class DownloadFiles actual constructor() {
             check(pending.name == ".bolo-download-$id.pending") { "下载临时路径无效" }
             check(pending.delete() || !pending.exists()) { "下载保存临时文件清理失败" }
         }
+    }
+
+    companion object {
+        private var host: WeakReference<Window>? = null
+        private val pickerMutex = Mutex()
+
+        fun attach(window: Window) { host = WeakReference(window) }
+        fun detach(window: Window) { if (host?.get() === window) host = null }
     }
 }

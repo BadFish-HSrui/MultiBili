@@ -26,12 +26,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.CancellationException
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.download.DownloadManager
 import tv.hsrui.bolo.download.DownloadFiles
 import tv.hsrui.bolo.download.DownloadTask
-import tv.hsrui.bolo.download.DownloadOutput
 import tv.hsrui.bolo.download.DownloadStatus
 import tv.hsrui.bolo.download.groupedDownloads
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
@@ -55,45 +53,33 @@ fun DownloadScreen(modifier: Modifier = Modifier, isEntryFromList: Boolean = tru
     val gridState = rememberLazyGridState()
     var removing by remember { mutableStateOf<String?>(null) }
     var viewingGroup by rememberSaveable { mutableStateOf<String?>(null) }
-    val fileStates = remember { mutableStateMapOf<Pair<String, DownloadOutput>, Result<Boolean>>() }
-    val fileChecks = remember { mutableStateMapOf<Pair<String, DownloadOutput>, Any>() }
-    val currentOutputs = tasks.filter { it.status == DownloadStatus.Completed }
-        .mapNotNull { task -> task.output?.let { task.id to it } }.toSet()
-    LaunchedEffect(currentOutputs) {
-        fileStates.keys.retainAll(currentOutputs)
-        fileChecks.keys.retainAll(currentOutputs)
-    }
+    val checkedFiles = remember { mutableStateMapOf<DownloadTask, Unit>() }
+    val fileChecks = remember { mutableStateMapOf<DownloadTask, Any>() }
+    val completedTasks = tasks.filter { it.status == DownloadStatus.Completed && it.output != null }
     suspend fun checkFile(task: DownloadTask): Boolean? {
-        val output = task.output ?: return null
-        if (task.status != DownloadStatus.Completed) return null
-        val key = task.id to output
+        if (task.status != DownloadStatus.Completed || task.output == null || task in fileChecks) return null
         val token = Any()
-        fileChecks[key] = token
-        fun isCurrent(): Boolean = fileChecks[key] === token && manager.tasks.value.any {
-            it.id == task.id && it.status == DownloadStatus.Completed && it.output == output
-        }
+        fileChecks[task] = token
         try {
-            val exists = files.exists(output)
-            if (!isCurrent()) return null
-            fileStates[key] = Result.success(exists)
-            return exists
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            if (isCurrent()) {
-                fileStates[key] = Result.failure(error)
-                snackbar.showMessage("无法检查下载文件：${error.message?.take(180) ?: "未知错误"}")
+            val result = manager.checkFile(task)
+            if (fileChecks[task] === token && manager.tasks.value.any { it === task }) {
+                checkedFiles[task] = Unit
             }
-            return null
+            return result
         } finally {
-            if (fileChecks[key] === token) fileChecks.remove(key)
+            if (fileChecks[task] === token) fileChecks.remove(task)
         }
     }
-    val isFileMissing: (DownloadTask) -> Boolean = { task ->
-        task.output?.let { fileStates[task.id to it]?.getOrNull() == false } == true
+    LaunchedEffect(completedTasks) {
+        val current = completedTasks.toSet()
+        checkedFiles.keys.retainAll(current)
+        fileChecks.keys.retainAll(current)
+        completedTasks.forEach { task ->
+            if (task !in checkedFiles) checkFile(task)
+        }
     }
     val isCheckingFile: (DownloadTask) -> Boolean = { task ->
-        task.output?.let { (task.id to it) !in fileStates || (task.id to it) in fileChecks } == true
+        task.status == DownloadStatus.Completed && task.output != null && (task !in checkedFiles || task in fileChecks)
     }
     val groups = tasks.groupedDownloads()
     val viewedTasks = tasks.filter { it.displayGroupKey == viewingGroup }
@@ -102,7 +88,7 @@ fun DownloadScreen(modifier: Modifier = Modifier, isEntryFromList: Boolean = tru
     }
     fun openOutput(task: DownloadTask, showDirectory: Boolean) {
         val output = task.output ?: return
-        if ((task.id to output) in fileChecks) return
+        if (task in fileChecks) return
         scope.launch {
             if (checkFile(task) != true) return@launch
             val opened = if (showDirectory) files.showFile(output) else files.openFile(output)
@@ -137,9 +123,7 @@ fun DownloadScreen(modifier: Modifier = Modifier, isEntryFromList: Boolean = tru
                     onRetry = { manager.retry(task.id) },
                     onCancel = { manager.cancel(task.id) },
                     onRemove = { removing = task.id },
-                    fileMissing = isFileMissing(task),
                     isCheckingFile = isCheckingFile(task),
-                    onCheckFile = { checkFile(task) },
                 )
             }
         }
@@ -153,9 +137,7 @@ fun DownloadScreen(modifier: Modifier = Modifier, isEntryFromList: Boolean = tru
             onRetry = manager::retry,
             onCancel = manager::cancel,
             onRemove = { removing = it },
-            isFileMissing = isFileMissing,
             isCheckingFile = isCheckingFile,
-            onCheckFile = { checkFile(it) },
         )
     }
     removing?.let { id ->

@@ -112,6 +112,7 @@ data class DownloadTask(
     val group: DownloadGroup? = null,
     val episodeNumber: Int = 0,
     val actualSpec: DownloadSpec? = null,
+    val downloadDirectory: String = "",
     @Transient val bytesPerSecond: Long = 0,
 ) {
     val title: String get() = listOf(mainTitle, subtitle).filter(String::isNotBlank).joinToString(" ")

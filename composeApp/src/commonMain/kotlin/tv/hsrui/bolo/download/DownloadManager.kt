@@ -25,6 +25,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.koin.core.qualifier.named
 import org.koin.mp.KoinPlatform.getKoin
+import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.network.feature.download.downloadVideoStream
 import tv.hsrui.network.feature.player.VideoSource
@@ -42,6 +43,7 @@ class DownloadManager private constructor() {
     private val merges = Semaphore(1)
     private val jobs = mutableMapOf<String, Job>()
     private val removing = mutableSetOf<String>()
+    private val retrying = mutableSetOf<String>()
     private val files = DownloadFiles()
     private val storage by lazy { DownloadStorage(getKoin().get(named("appData"))) }
     private val _tasks = MutableStateFlow<List<DownloadTask>>(emptyList())
@@ -51,12 +53,19 @@ class DownloadManager private constructor() {
 
     private val initialization = scope.async(start = CoroutineStart.LAZY) {
         try {
+            val settings = getKoin().get<BoloSettings>().general
+            if (settings.downloadDirectory.isEmpty()) {
+                val directory = files.directoryDisplayName("")
+                withContext(Dispatchers.Main.immediate) {
+                    if (settings.downloadDirectory.isEmpty()) settings.downloadDirectory = directory
+                }
+            }
             val previous = storage.load()
             val restored = previous.map {
                 if (it.status.isTerminal) it else it.copy(status = DownloadStatus.Failed,
                     error = "应用退出，下载已中断，请重试", updatedAt = now())
             }
-            files.clearTemporaryFiles()
+            files.clearTemporaryFiles(previous.mapNotNull { it.output })
             if (restored != previous) storage.save(restored)
             _tasks.value = restored.sortedByDescending { it.createdAt }
         } catch (error: Exception) {
@@ -66,6 +75,43 @@ class DownloadManager private constructor() {
     }
 
     suspend fun initialize() { initialization.await() }
+
+    suspend fun checkFile(task: DownloadTask): Boolean? {
+        val output = task.output ?: return null
+        if (task.status != DownloadStatus.Completed) return null
+        // 保留任务快照身份，避免同一任务重试后用旧检查结果覆盖新成品。
+        fun isCurrent(): Boolean = task.id !in removing && task.id !in retrying && _tasks.value.any { it === task }
+        var failurePrefix = "无法检查下载文件"
+        return try {
+            initialize()
+            val job = mutex.withLock {
+                if (!isCurrent()) return null
+                jobs[task.id]
+            }
+            job?.join()
+            if (!mutex.withLock { isCurrent() && task.id !in jobs }) return null
+            val exists = files.exists(output)
+            withContext(NonCancellable) {
+                mutex.withLock {
+                    if (!isCurrent() || task.id in jobs) return@withLock null
+                    if (!exists) {
+                        failurePrefix = "下载任务记录保存失败"
+                        commit(_tasks.value.map {
+                            if (it === task) it.copy(status = DownloadStatus.Failed, error = "文件被移动或删除",
+                                downloadedBytes = 0, totalBytes = null, mergeProgress = 0f, bytesPerSecond = 0,
+                                updatedAt = now()) else it
+                        })
+                    }
+                    exists
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            if (mutex.withLock { isCurrent() }) notify("$failurePrefix：${safeError(error)}")
+            null
+        }
+    }
 
     suspend fun enqueue(request: DownloadRequest, source: VideoSource): Boolean {
         require(request.id > 0 && (request.type != DownloadType.Video || request.cid > 0)) { "视频标识无效" }
@@ -103,13 +149,14 @@ class DownloadManager private constructor() {
             notify("已存在相同下载任务")
             return 0
         }
-        check(files.requestPermission()) { "未获得下载目录写入权限" }
+        val directory = getKoin().get<BoloSettings>().general.downloadDirectory
+        check(files.requestPermission(directory)) { "未获得下载目录写入权限" }
         // 持久化及任务启动属于管理器；弹窗在此后被销毁也不能丢失已接受任务。
         return withContext(Dispatchers.Default + NonCancellable) {
             mutex.withLock {
                 check(login.isLoggedIn && session == login.cookies.sessData) { "登录状态已变化，请重试" }
                 val keys = _tasks.value.mapTo(mutableSetOf()) { it.request.key }
-                val accepted = candidates.filter { keys.add(it.request.key) }
+                val accepted = candidates.filter { keys.add(it.request.key) }.map { it.copy(downloadDirectory = directory) }
                 if (accepted.isEmpty()) {
                     notify("已存在相同下载任务")
                     return@withLock 0
@@ -130,28 +177,40 @@ class DownloadManager private constructor() {
     fun retry(id: String) = perform {
         initialize()
         check(getKoin().get<LoginStorage>().isLoggedIn) { "请先登录" }
-        check(files.requestPermission()) { "未获得下载目录写入权限" }
-        mutex.withLock {
-            val task = _tasks.value.firstOrNull { it.id == id } ?: return@withLock
-            if ((task.status != DownloadStatus.Failed && task.status != DownloadStatus.Canceled) || id in jobs || id in removing) return@withLock
-            val queued = _tasks.value.count { it.status == DownloadStatus.Queued || it.status == DownloadStatus.Downloading } >= 3
-            commit(_tasks.value.map { if (it.id == id) task.copy(status = DownloadStatus.Queued,
-                downloadedBytes = 0, totalBytes = null, mergeProgress = 0f, error = null, output = null,
-                actualSpec = null, bytesPerSecond = 0, updatedAt = now()) else it })
-            launchTask(id, null)
-            if (queued) notify("已加入下载队列")
+        val directory = getKoin().get<BoloSettings>().general.downloadDirectory
+        check(files.requestPermission(directory)) { "未获得下载目录写入权限" }
+        val task = mutex.withLock {
+            val current = _tasks.value.firstOrNull { it.id == id } ?: return@perform
+            if ((current.status != DownloadStatus.Failed && current.status != DownloadStatus.Canceled) ||
+                id in jobs || id in removing || !retrying.add(id)) return@perform
+            current
+        }
+        try {
+            // 先移除旧发布标记，再丢弃输出引用；清理失败时保留原任务和成品保护。
+            if (task.output != null) files.clean(id, task.output)
+            mutex.withLock {
+                if (_tasks.value.none { it === task }) return@withLock
+                val queued = _tasks.value.count { it.status == DownloadStatus.Queued || it.status == DownloadStatus.Downloading } >= 3
+                commit(_tasks.value.map { if (it === task) task.copy(status = DownloadStatus.Queued,
+                    downloadedBytes = 0, totalBytes = null, mergeProgress = 0f, error = null, output = null,
+                    actualSpec = null, downloadDirectory = directory, bytesPerSecond = 0, updatedAt = now()) else it })
+                launchTask(id, null)
+                if (queued) notify("已加入下载队列")
+            }
+        } finally {
+            withContext(NonCancellable) { mutex.withLock { retrying.remove(id) } }
         }
     }
 
     fun cancel(id: String) = perform {
         initialize()
         val job = mutex.withLock {
-            if (id in removing) return@perform
+            if (id in removing || id in retrying) return@perform
             jobs[id]?.also { it.cancel() }
         }
         job?.join()
         mutex.withLock {
-            if (id in removing) return@withLock
+            if (id in removing || id in retrying) return@withLock
             if (jobs[id] != null && jobs[id] !== job) return@withLock
             if (jobs[id] === job) jobs.remove(id)
             val task = _tasks.value.firstOrNull { it.id == id } ?: return@withLock
@@ -169,6 +228,7 @@ class DownloadManager private constructor() {
             val job = mutex.withLock {
                 val task = _tasks.value.firstOrNull { it.id == id } ?: return@async true
                 check(task.status.isTerminal) { "任务尚未结束" }
+                check(id !in retrying) { "任务正在重试" }
                 check(removing.add(id)) { "任务正在移除" }
                 reserved = true
                 jobs[id]
@@ -180,7 +240,7 @@ class DownloadManager private constructor() {
             }
             if (deleteFile) {
                 failurePrefix = "清理本地文件失败"
-                files.clean(id)
+                files.clean(id, task.output)
                 task.output?.let { files.delete(it) }
             }
             failurePrefix = "移除下载记录失败"
@@ -214,7 +274,7 @@ class DownloadManager private constructor() {
                         change(id, persist = false) { if (it.status == DownloadStatus.Merging) it.copy(mergeProgress = progress) else it }
                     }
                     change(id) { it.copy(status = DownloadStatus.Saving) }
-                    files.publish(id, task.fileName) { output ->
+                    files.publish(id, task.fileName, task.downloadDirectory) { output ->
                         change(id) { it.copy(status = DownloadStatus.Completed, output = output, mergeProgress = 1f) }
                     }
                 }
@@ -224,7 +284,7 @@ class DownloadManager private constructor() {
                 failure = safeError(error)
             } finally {
                 withContext(NonCancellable) {
-                    try { files.clean(id) } catch (error: Exception) {
+                    try { files.clean(id, task(id).output) } catch (error: Exception) {
                         failure = listOfNotNull(failure, safeError(error)).joinToString("；")
                     }
                     mutex.withLock {
