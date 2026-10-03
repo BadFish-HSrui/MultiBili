@@ -46,7 +46,14 @@ static int check_hevc_parameter_sets(const AVCodecParameters *par, const uint8_t
                 return AVERROR_INVALIDDATA;
             if (type >= 32 && type <= 34) {
                 present |= 1 << (type - 32);
-                if (nal && length == nal_size && !memcmp(data + offset, nal, length)) matched = 1;
+                if (nal) {
+                    // Compare parameter data without trailing zero padding; keep the NAL header intact.
+                    int expected_size = length, actual_size = nal_size;
+                    while (expected_size > 2 && data[offset + expected_size - 1] == 0) --expected_size;
+                    while (actual_size > 2 && nal[actual_size - 1] == 0) --actual_size;
+                    if (expected_size > 2 && expected_size == actual_size &&
+                        !memcmp(data + offset, nal, expected_size)) matched = 1;
+                }
             }
             offset += length;
         }
