@@ -3,6 +3,7 @@ package tv.hsrui.bolo.ui.components.download
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -13,6 +14,7 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import tv.hsrui.bolo.download.DownloadTask
 import tv.hsrui.bolo.download.orderedDownloadEpisodes
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
@@ -36,13 +38,14 @@ fun ShowDownloadGroupSheet(
                 text = first.mainTitle,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleMedium,
             )
             ShowHorizontalCardGrid(
                 cards = tasks.orderedDownloadEpisodes(),
                 keySelector = { it.id },
                 gridState = rememberLazyGridState(),
                 modifier = Modifier.weight(1f),
+                columns = GridCells.Adaptive(300.dp),
             ) { task ->
                 ShowDownloadTaskCard(
                     task = task,

@@ -26,14 +26,15 @@ fun ShowDownloadGroupCard(tasks: List<DownloadTask>, onClick: () -> Unit, modifi
     val total = tasks.distinctBy { it.episodeKey }.size
     val completed = tasks.completedDownloadEpisodes()
     val speed = tasks.filter { it.status == DownloadStatus.Downloading }.sumOf { it.bytesPerSecond }
+    val downloadedBytes = tasks.sumOf { it.output?.size ?: it.downloadedBytes }
     val unit = if (first.request.type == DownloadType.Media) "集" else "P"
-    Card(onClick = onClick, modifier = modifier.fillMaxWidth().height(128.dp)) {
+    Card(onClick = onClick, modifier = modifier.fillMaxWidth().height(108.dp)) {
         Column(Modifier.fillMaxSize().padding(4.dp)) {
             Text(first.mainTitle, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Box(Modifier.fillMaxWidth().height(24.dp), contentAlignment = Alignment.CenterStart) {
                 LinearProgressIndicator(progress = { completed.toFloat() / total }, modifier = Modifier.fillMaxWidth())
             }
-            Text("已完成 $completed / $total $unit · ${formatDownloadBytes(speed)}/s",
+            Text("已完成 $completed / $total $unit · ${formatDownloadBytes(speed)}/s · ${formatDownloadBytes(downloadedBytes)}",
                 style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }

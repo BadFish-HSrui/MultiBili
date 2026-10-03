@@ -61,7 +61,7 @@ fun ShowDownloadTaskCard(
         DownloadStatus.Queued, DownloadStatus.WaitingForMerge, DownloadStatus.Saving, DownloadStatus.Canceled -> task.status.title
     }
 
-    Card(modifier.fillMaxWidth().height(128.dp)) {
+    Card(modifier.fillMaxWidth().height(108.dp)) {
         Column(Modifier.fillMaxSize().padding(4.dp)) {
             Text(
                 text = title,
