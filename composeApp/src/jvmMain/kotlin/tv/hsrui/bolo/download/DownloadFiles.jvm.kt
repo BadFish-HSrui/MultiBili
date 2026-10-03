@@ -3,6 +3,10 @@ package tv.hsrui.bolo.download
 import java.io.File
 import java.io.FileOutputStream
 import java.awt.Desktop
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.NoSuchFileException
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -14,13 +18,35 @@ import kotlinx.coroutines.withContext
 actual class DownloadFiles actual constructor() {
     private val temporary = File(System.getProperty("java.io.tmpdir"), "bolo-downloads")
 
+    actual suspend fun exists(output: DownloadOutput): Boolean = withContext(Dispatchers.IO) {
+        fileExists(outputFile(output))
+    }
+
+    actual suspend fun delete(output: DownloadOutput) = withContext(Dispatchers.IO) {
+        val file = outputFile(output)
+        if (fileExists(file)) Files.deleteIfExists(file.toPath())
+        Unit
+    }
+
+    private fun outputFile(output: DownloadOutput): File = File(output.location).also {
+        require(it.isAbsolute && '\u0000' !in output.location) { "下载文件路径无效" }
+    }
+
+    private fun fileExists(file: File): Boolean = try {
+        val attributes = Files.readAttributes(file.toPath(), BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+        check(attributes.isRegularFile) { "下载文件路径不是普通文件" }
+        true
+    } catch (_: NoSuchFileException) {
+        false
+    }
+
     actual suspend fun openFile(output: DownloadOutput): Boolean = openOutput(output, showDirectory = false)
     actual suspend fun showFile(output: DownloadOutput): Boolean = openOutput(output, showDirectory = true)
 
     private suspend fun openOutput(output: DownloadOutput, showDirectory: Boolean): Boolean = withContext(Dispatchers.IO) {
         try {
-            val file = File(output.location)
-            if (!file.isAbsolute || !file.isFile || !file.canRead()) return@withContext false
+            val file = outputFile(output)
+            if (!fileExists(file) || !file.canRead()) return@withContext false
             val target = if (showDirectory) file.parentFile ?: return@withContext false else file
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
                 Desktop.getDesktop().open(target)

@@ -10,6 +10,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.content.ContentUris
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,6 +22,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import java.io.File
 import java.io.FileOutputStream
+import java.io.FileNotFoundException
 import java.lang.ref.WeakReference
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
@@ -34,16 +39,68 @@ actual class DownloadFiles actual constructor() {
     private val context get() = AppContext.instance
     private val temporary get() = File(context.cacheDir, "bolo-downloads")
 
+    actual suspend fun exists(output: DownloadOutput): Boolean = withContext(Dispatchers.IO) {
+        if (output.location.startsWith("content://")) mediaFileExists(outputUri(output))
+        else fileExists(outputFile(output))
+    }
+
+    actual suspend fun delete(output: DownloadOutput) = withContext(Dispatchers.IO) {
+        if (output.location.startsWith("content://")) {
+            val uri = outputUri(output)
+            check(context.contentResolver.delete(uri, null, null) > 0 || !mediaFileExists(uri)) { "下载文件删除失败" }
+        } else {
+            val file = outputFile(output)
+            if (fileExists(file)) {
+                try { Os.remove(file.absolutePath) }
+                catch (error: ErrnoException) { if (error.errno != OsConstants.ENOENT) throw error }
+            }
+        }
+    }
+
+    private fun outputUri(output: DownloadOutput): Uri = Uri.parse(output.location).also {
+        require(it.scheme == "content" && it.authority == MediaStore.AUTHORITY && ContentUris.parseId(it) >= 0) { "下载文件 URI 无效" }
+    }
+
+    private fun mediaEntryExists(uri: Uri): Boolean =
+        checkNotNull(context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns._ID), null, null, null)) {
+            "无法检查下载文件"
+        }.use { it.moveToFirst() }
+
+    private fun mediaFileExists(uri: Uri): Boolean {
+        if (!mediaEntryExists(uri)) return false
+        return try {
+            checkNotNull(context.contentResolver.openFileDescriptor(uri, "r")) { "无法读取下载文件" }.use { }
+            true
+        } catch (error: FileNotFoundException) {
+            val cause = generateSequence(error.cause) { it.cause }.filterIsInstance<ErrnoException>().firstOrNull()
+            // Provider 可能将其他打开错误包装为 FileNotFoundException，不能一律判为缺失。
+            if (cause?.errno != OsConstants.ENOENT && mediaEntryExists(uri)) throw error
+            false
+        }
+    }
+
+    private fun outputFile(output: DownloadOutput): File = File(output.location).also {
+        require(it.isAbsolute && '\u0000' !in output.location) { "下载文件路径无效" }
+    }
+
+    private fun fileExists(file: File): Boolean = try {
+        check(OsConstants.S_ISREG(Os.lstat(file.absolutePath).st_mode)) { "下载文件路径不是普通文件" }
+        true
+    } catch (error: ErrnoException) {
+        if (error.errno != OsConstants.ENOENT) throw error
+        false
+    }
+
     actual suspend fun openFile(output: DownloadOutput): Boolean = openOutput(output, showDirectory = false)
     actual suspend fun showFile(output: DownloadOutput): Boolean = openOutput(output, showDirectory = true)
 
     private suspend fun openOutput(output: DownloadOutput, showDirectory: Boolean): Boolean = try {
         val uri = withContext(Dispatchers.IO) {
             val uri = if (output.location.startsWith("content://")) {
-                Uri.parse(output.location)
+                outputUri(output)
             } else {
-                val file = File(output.location)
-                check(file.isAbsolute && file.isFile && file.canRead())
+                val file = outputFile(output)
+                check(fileExists(file) && file.canRead())
                 FileProvider.getUriForFile(context, "${context.packageName}.download.files", file)
             }
             checkNotNull(context.contentResolver.openFileDescriptor(uri, "r")).use { }

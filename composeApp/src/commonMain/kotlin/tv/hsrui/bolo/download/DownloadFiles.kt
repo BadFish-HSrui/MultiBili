@@ -1,6 +1,8 @@
 package tv.hsrui.bolo.download
 
 expect class DownloadFiles() {
+    suspend fun exists(output: DownloadOutput): Boolean
+    suspend fun delete(output: DownloadOutput)
     suspend fun openFile(output: DownloadOutput): Boolean
     suspend fun showFile(output: DownloadOutput): Boolean
     suspend fun requestPermission(): Boolean

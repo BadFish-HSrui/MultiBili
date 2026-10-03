@@ -91,7 +91,7 @@ fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
             canClick = isLogin,
             targets = videoInfo.parts.takeIf { it.size > 1 }?.mapIndexed { index, part ->
                 DownloadTarget(videoInfo.avid, part.cid, part.title.ifBlank { "P${part.pageNumber}" },
-                    part.pageNumber.takeIf { it > 0 } ?: index + 1)
+                    part.pageNumber.takeIf { it > 0 } ?: (index + 1))
             } ?: listOf(DownloadTarget(videoInfo.avid, videoInfo.parts.firstOrNull()?.cid ?: videoInfo.cid, "", 1)),
         )
     }

@@ -3,6 +3,9 @@
 package tv.hsrui.bolo.download
 
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
 import kotlinx.cinterop.useContents
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.Dispatchers
@@ -15,8 +18,6 @@ import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
-import platform.Foundation.NSFileType
-import platform.Foundation.NSFileTypeRegular
 import platform.Foundation.NSNumber
 import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
@@ -39,6 +40,9 @@ import platform.UIKit.presentationController
 import platform.UniformTypeIdentifiers.UTTypeItem
 import platform.darwin.NSObject
 import platform.posix.EEXIST
+import platform.posix.ENOENT
+import platform.posix.S_IFMT
+import platform.posix.S_IFREG
 import platform.posix.errno
 import platform.posix.fclose
 import platform.posix.fflush
@@ -47,6 +51,9 @@ import platform.posix.fopen
 import platform.posix.fsync
 import platform.posix.fwrite
 import platform.posix.link
+import platform.posix.lstat
+import platform.posix.stat
+import platform.posix.unlink
 
 actual class DownloadFiles actual constructor() {
     private val manager = NSFileManager.defaultManager
@@ -55,24 +62,49 @@ actual class DownloadFiles actual constructor() {
         "$base/bolo-downloads"
     }
 
+    actual suspend fun exists(output: DownloadOutput): Boolean = withContext(Dispatchers.Default) {
+        fileExists(outputPath(output))
+    }
+
+    actual suspend fun delete(output: DownloadOutput) = withContext(Dispatchers.Default) {
+        val path = outputPath(output)
+        if (fileExists(path) && unlink(path) != 0) {
+            val code = errno
+            check(code == ENOENT) { "下载文件删除失败（$code）" }
+        }
+    }
+
+    private fun fileExists(path: String): Boolean = memScoped {
+        val info = alloc<stat>()
+        if (lstat(path, info.ptr) != 0) {
+            val code = errno
+            check(code == ENOENT) { "无法检查下载文件（$code）" }
+            return@memScoped false
+        }
+        check(info.st_mode.toInt() and S_IFMT == S_IFREG) { "下载文件路径不是普通文件" }
+        true
+    }
+
+    private fun outputPath(output: DownloadOutput): String {
+        require(output.location.startsWith('/') && '\u0000' !in output.location) { "下载文件路径无效" }
+        // 旧容器可能已不受沙箱授权，默认 Downloads 路径先定位到当前容器再检查文件。
+        val original = NSURL.fileURLWithPath(output.location)
+        val directory = original.URLByDeletingLastPathComponent
+        if (original.lastPathComponent != output.fileName || directory?.lastPathComponent != "Downloads" ||
+            directory.URLByDeletingLastPathComponent?.lastPathComponent != "Documents") return output.location
+        val base = checkNotNull(manager.URLForDirectory(NSDocumentDirectory, NSUserDomainMask, null, false, null)?.path) {
+            "无法获取下载目录"
+        }
+        return "$base/Downloads/${output.fileName}"
+    }
+
     actual suspend fun openFile(output: DownloadOutput): Boolean = openOutput(output, showDirectory = false)
     actual suspend fun showFile(output: DownloadOutput): Boolean = openOutput(output, showDirectory = true)
 
     private suspend fun openOutput(output: DownloadOutput, showDirectory: Boolean): Boolean = try {
         val url = withContext(Dispatchers.Default) {
-            check(output.location.startsWith('/'))
-            // 安装更新可能迁移容器；旧的默认下载路径按最终文件名定位到当前目录。
-            val location = if (manager.isReadableFileAtPath(output.location)) output.location else {
-                val original = NSURL.fileURLWithPath(output.location)
-                val directory = original.URLByDeletingLastPathComponent
-                check(original.lastPathComponent == output.fileName)
-                check(directory?.lastPathComponent == "Downloads")
-                check(directory.URLByDeletingLastPathComponent?.lastPathComponent == "Documents")
-                val base = checkNotNull(manager.URLForDirectory(NSDocumentDirectory, NSUserDomainMask, null, false, null)?.path)
-                "$base/Downloads/${output.fileName}"
-            }
-            check(manager.isReadableFileAtPath(location))
-            check(manager.attributesOfItemAtPath(location, null)?.get(NSFileType) == NSFileTypeRegular)
+            val location = outputPath(output)
+            check(fileExists(location) && manager.isReadableFileAtPath(location))
             NSURL.fileURLWithPath(location)
         }
         withContext(Dispatchers.Main.immediate) {

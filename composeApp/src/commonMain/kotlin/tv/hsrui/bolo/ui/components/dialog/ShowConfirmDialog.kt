@@ -75,10 +75,18 @@ fun ShowConfirmDialog(
     icon: @Composable (() -> Unit)? = null,
     text: String = "",
     dismissOnClickOutside: Boolean = true,
+    cancelEnabled: Boolean = true,
+    confirmEnabled: Boolean = true,
+    confirmText: String = "确认",
+    textModifier: Modifier = Modifier.alpha(0.8F),
+    content: @Composable () -> Unit = {},
 ) {
     ShowConfirmDialog(
         onCancel = onCancel,
         onConfirm = onConfirm,
+        cancelEnabled = cancelEnabled,
+        confirmEnabled = confirmEnabled,
+        confirmText = confirmText,
         dismissOnClickOutside = dismissOnClickOutside,
     ) {
         if (icon != null) icon()
@@ -90,8 +98,9 @@ fun ShowConfirmDialog(
                 text = text,
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
+                modifier = Modifier.padding(vertical = 12.dp).then(textModifier),
             )
         }
+        content()
     }
 }

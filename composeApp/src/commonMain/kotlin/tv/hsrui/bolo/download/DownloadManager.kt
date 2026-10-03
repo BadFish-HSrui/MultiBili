@@ -41,6 +41,7 @@ class DownloadManager private constructor() {
     private val downloads = Semaphore(3)
     private val merges = Semaphore(1)
     private val jobs = mutableMapOf<String, Job>()
+    private val removing = mutableSetOf<String>()
     private val files = DownloadFiles()
     private val storage by lazy { DownloadStorage(getKoin().get(named("appData"))) }
     private val _tasks = MutableStateFlow<List<DownloadTask>>(emptyList())
@@ -132,7 +133,7 @@ class DownloadManager private constructor() {
         check(files.requestPermission()) { "未获得下载目录写入权限" }
         mutex.withLock {
             val task = _tasks.value.firstOrNull { it.id == id } ?: return@withLock
-            if ((task.status != DownloadStatus.Failed && task.status != DownloadStatus.Canceled) || id in jobs) return@withLock
+            if ((task.status != DownloadStatus.Failed && task.status != DownloadStatus.Canceled) || id in jobs || id in removing) return@withLock
             val queued = _tasks.value.count { it.status == DownloadStatus.Queued || it.status == DownloadStatus.Downloading } >= 3
             commit(_tasks.value.map { if (it.id == id) task.copy(status = DownloadStatus.Queued,
                 downloadedBytes = 0, totalBytes = null, mergeProgress = 0f, error = null, output = null,
@@ -144,9 +145,13 @@ class DownloadManager private constructor() {
 
     fun cancel(id: String) = perform {
         initialize()
-        val job = mutex.withLock { jobs[id]?.also { it.cancel() } }
+        val job = mutex.withLock {
+            if (id in removing) return@perform
+            jobs[id]?.also { it.cancel() }
+        }
         job?.join()
         mutex.withLock {
+            if (id in removing) return@withLock
             if (jobs[id] != null && jobs[id] !== job) return@withLock
             if (jobs[id] === job) jobs.remove(id)
             val task = _tasks.value.firstOrNull { it.id == id } ?: return@withLock
@@ -156,18 +161,40 @@ class DownloadManager private constructor() {
         }
     }
 
-    fun remove(id: String) = perform {
-        initialize()
-        val job = mutex.withLock {
-            if (_tasks.value.firstOrNull { it.id == id }?.status?.isTerminal != true) return@perform
-            jobs[id]
+    suspend fun remove(id: String, deleteFile: Boolean = false): Boolean = scope.async {
+        var reserved = false
+        var failurePrefix = "移除下载记录失败"
+        try {
+            initialize()
+            val job = mutex.withLock {
+                val task = _tasks.value.firstOrNull { it.id == id } ?: return@async true
+                check(task.status.isTerminal) { "任务尚未结束" }
+                check(removing.add(id)) { "任务正在移除" }
+                reserved = true
+                jobs[id]
+            }
+            job?.join()
+            val task = mutex.withLock {
+                check(id !in jobs) { "任务尚未结束" }
+                _tasks.value.first { it.id == id }.also { check(it.status.isTerminal) { "任务尚未结束" } }
+            }
+            if (deleteFile) {
+                failurePrefix = "清理本地文件失败"
+                files.clean(id)
+                task.output?.let { files.delete(it) }
+            }
+            failurePrefix = "移除下载记录失败"
+            mutex.withLock { commit(_tasks.value.filterNot { it.id == id }) }
+            true
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            notify("$failurePrefix：${safeError(error)}")
+            false
+        } finally {
+            if (reserved) withContext(NonCancellable) { mutex.withLock { removing.remove(id) } }
         }
-        job?.join()
-        mutex.withLock {
-            val task = _tasks.value.firstOrNull { it.id == id } ?: return@withLock
-            if (task.status.isTerminal && id !in jobs) commit(_tasks.value.filterNot { it.id == id })
-        }
-    }
+    }.await()
 
     private fun launchTask(id: String, source: VideoSource?) {
         // 调用方持有 mutex；先按入队顺序领取或等待名额，读取任务时挂起，登记 job 后才继续。
