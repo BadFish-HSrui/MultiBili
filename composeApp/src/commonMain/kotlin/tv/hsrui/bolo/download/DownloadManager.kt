@@ -11,7 +11,9 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -30,6 +32,7 @@ import tv.hsrui.network.feature.player.fetchMediaPlayInfo
 import tv.hsrui.network.feature.player.fetchVideoPlayInfo
 import tv.hsrui.network.login.storage.LoginStorage
 import kotlin.time.Clock
+import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
 class DownloadManager private constructor() {
@@ -64,29 +67,61 @@ class DownloadManager private constructor() {
     suspend fun initialize() { initialization.await() }
 
     suspend fun enqueue(request: DownloadRequest, source: VideoSource): Boolean {
-        initialize()
-        check(getKoin().get<LoginStorage>().isLoggedIn) { "请先登录" }
         require(request.id > 0 && (request.type != DownloadType.Video || request.cid > 0)) { "视频标识无效" }
-        validateSource(request, source)
-        if (mutex.withLock { _tasks.value.any { it.request.key == request.key } }) {
+        resolveDownloadStreams(source, request.spec)
+        val task = DownloadTask(Uuid.random().toString(), request, now(), now())
+        return enqueueTasks(listOf(task), mapOf(task.id to source)) > 0
+    }
+
+    suspend fun enqueueBatch(group: DownloadGroup, mainTitle: String, targets: List<DownloadTarget>, spec: DownloadSpec): Int {
+        require(group.id > 0 && targets.isNotEmpty()) { "请选择下载内容" }
+        require(targets.all { it.id > 0 && it.cid > 0 }) { "视频标识无效" }
+        val createdAt = now()
+        val candidates = targets.sortedBy { it.number }.map { target ->
+            val title = listOf(mainTitle, target.subtitle).filter(String::isNotBlank).joinToString(" ")
+            DownloadTask(
+                id = Uuid.random().toString(),
+                request = DownloadRequest(target.id, target.cid, title, spec, group.type),
+                createdAt = createdAt,
+                updatedAt = createdAt,
+                mainTitle = mainTitle,
+                subtitle = target.subtitle,
+                group = group,
+                episodeNumber = target.number,
+            )
+        }
+        return enqueueTasks(candidates)
+    }
+
+    private suspend fun enqueueTasks(candidates: List<DownloadTask>, sources: Map<String, VideoSource> = emptyMap()): Int {
+        initialize()
+        val login = getKoin().get<LoginStorage>()
+        check(login.isLoggedIn) { "请先登录" }
+        val session = login.cookies.sessData
+        if (mutex.withLock { candidates.all { candidate -> _tasks.value.any { it.request.key == candidate.request.key } } }) {
             notify("已存在相同下载任务")
-            return false
+            return 0
         }
         check(files.requestPermission()) { "未获得下载目录写入权限" }
         // 持久化及任务启动属于管理器；弹窗在此后被销毁也不能丢失已接受任务。
         return withContext(Dispatchers.Default + NonCancellable) {
             mutex.withLock {
-                check(getKoin().get<LoginStorage>().isLoggedIn) { "请先登录" }
-                if (_tasks.value.any { it.request.key == request.key }) {
+                check(login.isLoggedIn && session == login.cookies.sessData) { "登录状态已变化，请重试" }
+                val keys = _tasks.value.mapTo(mutableSetOf()) { it.request.key }
+                val accepted = candidates.filter { keys.add(it.request.key) }
+                if (accepted.isEmpty()) {
                     notify("已存在相同下载任务")
-                    return@withLock false
+                    return@withLock 0
                 }
-                val queued = _tasks.value.count { it.status == DownloadStatus.Queued || it.status == DownloadStatus.Downloading } >= 3
-                val task = DownloadTask(Uuid.random().toString(), request, now(), now())
-                commit(listOf(task) + _tasks.value)
-                launchTask(task.id, source)
-                if (queued) notify("已加入下载队列")
-                true
+                val queued = _tasks.value.count { it.status == DownloadStatus.Queued || it.status == DownloadStatus.Downloading } + accepted.size > 3
+                commit(accepted + _tasks.value)
+                accepted.forEach { launchTask(it.id, sources[it.id]) }
+                val skipped = candidates.size - accepted.size
+                when {
+                    skipped > 0 -> notify("已加入 ${accepted.size} 个下载任务，跳过 $skipped 个重复任务")
+                    queued -> notify("已加入下载队列")
+                }
+                accepted.size
             }
         }
     }
@@ -100,7 +135,8 @@ class DownloadManager private constructor() {
             if ((task.status != DownloadStatus.Failed && task.status != DownloadStatus.Canceled) || id in jobs) return@withLock
             val queued = _tasks.value.count { it.status == DownloadStatus.Queued || it.status == DownloadStatus.Downloading } >= 3
             commit(_tasks.value.map { if (it.id == id) task.copy(status = DownloadStatus.Queued,
-                downloadedBytes = 0, totalBytes = null, mergeProgress = 0f, error = null, output = null, updatedAt = now()) else it })
+                downloadedBytes = 0, totalBytes = null, mergeProgress = 0f, error = null, output = null,
+                actualSpec = null, bytesPerSecond = 0, updatedAt = now()) else it })
             launchTask(id, null)
             if (queued) notify("已加入下载队列")
         }
@@ -115,7 +151,7 @@ class DownloadManager private constructor() {
             if (jobs[id] === job) jobs.remove(id)
             val task = _tasks.value.firstOrNull { it.id == id } ?: return@withLock
             if (!task.status.isTerminal || (job == null && task.status == DownloadStatus.Failed)) {
-                commit(_tasks.value.map { if (it.id == id) it.copy(status = DownloadStatus.Canceled, error = null, updatedAt = now()) else it })
+                commit(_tasks.value.map { if (it.id == id) it.copy(status = DownloadStatus.Canceled, error = null, bytesPerSecond = 0, updatedAt = now()) else it })
             }
         }
     }
@@ -134,7 +170,8 @@ class DownloadManager private constructor() {
     }
 
     private fun launchTask(id: String, source: VideoSource?) {
-        val job = scope.launch(start = CoroutineStart.LAZY) {
+        // 调用方持有 mutex；先按入队顺序领取或等待名额，读取任务时挂起，登记 job 后才继续。
+        val job = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             var failure: String? = null
             var canceled = false
             try {
@@ -146,11 +183,11 @@ class DownloadManager private constructor() {
                     change(id) { it.copy(status = DownloadStatus.Merging) }
                     val task = task(id)
                     DownloadMuxer().merge(files.path(id, "video.m4s"),
-                        task.request.spec.audioQuality?.let { files.path(id, "audio.m4s") }, files.path(id, "output.mp4")) { progress ->
+                        checkNotNull(task.actualSpec).audioQuality?.let { files.path(id, "audio.m4s") }, files.path(id, "output.mp4")) { progress ->
                         change(id, persist = false) { if (it.status == DownloadStatus.Merging) it.copy(mergeProgress = progress) else it }
                     }
                     change(id) { it.copy(status = DownloadStatus.Saving) }
-                    files.publish(id, task.request.fileName) { output ->
+                    files.publish(id, task.fileName) { output ->
                         change(id) { it.copy(status = DownloadStatus.Completed, output = output, mergeProgress = 1f) }
                     }
                 }
@@ -168,7 +205,7 @@ class DownloadManager private constructor() {
                         val current = _tasks.value.firstOrNull { it.id == id }
                         if (current != null && current.status != DownloadStatus.Completed) {
                             val terminal = current.copy(status = if (canceled && failure == null) DownloadStatus.Canceled else DownloadStatus.Failed,
-                                error = failure, updatedAt = now())
+                                error = failure, bytesPerSecond = 0, updatedAt = now())
                             try { commit(_tasks.value.map { if (it.id == id) terminal else it }) }
                             catch (error: Exception) {
                                 _tasks.value = _tasks.value.map { if (it.id == id) terminal.copy(status = DownloadStatus.Failed,
@@ -181,7 +218,6 @@ class DownloadManager private constructor() {
             }
         }
         jobs[id] = job
-        job.start()
     }
 
     private suspend fun executeDownload(id: String, initialSource: VideoSource?) {
@@ -197,48 +233,62 @@ class DownloadManager private constructor() {
         } catch (_: TimeoutCancellationException) { error("播放信息获取超时，请重试") }
         catch (error: CancellationException) { throw error }
         catch (_: Exception) { error("播放信息获取失败，请重试") }
-        validateSource(request, source)
+        val selected = resolveDownloadStreams(source, request.spec)
         files.clean(id)
         files.prepare(id)
-        change(id) { it.copy(status = DownloadStatus.Downloading) }
-        notify("开始下载：${request.title}")
-        val video = checkNotNull(source.getExactVideo(request.spec.videoQuality, request.spec.videoCodec))
-        val audio = request.spec.audioQuality?.let { checkNotNull(source.getExactAudio(it)) }
-        val streams = listOfNotNull(video, audio)
+        change(id) { it.copy(status = DownloadStatus.Downloading, actualSpec = selected.spec) }
+        notify("开始下载：${task(id).title}")
+        val streams = listOfNotNull(selected.video, selected.audio)
         val receivedBytes = LongArray(streams.size)
         val totalBytes = arrayOfNulls<Long>(streams.size)
         val progressMutex = Mutex()
         // 两条轨道共享一个任务名额；任一失败或取消时，等待另一条停止后统一清理。
         coroutineScope {
-            streams.forEachIndexed { index, stream ->
-                launch {
-                    files.writeStream(id, if (index == 0) "video.m4s" else "audio.m4s") { write ->
-                        downloadVideoStream(stream.getUrls(sortCDN = true).first(), write) { count, total ->
-                            progressMutex.withLock {
-                                receivedBytes[index] = count
-                                totalBytes[index] = total
-                                val downloaded = receivedBytes.sum()
-                                val size = if (totalBytes.all { it != null }) totalBytes.sumOf { checkNotNull(it) } else null
-                                change(id, persist = false) { it.copy(downloadedBytes = downloaded, totalBytes = size) }
+            val sampling = launch {
+                var previousBytes = 0L
+                var previousTime = TimeSource.Monotonic.markNow()
+                while (isActive) {
+                    delay(1_000)
+                    val sampledAt = TimeSource.Monotonic.markNow()
+                    val bytes = task(id).downloadedBytes
+                    val seconds = (sampledAt - previousTime).inWholeNanoseconds / 1_000_000_000.0
+                    val speed = if (seconds > 0) ((bytes - previousBytes).coerceAtLeast(0) / seconds).toLong() else 0L
+                    change(id, persist = false) { it.copy(bytesPerSecond = speed) }
+                    previousBytes = bytes
+                    previousTime = sampledAt
+                }
+            }
+            try {
+                coroutineScope {
+                    streams.forEachIndexed { index, stream ->
+                        launch {
+                            files.writeStream(id, if (index == 0) "video.m4s" else "audio.m4s") { write ->
+                                downloadVideoStream(stream.getUrls(sortCDN = true).first(), write) { count, total ->
+                                    progressMutex.withLock {
+                                        receivedBytes[index] = count
+                                        totalBytes[index] = total
+                                        val downloaded = receivedBytes.sum()
+                                        val size = if (totalBytes.all { it != null }) totalBytes.sumOf { checkNotNull(it) } else null
+                                        change(id, persist = false) { it.copy(downloadedBytes = downloaded, totalBytes = size) }
+                                    }
+                                }
                             }
                         }
                     }
                 }
+            } finally {
+                sampling.cancel()
             }
         }
         currentCoroutineContext().ensureActive()
     }
 
-    private fun validateSource(request: DownloadRequest, source: VideoSource) {
-        check(source.isSuccess) { source.message }
-        check(!source.isPreview) { "试看内容不支持完整下载" }
-        check(source.getExactVideo(request.spec.videoQuality, request.spec.videoCodec) != null) { "所选视频规格不可用" }
-        check(if (request.spec.audioQuality == null) source.audioQualities.isEmpty()
-            else source.getExactAudio(request.spec.audioQuality!!) != null) { "所选音质不可用" }
-    }
     private suspend fun task(id: String): DownloadTask = mutex.withLock { _tasks.value.first { it.id == id } }
     private suspend fun change(id: String, persist: Boolean = true, transform: (DownloadTask) -> DownloadTask) = mutex.withLock {
-        val changed = _tasks.value.map { if (it.id == id) transform(it).let { value -> if (persist) value.copy(updatedAt = now()) else value } else it }
+        val changed = _tasks.value.map { if (it.id == id) transform(it).let { value ->
+            value.copy(updatedAt = if (persist) now() else value.updatedAt,
+                bytesPerSecond = if (value.status == DownloadStatus.Downloading) value.bytesPerSecond else 0)
+        } else it }
         if (persist) commit(changed) else _tasks.value = changed
     }
     private suspend fun commit(value: List<DownloadTask>) {

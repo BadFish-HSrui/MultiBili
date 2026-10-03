@@ -1,6 +1,9 @@
 package tv.hsrui.bolo.download
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import tv.hsrui.network.feature.player.BiliDashObject
+import tv.hsrui.network.feature.player.VideoSource
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
 import tv.hsrui.network.feature.player.enumModels.VideoCodec
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
@@ -15,6 +18,39 @@ data class DownloadSpec(val videoQualityCode: Int, val videoCodecCode: Int, val 
 
 @Serializable
 enum class DownloadType { Video, Media }
+
+@Serializable
+data class DownloadGroup(val type: DownloadType, val id: Long) {
+    val key: String get() = "${type.name}:$id"
+}
+
+data class DownloadTarget(val id: Long, val cid: Long, val subtitle: String, val number: Int) {
+    val key: String get() = "$id:$cid"
+}
+
+data class DownloadStreams(val video: BiliDashObject, val audio: BiliDashObject?, val spec: DownloadSpec)
+
+fun resolveDownloadStreams(source: VideoSource, spec: DownloadSpec): DownloadStreams {
+    check(source.isSuccess) { source.message }
+    check(!source.isPreview) { "试看内容不支持完整下载" }
+    val videos = source.videoQualities.mapNotNull { quality ->
+        val codecs = source.availableVideoCodecs(quality).associateWith { codec ->
+            checkNotNull(source.getExactVideo(quality, codec))
+        }
+        if (codecs.isEmpty()) null else quality to codecs
+    }.toMap()
+    val audios = source.audioQualities.mapNotNull { quality -> source.getExactAudio(quality)?.let { quality to it } }.toMap()
+    check(source.audioQualities.isEmpty() || audios.isNotEmpty()) { "没有可下载的音频规格" }
+    // 只在有效流中应用播放器相同的画质、编码和音质回退顺序。
+    val available = source.copy(_video = videos, _audio = audios.takeIf { it.isNotEmpty() })
+    val video = available.getVideo(spec.videoQuality, spec.videoCodec)
+    val audio = available.getAudio(spec.audioQuality)
+    val quality = video.quality as? VideoQuality
+    check(quality != null && video.getUrls().isNotEmpty() && video.codec != VideoCodec.Audio) { "没有可下载的视频规格" }
+    val audioQuality = audio?.quality as? AudioQuality
+    check(audio == null || audioQuality != null) { "没有可下载的音频规格" }
+    return DownloadStreams(video, audio, DownloadSpec(quality.code, video.codec.code, audioQuality?.code))
+}
 
 @Serializable
 data class DownloadRequest(
@@ -71,4 +107,24 @@ data class DownloadTask(
     val mergeProgress: Float = 0f,
     val error: String? = null,
     val output: DownloadOutput? = null,
-)
+    val mainTitle: String = request.title,
+    val subtitle: String = "",
+    val group: DownloadGroup? = null,
+    val episodeNumber: Int = 0,
+    val actualSpec: DownloadSpec? = null,
+    @Transient val bytesPerSecond: Long = 0,
+) {
+    val title: String get() = listOf(mainTitle, subtitle).filter(String::isNotBlank).joinToString(" ")
+    val fileName: String get() = request.copy(title = title, spec = actualSpec ?: request.spec).fileName
+    val episodeKey: String get() = "${request.type.name}:${request.id}:${request.cid}"
+    val displayGroupKey: String get() = group?.let { "group:${it.key}" } ?: "task:$id"
+}
+
+fun List<DownloadTask>.groupedDownloads(): List<List<DownloadTask>> =
+    groupBy { it.displayGroupKey }.values.sortedByDescending { tasks -> tasks.maxOf { it.createdAt } }
+
+fun List<DownloadTask>.orderedDownloadEpisodes(): List<DownloadTask> =
+    sortedWith(compareBy<DownloadTask> { it.episodeNumber }.thenBy { it.createdAt }.thenBy { it.id })
+
+fun List<DownloadTask>.completedDownloadEpisodes(): Int =
+    groupBy { it.episodeKey }.values.count { episodes -> episodes.all { it.status == DownloadStatus.Completed } }

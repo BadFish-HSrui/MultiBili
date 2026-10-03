@@ -26,21 +26,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import tv.hsrui.bolo.download.DownloadStatus
 import tv.hsrui.bolo.download.DownloadTask
-import kotlin.time.TimeSource
 
 @Composable
 fun ShowDownloadTaskCard(
@@ -50,37 +41,19 @@ fun ShowDownloadTaskCard(
     onRetry: () -> Unit,
     onCancel: () -> Unit,
     onRemove: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    title: String = task.title,
 ) {
-    val currentDownloadedBytes by rememberUpdatedState(task.downloadedBytes)
-    var bytesPerSecond by remember(task.id, task.status) { mutableLongStateOf(0L) }
-    LaunchedEffect(task.id, task.status) {
-        if (task.status != DownloadStatus.Downloading) return@LaunchedEffect
-        var previousBytes = currentDownloadedBytes
-        var previousSampleAt = TimeSource.Monotonic.markNow()
-        while (isActive) {
-            delay(1_000)
-            val sampledAt = TimeSource.Monotonic.markNow()
-            val sampledBytes = currentDownloadedBytes
-            val elapsedSeconds = (sampledAt - previousSampleAt).inWholeNanoseconds / 1_000_000_000.0
-            bytesPerSecond = if (elapsedSeconds > 0) {
-                ((sampledBytes - previousBytes).coerceAtLeast(0).toDouble() / elapsedSeconds).toLong()
-            } else 0L
-            previousBytes = sampledBytes
-            previousSampleAt = sampledAt
-        }
-    }
-
     val total = task.totalBytes?.takeIf { it > 0 }
     val downloadProgress = total?.let { (task.downloadedBytes.toDouble() / it).coerceIn(0.0, 1.0) } ?: 0.0
     val mergeProgress = task.mergeProgress.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f
     val showProgress = task.status != DownloadStatus.Completed
     val statusText = when (task.status) {
         DownloadStatus.Downloading -> if (total != null) {
-            "${(downloadProgress * 100).toInt()}% · ${formatDownloadBytes(bytesPerSecond)}/s · " +
+            "${(downloadProgress * 100).toInt()}% · ${formatDownloadBytes(task.bytesPerSecond)}/s · " +
                 "${formatDownloadBytes(task.downloadedBytes)} / ${formatDownloadBytes(total)}"
         } else {
-            "—% · ${formatDownloadBytes(bytesPerSecond)}/s · ${formatDownloadBytes(task.downloadedBytes)} / 未知"
+            "—% · ${formatDownloadBytes(task.bytesPerSecond)}/s · ${formatDownloadBytes(task.downloadedBytes)} / 未知"
         }
         DownloadStatus.Merging -> "合成中 · ${(mergeProgress * 100).toInt()}%"
         DownloadStatus.Completed -> task.output?.let { "已完成 · ${formatDownloadBytes(it.size)}" } ?: "已完成"
@@ -91,7 +64,7 @@ fun ShowDownloadTaskCard(
     Card(modifier.fillMaxWidth().height(128.dp)) {
         Column(Modifier.fillMaxSize().padding(4.dp)) {
             Text(
-                text = task.request.title,
+                text = title,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = if (showProgress) 1 else 2,
                 softWrap = !showProgress,
@@ -150,7 +123,7 @@ fun ShowDownloadTaskCard(
     }
 }
 
-private fun formatDownloadBytes(bytes: Long): String = when {
+internal fun formatDownloadBytes(bytes: Long): String = when {
     bytes >= 1024L * 1024 * 1024 -> "${(bytes / (1024.0 * 1024 * 1024) * 10).toLong() / 10.0} GB"
     bytes >= 1024L * 1024 -> "${(bytes / (1024.0 * 1024) * 10).toLong() / 10.0} MB"
     bytes >= 1024 -> "${(bytes / 1024.0 * 10).toLong() / 10.0} KB"

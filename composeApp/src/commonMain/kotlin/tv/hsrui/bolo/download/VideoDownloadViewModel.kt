@@ -26,69 +26,69 @@ data class VideoDownloadUiState(
     val error: String? = null,
     val isSubmitting: Boolean = false,
     val submitted: Boolean = false,
+    val selectedTargets: Set<String> = emptySet(),
 )
 
 class VideoDownloadViewModel(
-    private val id: Long,
-    private val cid: Long,
-    private val title: String,
+    private val group: DownloadGroup,
+    private val mainTitle: String,
+    targets: List<DownloadTarget>,
     private val settings: PlaybackSettings,
     private val loginStorage: LoginStorage,
     private val manager: DownloadManager,
-    private val type: DownloadType = DownloadType.Video,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(VideoDownloadUiState())
+    val targets = targets.distinctBy { it.key }.sortedBy { it.number }
+    private val _state = MutableStateFlow(VideoDownloadUiState(selectedTargets = this.targets.mapTo(mutableSetOf()) { it.key }))
     val state = _state.asStateFlow()
     private var loadJob: Job? = null
     private var generation = 0L
+    private var loadedSession: String? = null
 
     init { loadPlayInfo() }
 
     fun loadPlayInfo() {
+        if (_state.value.isSubmitting) return
         loadJob?.cancel()
         val request = ++generation
         val session = loginStorage.cookies.sessData
-        _state.value = VideoDownloadUiState()
+        loadedSession = null
+        _state.value = VideoDownloadUiState(selectedTargets = _state.value.selectedTargets)
         loadJob = viewModelScope.launch {
             try {
                 check(loginStorage.isLoggedIn) { "请先登录" }
+                val first = targets.firstOrNull() ?: error("没有可下载的内容")
                 val source = withTimeout(15_000) {
-                    when (type) {
-                        DownloadType.Video -> fetchVideoPlayInfo(id, cid)
-                        DownloadType.Media -> fetchMediaPlayInfo(id)
+                    when (group.type) {
+                        DownloadType.Video -> fetchVideoPlayInfo(first.id, first.cid)
+                        DownloadType.Media -> fetchMediaPlayInfo(first.id)
                     }
                 }
                 if (request != generation) return@launch
                 check(session == loginStorage.cookies.sessData) { "登录状态已变化，请重试" }
-                check(source.isSuccess) { source.message }
-                check(!source.isPreview) { "试看内容不支持完整下载" }
-                val qualities = source.videoQualities.filter { source.availableVideoCodecs(it).isNotEmpty() }
-                val quality = settings.defaultVideoQuality.takeIf { it in qualities } ?: qualities.firstOrNull()
-                    ?: error("没有可下载的视频规格")
-                val codecs = source.availableVideoCodecs(quality)
-                val codec = settings.defaultVideoCodec.takeIf { it in codecs } ?: codecs.first()
-                val audioQualities = source.audioQualities.filter { source.getExactAudio(it) != null }
-                check(source.audioQualities.isEmpty() || audioQualities.isNotEmpty()) { "没有可下载的音频规格" }
-                val audio = settings.defaultAudioQuality.takeIf { it in audioQualities } ?: audioQualities.firstOrNull()
-                _state.value = VideoDownloadUiState(isLoading = false, source = source, spec = DownloadSpec(quality.code, codec.code, audio?.code))
+                val selected = resolveDownloadStreams(source, DownloadSpec(
+                    settings.defaultVideoQuality.code, settings.defaultVideoCodec.code, settings.defaultAudioQuality.code,
+                ))
+                loadedSession = session
+                _state.update { it.copy(isLoading = false, source = source, spec = selected.spec) }
             } catch (error: Exception) {
                 if (error is CancellationException && error !is TimeoutCancellationException) throw error
-                if (request == generation) _state.value = VideoDownloadUiState(isLoading = false,
-                    error = if (error is IllegalStateException) error.message else "播放信息获取失败，请重试")
+                if (request == generation) _state.update { it.copy(isLoading = false,
+                    error = if (error is IllegalStateException) error.message else "播放信息获取失败，请重试") }
             }
         }
     }
 
     fun selectQuality(quality: VideoQuality) {
         val current = _state.value
+        if (current.isSubmitting) return
         val source = current.source ?: return
         val spec = current.spec ?: return
-        val codecs = source.availableVideoCodecs(quality)
-        val codec = spec.videoCodec.takeIf { it in codecs } ?: codecs.firstOrNull() ?: return
-        _state.value = current.copy(spec = spec.copy(videoQualityCode = quality.code, videoCodecCode = codec.code), error = null)
+        if (source.availableVideoCodecs(quality).isEmpty()) return
+        _state.value = current.copy(spec = resolveDownloadStreams(source, spec.copy(videoQualityCode = quality.code)).spec, error = null)
     }
     fun selectCodec(codec: VideoCodec) {
         _state.update { current ->
+            if (current.isSubmitting) return@update current
             val spec = current.spec ?: return@update current
             if (codec !in current.source?.availableVideoCodecs(spec.videoQuality).orEmpty()) current
             else current.copy(spec = spec.copy(videoCodecCode = codec.code), error = null)
@@ -96,20 +96,35 @@ class VideoDownloadViewModel(
     }
     fun selectAudio(audio: AudioQuality) {
         _state.update { current ->
+            if (current.isSubmitting) return@update current
             if (current.source?.getExactAudio(audio) == null) current
             else current.copy(spec = current.spec?.copy(audioQualityCode = audio.code), error = null)
+        }
+    }
+    fun toggleTarget(key: String) {
+        if (targets.none { it.key == key }) return
+        _state.update { current ->
+            if (current.isSubmitting) current else current.copy(selectedTargets =
+                if (key in current.selectedTargets) current.selectedTargets - key else current.selectedTargets + key)
+        }
+    }
+    fun selectAll(selected: Boolean) {
+        _state.update { current ->
+            if (current.isSubmitting) current else current.copy(selectedTargets =
+                if (selected) targets.mapTo(mutableSetOf()) { it.key } else emptySet())
         }
     }
     fun submit() {
         val current = _state.value
         val spec = current.spec ?: return
-        val source = current.source ?: return
-        if (current.isSubmitting) return
+        if (current.source == null || current.isSubmitting || current.isLoading || current.selectedTargets.isEmpty()) return
         _state.value = current.copy(isSubmitting = true, error = null)
         viewModelScope.launch {
             try {
-                val submitted = manager.enqueue(DownloadRequest(id, cid, title, spec, type), source)
-                _state.update { it.copy(isSubmitting = false, submitted = submitted) }
+                check(loadedSession == loginStorage.cookies.sessData) { "登录状态已变化，请重新获取规格" }
+                val count = manager.enqueueBatch(group, mainTitle, targets.filter { it.key in current.selectedTargets }, spec)
+                _state.update { it.copy(isSubmitting = false, submitted = count > 0,
+                    error = if (count == 0) "已存在相同下载任务" else null) }
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) { _state.update { it.copy(isSubmitting = false, error = error.message ?: "创建下载任务失败") } }
         }

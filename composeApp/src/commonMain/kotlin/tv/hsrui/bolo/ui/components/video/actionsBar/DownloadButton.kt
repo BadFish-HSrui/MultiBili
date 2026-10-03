@@ -19,7 +19,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import tv.hsrui.bolo.download.DownloadType
-import tv.hsrui.bolo.ui.components.dialog.ShowVideoDownloadDialog
+import tv.hsrui.bolo.download.DownloadGroup
+import tv.hsrui.bolo.download.DownloadTarget
+import tv.hsrui.bolo.ui.components.download.ShowVideoDownloadSheet
 
 @Composable
 fun DownloadButton(
@@ -29,9 +31,11 @@ fun DownloadButton(
     canClick: Boolean,
     modifier: Modifier = Modifier,
     type: DownloadType = DownloadType.Video,
+    groupId: Long = id,
+    targets: List<DownloadTarget> = listOf(DownloadTarget(id, cid, "", 1)),
 ) {
-    var open by rememberSaveable(type, id, cid) { mutableStateOf(false) }
-    val enabled = canClick && id > 0 && cid > 0
+    var open by rememberSaveable(type, groupId, id, cid) { mutableStateOf(false) }
+    val enabled = canClick && groupId > 0 && targets.isNotEmpty() && targets.all { it.id > 0 && it.cid > 0 }
     Surface(onClick = { open = true }, enabled = enabled, color = Color.Transparent, modifier = modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
@@ -52,6 +56,6 @@ fun DownloadButton(
         }
     }
     if (open && enabled) {
-        ShowVideoDownloadDialog(id = id, cid = cid, title = title, type = type, onDismiss = { open = false })
+        ShowVideoDownloadSheet(group = DownloadGroup(type, groupId), mainTitle = title, targets = targets, onDismiss = { open = false })
     }
 }

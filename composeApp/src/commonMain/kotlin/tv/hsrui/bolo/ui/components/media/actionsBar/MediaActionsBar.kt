@@ -19,12 +19,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.download.DownloadType
+import tv.hsrui.bolo.download.DownloadTarget
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.video.actionsBar.CoinButton
 import tv.hsrui.bolo.ui.components.video.actionsBar.DownloadButton
 import tv.hsrui.bolo.ui.components.video.actionsBar.FavoriteButton
 import tv.hsrui.bolo.ui.components.video.actionsBar.LikeButton
 import tv.hsrui.network.feature.media.MediaEpisode
+import tv.hsrui.network.feature.media.MediaSeasonData
 import tv.hsrui.network.feature.media.actions.MediaActionsStateResponse
 import tv.hsrui.network.feature.media.actions.fetchMediaActionsState
 import tv.hsrui.network.feature.media.actions.fetchMediaCoinLimit
@@ -32,7 +34,7 @@ import tv.hsrui.network.login.storage.LoginStorage
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
-fun MediaActionsBar(episode: MediaEpisode, title: String, modifier: Modifier = Modifier) {
+fun MediaActionsBar(episode: MediaEpisode, media: MediaSeasonData, modifier: Modifier = Modifier) {
     val loginStorage: LoginStorage = koinInject()
     val snackbarManager: SnackbarManager = koinInject()
     val isLogin by loginStorage.isLoggedInFlow.collectAsState(initial = loginStorage.isLoggedIn)
@@ -116,9 +118,13 @@ fun MediaActionsBar(episode: MediaEpisode, title: String, modifier: Modifier = M
             DownloadButton(
                 id = episode.episodeId,
                 cid = episode.cid,
-                title = title,
+                title = media.title,
                 canClick = isLogin && episode.isAvailable,
                 type = DownloadType.Media,
+                groupId = media.seasonId,
+                targets = media.episodes.mapIndexedNotNull { index, item ->
+                    if (item.isAvailable) DownloadTarget(item.episodeId, item.cid, item.displayTitle, index + 1) else null
+                },
             )
         }
     }

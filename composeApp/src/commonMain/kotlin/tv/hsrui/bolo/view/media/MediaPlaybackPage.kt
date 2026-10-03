@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -158,7 +157,7 @@ private fun MediaDescPage(
         contentPadding = PaddingValues(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier.widthIn(max = 512.dp),
+        modifier = modifier,
     ) {
         item(key = "desc") { MediaDescContent(media = uiState.media, episode = uiState.episode) }
         item(key = "episodes") {
@@ -211,7 +210,7 @@ private fun MediaDescContent(media: MediaSeasonData, episode: MediaEpisode?) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val coverHeight = if (media.coverUrl.isNotBlank()) maxWidth / 2f else 0.dp
+                val coverHeight = if (media.coverUrl.isNotBlank()) (maxWidth / 2f).coerceAtMost(200.dp) else 0.dp
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -222,7 +221,9 @@ private fun MediaDescContent(media: MediaSeasonData, episode: MediaEpisode?) {
                             model = media.coverUrl,
                             contentDescription = "${media.title}封面",
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxWidth(1f / 3f).aspectRatio(2f / 3f).clip(MaterialTheme.shapes.small),
+                            modifier = Modifier.height(coverHeight)
+                                .aspectRatio(2f / 3f, matchHeightConstraintsFirst = true)
+                                .clip(MaterialTheme.shapes.small),
                         )
                     }
                     Column(
@@ -260,7 +261,7 @@ private fun MediaDescContent(media: MediaSeasonData, episode: MediaEpisode?) {
                         if (episode != null) {
                             MediaActionsBar(
                                 episode = episode,
-                                title = "${media.title} ${episode.displayTitle}",
+                                media = media,
                                 modifier = Modifier.padding(top = 4.dp),
                             )
                         }
