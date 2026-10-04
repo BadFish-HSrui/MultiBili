@@ -207,17 +207,17 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
                                 val files = remember { DownloadFiles() }
                                 val directory = settings.general.downloadDirectory
                                 var directoryName by remember(directory) {
-                                    mutableStateOf(directory)
+                                    mutableStateOf(formatDirectoryDisplayText(directory))
                                 }
                                 var pickingDirectory by remember { mutableStateOf(false) }
                                 LaunchedEffect(directory) {
                                     directoryName = try {
-                                        files.directoryDisplayName(directory)
+                                        formatDirectoryDisplayText(files.directoryDisplayName(directory))
                                     } catch (error: CancellationException) {
                                         throw error
                                     } catch (_: Exception) {
                                         snackbar.showMessage("无法读取下载目录，请重新选择")
-                                        directory
+                                        formatDirectoryDisplayText(directory)
                                     }
                                 }
                                 HorizontalDivider()
@@ -544,6 +544,11 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
             }
         }
     }
+}
+
+private fun formatDirectoryDisplayText(directory: String): String {
+    if (getPlatform().type != PlatformType.Android) return directory
+    return directory.removePrefix("/storage/emulated/0/").ifEmpty { directory }
 }
 
 private fun parseSeedColorRgb(input: String): Int? {
