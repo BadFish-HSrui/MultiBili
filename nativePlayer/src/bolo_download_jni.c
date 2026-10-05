@@ -1,3 +1,7 @@
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE 1
+#endif
+
 #include "bolo_download.h"
 #include <jni.h>
 #include <stdlib.h>
