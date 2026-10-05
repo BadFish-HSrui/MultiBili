@@ -20,14 +20,14 @@ import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.theme.BiliColor
-import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.video.actions.like.VideoLikeAction
 import tv.hsrui.network.feature.video.actions.like.modifyVideoLike
 import tv.hsrui.network.utils.formatCountToString
 
 @Composable
 fun LikeButton(
-    videoInfo: VideoInfoData,
+    avid: Long,
+    likeCount: Long?,
     isLiked: Boolean,
     canClick: Boolean,
     reloadState: suspend () -> Unit,
@@ -43,7 +43,7 @@ fun LikeButton(
                 if (canClick) {
                     scope.launch {
                         try {
-                            val result = modifyVideoLike(avid = videoInfo.avid, action = action)
+                            val result = modifyVideoLike(avid = avid, action = action)
                             if (!result.isSuccess) {
                                 snackbarManager.showMessage("[${result.code}]: ${result.message}")
                             }
@@ -67,7 +67,7 @@ fun LikeButton(
                     modifier = Modifier.size(24.dp)
                 )
                 Text(
-                    text = videoInfo.stateCount.like.formatCountToString(),
+                    text = likeCount?.formatCountToString() ?: "--",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )

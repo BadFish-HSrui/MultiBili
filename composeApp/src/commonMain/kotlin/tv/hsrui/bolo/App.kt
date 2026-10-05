@@ -23,6 +23,8 @@ import org.koin.compose.koinInject
 import org.koin.dsl.KoinConfiguration
 import org.koin.dsl.koinConfiguration
 import tv.hsrui.bolo.boloSetting.BoloSettingsModule
+import tv.hsrui.bolo.download.DownloadModule
+import tv.hsrui.bolo.download.DownloadManager
 import tv.hsrui.bolo.boloSetting.AppThemeMode
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.navigation.BoloRoute
@@ -51,7 +53,8 @@ fun koinConfig(): KoinConfiguration {
             MyAccountInfoModule,
             NavigatorModule,
             SnackbarModule,
-            WbiManagerModule
+            WbiManagerModule,
+            DownloadModule
         )
     }
 }
@@ -62,6 +65,8 @@ fun App() {
     val configuration = remember { koinConfig() }
     KoinApplication(configuration = configuration) {
         val settings: BoloSettings = koinInject()
+        val downloadManager: DownloadManager = koinInject()
+        LaunchedEffect(downloadManager) { runCatching { downloadManager.initialize() } }
         val systemDarkTheme = isSystemInDarkTheme()
         val isDarkTheme = when (settings.general.themeMode) {
             AppThemeMode.Dark -> true

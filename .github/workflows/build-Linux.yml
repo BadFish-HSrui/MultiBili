@@ -177,6 +177,42 @@ jobs:
           cp "${deb_files[0]}" "$deb_target"
           cp "${rpm_files[0]}" "$rpm_target"
 
+      # 发布信息供统一入口的发布作业直接复用，避免重新克隆源码或执行 Gradle。
+      - name: 生成发布信息
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import re
+
+          metadata = json.loads(pathlib.Path('build/version/build-metadata.json').read_text())
+          sha = metadata['commitSha']
+          if not re.fullmatch('[0-9a-f]{40}', sha):
+              raise SystemExit('构建提交 SHA 无效')
+          properties = pathlib.Path('version.properties').read_text()
+          channels = re.findall(r'^APP_RELEASE_CHANNEL\s*=\s*(\w+)\s*$', properties, re.MULTILINE)
+          if len(channels) != 1 or channels[0] not in {'alpha', 'beta', 'rc', 'stable'}:
+              raise SystemExit('发布渠道无效')
+          info = {
+              'commitSha': sha,
+              'appDisplayVersion': metadata['appDisplayVersion'],
+              'releaseChannel': channels[0],
+          }
+          target = pathlib.Path('staging/release-info.json')
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(json.dumps(info, ensure_ascii=False, indent=2) + '\n')
+          print(json.dumps(info, ensure_ascii=False))
+          PY
+
+      - name: 上传发布信息
+        uses: actions/upload-artifact@v7
+        with:
+          name: Release-info
+          path: staging/release-info.json
+          if-no-files-found: error
+          retention-days: 7
+
       - name: 上传 Linux DEB 构建产物
         uses: actions/upload-artifact@v7
         with:

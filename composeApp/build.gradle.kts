@@ -52,7 +52,7 @@ kotlin {
             includeDirs(nativeHeaders)
         }
         tasks.named(interop.interopProcessingTaskName).configure {
-            inputs.files(nativeHeaders.file("bolo_mpv.h"), nativeHeaders.file("BoloMpvView.h"))
+            inputs.files(nativeHeaders.file("bolo_mpv.h"), nativeHeaders.file("bolo_download.h"), nativeHeaders.file("BoloMpvView.h"))
             enabled = isMacHost
         }
         iosTarget.binaries.framework {
@@ -125,6 +125,7 @@ kotlin {
             implementation(libs.kotlin.test)
         }
         jvmMain.dependencies {
+            implementation(libs.filekit.dialogs)
             implementation(libs.dbus.java.core)
             runtimeOnly(libs.dbus.java.transport)
             implementation(compose.desktop.currentOs)
@@ -142,6 +143,7 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "tv.hsrui.bolo.MainKt"
+        buildTypes.release.proguard.configurationFiles.from(project.file("desktop.pro"))
 
         nativeDistributions {
             targetFormats(
@@ -160,6 +162,7 @@ compose.desktop {
                 iconFile.set(project.file("src/jvmMain/icons/mac_icon.icns"))
             }
             linux {
+                modules("jdk.security.auth")
                 menuGroup = "AudioVideo;Video;Player;"
                 packageVersion = appVersionMetadata.coreVersion
                 appRelease = appVersionMetadata.buildNumber.toString()

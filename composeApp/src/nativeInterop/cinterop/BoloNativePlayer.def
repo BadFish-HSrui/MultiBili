@@ -1,4 +1,4 @@
 language = Objective-C
-headers = bolo_mpv.h BoloMpvView.h
-headerFilter = bolo_mpv.h BoloMpvView.h
+headers = bolo_mpv.h bolo_download.h BoloMpvView.h
+headerFilter = bolo_mpv.h bolo_download.h BoloMpvView.h
 package = tv.hsrui.bolo.player.nativeinterop

@@ -5,6 +5,7 @@ import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
 import androidx.navigation3.runtime.NavEntry
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.accountFeature.AccountFeaturesScreen
+import tv.hsrui.bolo.accountFeature.feature.download.DownloadScreen
 import tv.hsrui.bolo.favorite.FavoriteScreen
 import tv.hsrui.bolo.favorite.videos.FavoriteVideosScreen
 import tv.hsrui.bolo.accountFeature.feature.history.HistoryScreen
@@ -67,6 +68,11 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
                     key = route,
                     metadata = ListDetailSceneStrategy.detailPane()
                 ) { WatchLaterScreen(isEntryFromList = true) }
+
+                is BoloRoute.AccountFeature.Download -> NavEntry(
+                    key = route,
+                    metadata = ListDetailSceneStrategy.detailPane(),
+                ) { DownloadScreen(isEntryFromList = true) }
             }
         }
 

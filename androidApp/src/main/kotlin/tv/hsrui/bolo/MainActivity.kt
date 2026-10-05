@@ -11,6 +11,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import tv.hsrui.bolo.utils.url.AppContext
 import tv.hsrui.bolo.player.session.BoloPlaybackSession
 import tv.hsrui.bolo.navigation.ExternalLinkHandler
+import tv.hsrui.bolo.download.DownloadFiles
 
 class MainActivity : ComponentActivity() {
     private fun receiveExternalLink(intent: Intent) {
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
         AppContext.instance = application
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        DownloadFiles.attach(this)
         receiveExternalLink(intent)
 
         requestedOrientation = if (getPlatform().isPhone) {

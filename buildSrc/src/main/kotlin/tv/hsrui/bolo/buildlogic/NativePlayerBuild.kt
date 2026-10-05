@@ -181,9 +181,9 @@ internal class NativePlayerBuild(
     private fun packageBridge(libraries: NativePlayerLibraries): File {
         val chain = libraries.chain
         val ios = chain.system in listOf("ios", "iossim")
-        val sources = if (ios) listOf("bolo_mpv.c", "BoloMpvView.m") else
-            listOf("bolo_mpv.c", "bolo_mpv_jni.c") + when (chain.system) {
-                "macos" -> listOf("bolo_system_media_macos.m")
+        val sources = if (ios) listOf("bolo_mpv.c", "bolo_download.c", "BoloMpvView.m") else
+            listOf("bolo_mpv.c", "bolo_mpv_jni.c", "bolo_download.c", "bolo_download_jni.c") + when (chain.system) {
+                "macos" -> listOf("bolo_system_media_macos.m", "bolo_download_macos.m")
                 "windows" -> listOf("bolo_system_media_windows.cpp")
                 else -> emptyList()
             }
@@ -212,8 +212,8 @@ internal class NativePlayerBuild(
             }.filter(File::isFile).distinct()
             if (archives.isEmpty()) throw GradleException("mpv static dependency list is empty")
             libraries.run(listOf("xcrun", "libtool", "-static", "-o", framework.resolve("BoloNativePlayer")) + objects + archives)
-            for (name in listOf("bolo_mpv.h", "BoloMpvView.h")) nativeCopyFile(libraries.work.resolve("bridge/$name"), framework.resolve("Headers/$name"))
-            framework.resolve("Headers/BoloNativePlayer.h").writeText("#import <Foundation/Foundation.h>\n#import \"bolo_mpv.h\"\n#import \"BoloMpvView.h\"\n")
+            for (name in listOf("bolo_mpv.h", "bolo_download.h", "BoloMpvView.h")) nativeCopyFile(libraries.work.resolve("bridge/$name"), framework.resolve("Headers/$name"))
+            framework.resolve("Headers/BoloNativePlayer.h").writeText("#import <Foundation/Foundation.h>\n#import \"bolo_mpv.h\"\n#import \"bolo_download.h\"\n#import \"BoloMpvView.h\"\n")
             framework.resolve("Modules/module.modulemap").writeText("framework module BoloNativePlayer {\n umbrella header \"BoloNativePlayer.h\"\n export *\n module * { export * }\n}\n")
             framework.resolve("Info.plist").writeText("""
                 <?xml version="1.0" encoding="UTF-8"?>
@@ -238,7 +238,7 @@ internal class NativePlayerBuild(
                 listOf("-Wl,--exclude-libs,ALL", "-Wl,--no-undefined") else emptyList()
             val systemLibs = when (chain.system) {
                 "macos" -> listOf("-framework", "OpenGL", "-framework", "IOSurface", "-framework", "AppKit", "-framework", "MediaPlayer")
-                "windows" -> listOf("-lopengl32", "-lole32", "-lruntimeobject", "-luuid", "-lshlwapi", "-lshcore")
+                "windows" -> listOf("-lopengl32", "-lole32", "-lruntimeobject", "-luuid", "-lshlwapi", "-lshcore", "-lshell32")
                 "linux" -> listOf("-ldl")
                 else -> emptyList()
             }

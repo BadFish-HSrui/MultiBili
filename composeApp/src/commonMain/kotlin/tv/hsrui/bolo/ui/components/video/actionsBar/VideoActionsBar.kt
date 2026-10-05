@@ -15,6 +15,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
+import tv.hsrui.bolo.download.DownloadTarget
+import tv.hsrui.network.feature.video.CopyrightType
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.video.actions.state.VideoActionsStateResponse
 import tv.hsrui.network.feature.video.actions.state.fetchVideoActionsStateFor
@@ -60,23 +62,37 @@ fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         LikeButton(
-            videoInfo = videoInfo,
+            avid = videoInfo.avid,
+            likeCount = videoInfo.stateCount.like.toLong(),
             isLiked = actionsState.isLiked,
             canClick = isLogin,
             reloadState = reloadState
         )
         CoinButton(
-            videoInfo = videoInfo,
+            avid = videoInfo.avid,
+            coinCount = videoInfo.stateCount.coin.toLong(),
+            coinLimit = if (videoInfo.copyrightType == CopyrightType.Reprint) 1 else 2,
             isCoined = actionsState.isCoined,
             coinedCount = actionsState.coinedCount,
             canClick = isLogin,
             reloadState = reloadState
         )
         FavoriteButton(
-            videoInfo = videoInfo,
+            avid = videoInfo.avid,
+            favoriteCount = videoInfo.stateCount.favorite.toLong(),
             isFavorite = actionsState.isFavorite,
             canClick = isLogin,
             reloadState = reloadState
+        )
+        DownloadButton(
+            id = videoInfo.avid,
+            cid = videoInfo.cid,
+            title = videoInfo.title,
+            canClick = isLogin,
+            targets = videoInfo.parts.takeIf { it.size > 1 }?.mapIndexed { index, part ->
+                DownloadTarget(videoInfo.avid, part.cid, part.title.ifBlank { "P${part.pageNumber}" },
+                    part.pageNumber.takeIf { it > 0 } ?: (index + 1))
+            } ?: listOf(DownloadTarget(videoInfo.avid, videoInfo.parts.firstOrNull()?.cid ?: videoInfo.cid, "", 1)),
         )
     }
 }

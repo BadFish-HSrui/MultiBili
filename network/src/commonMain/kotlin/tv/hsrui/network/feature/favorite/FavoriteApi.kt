@@ -19,20 +19,20 @@ import tv.hsrui.network.client.ApiClient
 import tv.hsrui.network.constant.ApiUrls
 import tv.hsrui.network.login.storage.LoginStorage
 
-suspend fun fetchMyFavoriteFolders(targetAvid: Long? = null): FavoriteFolderListResponse {
+suspend fun fetchMyFavoriteFolders(targetAvid: Long? = null, targetType: Int = 2): FavoriteFolderListResponse {
     val loginStorage: LoginStorage = getKoin().get()
     if (!loginStorage.isLoggedIn) {
         return FavoriteFolderListResponse(message = "账号未登录")
     }
 
-    return fetchFavoriteFolders(loginStorage.cookies.dedeUserID, targetAvid)
+    return fetchFavoriteFolders(loginStorage.cookies.dedeUserID, targetAvid, targetType)
 }
 
-suspend fun fetchFavoriteFolders(mid: Long, targetAvid: Long? = null): FavoriteFolderListResponse {
+suspend fun fetchFavoriteFolders(mid: Long, targetAvid: Long? = null, targetType: Int = 2): FavoriteFolderListResponse {
     val response = ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.Favorite.CREATED_FOLDERS) {
         parameter("up_mid", mid)
         if (targetAvid != null) {
-            parameter("type", 2)
+            parameter("type", targetType)
             parameter("rid", targetAvid)
         }
     }
@@ -178,6 +178,7 @@ suspend fun modifyVideoFavoriteFolders(
     avid: Long,
     addMediaIds: Collection<Long>,
     removeMediaIds: Collection<Long>,
+    resourceType: Int = 2,
 ): ModifyFavoriteResponse {
     val loginStorage: LoginStorage = getKoin().get()
 
@@ -186,7 +187,7 @@ suspend fun modifyVideoFavoriteFolders(
             FormDataContent(
                 Parameters.build {
                     append("rid", avid.toString())
-                    append("type", "2")
+                    append("type", resourceType.toString())
                     if (addMediaIds.isNotEmpty()) {
                         append("add_media_ids", addMediaIds.joinToString(","))
                     }

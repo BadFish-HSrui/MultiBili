@@ -143,6 +143,17 @@ class GeneralSettings(settingsKSafe: KSafePlain) {
             currentSearchTrendingEnabled = value
         }
 
+    private var storedDownloadDirectory by settingsKSafe("", key = "bolo_general_download_directory")
+    private var currentDownloadDirectory by mutableStateOf(storedDownloadDirectory)
+
+    var downloadDirectory: String
+        get() = currentDownloadDirectory
+        set(value) {
+            if (value == currentDownloadDirectory) return
+            storedDownloadDirectory = value
+            currentDownloadDirectory = value
+        }
+
     private var storedClipboardLinkRecognitionEnabled by settingsKSafe(
         false, key = "bolo_general_clipboard_link_recognition_enabled",
     )
