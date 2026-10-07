@@ -108,10 +108,11 @@ internal fun nativeManifest(directory: File): Map<String, String> = nativeFiles(
     .filter { it.isFile && it != directory.resolve("manifest.json") }
     .associate { it.relativeTo(directory).invariantSeparatorsPath to nativeSha(it) }.toSortedMap()
 
-internal fun nativeValidBundle(directory: File, fingerprint: String): Boolean = try {
+internal fun nativeValidBundle(directory: File, target: String): Boolean = try {
     val manifest = nativeReadJson(directory.resolve("manifest.json"))
     val expected = manifest["files"] as? Map<*, *>
-    manifest["fingerprint"] == fingerprint && !expected.isNullOrEmpty() &&
+    manifest["target"] == target && !expected.isNullOrEmpty() &&
+        !Files.isSymbolicLink(directory.toPath()) &&
         nativeFiles(directory).none { Files.isSymbolicLink(it.toPath()) } &&
         expected.keys.all { key ->
             key is String && !File(key).isAbsolute && '\\' !in key &&
@@ -121,17 +122,48 @@ internal fun nativeValidBundle(directory: File, fingerprint: String): Boolean = 
     false
 }
 
-internal fun nativePublish(source: File, destination: File, fingerprint: String) {
-    nativeWriteJson(source.resolve("manifest.json"), mapOf("fingerprint" to fingerprint, "files" to nativeManifest(source)))
-    check(nativeValidBundle(source, fingerprint)) { "Invalid staged native artifact: $source" }
+internal fun nativeRecoverSlot(destination: File, target: String, logger: Logger) {
+    val previous = destination.parentFile.resolve(".previous-${destination.name}")
+    if (previous.exists()) {
+        if (!destination.exists() || (!nativeValidBundle(destination, target) && nativeValidBundle(previous, target))) {
+            nativeDelete(destination)
+            Files.move(previous.toPath(), destination.toPath(), ATOMIC_MOVE)
+            logger.lifecycle("Recovered native cache slot: {}", destination)
+        } else {
+            nativeDeleteBestEffort(previous, logger)
+        }
+    }
+    destination.parentFile.listFiles().orEmpty().filter { it.name.startsWith(".staging-${destination.name}-") }
+        .forEach { nativeDeleteBestEffort(it, logger) }
+}
+
+internal fun nativePublish(source: File, destination: File, target: String, logger: Logger) {
+    nativeWriteJson(source.resolve("manifest.json"), mapOf("target" to target, "files" to nativeManifest(source)))
+    check(nativeValidBundle(source, target)) { "Invalid staged native artifact: $source" }
     destination.parentFile.mkdirs()
-    val stage = Files.createTempDirectory(destination.parentFile.toPath(), ".staging-").toFile()
+    nativeRecoverSlot(destination, target, logger)
+    val previous = destination.parentFile.resolve(".previous-${destination.name}")
+    val stage = Files.createTempDirectory(destination.parentFile.toPath(), ".staging-${destination.name}-").toFile()
     try {
         nativeCopyTree(source, stage)
-        nativeDelete(destination)
-        Files.move(stage.toPath(), destination.toPath(), ATOMIC_MOVE)
+        check(nativeValidBundle(stage, target)) { "Invalid copied native artifact: $stage" }
+        nativeDelete(previous)
+        if (destination.exists()) Files.move(destination.toPath(), previous.toPath(), ATOMIC_MOVE)
+        try {
+            Files.move(stage.toPath(), destination.toPath(), ATOMIC_MOVE)
+        } catch (error: Exception) {
+            if (previous.exists()) {
+                try {
+                    Files.move(previous.toPath(), destination.toPath(), ATOMIC_MOVE)
+                } catch (rollback: Exception) {
+                    error.addSuppressed(rollback)
+                }
+            }
+            throw error
+        }
+        nativeDeleteBestEffort(previous, logger)
     } finally {
-        nativeDelete(stage)
+        nativeDeleteBestEffort(stage, logger)
     }
 }
 

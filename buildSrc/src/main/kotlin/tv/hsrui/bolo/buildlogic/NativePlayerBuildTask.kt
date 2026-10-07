@@ -8,7 +8,7 @@ import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
 import org.gradle.work.DisableCachingByDefault
 
-@DisableCachingByDefault(because = "Native bundles use content fingerprints, process locks and integrity manifests")
+@DisableCachingByDefault(because = "Native bundles use target cache slots, process locks and integrity manifests")
 abstract class NativePlayerBuildTask : DefaultTask() {
     @get:Internal abstract val sourceDirectory: DirectoryProperty
     @get:Internal abstract val nativeBuildDirectory: DirectoryProperty
