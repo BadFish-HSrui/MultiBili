@@ -9,12 +9,17 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +38,7 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import tv.hsrui.bolo.BuildInfo
 import tv.hsrui.bolo.getPlatform
+import tv.hsrui.bolo.ui.common.update.CheckAppUpdate
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.utils.calculateWithoutBottom
 import tv.hsrui.bolo.utils.isExpanded
@@ -44,6 +50,14 @@ fun AboutScreen(modifier: Modifier = Modifier) {
     val githubRepoUrlString = stringResource(Res.string.github_repo_url)
     val scope = rememberCoroutineScope()
     val jvmRuntimeDescription = remember { getPlatform().jvmRuntimeDescription }
+    var isAppUpdateCheckActive by remember { mutableStateOf(false) }
+
+    if (isAppUpdateCheckActive) {
+        CheckAppUpdate(
+            showLatestMessage = true,
+            onFinished = { isAppUpdateCheckActive = false },
+        )
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -71,7 +85,13 @@ fun AboutScreen(modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.displayMedium,
                     modifier = Modifier.padding(top = 8.dp)
                 )
-                Text("tv.hsrui.bolo / ${BuildInfo.appDisplayVersion}")
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+                    Surface(
+                        onClick = { isAppUpdateCheckActive = true },
+                        enabled = !isAppUpdateCheckActive,
+                        color = Color.Transparent,
+                    ) { Text("tv.hsrui.bolo / ${BuildInfo.appDisplayVersion}") }
+                }
                 jvmRuntimeDescription?.let { description ->
                     Text(
                         text = "JVM：$description",
