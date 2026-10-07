@@ -1,5 +1,7 @@
 package tv.hsrui.bolo.ui.common.update
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
@@ -12,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.LinkAnnotation
@@ -80,38 +83,47 @@ fun CheckAppUpdate(
                 color = MaterialTheme.colorScheme.primary,
                 textDecoration = TextDecoration.Underline,
             )
-            Text(
-                text = buildAnnotatedString {
-                    append("当前版本：${BuildInfo.appDisplayVersion}\n最新版本：${release.tagName.removePrefix("v")}\n\n")
-                    withLink(
-                        LinkAnnotation.Clickable(
-                            tag = "github_release",
-                            styles = TextLinkStyles(style = linkStyle),
-                        ) {
-                            if (!isOpeningRelease) {
-                                isOpeningRelease = true
-                                scope.launch {
-                                    try {
-                                        val opened = openUrl(release.htmlUrl)
-                                        ensureActive()
-                                        if (!opened) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.width(contentWidth).padding(vertical = 12.dp),
+            ) {
+                Text(
+                    text = "当前版本：${BuildInfo.appDisplayVersion}\n最新版本：${release.tagName.removePrefix("v")}\n",
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                ShowAppUpdateAction(release = release, modifier = Modifier.fillMaxWidth())
+                Text(
+                    text = buildAnnotatedString {
+                        withLink(
+                            LinkAnnotation.Clickable(
+                                tag = "github_release",
+                                styles = TextLinkStyles(style = linkStyle),
+                            ) {
+                                if (!isOpeningRelease) {
+                                    isOpeningRelease = true
+                                    scope.launch {
+                                        try {
+                                            val opened = openUrl(release.htmlUrl)
+                                            ensureActive()
+                                            if (!opened) {
+                                                snackbarManager.showMessage("打开 GitHub Release 失败")
+                                            }
+                                        } catch (e: Exception) {
+                                            if (e is CancellationException) throw e
                                             snackbarManager.showMessage("打开 GitHub Release 失败")
+                                        } finally {
+                                            isOpeningRelease = false
                                         }
-                                    } catch (e: Exception) {
-                                        if (e is CancellationException) throw e
-                                        snackbarManager.showMessage("打开 GitHub Release 失败")
-                                    } finally {
-                                        isOpeningRelease = false
                                     }
                                 }
-                            }
-                        },
-                    ) { append("GitHub Release") }
-                },
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.width(contentWidth).padding(vertical = 12.dp),
-            )
+                            },
+                        ) { append("GitHub Release") }
+                    },
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
         }
     }
 }
