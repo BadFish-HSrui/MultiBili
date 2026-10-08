@@ -331,17 +331,6 @@ fun BoloPlayerControls(
     var progressTrackCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var highEnergyTrackBounds by remember(isFullscreen, showExtendedControls) { mutableStateOf<Rect?>(null) }
     var highEnergyHiddenBounds by remember(isFullscreen, showExtendedControls) { mutableStateOf(Rect.Zero) }
-    fun updateHighEnergyTrackBounds() {
-        val root = controlsRootCoordinates?.takeIf { it.isAttached } ?: return
-        val bottom = bottomControlsCoordinates?.takeIf { it.isAttached } ?: return
-        val track = progressTrackCoordinates?.takeIf { it.isAttached } ?: return
-        val bottomBounds = root.localBoundingBoxOf(bottom, clipBounds = false)
-        val trackBounds = root.localBoundingBoxOf(track, clipBounds = false)
-        // 去掉控制区显隐位移，得到曲线插值所需的稳定终点。
-        highEnergyTrackBounds = trackBounds.translate(
-            Offset(0f, root.size.height - bottom.size.height - bottomBounds.top),
-        )
-    }
     var settingsOpen by remember(isFullscreen, showExtendedControls) { mutableStateOf(false) }
     var mouseInside by remember { mutableStateOf(false) }
     var mousePressed by remember { mutableStateOf(false) }
@@ -664,6 +653,32 @@ fun BoloPlayerControls(
     } else {
         0f
     }
+    val gestureProgressTransition = updateTransition(gesturePreviewMs != null, label = "gestureProgress")
+    val gestureProgressReveal by gestureProgressTransition.animateFloat(
+        transitionSpec = { tween(if (targetState) 100 else 200) }, label = "gestureProgressAlpha",
+    ) { if (it) 1f else 0f }
+    val gestureProgressVisible = gesturePreviewMs != null || gestureProgressReveal > 0f
+    // 控制栏动画稳定后再解除固定，避免手势淡出与控制栏显隐交接时跳位。
+    var gestureProgressPinned by remember { mutableStateOf(false) }
+    SideEffect {
+        if (gesturePreviewMs != null) {
+            gestureProgressPinned = true
+        } else if (gestureProgressReveal == 0f &&
+            controlsTransition.currentState == controlsTransition.targetState && !controlsTransition.isRunning
+        ) {
+            gestureProgressPinned = false
+        }
+    }
+    fun progressSlideOffsetPx(): Float = if (gestureProgressVisible || gestureProgressPinned) 0f else {
+        (bottomControlsCoordinates?.size?.height ?: 0) * (1f - controlsReveal)
+    }
+    fun updateHighEnergyTrackBounds() {
+        val root = controlsRootCoordinates?.takeIf { it.isAttached } ?: return
+        val track = progressTrackCoordinates?.takeIf { it.isAttached } ?: return
+        val trackBounds = root.localBoundingBoxOf(track, clipBounds = false)
+        // 去掉进度条显隐位移，得到曲线插值所需的稳定终点。
+        highEnergyTrackBounds = trackBounds.translate(Offset(0f, -progressSlideOffsetPx()))
+    }
     val videoQualities = (playerUiState as? VideoPlayerUiState.Success)
         ?.videoSource
         ?.videoQualities
@@ -763,13 +778,24 @@ fun BoloPlayerControls(
                     // 设置面板、全屏或扩展布局切换会重启本手势循环，同一手势内的判定都在一个循环里完成。
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = true)
-                        // null 表示超时前已松手或手势被取消，继续按单双击语义判定。
+                        // null 也可能来自滑动消费；只有未被消费的正常松手才进入点击判定。
                         val longPress = awaitLongPressOrCancellation(down.id)
                         if (longPress == null) {
+                            val up = currentEvent.changes.firstOrNull { it.id == down.id }
+                            if (up == null || !up.changedToUpIgnoreConsumed() || up.isConsumed ||
+                                (up.position - down.position).getDistance() > viewConfiguration.touchSlop ||
+                                currentEvent.changes.any { it.pressed }
+                            ) return@awaitEachGesture
+                            up.consume()
                             val secondDown = withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {
                                 awaitFirstDown(requireUnconsumed = true)
                             }
                             if (secondDown != null) {
+                                val secondUp = waitForUpOrCancellation() ?: return@awaitEachGesture
+                                if ((secondUp.position - secondDown.position).getDistance() > viewConfiguration.touchSlop) {
+                                    return@awaitEachGesture
+                                }
+                                secondUp.consume()
                                 val playback = viewModel.controller.state.value
                                 if (
                                     playerSettings.playback.sideDoubleTapSeekEnabled &&
@@ -822,8 +848,14 @@ fun BoloPlayerControls(
                             gestureSpeedBoost = boostSpeed
                             speedBoostApplied = true
                             viewModel.controller.setPlaybackSpeed(boostSpeed)
-                            // 等待松手；拖动或指针取消都会在这里结束并恢复原倍速。
-                            waitForUpOrCancellation()
+                            // 本次触摸由长按快进独占，移动不结束倍速，也不交给滑动手势。
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull { it.id == longPress.id } ?: break
+                                if (event.changes.any { it.id != longPress.id && it.pressed } || change.isConsumed) break
+                                change.consume()
+                                if (!change.pressed) break
+                            }
                         } finally {
                             if (speedBoostApplied) {
                                 gestureBaseSpeed?.let { viewModel.controller.setPlaybackSpeed(it) }
@@ -851,6 +883,7 @@ fun BoloPlayerControls(
                     try {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
+                            if (gestureSpeedBoost != null) return@awaitEachGesture
                             val startPositionMs = latestPlayState.displayPositionMs
                             val leftSide = down.position.x < size.width / 2f
                             val deviceGestureEnabled = deviceControls.supportsDeviceGestures &&
@@ -863,6 +896,7 @@ fun BoloPlayerControls(
                             try {
                                 while (true) {
                                     val event = awaitPointerEvent()
+                                    if (gestureSpeedBoost != null) break
                                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                     if (event.changes.any { it.id != down.id && it.pressed } || change.isConsumed) break
                                     if (change.changedToUpIgnoreConsumed()) {
@@ -1074,14 +1108,13 @@ fun BoloPlayerControls(
                         }
                     }
                 }
-
+            }
+        }
+        if (controlsTransition.currentState || controlsTransition.targetState || gestureProgressVisible) {
+            Box(Modifier.fillMaxSize().clipToBounds()) {
                 Column(
                     Modifier
                         .align(Alignment.BottomCenter)
-                        .animateEnterExit(
-                            enter = slideInVertically(tween(200)) { it },
-                            exit = slideOutVertically(tween(200)) { it },
-                        )
                         .onGloballyPositioned {
                             bottomControlsCoordinates = it
                             updateHighEnergyTrackBounds()
@@ -1097,10 +1130,18 @@ fun BoloPlayerControls(
                     )
                     // 下方播放进度条
                     Slider(
-                        modifier = Modifier.fillMaxWidth().height(32.dp),
+                        modifier = Modifier.fillMaxWidth().height(32.dp)
+                            .graphicsLayer {
+                                translationY = progressSlideOffsetPx()
+                                alpha = if (gestureProgressVisible || gestureProgressPinned) {
+                                    maxOf(controlsReveal, gestureProgressReveal)
+                                } else 1f
+                            }
+                            .focusProperties { canFocus = controlsVisible && gesturePreviewMs == null }
+                            .then(if (!controlsVisible || gesturePreviewMs != null) Modifier.clearAndSetSemantics {} else Modifier),
                         value = sliderValue,
                         valueRange = 0f..1f,
-                        enabled = durationMs > 0L && playState.isSeekable,
+                        enabled = controlsVisible && gesturePreviewMs == null && durationMs > 0L && playState.isSeekable,
                         onValueChange = { sliderPreviewFraction = it },
                         onValueChangeFinished = {
                             sliderPreviewFraction?.let { fraction ->
@@ -1157,226 +1198,237 @@ fun BoloPlayerControls(
                     Spacer(Modifier.height(8.dp))
 
                     // 下方播放控件
-                    PlayerBottomControlsRow(
-                        collapseControls = showExtendedControls && !isFullscreen,
-                    ) { hiddenControls ->
-                        if (showExtendedControls && onPreviousEpisode != null) {
-                            IconButton(
-                                onClick = onPreviousEpisode,
-                                enabled = episodeNavigationEnabled,
-                                modifier = Modifier.size(32.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.SkipPrevious,
-                                    contentDescription = "上一集",
-                                    tint = Color.White.copy(alpha = if (episodeNavigationEnabled) 1f else 0.38f),
-                                )
-                            }
-                        }
-
-                        // 播放按钮
-                        IconButton(
-                            onClick = { togglePlayback() },
-                            modifier = Modifier.size(32.dp),
-                        ) {
-                            Icon(
-                                imageVector = if (viewModel.pendingPlayWhenReady ?: playState.playWhenReady) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = if (viewModel.pendingPlayWhenReady ?: playState.playWhenReady) "暂停" else "播放",
-                                tint = Color.White,
-                                modifier = Modifier.size(28.dp),
-                            )
-                        }
-
-                        if (showExtendedControls && onNextEpisode != null) {
-                            IconButton(
-                                onClick = onNextEpisode,
-                                enabled = episodeNavigationEnabled,
-                                modifier = Modifier.size(32.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.SkipNext,
-                                    contentDescription = "下一集",
-                                    tint = Color.White.copy(alpha = if (episodeNavigationEnabled) 1f else 0.38f),
-                                )
-                            }
-                        }
-
-                        // 时间显示
-                        Text(
-                            text = "${displayedPositionMs.formatPlayerDuration()} / " +
-                                playState.durationMs.formatPlayerDuration(),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White
-                        )
-
-                        if (visibleChapters.isNotEmpty()) {
-                            key(viewModel, viewModel.avid, viewModel.cid, viewModel.episodeId, isFullscreen) {
-                                ChapterMenu(
-                                    chapters = visibleChapters,
-                                    currentChapter = currentChapter,
-                                    seekEnabled = playState.isSeekable && !playState.isPlaybackSuspended,
-                                    onChapterSelected = {
-                                        viewModel.seekToMs(it.startMs, autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled)
-                                    },
-                                    onExpandedChange = { chapterMenuOpen = it },
-                                    modifier = Modifier.layoutId("chapter"),
-                                )
-                            }
-                        }
-
-                        TextButton(
-                            onClick = {
-                                viewModel.setDanmakuVisible(!viewModel.danmakuController.state.value.isVisible)
+                    Box(Modifier.fillMaxWidth().height(32.dp)) {
+                        controlsTransition.AnimatedVisibility(
+                            visible = { it },
+                            enter = EnterTransition.None,
+                            exit = ExitTransition.None,
+                            modifier = Modifier.graphicsLayer {
+                                translationY = (bottomControlsCoordinates?.size?.height ?: 0) * (1f - controlsReveal)
                             },
-                            enabled = !danmakuClosed,
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = Color.White,
-                                disabledContentColor = Color.White.copy(alpha = 0.38f),
-                            ),
-                            modifier = Modifier.height(32.dp),
                         ) {
-                            Text(
-                                text = when {
-                                    danmakuClosed -> "UP已关闭弹幕"
-                                    danmakuState.isVisible -> "弹幕 - 开"
-                                    else -> "弹幕 - 关"
-                                },
-                                style = MaterialTheme.typography.labelMedium,
-                                maxLines = 1,
-                            )
-                        }
+                            PlayerBottomControlsRow(
+                                collapseControls = showExtendedControls && !isFullscreen,
+                            ) { hiddenControls ->
+                                if (showExtendedControls && onPreviousEpisode != null) {
+                                    IconButton(
+                                        onClick = onPreviousEpisode,
+                                        enabled = episodeNavigationEnabled,
+                                        modifier = Modifier.size(32.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.SkipPrevious,
+                                            contentDescription = "上一集",
+                                            tint = Color.White.copy(alpha = if (episodeNavigationEnabled) 1f else 0.38f),
+                                        )
+                                    }
+                                }
 
-                        if (viewModel.canSendDanmaku) {
-                            TextButton(
-                                onClick = viewModel::openDanmakuInput,
-                                enabled = viewModel.danmakuInputEnabled,
-                                colors = ButtonDefaults.textButtonColors(
-                                    contentColor = Color.White,
-                                    disabledContentColor = Color.White.copy(alpha = 0.38f),
-                                ),
-                                modifier = Modifier.height(32.dp),
-                            ) {
-                                Text("发送弹幕", style = MaterialTheme.typography.labelMedium, maxLines = 1)
-                            }
-                        }
-
-                        Spacer(Modifier.layoutId("spacer"))
-
-                        if (showExtendedControls && subtitleState.subtitles.isNotEmpty()) {
-                            Box(
-                                Modifier.layoutId("subtitle")
-                                    .focusProperties { canFocus = "subtitle" !in hiddenControls }
-                                    .then(if ("subtitle" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier),
-                            ) {
-                                SubtitleMenu(
-                                    visible = "subtitle" !in hiddenControls,
-                                    subtitles = subtitleState.subtitles,
-                                    selectedSubtitle = subtitleState.selected,
-                                    onSubtitleSelected = viewModel.subtitleController::loadSubtitleContent,
-                                    onExpandedChange = { subtitleMenuOpen = it },
-                                )
-                            }
-                        }
-
-                        if (isDesktop) {
-                            Box(
-                                Modifier.layoutId("volume")
-                                    .focusProperties { canFocus = "volume" !in hiddenControls }
-                                    .then(if ("volume" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier),
-                            ) {
-                                VolumeSliderPopup(
-                                    visible = "volume" !in hiddenControls,
-                                    volumePercent = playerSettings.controls.desktopVolumePercent,
-                                    muted = playerSettings.controls.desktopMuted,
-                                    isFullscreen = isFullscreen,
-                                    onVolumeSelected = {
-                                        viewModel.setDesktopVolume(it)
-                                        showDesktopVolumeFeedback()
-                                    },
-                                    onKeyEvent = ::onVolumeKeyEvent,
-                                    onScroll = { delta -> adjustDesktopVolume(if (delta < 0f) 2 else -2) },
-                                    onExpandedChange = { volumeMenuOpen = it },
-                                )
-                            }
-                        }
-
-                        if (showExtendedControls) {
-                            Box(
-                                Modifier.layoutId("speed")
-                                    .focusProperties { canFocus = "speed" !in hiddenControls }
-                                    .then(if ("speed" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier),
-                            ) {
-                                SpeedSliderPopup(
-                                    visible = "speed" !in hiddenControls,
-                                    currentSpeed = keyboardSpeedBoost ?: gestureSpeedBoost ?: playState.playbackSpeed,
-                                    isFullscreen = isFullscreen,
-                                    onSpeedSelected = viewModel.controller::setPlaybackSpeed,
-                                    onExpandedChange = { speedMenuOpen = it },
-                                )
-                            }
-
-                            if (videoQualities.isNotEmpty()) {
-                                QualityMenu(
-                                    qualities = videoQualities,
-                                    currentQuality = currentVideoQuality,
-                                    onQualitySelected = viewModel::switchQuality,
-                                    onExpandedChange = { qualityMenuOpen = it },
-                                )
-                            }
-
-                            if (!settings.playback.hideAudioQualitySelectorEnabled && audioQualities.isNotEmpty()) {
-                                Box(
-                                    Modifier.layoutId("audio")
-                                        .focusProperties { canFocus = "audio" !in hiddenControls }
-                                        .then(if ("audio" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier),
+                                // 播放按钮
+                                IconButton(
+                                    onClick = { togglePlayback() },
+                                    modifier = Modifier.size(32.dp),
                                 ) {
-                                    AudioQualityMenu(
-                                        qualities = audioQualities,
-                                        currentQuality = currentAudioQuality,
-                                        visible = "audio" !in hiddenControls,
-                                        onQualitySelected = viewModel::switchAudioQuality,
-                                        onExpandedChange = { audioQualityMenuOpen = it },
+                                    Icon(
+                                        imageVector = if (viewModel.pendingPlayWhenReady ?: playState.playWhenReady) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                        contentDescription = if (viewModel.pendingPlayWhenReady ?: playState.playWhenReady) "暂停" else "播放",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(28.dp),
                                     )
                                 }
-                            }
-                        }
 
-                        if (fullscreenState.isDesktop) {
-                            IconButton(
-                                onClick = fullscreenState::toggleWindowFullscreen,
-                                modifier = Modifier.size(32.dp).semantics {
-                                    contentDescription = if (isFullscreen) "退出窗口全屏" else "窗口全屏"
-                                },
-                            ) {
-                                Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.CropSquare,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(24.dp),
-                                    )
-                                    Icon(
-                                        imageVector = if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp),
-                                    )
+                                if (showExtendedControls && onNextEpisode != null) {
+                                    IconButton(
+                                        onClick = onNextEpisode,
+                                        enabled = episodeNavigationEnabled,
+                                        modifier = Modifier.size(32.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.SkipNext,
+                                            contentDescription = "下一集",
+                                            tint = Color.White.copy(alpha = if (episodeNavigationEnabled) 1f else 0.38f),
+                                        )
+                                    }
                                 }
-                            }
-                        }
 
-                        if (!fullscreenState.isManualSystemFullscreen) {
-                            val isSystemFullscreen = if (isDesktop) fullscreenState.isSystemFullscreen else isFullscreen
-                            IconButton(
-                                onClick = fullscreenState::toggleFullscreen,
-                                enabled = !fullscreenState.isChangingSystemFullscreen,
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isSystemFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                                    contentDescription = if (isSystemFullscreen) "退出全屏" else "全屏",
-                                    tint = Color.White
+                                // 时间显示
+                                Text(
+                                    text = "${displayedPositionMs.formatPlayerDuration()} / " +
+                                        playState.durationMs.formatPlayerDuration(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White
                                 )
+
+                                if (visibleChapters.isNotEmpty()) {
+                                    key(viewModel, viewModel.avid, viewModel.cid, viewModel.episodeId, isFullscreen) {
+                                        ChapterMenu(
+                                            chapters = visibleChapters,
+                                            currentChapter = currentChapter,
+                                            seekEnabled = playState.isSeekable && !playState.isPlaybackSuspended,
+                                            onChapterSelected = {
+                                                viewModel.seekToMs(it.startMs, autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled)
+                                            },
+                                            onExpandedChange = { chapterMenuOpen = it },
+                                            modifier = Modifier.layoutId("chapter"),
+                                        )
+                                    }
+                                }
+
+                                TextButton(
+                                    onClick = {
+                                        viewModel.setDanmakuVisible(!viewModel.danmakuController.state.value.isVisible)
+                                    },
+                                    enabled = !danmakuClosed,
+                                    colors = ButtonDefaults.textButtonColors(
+                                        contentColor = Color.White,
+                                        disabledContentColor = Color.White.copy(alpha = 0.38f),
+                                    ),
+                                    modifier = Modifier.height(32.dp),
+                                ) {
+                                    Text(
+                                        text = when {
+                                            danmakuClosed -> "UP已关闭弹幕"
+                                            danmakuState.isVisible -> "弹幕 - 开"
+                                            else -> "弹幕 - 关"
+                                        },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        maxLines = 1,
+                                    )
+                                }
+
+                                if (viewModel.canSendDanmaku) {
+                                    TextButton(
+                                        onClick = viewModel::openDanmakuInput,
+                                        enabled = viewModel.danmakuInputEnabled,
+                                        colors = ButtonDefaults.textButtonColors(
+                                            contentColor = Color.White,
+                                            disabledContentColor = Color.White.copy(alpha = 0.38f),
+                                        ),
+                                        modifier = Modifier.height(32.dp),
+                                    ) {
+                                        Text("发送弹幕", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                    }
+                                }
+
+                                Spacer(Modifier.layoutId("spacer"))
+
+                                if (showExtendedControls && subtitleState.subtitles.isNotEmpty()) {
+                                    Box(
+                                        Modifier.layoutId("subtitle")
+                                            .focusProperties { canFocus = "subtitle" !in hiddenControls }
+                                            .then(if ("subtitle" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier),
+                                    ) {
+                                        SubtitleMenu(
+                                            visible = "subtitle" !in hiddenControls,
+                                            subtitles = subtitleState.subtitles,
+                                            selectedSubtitle = subtitleState.selected,
+                                            onSubtitleSelected = viewModel.subtitleController::loadSubtitleContent,
+                                            onExpandedChange = { subtitleMenuOpen = it },
+                                        )
+                                    }
+                                }
+
+                                if (isDesktop) {
+                                    Box(
+                                        Modifier.layoutId("volume")
+                                            .focusProperties { canFocus = "volume" !in hiddenControls }
+                                            .then(if ("volume" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier),
+                                    ) {
+                                        VolumeSliderPopup(
+                                            visible = "volume" !in hiddenControls,
+                                            volumePercent = playerSettings.controls.desktopVolumePercent,
+                                            muted = playerSettings.controls.desktopMuted,
+                                            isFullscreen = isFullscreen,
+                                            onVolumeSelected = {
+                                                viewModel.setDesktopVolume(it)
+                                                showDesktopVolumeFeedback()
+                                            },
+                                            onKeyEvent = ::onVolumeKeyEvent,
+                                            onScroll = { delta -> adjustDesktopVolume(if (delta < 0f) 2 else -2) },
+                                            onExpandedChange = { volumeMenuOpen = it },
+                                        )
+                                    }
+                                }
+
+                                if (showExtendedControls) {
+                                    Box(
+                                        Modifier.layoutId("speed")
+                                            .focusProperties { canFocus = "speed" !in hiddenControls }
+                                            .then(if ("speed" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier),
+                                    ) {
+                                        SpeedSliderPopup(
+                                            visible = "speed" !in hiddenControls,
+                                            currentSpeed = keyboardSpeedBoost ?: gestureSpeedBoost ?: playState.playbackSpeed,
+                                            isFullscreen = isFullscreen,
+                                            onSpeedSelected = viewModel.controller::setPlaybackSpeed,
+                                            onExpandedChange = { speedMenuOpen = it },
+                                        )
+                                    }
+
+                                    if (videoQualities.isNotEmpty()) {
+                                        QualityMenu(
+                                            qualities = videoQualities,
+                                            currentQuality = currentVideoQuality,
+                                            onQualitySelected = viewModel::switchQuality,
+                                            onExpandedChange = { qualityMenuOpen = it },
+                                        )
+                                    }
+
+                                    if (!settings.playback.hideAudioQualitySelectorEnabled && audioQualities.isNotEmpty()) {
+                                        Box(
+                                            Modifier.layoutId("audio")
+                                                .focusProperties { canFocus = "audio" !in hiddenControls }
+                                                .then(if ("audio" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier),
+                                        ) {
+                                            AudioQualityMenu(
+                                                qualities = audioQualities,
+                                                currentQuality = currentAudioQuality,
+                                                visible = "audio" !in hiddenControls,
+                                                onQualitySelected = viewModel::switchAudioQuality,
+                                                onExpandedChange = { audioQualityMenuOpen = it },
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (fullscreenState.isDesktop) {
+                                    IconButton(
+                                        onClick = fullscreenState::toggleWindowFullscreen,
+                                        modifier = Modifier.size(32.dp).semantics {
+                                            contentDescription = if (isFullscreen) "退出窗口全屏" else "窗口全屏"
+                                        },
+                                    ) {
+                                        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.CropSquare,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(24.dp),
+                                            )
+                                            Icon(
+                                                imageVector = if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (!fullscreenState.isManualSystemFullscreen) {
+                                    val isSystemFullscreen = if (isDesktop) fullscreenState.isSystemFullscreen else isFullscreen
+                                    IconButton(
+                                        onClick = fullscreenState::toggleFullscreen,
+                                        enabled = !fullscreenState.isChangingSystemFullscreen,
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isSystemFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                            contentDescription = if (isSystemFullscreen) "退出全屏" else "全屏",
+                                            tint = Color.White
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

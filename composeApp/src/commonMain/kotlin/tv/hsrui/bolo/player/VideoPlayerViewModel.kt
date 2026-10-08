@@ -532,6 +532,11 @@ class VideoPlayerViewModel(
         val generation = sourceGeneration
         val requestedSession = loginStorage.cookies.sessData
         val requestedIsMedia = episodeId != null
+        fun isUnplayableUpowerVideo(): Boolean =
+            loginStorage.cookies.sessData == requestedSession && playerInfo?.takeIf {
+                it.matchesRequest(requestedAvid, requestedCid, requestedSession)
+            }?.isUnplayableUpowerVideo == true
+
         subtitleLoadJob?.cancel()
         subtitleController.clear()
         subtitleController.autoChineseOnly = settings.playback.subtitleAutoChineseOnly
@@ -554,6 +559,10 @@ class VideoPlayerViewModel(
             }
             currentCoroutineContext().ensureActive()
             if (generation != sourceGeneration || avid != requestedAvid || cid != requestedCid) return
+            if (isUnplayableUpowerVideo()) {
+                _uiState.value = VideoPlayerUiState.Error("无此充电视频播放权限")
+                return
+            }
             if (result.isSuccess) {
                 _chapters.value = playerInfo?.takeIf {
                     it.matchesRequest(requestedAvid, requestedCid, requestedSession) &&
@@ -589,7 +598,9 @@ class VideoPlayerViewModel(
             throw e
         } catch (e: Exception) {
             if (generation != sourceGeneration || avid != requestedAvid || cid != requestedCid) return
-            _uiState.value = VideoPlayerUiState.Error(e.message ?: "其他网络错误")
+            _uiState.value = VideoPlayerUiState.Error(
+                if (isUnplayableUpowerVideo()) "无此充电视频播放权限" else e.message ?: "其他网络错误"
+            )
         }
     }
 

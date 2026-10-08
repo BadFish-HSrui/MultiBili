@@ -19,9 +19,6 @@ permissions:
 
 jobs:
   build:
-    env:
-      # 缓存布局或键形状变更时递增，可用于一次性作废旧条目。
-      BOLO_CACHE_VERSION: v2
     runs-on: windows-latest
     steps:
       - name: 检出源码
@@ -63,63 +60,42 @@ jobs:
           "$msysRoot\ucrt64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "$msysRoot\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      # 键由 shell 计算：GitHub 表达式里无法嵌套 ${{ }}，restore/save 两步必须拿到完全相同的字面键。
       - name: 生成构建缓存键
         id: cache-keys
         shell: bash
         env:
-          CLEAN_CACHE: ${{ inputs.clean_cache }}
-          CACHE_SUFFIX: ${{ inputs.clean_cache && format('-disabled-{0}', github.run_id) || '' }}
-          CACHE_RUNNER: ${{ runner.os }}-${{ runner.arch }}
-          NATIVE_SOURCE_HASH: ${{ hashFiles('buildSrc/src/main/kotlin/tv/hsrui/bolo/buildlogic/NativePlayer*.kt', 'buildSrc/build.gradle.kts', 'nativePlayer/build.gradle.kts', 'nativePlayer/dependencies.lock.json', 'nativePlayer/src/**', '.gitmodules') }}
-          GRADLE_INPUT_HASH: ${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
+          RUNNER_ARCH: ${{ runner.arch }}
         run: |
           set -euo pipefail
-          for input in "$NATIVE_SOURCE_HASH" "$GRADLE_INPUT_HASH"; do
-            if [[ -z "$input" || "$input" == "null" ]]; then
-              echo "无法计算缓存键：缓存输入文件集合为空" >&2
-              exit 1
-            fi
-          done
-          # gitlink 的提交变化不会被上面的文件 glob 捕获，必须单独加入原生输入身份。
-          FFMPEG_COMMIT="$(git -C nativePlayer/vendor/ffmpeg rev-parse HEAD)"
-          MPV_COMMIT="$(git -C nativePlayer/vendor/mpv rev-parse HEAD)"
-          NATIVE_SOURCE_HASH="$(printf '%s\n' "$NATIVE_SOURCE_HASH" "$FFMPEG_COMMIT" "$MPV_COMMIT" | git hash-object --stdin)"
-          # 恢复键：clean_cache 时用 -disabled-<run_id> 让恢复必定落空（本次不使用缓存）
-          echo "native=$CACHE_RUNNER-windows-native-$BOLO_CACHE_VERSION-$NATIVE_SOURCE_HASH$CACHE_SUFFIX" >> "$GITHUB_OUTPUT"
-          echo "gradle=$CACHE_RUNNER-gradle-$BOLO_CACHE_VERSION-$GRADLE_INPUT_HASH$CACHE_SUFFIX" >> "$GITHUB_OUTPUT"
-          # 保存键：本平台缓存的真实键，clean_cache 时同样尝试保存；已有条目不可覆盖
-          echo "native-save=$CACHE_RUNNER-windows-native-$BOLO_CACHE_VERSION-$NATIVE_SOURCE_HASH" >> "$GITHUB_OUTPUT"
-          echo "gradle-save=$CACHE_RUNNER-gradle-$BOLO_CACHE_VERSION-$GRADLE_INPUT_HASH" >> "$GITHUB_OUTPUT"
+          case "$RUNNER_ARCH" in
+            ARM64) cache_arch=arm64 ;;
+            X64) cache_arch=x64 ;;
+            *) echo "不支持的 runner 架构：$RUNNER_ARCH" >&2; exit 1 ;;
+          esac
+          cache_target="windows-$cache_arch"
+          echo "target=$cache_target" >> "$GITHUB_OUTPUT"
+          echo "restore=$cache_target-" >> "$GITHUB_OUTPUT"
+          echo "save=$cache_target-$GITHUB_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: 恢复原生播放器缓存
-        id: restore-native
+      - name: 恢复构建缓存
+        id: restore-build
+        if: ${{ !inputs.clean_cache }}
         uses: actions/cache/restore@v6
         with:
           path: |
+            nativePlayer/build/cache/libraries/${{ steps.cache-keys.outputs.target }}
+            nativePlayer/build/cache/bundles/${{ steps.cache-keys.outputs.target }}
             nativePlayer/build/cache/downloads/*.tar.gz
-            nativePlayer/build/cache/libraries/*/*
-            nativePlayer/build/cache/bundles/*/*
             !nativePlayer/build/cache/**/.staging-*/**
-          key: ${{ steps.cache-keys.outputs.native }}
-          restore-keys: |
-            ${{ steps.cache-keys.outputs.native }}
-
-      - name: 恢复 Gradle 缓存
-        id: restore-gradle
-        uses: actions/cache/restore@v6
-        with:
-          path: |
+            !nativePlayer/build/cache/**/.previous-*/**
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/jars-9
             ~/.gradle/caches/build-cache-1
             ~/.gradle/caches/[0-9]*
             ~/.gradle/wrapper/dists
-          key: ${{ steps.cache-keys.outputs.gradle }}
-          restore-keys: |
-            ${{ steps.cache-keys.outputs.gradle }}
+          key: ${{ steps.cache-keys.outputs.restore }}
 
-      # 清空模块原生构建目录：恢复键已带 -disabled-<run_id>，Gradle 依赖缓存无需清理。
+      # clean_cache 跳过整组恢复，再清空模块原生构建目录。
       - name: 清理原生构建缓存（可选）
         if: ${{ inputs.clean_cache }}
         run: .\gradlew.bat :nativePlayer:clean
@@ -236,28 +212,20 @@ jobs:
         if: always()
         run: .\gradlew.bat --stop
 
-      # 原生缓存中的每个 bundle 都由 Gradle 侧的指纹与 SHA-256 manifest 校验，
-      # 因此构建失败时保存不会让下一次运行误用半成品；保存成功则避免重付整轮原生编译。
-      # clean_cache 让本次运行忽略已有缓存，仍按真实键尝试保存；已有同键条目不可覆盖。
-      - name: 保存 Gradle 缓存
-        if: ${{ !cancelled() && steps.restore-gradle.outputs.cache-hit != 'true' }}
+      # 完整产物发布在目标槽位，构建失败也可保存；同提交条目已存在时沿用。
+      - name: 保存构建缓存
+        if: ${{ !cancelled() && steps.cache-keys.outputs.save != '' && steps.restore-build.outputs.cache-matched-key != steps.cache-keys.outputs.save }}
         uses: actions/cache/save@v6
         with:
           path: |
+            nativePlayer/build/cache/libraries/${{ steps.cache-keys.outputs.target }}
+            nativePlayer/build/cache/bundles/${{ steps.cache-keys.outputs.target }}
+            nativePlayer/build/cache/downloads/*.tar.gz
+            !nativePlayer/build/cache/**/.staging-*/**
+            !nativePlayer/build/cache/**/.previous-*/**
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/jars-9
             ~/.gradle/caches/build-cache-1
             ~/.gradle/caches/[0-9]*
             ~/.gradle/wrapper/dists
-          key: ${{ steps.cache-keys.outputs.gradle-save }}
-
-      - name: 保存原生播放器缓存
-        if: ${{ !cancelled() && steps.restore-native.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            nativePlayer/build/cache/downloads/*.tar.gz
-            nativePlayer/build/cache/libraries/*/*
-            nativePlayer/build/cache/bundles/*/*
-            !nativePlayer/build/cache/**/.staging-*/**
-          key: ${{ steps.cache-keys.outputs.native-save }}
+          key: ${{ steps.cache-keys.outputs.save }}

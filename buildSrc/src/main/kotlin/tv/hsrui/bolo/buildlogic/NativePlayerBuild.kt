@@ -108,20 +108,20 @@ internal class NativePlayerBuild(
     }
 
     private fun build(target: String): File {
-        val chain = NativePlayerToolchain(target, host)
-        val source = sourceIdentity()
-        val bridge = nativeFiles(root.resolve("src")).filter(File::isFile)
-            .associate { it.relativeTo(root).invariantSeparatorsPath to nativeSha(it) }
-        val identity = mapOf("schema" to 2, "sources" to source, "dependencies" to dependencies, "toolchain" to chain.identity,
-            "recipe" to recipes + bridge)
-        val fingerprint = nativeHash(nativeJson(identity))
-        val bundle = cache.resolve("bundles/$target/$fingerprint")
-        return nativeLock(cache.resolve("locks/$target-$fingerprint")) {
-            if (nativeValidBundle(bundle, fingerprint)) {
-                logger.lifecycle("Native cache hit: {} {}", target, fingerprint)
+        val bundle = cache.resolve("bundles/$target")
+        return nativeLock(cache.resolve("locks/bundle-$target")) {
+            nativeRecoverSlot(bundle, target, logger)
+            if (nativeValidBundle(bundle, target)) {
+                logger.lifecycle("Native cache hit: {}", target)
                 return@nativeLock bundle
             }
-            val work = buildDirectory.resolve("work/$target/kotlin-$fingerprint")
+            val chain = NativePlayerToolchain(target, host)
+            val source = sourceIdentity()
+            val bridge = nativeFiles(root.resolve("src")).filter(File::isFile)
+                .associate { it.relativeTo(root).invariantSeparatorsPath to nativeSha(it) }
+            val identity = mapOf("schema" to 3, "sources" to source, "dependencies" to dependencies, "toolchain" to chain.identity,
+                "recipe" to recipes + bridge)
+            val work = buildDirectory.resolve("work/$target")
             nativeDelete(work)
             work.mkdirs()
             nativeCopyTree(root.resolve("src"), work.resolve("bridge"))
@@ -131,14 +131,11 @@ internal class NativePlayerBuild(
                 }
             }
             val libraries = NativePlayerLibraries(this, chain, work, jobs)
-            val libraryRecipe = recipes.filterKeys { it in listOf("NativePlayerLibraries.kt", "NativePlayerBuildSupport.kt", "NativePlayerToolchain.kt") }
-            // 编排源码也参与库指纹，防止源码复制、解压或依赖选择变化后错误复用。
-            val libraryIdentity = identity + ("recipe" to (libraryRecipe + ("orchestration" to recipes.getValue("NativePlayerBuild.kt"))))
-            val libraryKey = nativeHash(nativeJson(libraryIdentity))
-            val libraryCache = cache.resolve("libraries/$target/$libraryKey")
-            nativeLock(cache.resolve("locks/libraries-$target-$libraryKey")) {
-                if (nativeValidBundle(libraryCache, libraryKey)) {
-                    logger.lifecycle("Native library cache hit: {} {}", target, libraryKey)
+            val libraryCache = cache.resolve("libraries/$target")
+            nativeLock(cache.resolve("locks/libraries-$target")) {
+                nativeRecoverSlot(libraryCache, target, logger)
+                if (nativeValidBundle(libraryCache, target)) {
+                    logger.lifecycle("Native library cache hit: {}", target)
                     nativeCopyTree(libraryCache.resolve("prefix"), libraries.prefix)
                     val oldPrefix = libraryCache.resolve("prefix-path.txt").readText()
                     nativeFiles(libraries.prefix).filter { it.extension == "pc" }.forEach {
@@ -161,7 +158,8 @@ internal class NativePlayerBuild(
                     nativeCopyTree(libraries.prefix, stage.resolve("prefix"))
                     nativeCopyTree(licenses, stage.resolve("licenses"))
                     stage.resolve("prefix-path.txt").writeText(nativePath(libraries.prefix))
-                    nativePublish(stage, libraryCache, libraryKey)
+                    nativeWriteJson(stage.resolve("build-info.json"), identity)
+                    nativePublish(stage, libraryCache, target, logger)
                     nativeDelete(stage)
                 }
             }
@@ -169,9 +167,10 @@ internal class NativePlayerBuild(
             nativeCopyTree(work.resolve("licenses"), packaged.resolve("licenses"))
             nativeCopyFile(libraries.prefix.resolve("ffmpeg-config.h"), packaged.resolve("licenses/ffmpeg-config.h"))
             if (sourceIdentity() != source) throw GradleException("Sources changed during native build; retry")
-            nativeWriteJson(packaged.resolve("build-info.json"), identity)
-            nativePublish(packaged, bundle, fingerprint)
-            // 成功产物已原子发布到缓存，移除工作副本，避免每个新指纹留下整份 FFmpeg 源码和对象。
+            nativeWriteJson(packaged.resolve("build-info.json"), identity +
+                ("libraries" to nativeReadJson(libraryCache.resolve("build-info.json"))))
+            nativePublish(packaged, bundle, target, logger)
+            // 成功产物已发布到目标槽位，移除整份源码和编译中间文件。
             // 清理失败只是残留磁盘空间，不能否决已经发布的产物。
             nativeDeleteBestEffort(work, logger)
             bundle
@@ -290,13 +289,8 @@ internal class NativePlayerBuild(
             if (projectLicenseFiles[name]?.isFile != true) throw GradleException("Missing required project license: $name")
         }
         val projectLicenses = projectLicenseFiles.mapValues { (_, file) -> nativeSha(file) }
-        val key = nativeHash(nativeJson(mapOf("bundles" to bundles.mapValues { it.value.name },
-            "projectLicenses" to projectLicenses)))
         val output = buildDirectory.resolve(command)
-        if (nativeValidBundle(output, key)) {
-            logger.lifecycle("Native output verified: {}", command)
-            return
-        }
+        nativeRecoverSlot(output, command, logger)
         val stage = Files.createTempDirectory(buildDirectory.apply { mkdirs() }.toPath(), ".prepare-$command-").toFile()
         try {
             fun copyProjectLicenses(directory: File) {
@@ -347,7 +341,11 @@ internal class NativePlayerBuild(
                     nativeCopyFile(bundle.resolve("build-info.json"), resources.resolve("build-info.json"))
                 }
             }
-            nativePublish(stage, output, key)
+            if (nativeValidBundle(output, command) && nativeManifest(output) == nativeManifest(stage)) {
+                logger.lifecycle("Native output verified: {}", command)
+            } else {
+                nativePublish(stage, output, command, logger)
+            }
         } finally { nativeDeleteBestEffort(stage, logger) }
     }
 }

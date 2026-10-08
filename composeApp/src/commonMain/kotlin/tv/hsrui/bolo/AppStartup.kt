@@ -4,18 +4,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.storage.appData.AppDataStorage
+import tv.hsrui.bolo.ui.common.update.CheckAppUpdate
 import tv.hsrui.bolo.ui.components.dialog.ShowInfoDialog
 
 @Composable
 fun AppStartup() {
     val appDataStorage: AppDataStorage = koinInject()
     val warnings = appDataStorage.oneTimeWarnings
+    var isAppUpdateCheckActive by rememberSaveable { mutableStateOf(true) }
 
     if (warnings.dynamicLoudnessPending) {
         ShowInfoDialog(
@@ -32,5 +38,10 @@ fun AppStartup() {
                 modifier = Modifier.padding(vertical = 12.dp),
             )
         }
+    } else if (isAppUpdateCheckActive) {
+        CheckAppUpdate(
+            hideError = true,
+            onFinished = { isAppUpdateCheckActive = false },
+        )
     }
 }

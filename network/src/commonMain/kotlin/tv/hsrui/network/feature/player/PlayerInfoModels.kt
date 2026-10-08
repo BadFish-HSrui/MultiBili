@@ -20,6 +20,7 @@ data class PlayerInfoResponse(
     @Transient private var requestAccountSession: String? = null
 
     val isSuccess: Boolean get() = code == 0 && data != null
+    val isUnplayableUpowerVideo: Boolean get() = isSuccess && data?.isUnplayableUpowerVideo == true
     val needLoginSubtitle: Boolean? get() = data?.needLoginSubtitle
     val asrLanguage: String? get() = data?.asrLanguage.takeIf { isSuccess }
     val ocrLanguage: String? get() = data?.ocrLanguage.takeIf { isSuccess }
@@ -58,7 +59,10 @@ data class PlayerInfoData(
     @SerialName("block_time") private val blockTime: Long? = null,
     @SerialName("level_info") private val levelInfo: JsonObject? = null,
     @SerialName("is_ugc_pay_preview") private val isPaidPreview: Boolean = false,
+    @SerialName("is_upower_exclusive") private val isUpowerExclusive: Boolean? = null,
+    @SerialName("is_upower_play") private val isUpowerPlay: Boolean? = null,
 ) {
+    val isUnplayableUpowerVideo: Boolean get() = isUpowerExclusive == true && isUpowerPlay == false
     private val danmakuPermissions: Set<String> get() = permission?.split(',')?.toSet().orEmpty()
     private val hasLimitedDanmaku: Boolean get() = "9999" in danmakuPermissions
     private val hasShortDanmaku: Boolean get() = hasLimitedDanmaku || "5000" in danmakuPermissions
