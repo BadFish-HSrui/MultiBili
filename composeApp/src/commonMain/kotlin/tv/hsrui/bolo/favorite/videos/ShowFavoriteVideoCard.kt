@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -34,10 +33,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.navigation.openMedia
@@ -97,18 +99,27 @@ fun ShowFavoriteVideoCard(
                     modifier = Modifier.fillMaxSize()
                 )
                 if (videoInfo.duration > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(32.dp)
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    listOf(
+                                        Color.Black.copy(alpha = 0.55F),
+                                        Color.Transparent
+                                    )
+                                )
+                            )
+                    )
                     Text(
                         text = videoInfo.duration.formatToDuration(),
                         color = Color.White,
-                        style = MaterialTheme.typography.labelSmall,
+                        style = TextStyle(fontSize = 10.sp),
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(4.dp)
-                            .background(
-                                color = Color.Black.copy(alpha = 0.55F),
-                                shape = BoloShapes.InfoCard.Compact
-                            )
-                            .padding(horizontal = 4.dp, vertical = 2.dp)
                     )
                 }
             }
@@ -116,28 +127,30 @@ fun ShowFavoriteVideoCard(
                 modifier = Modifier
                     .weight(1F)
                     .fillMaxHeight()
+                    .padding(4.dp)
             ) {
                 Text(
                     text = videoInfo.title,
-                    style = MaterialTheme.typography.titleSmall,
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(8.dp)
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomStart)
-                        .padding(start = 8.dp, end = 36.dp, bottom = 8.dp)
+                        .padding(end = if (canManage) 28.dp else 0.dp)
+                        .alpha(0.75F)
                 ) {
                     if (!videoInfo.isMedia) {
                         Box(
                             modifier = Modifier
                                 .clip(CircleShape)
-                                .size(28.dp)
+                                .size(32.dp)
                                 .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) }
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
                         ) {
@@ -186,7 +199,6 @@ fun ShowFavoriteVideoCard(
                         enabled = videoInfo.resourceId > 0,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
-                            .offset(x = (-4).dp, y = (-4).dp)
                             .size(24.dp)
                     ) {
                         Icon(
