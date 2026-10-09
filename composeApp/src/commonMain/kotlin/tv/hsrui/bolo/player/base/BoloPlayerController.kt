@@ -95,9 +95,10 @@ class BoloPlayerController(
     private var seekabilityKnown = false
     private var disposed = false
     private var inBackground = false
-    private var backgroundPlaybackEnabled = false
+    internal var backgroundPlaybackEnabled = false
+        private set
     private var videoOutputActive = true
-    private val playbackBlocked get() = inBackground && !backgroundPlaybackEnabled
+    private var resourcesSuspended = false
     internal var playIntentRevision = 0L
         private set
     private var playWhenReady = autoPlay
@@ -141,13 +142,12 @@ class BoloPlayerController(
             cancelRebuild()
             setSource(BoloPlayerSource(video, audio, loudness, sortCdn))
             resetInfo()
-            resumeEligible = false
             recoveryAttempted = false
             val duration = maxOf(video.duration, audio?.duration ?: 0L).coerceIn(0L, Long.MAX_VALUE / 1000) * 1000
-            mutableState.value = BoloPlayerState(isPlaybackSuspended = playbackBlocked, playWhenReady = playWhenReady,
+            mutableState.value = BoloPlayerState(isPlaybackSuspended = resourcesSuspended, playWhenReady = playWhenReady,
                 durationMs = duration, currentPositionMs = start.coerceAtLeast(0), playbackSpeed = state.value.playbackSpeed)
             if (videoUrls.isEmpty() || (audio != null && audioUrls.isEmpty())) fail(BoloPlayerError.NetworkError("播放地址为空"))
-            else if (!playbackBlocked) startLoad(start.coerceAtLeast(0))
+            else if (!resourcesSuspended) startLoad(start.coerceAtLeast(0))
             else {
                 loadJob?.cancel()
                 seekJob?.cancel()
@@ -187,7 +187,7 @@ class BoloPlayerController(
         isExpired(videoUrls.getOrNull(videoIndex)) || isExpired(audioUrls.getOrNull(audioIndex))
 
     private fun beginSourceRecovery(position: Long) {
-        if (disposed || playbackBlocked) return
+        if (disposed || resourcesSuspended) return
         mutableState.value = state.value.copy(pendingSeekPositionMs = position, isPlaying = false,
             isBuffering = true, isEnded = false, hasConfirmedPosition = false)
         if (sourceRefreshJob != null) return
@@ -215,7 +215,7 @@ class BoloPlayerController(
                 sourceNeedsRefresh = false
                 sourceRefreshJob = null
                 if (videoUrls.isEmpty() || (source.audio != null && audioUrls.isEmpty())) failSourceRecovery()
-                else if (!playbackBlocked) startLoad(state.value.displayPositionMs)
+                else if (!resourcesSuspended) startLoad(state.value.displayPositionMs)
             } catch (error: CancellationException) {
                 if (revision == sourceRevision) cancelSourceRefresh()
                 throw error
@@ -250,6 +250,8 @@ class BoloPlayerController(
         mutableState.value = state.value.copy(pendingSeekPositionMs = null, isPlaying = false,
             isBuffering = false, isEnded = endedBeforeSeek || state.value.isEnded, hasConfirmedPosition = false)
         if (clearSource) {
+            resumeEligible = false
+            resourcesSuspended = false
             videoUrls = emptyList()
             audioUrls = emptyList()
             sourceNeedsRefresh = false
@@ -265,6 +267,8 @@ class BoloPlayerController(
     }
 
     private fun startLoad(position: Long) {
+        if (disposed || resourcesSuspended) return
+        backgroundJob?.cancel()
         if (sourceRefreshJob != null || needsSourceRefresh()) {
             beginSourceRecovery(position)
             return
@@ -289,7 +293,7 @@ class BoloPlayerController(
                     if (!isActive || disposed || generation != expected) return@launch
                     var engine = mutableBackend.value
                     if (engine == null) {
-                        // 与销毁互斥；创建期间的取消不能遗失已分配的 native handle。
+                        // 创建与旧实例停止串行；创建期间的取消不能遗失已分配的 native handle。
                         engine = withContext(NonCancellable + boloMpvDispatcher) { BoloMpvBackend() }
                         if (!isActive || disposed || generation != expected) {
                             withContext(NonCancellable + boloMpvDispatcher) { engine.destroy() }
@@ -304,10 +308,10 @@ class BoloPlayerController(
                 withContext(boloMpvDispatcher) {
                     check(current.videoEnabled(!inBackground && videoOutputActive) >= 0) { "视频轨配置失败" }
                 }
-                if (generation != expected || playbackBlocked || disposed) return@launch
-                check(current.setAudioActive(true)) { "音频会话激活失败" }
+                if (generation != expected || resourcesSuspended || disposed) return@launch
+                check(current.setAudioActive(playWhenReady)) { "音频会话激活失败" }
                 applyLoudness(current)
-                if (generation != expected || playbackBlocked || disposed) return@launch
+                if (generation != expected || resourcesSuspended || disposed) return@launch
                 if (needsSourceRefresh()) { beginSourceRecovery(state.value.displayPositionMs); return@launch }
                 val speed = state.value.playbackSpeed.toDouble()
                 val volume = volumeGain.toDouble()
@@ -423,7 +427,7 @@ class BoloPlayerController(
         } catch (_: Exception) {
             null
         }
-        if (disposed || inBackground || playbackBlocked || generation != expected || mutableBackend.value !== engine ||
+        if (disposed || inBackground || resourcesSuspended || generation != expected || mutableBackend.value !== engine ||
             audioRevision != mergeAudioRevision || diagnosticsVersion != diagnosticsRevision) return
         if (!infoPanelVisible && !state.value.isBuffering) {
             mutableInfo.value = info.value.withoutDynamicValues()
@@ -490,18 +494,18 @@ class BoloPlayerController(
                 mutableState.value = state.value.copy(isSeekable = event.value != 0.0)
                 if (ready && state.value.isSeeking) submitSeek()
             }
-            BoloMpvEvent.Buffering -> if (ready && !playbackBlocked) {
+            BoloMpvEvent.Buffering -> if (ready && !resourcesSuspended) {
                 val buffering = event.value != 0.0 && (playWhenReady || state.value.isSeeking)
                 mutableState.value = state.value.copy(isBuffering = buffering,
                     isPlaying = playWhenReady && !buffering && !state.value.isSeeking && !state.value.isEnded)
             }
-            BoloMpvEvent.Paused -> if (ready && !playbackBlocked) {
+            BoloMpvEvent.Paused -> if (ready && !resourcesSuspended) {
                 if (event.value != 0.0) resetDiagnostics()
                 mutableState.value = state.value.copy(isPlaying = event.value == 0.0 && playWhenReady &&
                     !state.value.isBuffering && !state.value.isSeeking && !state.value.isEnded)
             }
             BoloMpvEvent.Seeking -> nativeSeeking = event.value != 0.0
-            BoloMpvEvent.Eof -> if (ready && !playbackBlocked && !state.value.isSeeking && event.value != 0.0) {
+            BoloMpvEvent.Eof -> if (ready && !resourcesSuspended && !state.value.isSeeking && event.value != 0.0) {
                 endedBeforeSeek = true
                 advancingSince = null
                 coordinator.cancelCurrentSeek()
@@ -512,6 +516,7 @@ class BoloPlayerController(
                     isPlaybackSuspended = false, pendingSeekPositionMs = null,
                     currentPositionMs = state.value.durationMs.takeIf { it > 0 } ?: state.value.currentPositionMs)
                 applyPlayIntent()
+                scheduleBackgroundRelease()
             }
             BoloMpvEvent.SeekReply -> if (event.request == activeSeekRequest && event.error < 0) failSeek("跳转命令失败（${event.error}）")
             BoloMpvEvent.Error -> retrySource(event.error, event.value.toInt())
@@ -521,7 +526,7 @@ class BoloPlayerController(
 
     private fun observePosition(seconds: Double, request: Long) {
         val position = secondsToMs(seconds) ?: return
-        if (!ready || playbackBlocked) return
+        if (!ready || resourcesSuspended) return
         if (state.value.isSeeking && request != activeSeekRequest) return
         if (!state.value.isSeeking && nativeSeeking) return
         // UI 在 seek/缓冲期间会标为未播放，不能据此忽略原生继续前进的时间。
@@ -546,11 +551,12 @@ class BoloPlayerController(
             recoveryAttempted = false
             mutableState.value = state.value.copy(isPlaybackSuspended = false, isBuffering = false, isRebuilding = false)
             applyPlayIntent()
+            scheduleBackgroundRelease()
         }
     }
 
     private fun retrySource(error: Int, failedTrack: Int) {
-        if (playbackBlocked || disposed) return
+        if (resourcesSuspended || disposed) return
         if (sourceRefreshJob != null) return
         val position = state.value.displayPositionMs
         val nextVideo = (videoIndex + 1 until videoUrls.size).firstOrNull { !isExpired(videoUrls[it]) }
@@ -615,7 +621,7 @@ class BoloPlayerController(
             loudnessJob?.cancel()
             updateLoudnessInfo(null)
             val engine = mutableBackend.value ?: return@launch
-            if (!playbackBlocked) loudnessJob = scope.launch { applyLoudness(engine) }
+            if (!resourcesSuspended) loudnessJob = scope.launch { applyLoudness(engine) }
         }
     }
 
@@ -631,7 +637,7 @@ class BoloPlayerController(
         try {
             val result = withContext(boloMpvDispatcher) { engine.loudness(gain, dynamicEnabled, target, range, peak) }
             if (revision != loudnessRevision || expected != generation ||
-                mutableBackend.value !== engine || disposed || playbackBlocked) return
+                mutableBackend.value !== engine || disposed || resourcesSuspended) return
             updateLoudnessInfo(result >= 0, gain.takeIf { result >= 0 })
             if (result < 0)
                 onError(BoloPlayerError.UnknownError("音量均衡配置失败（$result），已停用本次均衡"))
@@ -641,7 +647,7 @@ class BoloPlayerController(
             if (revision != loudnessRevision || expected != generation || mutableBackend.value !== engine || disposed) return
             // 平台调用异常同样尽力恢复无均衡，不让可选音效中断播放。
             withContext(NonCancellable + boloMpvDispatcher) { runCatching { engine.loudness(0.0, false) } }
-            if (revision == loudnessRevision && expected == generation && mutableBackend.value === engine && !disposed && !playbackBlocked) {
+            if (revision == loudnessRevision && expected == generation && mutableBackend.value === engine && !disposed && !resourcesSuspended) {
                 updateLoudnessInfo(false)
                 onError(BoloPlayerError.UnknownError("音量均衡配置失败：${error.message}"))
             }
@@ -659,7 +665,7 @@ class BoloPlayerController(
             ))
             lastInfoSample = null
             val engine = mutableBackend.value ?: return@launch
-            if (playbackBlocked) return@launch
+            if (resourcesSuspended) return@launch
             mergeAudioJob = scope.launch {
                 try {
                     val result = withContext(boloMpvDispatcher) { engine.mergeAudioChannels(enabled) }
@@ -679,7 +685,7 @@ class BoloPlayerController(
 
     fun rebuild() {
         scope.launch {
-            if (disposed || playbackBlocked || state.value.isRebuilding || videoUrls.isEmpty()) return@launch
+            if (disposed || resourcesSuspended || state.value.isRebuilding || videoUrls.isEmpty()) return@launch
             allowSourceRecovery()
             if (sourceRefreshJob != null || needsSourceRefresh()) {
                 endedBeforeSeek = endedBeforeSeek || state.value.isEnded
@@ -693,7 +699,7 @@ class BoloPlayerController(
             rebuildJob = scope.launch(start = CoroutineStart.LAZY) {
                 try {
                     releaseEngine()
-                    if (!isActive || disposed || playbackBlocked || generation != expected + 1 ||
+                    if (!isActive || disposed || resourcesSuspended || generation != expected + 1 ||
                         lifecycleRevision != lifecycle) return@launch
                     restoring = false
                     recoveryAttempted = false
@@ -717,13 +723,16 @@ class BoloPlayerController(
     fun play(allowSourceRefreshRetry: Boolean = true) {
         scope.launch {
             playIntentRevision++
-            if (disposed || playbackBlocked || state.value.isPlaybackSuspended) return@launch
+            if (disposed) return@launch
+            resumeEligible = false
+            backgroundJob?.cancel()
+            resourcesSuspended = false
             if (allowSourceRefreshRetry) allowSourceRecovery()
             playWhenReady = true
             if (state.value.isEnded) {
                 seekToMs(0L)
             } else if (sourceRefreshJob != null || needsSourceRefresh()) beginSourceRecovery(state.value.displayPositionMs)
-            else if (mutableBackend.value == null && videoUrls.isNotEmpty()) startLoad(state.value.displayPositionMs)
+            else if (state.value.isPlaybackSuspended || (!ready && loadJob?.isActive != true)) restorePlayback()
             else applyPlayIntent()
         }
     }
@@ -737,6 +746,7 @@ class BoloPlayerController(
             resumeEligible = false
             mutableState.value = state.value.copy(isPlaying = false, isBuffering = state.value.isSeeking)
             applyPlayIntent()
+            scheduleBackgroundRelease()
         }
     }
 
@@ -745,11 +755,11 @@ class BoloPlayerController(
         val expected = generation
         intentJob?.cancel()
         intentJob = scope.launch {
-            val playing = playWhenReady && ready && !playbackBlocked && !state.value.isSeeking && !state.value.isEnded
+            val playing = playWhenReady && ready && !resourcesSuspended && !state.value.isSeeking && !state.value.isEnded
             if (playing && !engine.setAudioActive(true)) { fail(BoloPlayerError.DecoderError("音频会话激活失败")); return@launch }
             val result = withContext(boloMpvDispatcher) { engine.pause(!playing) }
             if (generation != expected || mutableBackend.value !== engine) return@launch
-            if (!playing && !restoring && !playWhenReady) engine.setAudioActive(false)
+            if (!playing && !playWhenReady) engine.setAudioActive(false)
             if (result < 0) fail(BoloPlayerError.DecoderError("播放状态更新失败（$result）"))
             else mutableState.value = state.value.copy(isPlaying = playing && !state.value.isBuffering)
         }
@@ -757,11 +767,14 @@ class BoloPlayerController(
 
     fun seekToMs(positionMs: Long, autoPlayAfterSeek: Boolean = false) {
         scope.launch {
-            if (disposed || playbackBlocked) return@launch
+            if (disposed) return@launch
+            backgroundJob?.cancel()
+            resourcesSuspended = false
             resetDiagnostics()
             allowSourceRecovery()
             endedBeforeSeek = endedBeforeSeek || state.value.isEnded
             if (autoPlayAfterSeek) {
+                resumeEligible = false
                 playIntentRevision++
                 playWhenReady = true
             }
@@ -835,7 +848,7 @@ class BoloPlayerController(
             scope.launch {
                 if (expected != generation) return@launch
                 releaseEngine()
-                if (generation == expected + 1 && lifecycle == lifecycleRevision && !playbackBlocked && !disposed)
+                if (generation == expected + 1 && lifecycle == lifecycleRevision && !resourcesSuspended && !disposed)
                     startLoad(position)
             }
         } else if (restoring) fail(BoloPlayerError.DecoderError("播放器恢复失败：$message"))
@@ -846,46 +859,28 @@ class BoloPlayerController(
         scope.launch { resumeEnabled = enabled; if (!enabled) resumeEligible = false }
     }
 
-    fun setBackgroundPlaybackEnabled(enabled: Boolean) {
-        scope.launch {
-            if (disposed || backgroundPlaybackEnabled == enabled) return@launch
-            backgroundPlaybackEnabled = enabled
-            if (inBackground) setForeground(false, force = true)
-        }
+    fun setBackgroundPlaybackEnabled(enabled: Boolean, playbackRequested: Boolean = playWhenReady) {
+        if (disposed || backgroundPlaybackEnabled == enabled) return
+        backgroundPlaybackEnabled = enabled
+        if (inBackground && !enabled) setForeground(false, force = true, playbackRequested = playbackRequested)
     }
 
-    internal fun setForeground(foreground: Boolean, force: Boolean = false) {
+    internal fun setForeground(foreground: Boolean, force: Boolean = false, playbackRequested: Boolean = playWhenReady) {
         scope.launch {
             if (disposed || (!force && inBackground == !foreground)) return@launch
             inBackground = !foreground
             resetDiagnostics()
             val lifecycle = ++lifecycleRevision
             backgroundJob?.cancel()
-            if (backgroundPlaybackEnabled) {
-                mutableState.value = state.value.copy(isPlaybackSuspended = false)
-                if (foreground && (sourceRefreshJob != null || needsSourceRefresh())) {
-                    endedBeforeSeek = endedBeforeSeek || state.value.isEnded
-                    beginSourceRecovery(state.value.displayPositionMs)
-                    return@launch
-                }
-                try {
-                    val engine = mutableBackend.value
-                    if (engine != null) {
-                        if (foreground && videoOutputActive) withTimeout(8_000) { engine.awaitOutput() }
-                        if (lifecycle != lifecycleRevision || disposed || mutableBackend.value !== engine) return@launch
-                        withContext(boloMpvDispatcher) { engine.videoEnabled(foreground && videoOutputActive) }
-                    }
-                    if (!ready && sourceRefreshJob == null && videoUrls.isNotEmpty()) startLoad(state.value.displayPositionMs)
-                } catch (error: CancellationException) { throw error }
-                catch (error: Exception) { onError(BoloPlayerError.DecoderError("画面恢复失败：${error.message}", error)) }
-                return@launch
-            }
-            if (!foreground) {
+            if (!foreground && !backgroundPlaybackEnabled) {
+                // 自动暂停只发生在退后台或关闭开关时，后续系统命令可以恢复资源。
+                resumeEligible = playbackRequested && !state.value.isEnded
+                playIntentRevision++
+                resourcesSuspended = true
                 cancelRebuild()
                 mergeAudioJob?.cancel()
                 loudnessJob?.cancel()
                 resetInfo()
-                resumeEligible = playWhenReady && !state.value.isEnded
                 val saved = state.value.displayPositionMs
                 cancelSourceRefresh()
                 playWhenReady = false
@@ -894,77 +889,115 @@ class BoloPlayerController(
                 seekJob?.cancel()
                 intentJob?.cancel()
                 coordinator.cancelCurrentSeek()
-                if (!ready) {
-                    // 中断加载时隔离迟到事件，恢复后重新 load。
-                    ready = false
-                    generation = coordinator.onMediaChanged()
-                }
+                if (!ready) generation = coordinator.onMediaChanged()
                 mutableState.value = state.value.copy(currentPositionMs = saved, pendingSeekPositionMs = null,
                     isPlaybackSuspended = true, isPlaying = false, isBuffering = false, hasConfirmedPosition = false)
                 mutableBackend.value?.let { engine ->
                     withContext(boloMpvDispatcher) { engine.pause(true); engine.videoEnabled(false) }
-                    if (lifecycle == lifecycleRevision && inBackground && mutableBackend.value === engine)
+                    if (lifecycle == lifecycleRevision && resourcesSuspended && mutableBackend.value === engine)
                         engine.setAudioActive(false)
                 }
-                if (lifecycle != lifecycleRevision || !inBackground) return@launch
-                if (mutableBackend.value?.retainsPausedResources != true) {
-                    backgroundJob = scope.launch {
-                        delay(60_000)
-                        if (lifecycle == lifecycleRevision && inBackground) releaseEngine()
-                    }
-                }
-            } else if (videoUrls.isNotEmpty()) {
-                restoring = true
-                recoveryAttempted = false
-                playWhenReady = resumeEnabled && resumeEligible && !state.value.isEnded
+                if (lifecycle == lifecycleRevision) scheduleBackgroundRelease()
+                return@launch
+            }
+            if (foreground) {
+                playWhenReady = playbackRequested || (resumeEnabled && resumeEligible && !state.value.isEnded)
                 resumeEligible = false
-                val position = state.value.displayPositionMs
-                if (needsSourceRefresh()) {
-                    endedBeforeSeek = endedBeforeSeek || state.value.isEnded
-                    beginSourceRecovery(position)
-                    return@launch
+                resourcesSuspended = false
+            }
+            if (state.value.isPlaybackSuspended) {
+                restorePlayback()
+                return@launch
+            }
+            try {
+                val engine = mutableBackend.value
+                if (engine != null) {
+                    if (foreground && videoOutputActive) withTimeout(8_000) { engine.awaitOutput() }
+                    if (lifecycle != lifecycleRevision || disposed || mutableBackend.value !== engine) return@launch
+                    withContext(boloMpvDispatcher) { engine.videoEnabled(foreground && videoOutputActive) }
                 }
-                if (ready && mutableBackend.value != null) {
-                    val engine = mutableBackend.value!!
-                    val expected = generation
-                    val seekRevision = coordinator.currentRevision
-                    val mergeChannels = mergeAudioChannelsEnabled
-                    try { withTimeout(8_000) { engine.awaitOutput() } }
-                    catch (error: TimeoutCancellationException) {
-                        if (lifecycle == lifecycleRevision) fail(BoloPlayerError.DecoderError("画面恢复超时", error))
-                        return@launch
-                    }
-                    catch (error: CancellationException) { throw error }
-                    catch (error: Exception) {
-                        if (lifecycle == lifecycleRevision) fail(BoloPlayerError.DecoderError("画面恢复失败", error))
-                        return@launch
-                    }
-                    val result = withContext(boloMpvDispatcher) {
-                        engine.videoEnabled(videoOutputActive)
-                        engine.mergeAudioChannels(mergeChannels)
-                    }
-                    if (lifecycle != lifecycleRevision || inBackground || disposed || mutableBackend.value !== engine) return@launch
-                    if (result < 0) onError(BoloPlayerError.UnknownError("合并多声道配置失败（$result）"))
-                    applyLoudness(engine)
-                    if (lifecycle != lifecycleRevision || inBackground || disposed || mutableBackend.value !== engine) return@launch
-                    val retainedPosition = withContext(boloMpvDispatcher) { engine.retainedPosition(expected, position) }
-                    if (lifecycle != lifecycleRevision || inBackground || disposed || mutableBackend.value !== engine ||
-                        generation != expected || coordinator.currentRevision != seekRevision) return@launch
-                    if (retainedPosition != null) {
-                        // 连接层确认同一媒体仍暂停在目标附近，不破坏现有解码和缓冲状态。
-                        nativeSeeking = false
-                        restoring = false
-                        recoveryAttempted = false
-                        mutableState.value = state.value.copy(currentPositionMs = retainedPosition,
-                            pendingSeekPositionMs = null, hasConfirmedPosition = true, isPlaybackSuspended = false,
-                            isBuffering = false, isRebuilding = false)
-                        applyPlayIntent()
-                        return@launch
-                    }
-                    coordinator.requestSeek(position)
-                    mutableState.value = state.value.copy(pendingSeekPositionMs = position)
-                    submitSeek()
-                } else startLoad(position)
+                if (lifecycle != lifecycleRevision || disposed) return@launch
+                if (foreground && (sourceRefreshJob != null || needsSourceRefresh())) {
+                    endedBeforeSeek = endedBeforeSeek || state.value.isEnded
+                    beginSourceRecovery(state.value.displayPositionMs)
+                } else if (!ready && loadJob?.isActive != true && sourceRefreshJob == null && videoUrls.isNotEmpty()) {
+                    startLoad(state.value.displayPositionMs)
+                } else applyPlayIntent()
+                scheduleBackgroundRelease()
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) { onError(BoloPlayerError.DecoderError("画面恢复失败：${error.message}", error)) }
+        }
+    }
+
+    private suspend fun restorePlayback() {
+        if (disposed || resourcesSuspended || videoUrls.isEmpty()) return
+        restoring = true
+        recoveryAttempted = false
+        val position = state.value.displayPositionMs
+        if (needsSourceRefresh()) {
+            endedBeforeSeek = endedBeforeSeek || state.value.isEnded
+            beginSourceRecovery(position)
+            return
+        }
+        val engine = mutableBackend.value
+        if (!ready || engine == null) {
+            if (loadJob?.isActive != true) startLoad(position)
+            return
+        }
+        val lifecycle = lifecycleRevision
+        val expected = generation
+        val seekRevision = coordinator.currentRevision
+        fun isCurrent() = lifecycle == lifecycleRevision && generation == expected && !resourcesSuspended &&
+            !disposed && mutableBackend.value === engine && coordinator.currentRevision == seekRevision
+        try {
+            if (!inBackground && videoOutputActive) withTimeout(8_000) { engine.awaitOutput() }
+            if (!isCurrent()) return
+            val result = withContext(boloMpvDispatcher) {
+                engine.videoEnabled(!inBackground && videoOutputActive)
+                engine.mergeAudioChannels(mergeAudioChannelsEnabled)
+            }
+            if (!isCurrent()) return
+            if (result < 0) onError(BoloPlayerError.UnknownError("合并多声道配置失败（$result）"))
+            applyLoudness(engine)
+            if (!isCurrent()) return
+            val retainedPosition = withContext(boloMpvDispatcher) { engine.retainedPosition(expected, position) }
+            if (!isCurrent()) return
+            if (retainedPosition != null || state.value.isEnded) {
+                nativeSeeking = false
+                restoring = false
+                recoveryAttempted = false
+                mutableState.value = state.value.copy(currentPositionMs = retainedPosition ?: position,
+                    pendingSeekPositionMs = null, hasConfirmedPosition = retainedPosition != null,
+                    isPlaybackSuspended = false, isBuffering = false, isRebuilding = false)
+                applyPlayIntent()
+                scheduleBackgroundRelease()
+            } else {
+                coordinator.requestSeek(position)
+                mutableState.value = state.value.copy(pendingSeekPositionMs = position, isBuffering = true)
+                submitSeek()
+            }
+        } catch (error: TimeoutCancellationException) {
+            if (isCurrent()) fail(BoloPlayerError.DecoderError("画面恢复超时", error))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) {
+            if (isCurrent()) fail(BoloPlayerError.DecoderError("画面恢复失败", error))
+        }
+    }
+
+    private fun canReleaseBackgroundResources() = inBackground && !playWhenReady && !restoring &&
+        !state.value.isSeeking && !state.value.isRebuilding && loadJob?.isActive != true && sourceRefreshJob == null
+
+    private fun scheduleBackgroundRelease() {
+        backgroundJob?.cancel()
+        if (!canReleaseBackgroundResources() || mutableBackend.value?.retainsPausedResources != false) return
+        val expected = generation
+        val revision = playIntentRevision
+        backgroundJob = scope.launch {
+            delay(60_000)
+            if (!disposed && expected == generation && revision == playIntentRevision && canReleaseBackgroundResources()) {
+                resourcesSuspended = true
+                mutableState.value = state.value.copy(isPlaybackSuspended = true)
+                releaseEngine()
             }
         }
     }
@@ -986,7 +1019,7 @@ class BoloPlayerController(
 
     internal fun outputAttached() {
         setVideoOutputActive(true)
-        scope.launch { if (!disposed && !playbackBlocked && sourceRefreshJob == null && mutableBackend.value == null && videoUrls.isNotEmpty()) startLoad(state.value.displayPositionMs) }
+        scope.launch { if (!disposed && !inBackground && !resourcesSuspended && sourceRefreshJob == null && mutableBackend.value == null && videoUrls.isNotEmpty()) startLoad(state.value.displayPositionMs) }
     }
 
     internal fun outputDetached(output: Any) {
@@ -997,7 +1030,14 @@ class BoloPlayerController(
     }
 
     internal fun releaseBackgroundResources() {
-        scope.launch { if (playbackBlocked) releaseEngine() }
+        scope.launch {
+            if (!disposed && canReleaseBackgroundResources()) {
+                backgroundJob?.cancel()
+                resourcesSuspended = true
+                mutableState.value = state.value.copy(isPlaybackSuspended = true)
+                releaseEngine()
+            }
+        }
     }
     fun release() { scope.launch { if (!disposed) { cancelSourceRefresh(); cancelRebuild(); releaseEngine() } } }
 
@@ -1017,19 +1057,20 @@ class BoloPlayerController(
         mutableState.value = state.value.copy(currentPositionMs = state.value.displayPositionMs,
             pendingSeekPositionMs = null, isPlaying = false, isBuffering = false, hasConfirmedPosition = false)
         withContext(NonCancellable) {
-            engineMutex.withLock {
-                if (engine != null) {
-                    try {
+            if (engine != null) {
+                try {
+                    engineMutex.withLock {
                         withContext(boloMpvDispatcher) { engine.stop() }
+                    }
+                } finally {
+                    try {
+                        // iOS 后台的 GL 清理可能等待前台，不能占住新音频实例的创建锁。
+                        engine.unbind()
                     } finally {
                         try {
-                            engine.unbind()
+                            withContext(boloMpvDispatcher) { engine.destroy() }
                         } finally {
-                            try {
-                                withContext(boloMpvDispatcher) { engine.destroy() }
-                            } finally {
-                                engine.setAudioActive(false)
-                            }
+                            engine.setAudioActive(false)
                         }
                     }
                 }
@@ -1062,7 +1103,7 @@ class BoloPlayerController(
         coordinator.cancelCurrentSeek()
         mutableState.value = state.value.copy(isPlaying = false, isBuffering = false,
             isEnded = endedBeforeSeek || state.value.isEnded,
-            pendingSeekPositionMs = null, isPlaybackSuspended = playbackBlocked, playWhenReady = playWhenReady, hasConfirmedPosition = false)
+            pendingSeekPositionMs = null, isPlaybackSuspended = resourcesSuspended, playWhenReady = playWhenReady, hasConfirmedPosition = false)
         val expected = generation
         scope.launch {
             if (expected != generation) return@launch

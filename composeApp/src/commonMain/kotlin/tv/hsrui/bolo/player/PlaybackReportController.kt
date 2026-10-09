@@ -39,8 +39,6 @@ class PlaybackReportController {
     private var wasEnded = false
     private var pageVisible = true
     private var foreground = true
-    private var backgroundPlaybackAllowed = false
-    private val playbackObservable get() = foreground || backgroundPlaybackAllowed
     private var countingPlayback = false
     private var playedTime = Duration.ZERO
     private var lastUpdate = TimeSource.Monotonic.markNow()
@@ -50,7 +48,7 @@ class PlaybackReportController {
 
     fun openMedia(target: PlaybackReportTarget) {
         if (closed || media == target) return
-        if (pageVisible && playbackObservable) reportProgress()
+        if (pageVisible) reportProgress()
         advanceClock()
         mediaGeneration += 1
         media = target
@@ -82,7 +80,7 @@ class PlaybackReportController {
         advanceClock()
         if (immediateReportAccountSession != loginStorage.cookies.sessData) immediateReportAccountSession = null
         // release 会把未确认的恢复目标保存到 state；无后端时保留最后的实际观看位置。
-        val canObserve = acceptsPlayback && backendAvailable && pageVisible && playbackObservable &&
+        val canObserve = acceptsPlayback && backendAvailable && pageVisible &&
             playback.hasConfirmedPosition && !playback.isPlaybackSuspended && !playback.isRebuilding && !playback.isSeeking
         countingPlayback = canObserve && playback.isPlaying && !playback.isBuffering && !playback.isEnded
         if (countingPlayback) hasPlayed = true
@@ -110,14 +108,8 @@ class PlaybackReportController {
     fun leavePage() {
         if (closed || !pageVisible) return
         advanceClock()
-        if (playbackObservable) reportProgress()
+        reportProgress()
         pageVisible = false
-        countingPlayback = false
-    }
-
-    fun setBackgroundPlaybackAllowed(allowed: Boolean) {
-        advanceClock()
-        backgroundPlaybackAllowed = allowed
         countingPlayback = false
     }
 

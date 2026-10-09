@@ -471,11 +471,15 @@ class VideoPlayerViewModel(
         playbackReportController.leavePage()
     }
 
-    fun setBackgroundPlaybackAllowed(allowed: Boolean) {
-        playbackReportController.setBackgroundPlaybackAllowed(allowed)
+    internal fun setBackgroundPlaybackEnabled(enabled: Boolean) {
+        if (controller.backgroundPlaybackEnabled == enabled) return
+        val requested = pendingPlayWhenReady ?: controller.state.value.playWhenReady
+        if (!playbackForeground && !enabled && pendingPlayWhenReady != null) pendingPlayWhenReady = false
+        controller.setBackgroundPlaybackEnabled(enabled, requested)
     }
 
     fun onPlaybackForegroundChanged(active: Boolean) {
+        val requested = pendingPlayWhenReady ?: controller.state.value.playWhenReady
         playbackForeground = active
         if (!active) {
             dismissDanmakuInput(resumePlayback = false)
@@ -485,6 +489,9 @@ class VideoPlayerViewModel(
         }
         playbackReportController.updatePlayback(controller.state.value, controller.backend.value != null)
         playbackReportController.setForeground(active)
+        if (!active && !controller.backgroundPlaybackEnabled && pendingPlayWhenReady != null) pendingPlayWhenReady = false
+        controller.setForeground(active, playbackRequested = requested)
+        if (active && pendingPlayWhenReady != null) pendingPlayWhenReady = controller.state.value.playWhenReady
     }
 
     fun switchQuality(newVideoQuality: VideoQuality) {
@@ -675,7 +682,6 @@ class VideoPlayerViewModel(
     }
 
     fun play() {
-        if (controller.state.value.isPlaybackSuspended) return
         if (pendingPlayWhenReady != null) {
             pendingPlayWhenReady = true
             controller.pause() // 保持旧媒体暂停，同时使此前的中断恢复票据失效。
@@ -692,8 +698,6 @@ class VideoPlayerViewModel(
 
     fun seekToMs(positionMs: Long, autoPlayAfterSeek: Boolean = false) {
         if (playbackClosed) return
-        val playbackBeforeSeek = controller.state.value
-        if (playbackBeforeSeek.isPlaybackSuspended) return
         danmakuController.pause()
         danmakuController.seekToMs(positionMs)
         awaitingDanmakuSeek = true
