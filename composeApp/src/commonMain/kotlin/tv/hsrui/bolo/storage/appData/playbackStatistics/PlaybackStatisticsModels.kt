@@ -113,6 +113,12 @@ data class PlaybackUpRanking(
     @ColumnInfo(name = "play_count") val playCount: Long,
 )
 
+data class PlaybackRankings(
+    val videos: List<PlaybackVideoRanking>,
+    val ups: List<PlaybackUpRanking>,
+    val media: List<PlaybackVideoRanking> = emptyList(),
+)
+
 data class PlaybackStatisticsSnapshot(
     val summary: PlaybackStatisticsSummary,
     val dailyStats: List<PlaybackDailyStats>,

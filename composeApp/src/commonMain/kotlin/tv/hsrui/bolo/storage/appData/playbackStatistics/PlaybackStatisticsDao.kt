@@ -42,11 +42,18 @@ internal abstract class PlaybackStatisticsDao {
                latest.content_type,
                ranked.total_played_ms, ranked.play_count
         FROM (
-            SELECT h.avid, SUM(d.total_played_ms) AS total_played_ms, SUM(d.play_count) AS play_count
-            FROM playback_daily_stats d JOIN playback_stats h ON h.id = d.record_id
-            WHERE d.local_date >= :fromDate AND d.local_date < :untilDateExclusive
-            GROUP BY h.avid HAVING SUM(d.total_played_ms) > 0
-            ORDER BY total_played_ms DESC, h.avid ASC LIMIT :limit
+            SELECT source.avid, SUM(source.total_played_ms) AS total_played_ms, SUM(source.play_count) AS play_count
+            FROM (
+                SELECT avid, total_played_ms, play_count FROM playback_stats
+                WHERE :fromDate IS NULL AND (:contentType IS NULL OR content_type = :contentType)
+                UNION ALL
+                SELECT h.avid, d.total_played_ms, d.play_count
+                FROM playback_daily_stats d JOIN playback_stats h ON h.id = d.record_id
+                WHERE d.local_date >= :fromDate AND d.local_date < :untilDateExclusive
+                  AND (:contentType IS NULL OR h.content_type = :contentType)
+            ) AS source
+            GROUP BY source.avid HAVING SUM(source.total_played_ms) > 0
+            ORDER BY total_played_ms DESC, source.avid ASC LIMIT :limit
         ) AS ranked
         JOIN playback_stats latest ON latest.id = (
             SELECT id FROM playback_stats WHERE avid = ranked.avid
@@ -54,7 +61,52 @@ internal abstract class PlaybackStatisticsDao {
         )
         ORDER BY ranked.total_played_ms DESC, ranked.avid ASC
     """)
-    abstract suspend fun topVideos(fromDate: String, untilDateExclusive: String, limit: Int): List<PlaybackVideoRanking>
+    abstract suspend fun topVideos(
+        fromDate: String?, untilDateExclusive: String?, limit: Int, contentType: String? = null,
+    ): List<PlaybackVideoRanking>
+
+    @Query("""
+        WITH media_records AS (
+            SELECT *,
+                   CASE WHEN season_id > 0 THEN season_id ELSE 0 END AS group_season_id,
+                   CASE WHEN season_id > 0 THEN 0 ELSE avid END AS group_avid
+            FROM playback_stats WHERE content_type = 'media'
+        ), ranked AS (
+            SELECT source.group_season_id, source.group_avid,
+                   SUM(source.total_played_ms) AS total_played_ms, SUM(source.play_count) AS play_count
+            FROM (
+                SELECT group_season_id, group_avid, total_played_ms, play_count
+                FROM media_records WHERE :fromDate IS NULL
+                UNION ALL
+                SELECT h.group_season_id, h.group_avid, d.total_played_ms, d.play_count
+                FROM playback_daily_stats d JOIN media_records h ON h.id = d.record_id
+                WHERE d.local_date >= :fromDate AND d.local_date < :untilDateExclusive
+            ) AS source
+            GROUP BY source.group_season_id, source.group_avid HAVING SUM(source.total_played_ms) > 0
+            ORDER BY total_played_ms DESC, source.group_season_id ASC, source.group_avid ASC LIMIT :limit
+        )
+        SELECT latest.avid,
+               COALESCE((SELECT title FROM media_records
+                         WHERE group_season_id = ranked.group_season_id AND group_avid = ranked.group_avid
+                           AND TRIM(title) <> ''
+                         ORDER BY last_viewed_at_ms DESC, id DESC LIMIT 1), '') AS title,
+               CASE WHEN ranked.group_season_id = 0 THEN
+                   (SELECT part_title FROM media_records
+                    WHERE group_season_id = ranked.group_season_id AND group_avid = ranked.group_avid
+                      AND TRIM(part_title) <> ''
+                    ORDER BY last_viewed_at_ms DESC, id DESC LIMIT 1)
+               END AS part_title,
+               latest.content_type,
+               ranked.total_played_ms, ranked.play_count
+        FROM ranked
+        JOIN media_records latest ON latest.id = (
+            SELECT id FROM media_records
+            WHERE group_season_id = ranked.group_season_id AND group_avid = ranked.group_avid
+            ORDER BY last_viewed_at_ms DESC, id DESC LIMIT 1
+        )
+        ORDER BY ranked.total_played_ms DESC, ranked.group_season_id ASC, ranked.group_avid ASC
+    """)
+    abstract suspend fun topMediaSeasons(fromDate: String?, untilDateExclusive: String?, limit: Int): List<PlaybackVideoRanking>
 
     @Query("""
         SELECT ranked.up_mid,
@@ -63,19 +115,35 @@ internal abstract class PlaybackStatisticsDao {
                 ORDER BY last_viewed_at_ms DESC, id DESC LIMIT 1) AS up_name,
                ranked.total_played_ms, ranked.play_count
         FROM (
-            SELECT h.up_mid, SUM(d.total_played_ms) AS total_played_ms, SUM(d.play_count) AS play_count
-            FROM playback_daily_stats d JOIN playback_stats h ON h.id = d.record_id
-            WHERE d.local_date >= :fromDate AND d.local_date < :untilDateExclusive
-              AND h.content_type = 'video' AND h.up_mid > 0
-            GROUP BY h.up_mid HAVING SUM(d.total_played_ms) > 0
-            ORDER BY total_played_ms DESC, h.up_mid ASC LIMIT :limit
+            SELECT source.up_mid, SUM(source.total_played_ms) AS total_played_ms, SUM(source.play_count) AS play_count
+            FROM (
+                SELECT up_mid, total_played_ms, play_count FROM playback_stats
+                WHERE :fromDate IS NULL AND content_type = 'video' AND up_mid > 0
+                UNION ALL
+                SELECT h.up_mid, d.total_played_ms, d.play_count
+                FROM playback_daily_stats d JOIN playback_stats h ON h.id = d.record_id
+                WHERE d.local_date >= :fromDate AND d.local_date < :untilDateExclusive
+                  AND h.content_type = 'video' AND h.up_mid > 0
+            ) AS source
+            GROUP BY source.up_mid HAVING SUM(source.total_played_ms) > 0
+            ORDER BY total_played_ms DESC, source.up_mid ASC LIMIT :limit
         ) AS ranked
         ORDER BY ranked.total_played_ms DESC, ranked.up_mid ASC
     """)
-    abstract suspend fun topUps(fromDate: String, untilDateExclusive: String, limit: Int): List<PlaybackUpRanking>
+    abstract suspend fun topUps(fromDate: String?, untilDateExclusive: String?, limit: Int): List<PlaybackUpRanking>
 
     @Transaction
-    open suspend fun statistics(fromDate: String, untilDateExclusive: String, limit: Int): PlaybackStatisticsSnapshot {
+    open suspend fun rankings(fromDate: String?, untilDateExclusive: String?, limit: Int): PlaybackRankings =
+        PlaybackRankings(
+            videos = topVideos(fromDate, untilDateExclusive, limit, contentType = "video"),
+            ups = topUps(fromDate, untilDateExclusive, limit),
+            media = topMediaSeasons(fromDate, untilDateExclusive, limit),
+        )
+
+    @Transaction
+    open suspend fun statistics(
+        fromDate: String, untilDateExclusive: String, limit: Int, includeRankings: Boolean,
+    ): PlaybackStatisticsSnapshot {
         val summary = statisticsSummary()
         if (fromDate == untilDateExclusive) {
             return PlaybackStatisticsSnapshot(summary, emptyList(), emptyList(), emptyList())
@@ -83,8 +151,8 @@ internal abstract class PlaybackStatisticsDao {
         return PlaybackStatisticsSnapshot(
             summary = summary,
             dailyStats = dailyStats(fromDate, untilDateExclusive, null, null, null),
-            videos = topVideos(fromDate, untilDateExclusive, limit),
-            ups = topUps(fromDate, untilDateExclusive, limit),
+            videos = if (includeRankings) topVideos(fromDate, untilDateExclusive, limit) else emptyList(),
+            ups = if (includeRankings) topUps(fromDate, untilDateExclusive, limit) else emptyList(),
         )
     }
 

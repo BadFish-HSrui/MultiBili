@@ -1,6 +1,7 @@
 package tv.hsrui.bolo.boloSetting.setting.statistics
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,17 +50,19 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.datetime.LocalDate
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackDailyStats
-import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackStatisticsSnapshot
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackStatisticsSummary
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
+import tv.hsrui.bolo.ui.components.statistics.ShowPlaybackRankings
+import tv.hsrui.bolo.ui.components.statistics.ShowPlaybackRankingsSheet
+import tv.hsrui.bolo.ui.components.statistics.formatStatisticsDuration
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.utils.isExpanded
 
@@ -70,9 +74,17 @@ fun StatisticsScreen(
     val state by model.uiState.collectAsStateWithLifecycle()
     var dayCount by rememberSaveable { mutableIntStateOf(7) }
     var refreshKey by rememberSaveable { mutableIntStateOf(0) }
+    var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(model, lifecycleOwner, dayCount, refreshKey) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { model.load(dayCount) }
+    }
+
+    selectedDay?.let { date ->
+        ShowPlaybackRankingsSheet(
+            dateRange = date..date,
+            onDismissRequest = { selectedDay = null },
+        )
     }
 
     Scaffold(
@@ -134,11 +146,13 @@ fun StatisticsScreen(
                 }
                 // 筛选切换的首帧也不把旧范围的数据放在新标签下。
                 if (state.dayCount == dayCount && state.days.isNotEmpty()) {
-                    item { StatisticsTrend(state.days) }
-                    state.snapshot?.let { snapshot ->
-                        item { StatisticsRankings(snapshot) }
+                    item {
+                        StatisticsTrend(state.days, onDayClick = {
+                            selectedDay = it
+                        })
                     }
                 }
+                item(key = "playback-rankings") { ShowPlaybackRankings() }
                 if (state.hasUnsavedPlayback) {
                     item {
                         Text("部分播放记录尚未保存，当前显示已保存的数据。可稍后刷新。",
@@ -189,7 +203,7 @@ private fun StatisticsMetric(label: String, value: String, modifier: Modifier = 
 }
 
 @Composable
-private fun StatisticsTrend(days: List<PlaybackDailyStats>) {
+private fun StatisticsTrend(days: List<PlaybackDailyStats>, onDayClick: (LocalDate) -> Unit) {
     var selectedIndex by rememberSaveable(days.first().localDate, days.last().localDate) { mutableIntStateOf(days.lastIndex) }
     val selectedDay = days[selectedIndex]
     val totalMs = days.sumOf { it.totalPlayedMs }
@@ -250,7 +264,12 @@ private fun StatisticsTrend(days: List<PlaybackDailyStats>) {
                     IconButton(onClick = { selectedIndex = (selectedIndex - 1).coerceAtLeast(0) }, enabled = selectedIndex > 0, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "前一天", Modifier.size(24.dp))
                     }
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        Modifier.weight(1f).clickable(onClickLabel = "查看当天观看时长排行") {
+                            onDayClick(LocalDate.parse(selectedDay.localDate))
+                        },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
                         Text(selectedDay.localDate, style = MaterialTheme.typography.labelMedium)
                         Text("${formatStatisticsDuration(selectedDay.totalPlayedMs)} · ${selectedDay.playCount} 次播放",
                             style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
@@ -259,70 +278,6 @@ private fun StatisticsTrend(days: List<PlaybackDailyStats>) {
                         Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "后一天", Modifier.size(24.dp))
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatisticsRankings(snapshot: PlaybackStatisticsSnapshot) {
-    var showUps by rememberSaveable { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("观看时长排行", style = MaterialTheme.typography.titleMedium)
-        SingleChoiceSegmentedButtonRow(Modifier.widthIn(max = 280.dp).fillMaxWidth()) {
-            listOf("视频", "UP 主").forEachIndexed { index, label ->
-                SegmentedButton(
-                    selected = showUps == (index == 1), onClick = { showUps = index == 1 },
-                    shape = SegmentedButtonDefaults.itemShape(index, 2),
-                ) { Text(label) }
-            }
-        }
-        Card(Modifier.fillMaxWidth()) {
-            if (showUps) {
-                if (snapshot.ups.isEmpty()) {
-                    Text("这段时间还没有 UP 主观看数据", Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium)
-                }
-                snapshot.ups.forEachIndexed { index, up ->
-                    if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                    StatisticsRankingRow(index + 1, up.upName ?: "UP ${up.upMid}",
-                        "${up.playCount} 次播放", up.totalPlayedMs)
-                }
-            } else {
-                if (snapshot.videos.isEmpty()) {
-                    Text("这段时间还没有视频观看数据", Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium)
-                }
-                snapshot.videos.forEachIndexed { index, video ->
-                    if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                    val title = if (video.contentType == "media" && !video.partTitle.isNullOrBlank()) {
-                        "${video.title} · ${video.partTitle}"
-                    } else video.title
-                    StatisticsRankingRow(index + 1, title,
-                        "${video.playCount} 次播放 · ${if (video.contentType == "media") "番剧影视" else "视频"}", video.totalPlayedMs)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatisticsRankingRow(rank: Int, title: String, subtitle: String, totalPlayedMs: Long) {
-    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Surface(color = if (rank == 1) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-            shape = RoundedCornerShape(8.dp)) {
-            Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
-                Text(rank.toString(), style = MaterialTheme.typography.labelLarge)
-            }
-        }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(formatStatisticsDuration(totalPlayedMs), modifier = Modifier.alignByBaseline(),
-                    style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1)
-                Text(subtitle, modifier = Modifier.weight(1f).alignByBaseline(),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

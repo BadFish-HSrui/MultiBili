@@ -100,10 +100,28 @@ class PlaybackStatisticsManager internal constructor(
         fromDate: LocalDate,
         untilDateExclusive: LocalDate,
         limit: Int = 5,
+        includeRankings: Boolean = true,
     ): PlaybackStatisticsSnapshot {
         require(fromDate <= untilDateExclusive)
         require(limit > 0)
-        return database().playbackStatisticsDao().statistics(fromDate.toString(), untilDateExclusive.toString(), limit)
+        return database().playbackStatisticsDao().statistics(
+            fromDate.toString(), untilDateExclusive.toString(), limit, includeRankings,
+        )
+    }
+
+    /** 不传日期时读取累计排行；指定日期时读取左闭右开的每日统计，不触发保存。 */
+    suspend fun rankings(
+        fromDate: LocalDate? = null,
+        untilDateExclusive: LocalDate? = null,
+        limit: Int = 5,
+    ): PlaybackRankings {
+        require((fromDate == null) == (untilDateExclusive == null))
+        require(limit > 0)
+        if (fromDate != null && untilDateExclusive != null) {
+            require(fromDate <= untilDateExclusive)
+            if (fromDate == untilDateExclusive) return PlaybackRankings(emptyList(), emptyList())
+        }
+        return database().playbackStatisticsDao().rankings(fromDate?.toString(), untilDateExclusive?.toString(), limit)
     }
 
     /** 按记录时的本地日期查询已落盘统计；不补齐无播放的日期，也不触发保存。 */

@@ -54,7 +54,7 @@ class StatisticsViewModel(
             }
             val end = today().plus(1, DateTimeUnit.DAY)
             val start = end.minus(dayCount, DateTimeUnit.DAY)
-            val snapshot = appData.playbackStatistics.statistics(start, end)
+            val snapshot = appData.playbackStatistics.statistics(start, end, includeRankings = false)
             val byDate = snapshot.dailyStats.associateBy { it.localDate }
             val days = List(dayCount) { offset ->
                 val date = start.plus(offset, DateTimeUnit.DAY).toString()
@@ -77,16 +77,4 @@ class StatisticsViewModel(
             }
         }
     }
-}
-
-internal fun formatStatisticsDuration(milliseconds: Long): String {
-    if (milliseconds <= 0L) return "0 分钟"
-    if (milliseconds < 1_000L) return "不足 1 秒"
-    val seconds = milliseconds / 1_000L
-    if (seconds < 60L) return "$seconds 秒"
-    val minutes = seconds / 60L
-    if (minutes < 60L) return "$minutes 分钟"
-    val hours = minutes / 60L
-    val remainder = minutes % 60L
-    return if (remainder == 0L) "$hours 小时" else "$hours 小时 $remainder 分钟"
 }
