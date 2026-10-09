@@ -6,6 +6,8 @@ import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING
 import tv.hsrui.bolo.buildlogic.ResolvedVersionMetadata
 
 plugins {
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.androidx.room)
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.androidMultiplatformLibrary)
@@ -96,6 +98,8 @@ kotlin {
             implementation(libs.androidx.activity.compose)
         }
         commonMain.dependencies {
+            implementation(libs.androidx.room.runtime)
+            implementation(libs.androidx.sqlite.bundled)
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
@@ -137,7 +141,15 @@ kotlin {
 }
 
 dependencies {
+    add("kspAndroid", libs.androidx.room.compiler)
+    add("kspJvm", libs.androidx.room.compiler)
+    add("kspIosArm64", libs.androidx.room.compiler)
+    add("kspIosSimulatorArm64", libs.androidx.room.compiler)
     androidRuntimeClasspath(libs.compose.uiTooling)
+}
+
+room3 {
+    schemaDirectory("$projectDir/schemas")
 }
 
 compose.desktop {
