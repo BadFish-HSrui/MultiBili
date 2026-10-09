@@ -44,6 +44,16 @@ data class MediaSeasonData(
             return if (available.any { it.seasonId == seasonId }) available
             else listOf(MediaSeasonSummary(seasonId, title)) + available
         }
+
+    fun toMediaCard(episode: MediaEpisode? = null): MediaCard = MediaCard(
+        seasonId = seasonId,
+        cover = cover,
+        title = title,
+        subtitle = episode?.displayTitle.orEmpty(),
+        badge = episode?.badge.orEmpty(),
+        score = rating?.scoreValue.orEmpty(),
+        progressText = progressText,
+    )
 }
 
 @Serializable
