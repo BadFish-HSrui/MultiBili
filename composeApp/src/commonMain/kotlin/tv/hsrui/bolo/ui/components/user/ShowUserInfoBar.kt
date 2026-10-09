@@ -30,7 +30,12 @@ import tv.hsrui.network.login.storage.LoginStorage
 import tv.hsrui.network.utils.formatCountToString
 
 @Composable
-fun ShowUserInfoBar(mid: Long, modifier: Modifier = Modifier, refreshKey: Int = 0) {
+fun ShowUserInfoBar(
+    mid: Long,
+    modifier: Modifier = Modifier,
+    refreshKey: Int = 0,
+    onUserClick: (() -> Unit)? = null,
+) {
     val loginStorage: LoginStorage = koinInject()
     val currentUserMid by loginStorage.currentUserMidFlow.collectAsStateWithLifecycle(
         initialValue = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L,
@@ -65,6 +70,7 @@ fun ShowUserInfoBar(mid: Long, modifier: Modifier = Modifier, refreshKey: Int = 
             vipTypeString = "大会员",
             modifier = modifier,
             shape = CardDefaults.shape,
+            onUserClick = onUserClick,
             nameTrailingContent = {
                 if (mid > 0 && mid != currentUserMid) {
                     key(mid, currentUserMid, refreshKey) {
