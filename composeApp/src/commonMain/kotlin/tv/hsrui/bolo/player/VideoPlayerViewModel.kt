@@ -46,6 +46,7 @@ import tv.hsrui.network.feature.danmaku.fetchDanmakuView
 import tv.hsrui.network.feature.danmaku.sendDanmaku as postDanmaku
 import tv.hsrui.network.feature.player.PlaybackReportTarget
 import tv.hsrui.network.feature.player.VideoSource
+import tv.hsrui.network.feature.player.BiliDashObject
 import tv.hsrui.network.feature.player.HighEnergyProgressData
 import tv.hsrui.network.feature.player.fetchHighEnergyProgress
 import tv.hsrui.network.feature.player.PlayerInfoResponse
@@ -173,6 +174,9 @@ class VideoPlayerViewModel(
 
     init {
         controller.onRefreshSource = ::refreshPlayInfo
+        viewModelScope.launch {
+            controller.info.collect { info -> updateVideoAspectRatio(info.video.aspectRatio) }
+        }
         if (getPlatform().type == PlatformType.Desktop) {
             viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
                 snapshotFlow {
@@ -411,6 +415,9 @@ class VideoPlayerViewModel(
 
         val video = currentState.videoSource.getVideo(quality = videoQuality, codec = settings.playback.defaultVideoCodec)
         val audio = currentState.videoSource.getAudio(quality = audioQuality)
+        // 先发布本次选流的尺寸；原生信息仅在对应源已交给控制器后才能覆盖。
+        playbackGeneration = -1L
+        _uiState.value = playbackSuccess(currentState.videoSource, video)
         currentVideoCodec = video.codec
 
         videoQuality = video.quality as VideoQuality
@@ -441,6 +448,7 @@ class VideoPlayerViewModel(
             currentCoroutineContext().ensureActive()
             if (generation != sourceGeneration) return@launch
             playbackGeneration = generation
+            updateVideoAspectRatio(controller.info.value.video.aspectRatio)
             playbackReportController.mediaLoaded()
             if (pendingPlayWhenReady ?: (autoPlay && controller.playIntentRevision == intentRevision)) {
                 controller.play(allowSourceRefreshRetry = false)
@@ -529,7 +537,7 @@ class VideoPlayerViewModel(
             currentVideoCodec = video.codec
             _currentVideoQuality.value = videoQuality
             _currentAudioQuality.value = audioQuality
-            _uiState.value = VideoPlayerUiState.Success(result)
+            _uiState.value = playbackSuccess(result, video)
             return BoloPlayerSource(video, audio, result.loudness, settings.playback.optimizePlaybackSourceEnabled)
         }
         throw IllegalStateException("播放地址刷新失败，请重试")
@@ -543,6 +551,25 @@ class VideoPlayerViewModel(
             source.getAudio(audioQuality)?.duration ?: 0L)
         val durationMs = durationSeconds.coerceIn(0L, Long.MAX_VALUE / 1000L) * 1000L
         return info.resumePositionMs(cid, durationMs)
+    }
+
+    private fun playbackSuccess(source: VideoSource, video: BiliDashObject): VideoPlayerUiState.Success {
+        check(video.quality is VideoQuality && video.getUrls().isNotEmpty()) { "视频暂无可播放内容" }
+        return VideoPlayerUiState.Success(
+            videoSource = source,
+            avid = avid,
+            cid = cid,
+            episodeId = episodeId,
+            videoAspectRatio = if (video.width > 0 && video.height > 0) video.width.toFloat() / video.height else null,
+        )
+    }
+
+    private fun updateVideoAspectRatio(aspectRatio: Float?) {
+        if (playbackClosed || playbackGeneration != sourceGeneration) return
+        val current = uiState.value as? VideoPlayerUiState.Success ?: return
+        if (!current.matches(avid, cid, episodeId)) return
+        val ratio = aspectRatio?.takeIf { it.isFinite() && it > 0F } ?: return
+        if (current.videoAspectRatio != ratio) _uiState.value = current.copy(videoAspectRatio = ratio)
     }
 
     suspend fun loadVideo() {
@@ -587,7 +614,8 @@ class VideoPlayerViewModel(
                     it.matchesRequest(requestedAvid, requestedCid, requestedSession) &&
                         loginStorage.cookies.sessData == requestedSession
                 }?.chapters.orEmpty()
-                _uiState.value = VideoPlayerUiState.Success(result)
+                val video = result.getVideo(videoQuality, settings.playback.defaultVideoCodec)
+                _uiState.value = playbackSuccess(result, video)
                 refreshDanmakuContext()
                 loadHighEnergyProgress()
                 subtitleLoadJob = viewModelScope.launch {
