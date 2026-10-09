@@ -21,6 +21,74 @@ internal abstract class PlaybackStatisticsDao {
     abstract suspend fun totalPlayedMs(avid: Long): Long
 
     @Query("""
+        SELECT COALESCE(SUM(total_played_ms), 0) AS total_played_ms,
+               COALESCE(SUM(play_count), 0) AS play_count,
+               COUNT(DISTINCT avid) AS video_count,
+               COUNT(DISTINCT CASE WHEN content_type = 'video' AND up_mid > 0 THEN up_mid END) AS up_count
+        FROM playback_stats WHERE total_played_ms > 0 OR play_count > 0
+    """)
+    abstract suspend fun statisticsSummary(): PlaybackStatisticsSummary
+
+    @Query("""
+        SELECT ranked.avid,
+               COALESCE((SELECT title FROM playback_stats
+                         WHERE avid = ranked.avid AND TRIM(title) <> ''
+                         ORDER BY last_viewed_at_ms DESC, id DESC LIMIT 1), '') AS title,
+               CASE WHEN latest.content_type = 'media' THEN
+                   (SELECT part_title FROM playback_stats
+                    WHERE avid = ranked.avid AND TRIM(part_title) <> ''
+                    ORDER BY last_viewed_at_ms DESC, id DESC LIMIT 1)
+               END AS part_title,
+               latest.content_type,
+               ranked.total_played_ms, ranked.play_count
+        FROM (
+            SELECT h.avid, SUM(d.total_played_ms) AS total_played_ms, SUM(d.play_count) AS play_count
+            FROM playback_daily_stats d JOIN playback_stats h ON h.id = d.record_id
+            WHERE d.local_date >= :fromDate AND d.local_date < :untilDateExclusive
+            GROUP BY h.avid HAVING SUM(d.total_played_ms) > 0
+            ORDER BY total_played_ms DESC, h.avid ASC LIMIT :limit
+        ) AS ranked
+        JOIN playback_stats latest ON latest.id = (
+            SELECT id FROM playback_stats WHERE avid = ranked.avid
+            ORDER BY last_viewed_at_ms DESC, id DESC LIMIT 1
+        )
+        ORDER BY ranked.total_played_ms DESC, ranked.avid ASC
+    """)
+    abstract suspend fun topVideos(fromDate: String, untilDateExclusive: String, limit: Int): List<PlaybackVideoRanking>
+
+    @Query("""
+        SELECT ranked.up_mid,
+               (SELECT up_name FROM playback_stats
+                WHERE content_type = 'video' AND up_mid = ranked.up_mid AND TRIM(up_name) <> ''
+                ORDER BY last_viewed_at_ms DESC, id DESC LIMIT 1) AS up_name,
+               ranked.total_played_ms, ranked.play_count
+        FROM (
+            SELECT h.up_mid, SUM(d.total_played_ms) AS total_played_ms, SUM(d.play_count) AS play_count
+            FROM playback_daily_stats d JOIN playback_stats h ON h.id = d.record_id
+            WHERE d.local_date >= :fromDate AND d.local_date < :untilDateExclusive
+              AND h.content_type = 'video' AND h.up_mid > 0
+            GROUP BY h.up_mid HAVING SUM(d.total_played_ms) > 0
+            ORDER BY total_played_ms DESC, h.up_mid ASC LIMIT :limit
+        ) AS ranked
+        ORDER BY ranked.total_played_ms DESC, ranked.up_mid ASC
+    """)
+    abstract suspend fun topUps(fromDate: String, untilDateExclusive: String, limit: Int): List<PlaybackUpRanking>
+
+    @Transaction
+    open suspend fun statistics(fromDate: String, untilDateExclusive: String, limit: Int): PlaybackStatisticsSnapshot {
+        val summary = statisticsSummary()
+        if (fromDate == untilDateExclusive) {
+            return PlaybackStatisticsSnapshot(summary, emptyList(), emptyList(), emptyList())
+        }
+        return PlaybackStatisticsSnapshot(
+            summary = summary,
+            dailyStats = dailyStats(fromDate, untilDateExclusive, null, null, null),
+            videos = topVideos(fromDate, untilDateExclusive, limit),
+            ups = topUps(fromDate, untilDateExclusive, limit),
+        )
+    }
+
+    @Query("""
         SELECT d.local_date, SUM(d.total_played_ms) AS total_played_ms, SUM(d.play_count) AS play_count
         FROM playback_daily_stats d JOIN playback_stats h ON h.id = d.record_id
         WHERE d.local_date >= :fromDate AND d.local_date < :untilDateExclusive

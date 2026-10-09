@@ -95,6 +95,17 @@ class PlaybackStatisticsManager internal constructor(
     suspend fun totalPlayedMs(avid: Long): Long =
         database().playbackStatisticsDao().totalPlayedMs(avid)
 
+    /** 在同一读事务中取得累计概览和日期范围内的趋势、时长排行；需要最新数据时先调用 flush。 */
+    suspend fun statistics(
+        fromDate: LocalDate,
+        untilDateExclusive: LocalDate,
+        limit: Int = 5,
+    ): PlaybackStatisticsSnapshot {
+        require(fromDate <= untilDateExclusive)
+        require(limit > 0)
+        return database().playbackStatisticsDao().statistics(fromDate.toString(), untilDateExclusive.toString(), limit)
+    }
+
     /** 按记录时的本地日期查询已落盘统计；不补齐无播放的日期，也不触发保存。 */
     suspend fun dailyStats(
         fromDate: LocalDate,

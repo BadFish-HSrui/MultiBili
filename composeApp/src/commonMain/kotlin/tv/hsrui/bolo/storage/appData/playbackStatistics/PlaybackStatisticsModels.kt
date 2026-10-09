@@ -90,4 +90,34 @@ data class PlaybackDailyStats(
     @ColumnInfo(name = "play_count") val playCount: Long = 0L,
 )
 
+data class PlaybackStatisticsSummary(
+    @ColumnInfo(name = "total_played_ms") val totalPlayedMs: Long = 0L,
+    @ColumnInfo(name = "play_count") val playCount: Long = 0L,
+    @ColumnInfo(name = "video_count") val videoCount: Long = 0L,
+    @ColumnInfo(name = "up_count") val upCount: Long = 0L,
+)
+
+data class PlaybackVideoRanking(
+    val avid: Long,
+    val title: String,
+    @ColumnInfo(name = "part_title") val partTitle: String?,
+    @ColumnInfo(name = "content_type") val contentType: String,
+    @ColumnInfo(name = "total_played_ms") val totalPlayedMs: Long,
+    @ColumnInfo(name = "play_count") val playCount: Long,
+)
+
+data class PlaybackUpRanking(
+    @ColumnInfo(name = "up_mid") val upMid: Long,
+    @ColumnInfo(name = "up_name") val upName: String?,
+    @ColumnInfo(name = "total_played_ms") val totalPlayedMs: Long,
+    @ColumnInfo(name = "play_count") val playCount: Long,
+)
+
+data class PlaybackStatisticsSnapshot(
+    val summary: PlaybackStatisticsSummary,
+    val dailyStats: List<PlaybackDailyStats>,
+    val videos: List<PlaybackVideoRanking>,
+    val ups: List<PlaybackUpRanking>,
+)
+
 data class PlaybackStatisticsCursor(val lastViewedAtMs: Long, val id: Long)
