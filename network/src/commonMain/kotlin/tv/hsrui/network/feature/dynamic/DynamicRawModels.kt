@@ -13,7 +13,8 @@ data class DynamicRawResponse(
     data class DynamicRawData(
         @SerialName("has_more") val canLoadMore: Boolean = false,
         val items: List<DynamicRawItem> = emptyList(),
-        val offset: String = ""
+        val offset: String = "",
+        @SerialName("update_baseline") val updateBaseline: String = "",
     )
 
     @Serializable

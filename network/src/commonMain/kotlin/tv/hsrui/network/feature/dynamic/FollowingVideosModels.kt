@@ -20,6 +20,8 @@ data class FollowingVideosResponse(val raw: DynamicRawResponse) : VideosResult {
             )
         }
     val offset get() = raw.data.offset
+    val updateBaseline: String get() = raw.data.updateBaseline
+    val isLoginExpired: Boolean get() = raw.code == -101
 }
 
 fun DynamicRawResponse.DynamicRawItem.toVideoCard(): VideoCard =
