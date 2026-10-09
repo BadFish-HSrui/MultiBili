@@ -78,7 +78,8 @@ fun VideoPlayer(
                 ShowErrorContent(
                     message = uiState.message,
                     retry = {
-                        viewModel.switchMedia(viewModel.avid, viewModel.cid, viewModel.episodeId, forceReload = true)
+                        viewModel.switchMedia(viewModel.avid, viewModel.cid, viewModel.episodeId, forceReload = true,
+                            seasonId = viewModel.seasonId, seasonType = viewModel.seasonType)
                     },
                 )
             }

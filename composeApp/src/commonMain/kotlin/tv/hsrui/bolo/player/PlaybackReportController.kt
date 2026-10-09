@@ -15,6 +15,7 @@ import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.boloSetting.PlaybackProgressReportMode
 import tv.hsrui.bolo.player.base.BoloPlayerState
+import tv.hsrui.network.feature.player.PlaybackReportTarget
 import tv.hsrui.network.feature.player.reportPlaybackProgress
 import tv.hsrui.network.feature.player.reportPlaybackStart
 import tv.hsrui.network.login.storage.LoginStorage
@@ -30,7 +31,7 @@ class PlaybackReportController {
     private val requestMutex = Mutex()
     private var pendingRequests = 0
     private var closed = false
-    private var media: Pair<Long, Long>? = null
+    private var media: PlaybackReportTarget? = null
     private var mediaGeneration = 0L
     private var acceptsPlayback = false
     private var hasPlayed = false
@@ -47,12 +48,12 @@ class PlaybackReportController {
     private var lastSuccessfulProgress: Pair<Long, Long>? = null
     private var immediateReportAccountSession: String? = null
 
-    fun openMedia(avid: Long, cid: Long) {
-        if (closed || media == (avid to cid)) return
+    fun openMedia(target: PlaybackReportTarget) {
+        if (closed || media == target) return
         if (pageVisible && playbackObservable) reportProgress()
         advanceClock()
         mediaGeneration += 1
-        media = (avid to cid).takeIf { avid > 0L && cid > 0L }
+        media = target
         acceptsPlayback = false
         hasPlayed = false
         positionMs = 0L
@@ -140,7 +141,7 @@ class PlaybackReportController {
     }
 
     private fun reportStart() {
-        val target = media ?: return
+        val target = media?.takeIf { it.isValid } ?: return
         if (closed || !settings.playback.reportStartEnabled || !loginStorage.isLoggedIn) return
         val accountSession = loginStorage.cookies.sessData
         pendingRequests += 1
@@ -154,7 +155,7 @@ class PlaybackReportController {
                             ) return@withLock
                             try {
                                 val result = withTimeoutOrNull(10_000L) {
-                                    reportPlaybackStart(target.first, target.second)
+                                    reportPlaybackStart(target)
                                 }
                                 if (result?.isSuccess == true) return@withLock
                             } catch (e: CancellationException) {
@@ -177,7 +178,7 @@ class PlaybackReportController {
     }
 
     private fun reportProgress(immediately: Boolean = false) {
-        val target = media ?: return
+        val target = media?.takeIf { it.isValid } ?: return
         if (closed || !loginStorage.isLoggedIn) return
         if (immediately) {
             if (!settings.playback.reportProgressImmediatelyEnabled) return
@@ -203,7 +204,7 @@ class PlaybackReportController {
                             ) return@withLock
                             try {
                                 val result = withTimeoutOrNull(10_000L) {
-                                    reportPlaybackProgress(target.first, target.second, progressSeconds)
+                                    reportPlaybackProgress(target, progressSeconds)
                                 }
                                 if (result?.isSuccess == true) {
                                     if (mediaGeneration == key.first) lastSuccessfulProgress = key

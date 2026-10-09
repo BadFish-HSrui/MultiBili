@@ -44,6 +44,7 @@ import tv.hsrui.network.feature.danmaku.DanmakuMode
 import tv.hsrui.network.feature.danmaku.fetchDanmakuSegment
 import tv.hsrui.network.feature.danmaku.fetchDanmakuView
 import tv.hsrui.network.feature.danmaku.sendDanmaku as postDanmaku
+import tv.hsrui.network.feature.player.PlaybackReportTarget
 import tv.hsrui.network.feature.player.VideoSource
 import tv.hsrui.network.feature.player.HighEnergyProgressData
 import tv.hsrui.network.feature.player.fetchHighEnergyProgress
@@ -62,6 +63,8 @@ class VideoPlayerViewModel(
     cid: Long,
     episodeId: Long? = null,
     private val initialPlayerInfo: PlayerInfoResponse? = null,
+    seasonId: Long = 0L,
+    seasonType: Int = 0,
 ) : ViewModel() {
     private val settings: BoloSettings = getKoin().get()
     private val playerSettings: BoloPlayerSettings = getKoin().get()
@@ -71,6 +74,10 @@ class VideoPlayerViewModel(
     var cid: Long = cid
         private set
     var episodeId: Long? = episodeId
+        private set
+    var seasonId: Long = seasonId
+        private set
+    var seasonType: Int = seasonType
         private set
     var singleEpisodeLoopEnabled by mutableStateOf(false)
     private var sourceLoadJob: Job? = null
@@ -197,12 +204,22 @@ class VideoPlayerViewModel(
                 playbackReportController.updatePlayback(controller.state.value, controller.backend.value != null)
             }
         }
-        if (avid > 0L && cid > 0L) switchMedia(avid, cid, episodeId, forceReload = true)
+        if (avid > 0L && cid > 0L) switchMedia(avid, cid, episodeId, forceReload = true, seasonId = seasonId, seasonType = seasonType)
     }
 
-    fun switchMedia(avid: Long, cid: Long, episodeId: Long? = null, forceReload: Boolean = false, initialPlayerInfo: PlayerInfoResponse? = null) {
-        if (!forceReload && this.avid == avid && this.cid == cid && this.episodeId == episodeId) return
-        val opensNewMedia = sourceGeneration == 0L || this.avid != avid || this.cid != cid || this.episodeId != episodeId
+    fun switchMedia(
+        avid: Long,
+        cid: Long,
+        episodeId: Long? = null,
+        forceReload: Boolean = false,
+        initialPlayerInfo: PlayerInfoResponse? = null,
+        seasonId: Long = 0L,
+        seasonType: Int = 0,
+    ) {
+        val target = PlaybackReportTarget(avid, cid, episodeId, seasonId, seasonType)
+        val current = PlaybackReportTarget(this.avid, this.cid, this.episodeId, this.seasonId, this.seasonType)
+        if (!forceReload && current == target) return
+        val opensNewMedia = sourceGeneration == 0L || current != target
         if (opensNewMedia || (forceReload && _highEnergyProgress.value == null)) {
             highEnergyProgressLoadJob?.cancel()
             highEnergyProgressGeneration += 1
@@ -226,7 +243,7 @@ class VideoPlayerViewModel(
             audioQuality = settings.playback.defaultAudioQuality
         }
         playbackReportController.beforeReload(controller.state.value, controller.backend.value != null)
-        playbackReportController.openMedia(avid, cid)
+        playbackReportController.openMedia(target)
         sourceLoadJob?.cancel()
         playbackLoadJob?.cancel()
         controller.cancelSourceRefresh(clearSource = true)
@@ -236,6 +253,8 @@ class VideoPlayerViewModel(
         this.avid = avid
         this.cid = cid
         this.episodeId = episodeId
+        this.seasonId = seasonId
+        this.seasonType = seasonType
         resetDanmaku()
         if (opensNewMedia) {
             setDanmakuVisible(settings.playback.autoEnableDanmakuOnOpenEnabled || playerSettings.controls.danmakuEnabled)

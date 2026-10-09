@@ -19,6 +19,7 @@ data class MediaSeasonResponse(
 @Serializable
 data class MediaSeasonData(
     @SerialName("season_id") val seasonId: Long,
+    @SerialName("type") val seasonType: Int = 0,
     val title: String = "",
     @SerialName("cover") private val cover: String = "",
     @SerialName("evaluate") val description: String = "",
