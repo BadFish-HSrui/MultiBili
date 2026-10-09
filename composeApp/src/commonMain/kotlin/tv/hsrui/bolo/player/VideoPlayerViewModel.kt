@@ -58,6 +58,12 @@ import tv.hsrui.network.feature.player.fetchVideoPlayInfo
 import tv.hsrui.network.feature.player.fetchMediaPlayInfo
 import tv.hsrui.network.feature.subtitle.fetchSubtitleInfo
 import tv.hsrui.network.login.storage.LoginStorage
+import tv.hsrui.bolo.player.base.BoloPlaybackObservation
+import tv.hsrui.bolo.storage.appData.AppDataStorage
+import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackStatisticsManager
+import tv.hsrui.network.feature.video.VideoInfoData
+import tv.hsrui.network.feature.media.MediaEpisode
+import tv.hsrui.network.feature.media.MediaSeasonData
 
 class VideoPlayerViewModel(
     avid: Long,
@@ -70,6 +76,8 @@ class VideoPlayerViewModel(
     private val settings: BoloSettings = getKoin().get()
     private val playerSettings: BoloPlayerSettings = getKoin().get()
     private val loginStorage: LoginStorage = getKoin().get()
+    private val playbackStatistics = getKoin().get<AppDataStorage>().playbackStatistics
+    private var statisticsSession: PlaybackStatisticsManager.Session? = null
     var avid: Long = avid
         private set
     var cid: Long = cid
@@ -174,6 +182,7 @@ class VideoPlayerViewModel(
 
     init {
         controller.onRefreshSource = ::refreshPlayInfo
+        controller.onPlaybackObservation = ::updatePlaybackStatistics
         viewModelScope.launch {
             controller.info.collect { info -> updateVideoAspectRatio(info.video.aspectRatio) }
         }
@@ -211,6 +220,35 @@ class VideoPlayerViewModel(
         if (avid > 0L && cid > 0L) switchMedia(avid, cid, episodeId, forceReload = true, seasonId = seasonId, seasonType = seasonType)
     }
 
+    fun updatePlaybackStatistics(video: VideoInfoData) {
+        if (!playbackClosed) {
+            statisticsSession = playbackStatistics.open(video)
+            bindPlaybackStatistics()
+        }
+    }
+
+    fun updatePlaybackStatistics(media: MediaSeasonData, episode: MediaEpisode) {
+        if (!playbackClosed) {
+            statisticsSession = playbackStatistics.open(media, episode)
+            bindPlaybackStatistics()
+        }
+    }
+
+    private fun bindPlaybackStatistics() {
+        val generation = sourceGeneration
+        statisticsSession?.bindPlayback {
+            controller.playbackObservation.takeIf { generation == sourceGeneration && playbackGeneration == generation }
+        }
+    }
+
+    private fun updatePlaybackStatistics(observation: BoloPlaybackObservation) {
+        if (!playbackClosed && playbackGeneration == sourceGeneration) statisticsSession?.updatePlayback(observation)
+    }
+
+    private fun flushPlaybackStatistics() {
+        playbackStatistics.requestFlush { block -> withPlaybackReportBackgroundExecution(block) }
+    }
+
     fun switchMedia(
         avid: Long,
         cid: Long,
@@ -224,6 +262,10 @@ class VideoPlayerViewModel(
         val current = PlaybackReportTarget(this.avid, this.cid, this.episodeId, this.seasonId, this.seasonType)
         if (!forceReload && current == target) return
         val opensNewMedia = sourceGeneration == 0L || current != target
+        if (opensNewMedia) {
+            statisticsSession?.close()
+            statisticsSession = null
+        } else statisticsSession?.interrupt()
         if (opensNewMedia || (forceReload && _highEnergyProgress.value == null)) {
             highEnergyProgressLoadJob?.cancel()
             highEnergyProgressGeneration += 1
@@ -252,6 +294,7 @@ class VideoPlayerViewModel(
         playbackLoadJob?.cancel()
         controller.cancelSourceRefresh(clearSource = true)
         val generation = ++sourceGeneration
+        bindPlaybackStatistics()
         controller.pause()
         pendingPlayWhenReady = autoPlayOnOpen
         this.avid = avid
@@ -411,6 +454,7 @@ class VideoPlayerViewModel(
     private fun playVideo(startPositionMs: Long = 0L, autoPlay: Boolean = false) {
         val currentState = uiState.value
         if (currentState !is VideoPlayerUiState.Success) return
+        statisticsSession?.interrupt()
         playbackReportController.beforeReload(controller.state.value, controller.backend.value != null)
 
         val video = currentState.videoSource.getVideo(quality = videoQuality, codec = settings.playback.defaultVideoCodec)
@@ -481,6 +525,7 @@ class VideoPlayerViewModel(
     fun onPlaybackForegroundChanged(active: Boolean) {
         val requested = pendingPlayWhenReady ?: controller.state.value.playWhenReady
         playbackForeground = active
+        if (!active) flushPlaybackStatistics()
         if (!active) {
             dismissDanmakuInput(resumePlayback = false)
             danmakuController.pause()
@@ -855,6 +900,10 @@ class VideoPlayerViewModel(
 
     fun closePlayback() {
         if (playbackClosed) return
+        statisticsSession?.close()
+        statisticsSession = null
+        controller.onPlaybackObservation = null
+        flushPlaybackStatistics()
         playbackClosed = true
         _chapters.value = emptyList()
         highEnergyProgressGeneration += 1

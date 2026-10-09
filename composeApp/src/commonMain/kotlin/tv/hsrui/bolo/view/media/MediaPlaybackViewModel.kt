@@ -73,6 +73,7 @@ class MediaPlaybackViewModel(
                     val player = session.player
                     player.switchMedia(episode.avid, episode.cid, episode.episodeId,
                         seasonId = state.media.seasonId, seasonType = state.media.seasonType)
+                    player.updatePlaybackStatistics(state.media, episode)
                     session.updateMedia(
                         BoloSystemMediaMetadata("${episode.avid}:${episode.cid}:${episode.episodeId}",
                             "${state.media.title} ${episode.displayTitle}", album = state.media.title, artworkUrl = state.media.coverUrl),

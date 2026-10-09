@@ -75,6 +75,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
                     val video = state.video
                     val player = session.player
                     player.switchMedia(video.avid, video.cid, initialPlayerInfo = state.initialPlayerInfo.takeIf { useInitialPlayerInfo })
+                    player.updatePlaybackStatistics(video)
                     session.updateMedia(
                         BoloSystemMediaMetadata("${video.avid}:${video.cid}", video.title, video.upName, artworkUrl = video.coverUrl),
                         if (state.hasPreviousEpisode) ::selectPreviousEpisode else null,

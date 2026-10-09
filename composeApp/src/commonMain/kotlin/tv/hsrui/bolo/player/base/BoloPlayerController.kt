@@ -9,6 +9,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +46,15 @@ class BoloPlayerController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutableState = MutableStateFlow(BoloPlayerState())
     val state: StateFlow<BoloPlayerState> = mutableState.asStateFlow()
+    internal var onPlaybackObservation: ((BoloPlaybackObservation) -> Unit)? = null
+    private val playbackClock = BoloPlaybackClock()
+    internal val playbackObservation: BoloPlaybackObservation?
+        get() = playbackClock.latest.value?.takeIf { it.generation == generation }
+
+    private fun publishPlaybackObservation() {
+        playbackObservation?.let { onPlaybackObservation?.invoke(it) }
+    }
+
     private val mutableInfo = MutableStateFlow(BoloPlayerInfo())
     val info: StateFlow<BoloPlayerInfo> = mutableInfo.asStateFlow()
     private var mediaInfo = BoloPlayerInfo()
@@ -152,6 +162,7 @@ class BoloPlayerController(
                 loadJob?.cancel()
                 seekJob?.cancel()
                 ready = false
+                publishPlaybackObservation()
                 generation = coordinator.onMediaChanged()
             }
         }
@@ -203,6 +214,7 @@ class BoloPlayerController(
         loadJob?.cancel()
         seekJob?.cancel()
         ready = false
+        publishPlaybackObservation()
         generation = coordinator.onMediaChanged()
         applyPlayIntent()
         val revision = ++sourceRevision
@@ -245,6 +257,7 @@ class BoloPlayerController(
         loadJob?.cancel()
         seekJob?.cancel()
         ready = false
+        publishPlaybackObservation()
         generation = coordinator.onMediaChanged()
         playWhenReady = false
         mutableState.value = state.value.copy(pendingSeekPositionMs = null, isPlaying = false,
@@ -283,6 +296,7 @@ class BoloPlayerController(
         nativeSeeking = false
         activeSeekRequest = 0
         intentJob?.cancel()
+        publishPlaybackObservation()
         generation = coordinator.onMediaChanged()
         val expected = generation
         mutableState.value = state.value.copy(isBuffering = true, isPlaying = false, isEnded = false,
@@ -323,6 +337,7 @@ class BoloPlayerController(
                     check(mergeResult >= 0) { "合并多声道配置失败（$mergeResult）" }
                     current.volume(volume)
                     current.speed(speed)
+                    playbackClock.begin(expected, speed)
                     current.load(video, audio, position / 1000.0, expected, videoPlayHeaders.getValue("User-Agent"), videoPlayHeaders.getValue("Referer"))
                 }
                 if (generation != expected) return@launch
@@ -343,17 +358,38 @@ class BoloPlayerController(
     private fun startEvents(engine: BoloMpvBackend) {
         eventsJob?.cancel()
         eventsJob = scope.launch {
-            while (isActive && mutableBackend.value === engine) {
-                val events = withContext(boloMpvDispatcher) {
-                    buildList { repeat(128) { add(engine.poll() ?: return@buildList) } }
+            val events = Channel<BoloMpvEvent>(Channel.UNLIMITED)
+            // 原生采样不等待 Main 消费；暂停/缓冲的耗时边界不会被 UI 卡顿推迟。
+            val polling = launch(boloMpvDispatcher) {
+                try {
+                    while (isActive && mutableBackend.value === engine) {
+                        for (index in 0 until 128) {
+                            val event = engine.poll() ?: break
+                            playbackClock.observe(event)
+                            events.send(event)
+                        }
+                        playbackClock.sample()
+                        delay(20)
+                    }
+                } finally { events.close() }
+            }
+            val infoSampling = launch {
+                while (isActive && mutableBackend.value === engine) {
+                    sampleInfo(engine)
+                    delay(20)
                 }
+            }
+            try {
                 for (event in events) {
                     if (mutableBackend.value !== engine) break
-                    if (event.generation == generation && !disposed) handleEvent(event)
+                    if (event.generation != generation || disposed) continue
+                    val observed = handleEvent(event)
+                    if (event.generation != generation || disposed) continue
+                    event.observation?.let { observation ->
+                        onPlaybackObservation?.invoke(if (observed) observation.withPosition(state.value.currentPositionMs) else observation)
+                    }
                 }
-                sampleInfo(engine)
-                delay(20)
-            }
+            } finally { polling.cancel(); infoSampling.cancel(); events.cancel() }
         }
     }
 
@@ -473,7 +509,7 @@ class BoloPlayerController(
         ).withLoudnessInfo()
     }
 
-    private fun handleEvent(event: BoloMpvEvent) {
+    private fun handleEvent(event: BoloMpvEvent): Boolean {
         when (event.type) {
             BoloMpvEvent.Loaded -> {
                 resetDiagnostics()
@@ -484,8 +520,8 @@ class BoloPlayerController(
                 mutableState.value = state.value.copy(pendingSeekPositionMs = target, hasConfirmedPosition = false)
                 submitSeek()
             }
-            BoloMpvEvent.Position -> observePosition(event.value, event.request)
-            BoloMpvEvent.Restart -> if (!state.value.isSeeking) observePosition(event.value, event.request)
+            BoloMpvEvent.Position -> return observePosition(event.value, event.request)
+            BoloMpvEvent.Restart -> if (!state.value.isSeeking) return observePosition(event.value, event.request)
             BoloMpvEvent.Duration -> secondsToMs(event.value)?.takeIf { it > 0 }?.let {
                 mutableState.value = state.value.copy(durationMs = it)
             }
@@ -522,15 +558,16 @@ class BoloPlayerController(
             BoloMpvEvent.Error -> retrySource(event.error, event.value.toInt())
             BoloMpvEvent.Overflow -> fail(BoloPlayerError.UnknownError("播放器事件队列溢出，请重新加载"))
         }
+        return false
     }
 
-    private fun observePosition(seconds: Double, request: Long) {
-        val position = secondsToMs(seconds) ?: return
-        if (!ready || resourcesSuspended) return
-        if (state.value.isSeeking && request != activeSeekRequest) return
-        if (!state.value.isSeeking && nativeSeeking) return
+    private fun observePosition(seconds: Double, request: Long): Boolean {
+        val position = secondsToMs(seconds) ?: return false
+        if (!ready || resourcesSuspended) return false
+        if (state.value.isSeeking && request != activeSeekRequest) return false
+        if (!state.value.isSeeking && nativeSeeking) return false
         // UI 在 seek/缓冲期间会标为未播放，不能据此忽略原生继续前进的时间。
-        if (!coordinator.acceptObservedPosition(position, playWhenReady && !state.value.isEnded, state.value.playbackSpeed)) return
+        if (!coordinator.acceptObservedPosition(position, playWhenReady && !state.value.isEnded, state.value.playbackSpeed)) return false
         val wasPending = state.value.isSeeking
         if (sourceRefreshAttempted) {
             val playing = !wasPending && state.value.isPlaying && !state.value.isBuffering
@@ -553,6 +590,7 @@ class BoloPlayerController(
             applyPlayIntent()
             scheduleBackgroundRelease()
         }
+        return true
     }
 
     private fun retrySource(error: Int, failedTrack: Int) {
@@ -582,7 +620,9 @@ class BoloPlayerController(
             val engine = mutableBackend.value ?: return@launch
             speedJob?.cancel()
             speedJob = scope.launch {
-                val result = withContext(boloMpvDispatcher) { engine.speed(speed.toDouble()) }
+                val result = withContext(boloMpvDispatcher) {
+                    engine.speed(speed.toDouble()).also { if (it >= 0) playbackClock.setSpeed(speed.toDouble()) }
+                }
                 if (result < 0 && revision == speedRevision && mutableBackend.value === engine)
                     onError(BoloPlayerError.UnknownError("设置倍速失败（$result）"))
             }
@@ -750,6 +790,15 @@ class BoloPlayerController(
         }
     }
 
+    internal suspend fun pauseAndObserve() {
+        withContext(Dispatchers.Main.immediate) {
+            pause()
+            intentJob?.join()
+            withContext(boloMpvDispatcher) { playbackClock.sample() }
+            publishPlaybackObservation()
+        }
+    }
+
     private fun applyPlayIntent() {
         val engine = mutableBackend.value ?: return
         val expected = generation
@@ -757,7 +806,7 @@ class BoloPlayerController(
         intentJob = scope.launch {
             val playing = playWhenReady && ready && !resourcesSuspended && !state.value.isSeeking && !state.value.isEnded
             if (playing && !engine.setAudioActive(true)) { fail(BoloPlayerError.DecoderError("音频会话激活失败")); return@launch }
-            val result = withContext(boloMpvDispatcher) { engine.pause(!playing) }
+            val result = withContext(boloMpvDispatcher) { engine.pause(!playing).also { if (it >= 0) playbackClock.setPaused(!playing) } }
             if (generation != expected || mutableBackend.value !== engine) return@launch
             if (!playing && !playWhenReady) engine.setAudioActive(false)
             if (result < 0) fail(BoloPlayerError.DecoderError("播放状态更新失败（$result）"))
@@ -819,6 +868,7 @@ class BoloPlayerController(
                 activeSeekRequest = ++requestSequence
                 val request = activeSeekRequest
                 val result = withContext(boloMpvDispatcher) {
+                    playbackClock.beginSeek()
                     engine.seek(target / 1000.0, request)
                 }
                 if (!coordinator.isCurrent(expected, revision)) return@launch
@@ -893,7 +943,7 @@ class BoloPlayerController(
                 mutableState.value = state.value.copy(currentPositionMs = saved, pendingSeekPositionMs = null,
                     isPlaybackSuspended = true, isPlaying = false, isBuffering = false, hasConfirmedPosition = false)
                 mutableBackend.value?.let { engine ->
-                    withContext(boloMpvDispatcher) { engine.pause(true); engine.videoEnabled(false) }
+                    withContext(boloMpvDispatcher) { engine.pause(true); playbackClock.setPaused(true); engine.videoEnabled(false) }
                     if (lifecycle == lifecycleRevision && resourcesSuspended && mutableBackend.value === engine)
                         engine.setAudioActive(false)
                 }
@@ -1050,6 +1100,7 @@ class BoloPlayerController(
         mergeAudioJob?.cancel()
         loudnessJob?.cancel()
         intentJob?.cancel()
+        publishPlaybackObservation()
         generation = coordinator.onMediaChanged()
         ready = false
         val engine = mutableBackend.value
@@ -1060,7 +1111,7 @@ class BoloPlayerController(
             if (engine != null) {
                 try {
                     engineMutex.withLock {
-                        withContext(boloMpvDispatcher) { engine.stop() }
+                        withContext(boloMpvDispatcher) { playbackClock.setPaused(true); engine.stop() }
                     }
                 } finally {
                     try {

@@ -57,6 +57,7 @@ data class MediaEpisode(
     @SerialName("id") val episodeId: Long,
     @SerialName("aid") val avid: Long = 0L,
     val cid: Long = 0L,
+    val bvid: String = "",
     private val title: String = "",
     @SerialName("long_title") private val longTitle: String = "",
     @SerialName("show_title") private val showTitle: String = "",
