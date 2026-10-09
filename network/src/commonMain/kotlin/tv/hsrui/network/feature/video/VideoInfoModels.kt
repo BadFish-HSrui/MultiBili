@@ -73,6 +73,7 @@ data class VideoInfoData(
     @SerialName("ugc_season") val collection: VideoCollectionData? = null,
     @SerialName("pages") private val rawParts: List<VideoPartData> = emptyList(),
     @SerialName("staff") private val rawStaff: List<VideoStaffData>? = null,
+    @SerialName("redirect_url") val redirectUrl: String = "",
 ) {
     val parts by lazy { rawParts.filter { it.cid > 0 }.distinctBy { it.cid }.sortedBy { it.pageNumber } }
 

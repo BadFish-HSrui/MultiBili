@@ -27,6 +27,8 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.PlayerFullscreenEffect
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.player.rememberPlayerFullscreenState
@@ -44,8 +46,19 @@ fun VideoScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState = viewModel.uiState.collectAsState().value
+    val navigator = koinInject<Navigator>()
+    LaunchedEffect(viewModel, isActive, uiState) {
+        val redirect = uiState as? VideoUiState.RedirectToMedia ?: return@LaunchedEffect
+        val expectedRoute = when (request) {
+            is VideoPlaybackRequest.Single -> BoloRoute.View.Video(request.vid)
+            is VideoPlaybackRequest.VideoList -> BoloRoute.View.VideoList(request)
+        }
+        if (isActive && navigator.backStack.lastOrNull() == expectedRoute && viewModel.uiState.value == redirect) {
+            navigator.switchTo(redirect.route)
+        }
+    }
     LaunchedEffect(viewModel, isActive) {
-        if (isActive) viewModel.bindPlayback()
+        if (isActive && viewModel.uiState.value !is VideoUiState.RedirectToMedia) viewModel.bindPlayback()
     }
     val player = viewModel.playbackSession?.player
     val playerState = player?.uiState?.collectAsState()?.value
@@ -96,7 +109,7 @@ fun VideoScreen(
                     )
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         when (state) {
-                            is VideoUiState.Loading -> CircularProgressIndicator()
+                            is VideoUiState.Loading, is VideoUiState.RedirectToMedia -> CircularProgressIndicator()
                             is VideoUiState.Error -> ShowErrorContent(
                                 message = state.message,
                                 retry = { viewModel.loadPlayback() },

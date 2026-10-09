@@ -9,6 +9,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -18,6 +20,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.model.Vid
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.parseExternalLink
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.player.session.BoloPlaybackSession
 import tv.hsrui.bolo.player.session.BoloSystemMediaMetadata
@@ -311,7 +315,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
                         section.episodes.any { it.key == target.key }
                     }?.sectionId
                 }
-                val loaded = loadVideo(Vid.AVid(targetAvid))
+                val loaded = loadVideo(Vid.AVid(targetAvid), version = version) ?: return@launch
                 if (version != generation) return@launch
                 // 从两个方向进入新稿件都从 P1 开始，不采用合集条目的 CID。
                 val video = loaded.copy(
@@ -343,7 +347,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         if (failed) showSnackbarMessage(if (before) "无法加载上一集" else "无法加载下一集")
     }
 
-    private suspend fun loadVideo(vid: Vid, cid: Long? = null): VideoInfoData {
+    private suspend fun loadVideo(vid: Vid, cid: Long? = null, version: Int): VideoInfoData? {
         val result = withTimeoutOrNull(15_000) {
             when (vid) {
                 is Vid.AVid -> fetchVideoInfo(vid.value)
@@ -355,6 +359,13 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
             is Vid.AVid -> result.data.avid == vid.value
             is Vid.BVid -> result.data.bvid == vid.value
         }) { "视频信息不匹配，请重试" }
+        currentCoroutineContext().ensureActive()
+        if (version != generation) return null
+        val redirect = parseExternalLink(result.data.redirectUrl) as? BoloRoute.View.Media
+        if (redirect != null) {
+            _uiState.value = VideoUiState.RedirectToMedia(redirect)
+            return null
+        }
         check(result.data.avid > 0 && result.data.cid > 0) { "视频暂无可播放内容" }
         return if (cid != null) result.data.copy(cid = cid) else result.data
     }
@@ -372,7 +383,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         } else VideoUiState.Loading
         loadJob = viewModelScope.launch {
             try {
-                val originalVideo = loadVideo(vid, episode?.cid)
+                val originalVideo = loadVideo(vid, episode?.cid, version) ?: return@launch
                 if (version != generation) return@launch
                 var video = originalVideo
                 var playerInfo: PlayerInfoResponse? = null
@@ -430,7 +441,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         _uiState.value = current.copy(switchingEpisodeKey = key, isSwitchingEpisode = true, episodeError = null, episodeNavigationPrevious = null)
         loadJob = viewModelScope.launch {
             try {
-                val video = loadVideo(Vid.AVid(item.id))
+                val video = loadVideo(Vid.AVid(item.id), version = version) ?: return@launch
                 if (version != generation) return@launch
                 _uiState.value = VideoUiState.Success(video = video, videoList = listState)
             } catch (e: CancellationException) {
