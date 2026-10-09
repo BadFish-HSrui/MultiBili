@@ -78,6 +78,7 @@ class VideoPlayerViewModel(
     private val loginStorage: LoginStorage = getKoin().get()
     private val playbackStatistics = getKoin().get<AppDataStorage>().playbackStatistics
     private var statisticsSession: PlaybackStatisticsManager.Session? = null
+    val watchedRanges get() = playbackStatistics.watchedRanges
     var avid: Long = avid
         private set
     var cid: Long = cid

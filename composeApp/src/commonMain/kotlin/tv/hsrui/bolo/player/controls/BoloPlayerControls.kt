@@ -297,6 +297,7 @@ fun BoloPlayerControls(
     val danmakuState by viewModel.danmakuController.state.collectAsState()
     val danmakuClosed by viewModel.danmakuClosed.collectAsState()
     val highEnergyProgress by viewModel.highEnergyProgress.collectAsState()
+    val watchedRanges by viewModel.watchedRanges.collectAsState()
     val chapters by viewModel.chapters.collectAsState()
     val currentVideoQuality by viewModel.currentVideoQuality.collectAsState()
     val currentAudioQuality by viewModel.currentAudioQuality.collectAsState()
@@ -1049,7 +1050,7 @@ fun BoloPlayerControls(
             BoloPlayerHighEnergyProgress(
                 data = highEnergyProgress!!,
                 durationMs = durationMs,
-                positionFraction = { sliderValue },
+                watchedRanges = { watchedRanges },
                 controlsFraction = { controlsReveal },
                 shownTrackBounds = { highEnergyTrackBounds },
                 hiddenBounds = { highEnergyHiddenBounds },
