@@ -127,3 +127,17 @@ data class PlaybackStatisticsSnapshot(
 )
 
 data class PlaybackStatisticsCursor(val lastViewedAtMs: Long, val id: Long)
+
+enum class PlaybackHistoryType { Videos, Ups }
+
+/** id 在视频列表中为 AV 号，在 UP 列表中为 UID。 */
+data class PlaybackHistoryItem(
+    val id: Long,
+    val title: String?,
+    @ColumnInfo(name = "part_title") val partTitle: String?,
+    @ColumnInfo(name = "total_played_ms") val totalPlayedMs: Long,
+    @ColumnInfo(name = "play_count") val playCount: Long,
+    @ColumnInfo(name = "last_viewed_at_ms") val lastViewedAtMs: Long,
+)
+
+data class PlaybackHistoryCursor(val lastViewedAtMs: Long, val id: Long)

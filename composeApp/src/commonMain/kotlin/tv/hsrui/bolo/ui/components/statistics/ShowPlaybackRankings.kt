@@ -49,6 +49,7 @@ import tv.hsrui.bolo.model.Vid
 import tv.hsrui.bolo.ui.components.dialog.ShowUserInfoDialog
 import tv.hsrui.bolo.ui.components.dialog.ShowVideoInfoDialog
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
+import tv.hsrui.network.utils.formatToDateTime
 
 /** 日期范围包含首尾两天；不传范围时显示累计总计并隐藏范围文字。 */
 @Composable
@@ -177,12 +178,13 @@ fun ShowPlaybackRankings(
 }
 
 @Composable
-private fun StatisticsRankingRow(
+internal fun StatisticsRankingRow(
     rank: Int,
     title: String,
     subtitle: String,
     totalPlayedMs: Long,
     modifier: Modifier = Modifier,
+    lastViewedAtMs: Long? = null,
 ) {
     Row(modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -201,6 +203,10 @@ private fun StatisticsRankingRow(
                 Text(subtitle, modifier = Modifier.weight(1f).alignByBaseline(),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            lastViewedAtMs?.let {
+                Text("最近观看：${(it / 1_000L).formatToDateTime(second = true)}",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

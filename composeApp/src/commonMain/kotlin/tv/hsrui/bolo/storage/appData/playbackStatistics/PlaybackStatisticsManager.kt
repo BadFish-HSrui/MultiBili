@@ -92,6 +92,20 @@ class PlaybackStatisticsManager internal constructor(
     suspend fun get(avid: Long, cid: Long): PlaybackStatisticsRecord? =
         database().playbackStatisticsDao().get(avid, cid)
 
+    /** 按最近观看时间倒序分页；与概览保持相同的已观看筛选和 AV/UID 去重口径。 */
+    suspend fun historyPage(
+        type: PlaybackHistoryType,
+        cursor: PlaybackHistoryCursor? = null,
+        limit: Int = 50,
+    ): List<PlaybackHistoryItem> {
+        require(limit > 0)
+        val dao = database().playbackStatisticsDao()
+        return when (type) {
+            PlaybackHistoryType.Videos -> dao.watchedVideos(cursor?.lastViewedAtMs, cursor?.id, limit)
+            PlaybackHistoryType.Ups -> dao.watchedUps(cursor?.lastViewedAtMs, cursor?.id, limit)
+        }
+    }
+
     suspend fun totalPlayedMs(avid: Long): Long =
         database().playbackStatisticsDao().totalPlayedMs(avid)
 

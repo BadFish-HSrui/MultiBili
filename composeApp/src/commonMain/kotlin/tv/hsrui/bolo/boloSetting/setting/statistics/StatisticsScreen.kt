@@ -58,8 +58,10 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.datetime.LocalDate
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackDailyStats
+import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistoryType
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackStatisticsSummary
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
+import tv.hsrui.bolo.ui.components.statistics.ShowPlaybackHistorySheet
 import tv.hsrui.bolo.ui.components.statistics.ShowPlaybackRankings
 import tv.hsrui.bolo.ui.components.statistics.ShowPlaybackRankingsSheet
 import tv.hsrui.bolo.ui.components.statistics.formatStatisticsDuration
@@ -75,6 +77,7 @@ fun StatisticsScreen(
     var dayCount by rememberSaveable { mutableIntStateOf(7) }
     var refreshKey by rememberSaveable { mutableIntStateOf(0) }
     var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
+    var selectedHistory by remember { mutableStateOf<PlaybackHistoryType?>(null) }
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(model, lifecycleOwner, dayCount, refreshKey) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { model.load(dayCount) }
@@ -85,6 +88,9 @@ fun StatisticsScreen(
             dateRange = date..date,
             onDismissRequest = { selectedDay = null },
         )
+    }
+    selectedHistory?.let { type ->
+        ShowPlaybackHistorySheet(type = type, onDismissRequest = { selectedHistory = null })
     }
 
     Scaffold(
@@ -128,7 +134,12 @@ fun StatisticsScreen(
                     }
                 }
                 state.snapshot?.let { snapshot ->
-                    item { StatisticsOverview(snapshot.summary) }
+                    item {
+                        StatisticsOverview(snapshot.summary, onHistoryClick = {
+                            selectedDay = null
+                            selectedHistory = it
+                        })
+                    }
                 }
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -148,6 +159,7 @@ fun StatisticsScreen(
                 if (state.dayCount == dayCount && state.days.isNotEmpty()) {
                     item {
                         StatisticsTrend(state.days, onDayClick = {
+                            selectedHistory = null
                             selectedDay = it
                         })
                     }
@@ -174,7 +186,7 @@ fun StatisticsScreen(
 }
 
 @Composable
-private fun StatisticsOverview(summary: PlaybackStatisticsSummary) {
+private fun StatisticsOverview(summary: PlaybackStatisticsSummary, onHistoryClick: (PlaybackHistoryType) -> Unit) {
     Card {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -184,8 +196,12 @@ private fun StatisticsOverview(summary: PlaybackStatisticsSummary) {
             HorizontalDivider()
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatisticsMetric("播放次数", summary.playCount.toString(), Modifier.weight(1f))
-                StatisticsMetric("看过的视频", summary.videoCount.toString(), Modifier.weight(1f))
-                StatisticsMetric("看过的 UP", summary.upCount.toString(), Modifier.weight(1f))
+                StatisticsMetric("看过的视频", summary.videoCount.toString(), Modifier.weight(1f).clickable {
+                    onHistoryClick(PlaybackHistoryType.Videos)
+                })
+                StatisticsMetric("看过的 UP", summary.upCount.toString(), Modifier.weight(1f).clickable {
+                    onHistoryClick(PlaybackHistoryType.Ups)
+                })
             }
             if (summary.playCount == 0L && summary.totalPlayedMs == 0L) {
                 Text("还没有观看数据，播放视频后会在这里记录。", style = MaterialTheme.typography.bodySmall)

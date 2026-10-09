@@ -30,6 +30,49 @@ internal abstract class PlaybackStatisticsDao {
     abstract suspend fun statisticsSummary(): PlaybackStatisticsSummary
 
     @Query("""
+        SELECT watched.id,
+               (SELECT title FROM playback_stats WHERE avid = watched.id AND TRIM(title) <> ''
+                ORDER BY last_viewed_at_ms DESC, id DESC LIMIT 1) AS title,
+               CASE WHEN latest.content_type = 'media' THEN
+                   (SELECT part_title FROM playback_stats WHERE avid = watched.id AND TRIM(part_title) <> ''
+                    ORDER BY last_viewed_at_ms DESC, id DESC LIMIT 1)
+               END AS part_title,
+               watched.total_played_ms, watched.play_count, watched.last_viewed_at_ms
+        FROM (
+            SELECT avid AS id, SUM(total_played_ms) AS total_played_ms,
+                   SUM(play_count) AS play_count, MAX(last_viewed_at_ms) AS last_viewed_at_ms
+            FROM playback_stats WHERE total_played_ms > 0 OR play_count > 0
+            GROUP BY avid
+        ) AS watched
+        JOIN playback_stats latest ON latest.id = (
+            SELECT id FROM playback_stats WHERE avid = watched.id
+            ORDER BY last_viewed_at_ms DESC, id DESC LIMIT 1
+        )
+        WHERE :cursorTime IS NULL OR (watched.last_viewed_at_ms, watched.id) < (:cursorTime, :cursorId)
+        ORDER BY watched.last_viewed_at_ms DESC, watched.id DESC LIMIT :limit
+    """)
+    abstract suspend fun watchedVideos(cursorTime: Long?, cursorId: Long?, limit: Int): List<PlaybackHistoryItem>
+
+    @Query("""
+        SELECT watched.id,
+               (SELECT up_name FROM playback_stats
+                WHERE content_type = 'video' AND up_mid = watched.id AND TRIM(up_name) <> ''
+                ORDER BY last_viewed_at_ms DESC, id DESC LIMIT 1) AS title,
+               NULL AS part_title,
+               watched.total_played_ms, watched.play_count, watched.last_viewed_at_ms
+        FROM (
+            SELECT up_mid AS id, SUM(total_played_ms) AS total_played_ms,
+                   SUM(play_count) AS play_count, MAX(last_viewed_at_ms) AS last_viewed_at_ms
+            FROM playback_stats
+            WHERE content_type = 'video' AND up_mid > 0 AND (total_played_ms > 0 OR play_count > 0)
+            GROUP BY up_mid
+        ) AS watched
+        WHERE :cursorTime IS NULL OR (watched.last_viewed_at_ms, watched.id) < (:cursorTime, :cursorId)
+        ORDER BY watched.last_viewed_at_ms DESC, watched.id DESC LIMIT :limit
+    """)
+    abstract suspend fun watchedUps(cursorTime: Long?, cursorId: Long?, limit: Int): List<PlaybackHistoryItem>
+
+    @Query("""
         SELECT ranked.avid,
                COALESCE((SELECT title FROM playback_stats
                          WHERE avid = ranked.avid AND TRIM(title) <> ''
