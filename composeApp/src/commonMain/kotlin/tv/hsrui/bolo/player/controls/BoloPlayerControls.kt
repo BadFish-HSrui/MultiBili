@@ -323,6 +323,8 @@ fun BoloPlayerControls(
     }
     var controlsVisible by remember { mutableStateOf(false) }
     val controlsTransition = updateTransition(controlsVisible, label = "playerControls")
+    val bottomControlsVisible = controlsTransition.currentState || controlsTransition.targetState
+    val playbackControlsPinned = !(viewModel.pendingPlayWhenReady ?: playState.playWhenReady)
     val controlsReveal by controlsTransition.animateFloat(
         transitionSpec = { tween(200) }, label = "highEnergyProgressPosition",
     ) { if (it) 1f else 0f }
@@ -1110,7 +1112,7 @@ fun BoloPlayerControls(
                 }
             }
         }
-        if (controlsTransition.currentState || controlsTransition.targetState || gestureProgressVisible) {
+        if (bottomControlsVisible || playbackControlsPinned || gestureProgressVisible) {
             Box(Modifier.fillMaxSize().clipToBounds()) {
                 Column(
                     Modifier
@@ -1199,22 +1201,19 @@ fun BoloPlayerControls(
 
                     // 下方播放控件
                     Box(Modifier.fillMaxWidth().height(32.dp)) {
-                        controlsTransition.AnimatedVisibility(
-                            visible = { it },
-                            enter = EnterTransition.None,
-                            exit = ExitTransition.None,
-                            modifier = Modifier.graphicsLayer {
-                                translationY = (bottomControlsCoordinates?.size?.height ?: 0) * (1f - controlsReveal)
-                            },
-                        ) {
+                        if (bottomControlsVisible || playbackControlsPinned) {
                             PlayerBottomControlsRow(
                                 collapseControls = showExtendedControls && !isFullscreen,
+                                playbackControlsPinned = playbackControlsPinned,
+                                controlsSlideOffset = {
+                                    (bottomControlsCoordinates?.size?.height ?: 0) * (1f - controlsReveal)
+                                },
                             ) { hiddenControls ->
                                 if (showExtendedControls && onPreviousEpisode != null) {
                                     IconButton(
                                         onClick = onPreviousEpisode,
                                         enabled = episodeNavigationEnabled,
-                                        modifier = Modifier.size(32.dp),
+                                        modifier = Modifier.size(32.dp).layoutId("playback"),
                                     ) {
                                         Icon(
                                             imageVector = Icons.Rounded.SkipPrevious,
@@ -1227,11 +1226,11 @@ fun BoloPlayerControls(
                                 // 播放按钮
                                 IconButton(
                                     onClick = { togglePlayback() },
-                                    modifier = Modifier.size(32.dp),
+                                    modifier = Modifier.size(32.dp).layoutId("playback"),
                                 ) {
                                     Icon(
-                                        imageVector = if (viewModel.pendingPlayWhenReady ?: playState.playWhenReady) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                        contentDescription = if (viewModel.pendingPlayWhenReady ?: playState.playWhenReady) "暂停" else "播放",
+                                        imageVector = if (playbackControlsPinned) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+                                        contentDescription = if (playbackControlsPinned) "播放" else "暂停",
                                         tint = Color.White,
                                         modifier = Modifier.size(28.dp),
                                     )
@@ -1241,7 +1240,7 @@ fun BoloPlayerControls(
                                     IconButton(
                                         onClick = onNextEpisode,
                                         enabled = episodeNavigationEnabled,
-                                        modifier = Modifier.size(32.dp),
+                                        modifier = Modifier.size(32.dp).layoutId("playback"),
                                     ) {
                                         Icon(
                                             imageVector = Icons.Rounded.SkipNext,
@@ -1250,6 +1249,8 @@ fun BoloPlayerControls(
                                         )
                                     }
                                 }
+
+                                if (!bottomControlsVisible) return@PlayerBottomControlsRow
 
                                 // 时间显示
                                 Text(
@@ -1646,6 +1647,8 @@ private fun Long.formatPlayerDuration(): String {
 @Composable
 private fun PlayerBottomControlsRow(
     collapseControls: Boolean,
+    playbackControlsPinned: Boolean,
+    controlsSlideOffset: () -> Float,
     content: @Composable (Set<String>) -> Unit,
 ) {
     var hiddenControls by remember { mutableStateOf(emptySet<String>()) }
@@ -1687,7 +1690,12 @@ private fun PlayerBottomControlsRow(
             var x = 0
             for (index in visibleIndices) {
                 val placeable = placeables[index]
-                placeable.placeRelative(x, (height - placeable.height) / 2)
+                // 暂停按钮组留在原位，其余控件继续随完整控制栏滑入滑出。
+                placeable.placeRelativeWithLayer(x, (height - placeable.height) / 2) {
+                    translationY = if (playbackControlsPinned && widths[index].first == "playback") {
+                        0f
+                    } else controlsSlideOffset()
+                }
                 x += placeable.width
                 if (widths[index].first == "spacer") x += spacerWidth
             }
