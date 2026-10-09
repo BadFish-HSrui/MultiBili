@@ -106,6 +106,10 @@ class PlaybackStatisticsManager internal constructor(
         }
     }
 
+    /** 全部视频与番剧影视已保存的累计观看时长，不触发保存。 */
+    suspend fun totalPlayedMs(): Long =
+        database().playbackStatisticsDao().statisticsSummary().totalPlayedMs
+
     suspend fun totalPlayedMs(avid: Long): Long =
         database().playbackStatisticsDao().totalPlayedMs(avid)
 
