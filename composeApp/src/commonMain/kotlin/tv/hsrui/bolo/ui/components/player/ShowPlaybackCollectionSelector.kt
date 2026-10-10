@@ -99,6 +99,7 @@ fun ShowPlaybackCollectionSelector(
     selectedItemContentColor: Color = Color.Unspecified,
     serverOrdered: Boolean = false,
     totalCount: Int = items.size,
+    firstItemIndex: Int? = 0,
     scrollRevision: Int = 0,
     hasPrevious: Boolean = false,
     hasNext: Boolean = false,
@@ -112,6 +113,9 @@ fun ShowPlaybackCollectionSelector(
     val listState = rememberLazyListState()
     val groupState = rememberLazyListState()
     val playingIndex = displayedItems.indexOfFirst { it.id == playingItemId }
+    val playingNumber = if (playingIndex >= 0 && firstItemIndex != null && firstItemIndex >= 0) {
+        (firstItemIndex.toLong() + playingIndex + 1L).takeIf { it in 1L..totalCount.toLong() }
+    } else null
     val scrollItemsKey = if (serverOrdered) null else displayedItems
     val playingRowIndex = playingIndex.coerceAtLeast(0) + if (serverOrdered) 1 else 0
     val currentPlayingRowIndex by rememberUpdatedState(playingRowIndex)
@@ -172,7 +176,10 @@ fun ShowPlaybackCollectionSelector(
             ) {
                 Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 if (!isLoading && errorMessage == null) {
-                    Text(totalCount.toString(), style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        text = playingNumber?.let { "$it / $totalCount" } ?: totalCount.toString(),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
                 }
                 CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 24.dp) {
                     TextButton(

@@ -102,6 +102,11 @@ fun VideoDescPage(
                         playingPartId = videoInfo.cid.toString(),
                         onPartSelected = { it.toLongOrNull()?.let(onPartSelected) },
                         serverOrdered = true, totalCount = videoList.total, scrollRevision = videoList.revision,
+                        firstItemIndex = when {
+                            !videoList.hasPrevious -> 0
+                            !videoList.hasNext -> videoList.total - videoList.items.size
+                            else -> null
+                        },
                         hasPrevious = videoList.hasPrevious && !videoList.isReloading && videoList.reloadError == null,
                         hasNext = videoList.hasNext && !videoList.isReloading && videoList.reloadError == null,
                         isLoadingPrevious = videoList.isLoadingPrevious, isLoadingNext = videoList.isLoadingNext,
