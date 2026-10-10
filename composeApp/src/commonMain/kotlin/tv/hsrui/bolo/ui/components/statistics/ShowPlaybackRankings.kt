@@ -14,17 +14,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -37,13 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.ViewModelStore
-import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LifecycleEventEffect
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.repeatOnLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.datetime.LocalDate
 import tv.hsrui.bolo.model.Vid
 import tv.hsrui.bolo.ui.components.dialog.ShowUserInfoDialog
@@ -54,27 +44,15 @@ import tv.hsrui.network.utils.formatToDateTime
 /** 日期范围包含首尾两天；不传范围时显示累计总计并隐藏范围文字。 */
 @Composable
 fun ShowPlaybackRankings(
+    state: PlaybackRankingsUiState,
+    onRetry: () -> Unit,
     dateRange: ClosedRange<LocalDate>? = null,
     modifier: Modifier = Modifier,
-    limit: Int = 10,
 ) {
-    key(dateRange, limit) {
-        val owner = remember {
-            object : ViewModelStoreOwner {
-                override val viewModelStore = ViewModelStore()
-            }
-        }
-        DisposableEffect(owner) { onDispose { owner.viewModelStore.clear() } }
-        val model = viewModel(viewModelStoreOwner = owner) { PlaybackRankingsViewModel(dateRange, limit = limit) }
-        val state by model.uiState.collectAsStateWithLifecycle()
-        var refreshKey by remember { mutableIntStateOf(0) }
+    key(dateRange) {
         var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
         var selectedVid by remember { mutableStateOf<Vid?>(null) }
         var selectedUpMid by remember { mutableStateOf<Long?>(null) }
-        val lifecycleOwner = LocalLifecycleOwner.current
-        LaunchedEffect(model, lifecycleOwner, refreshKey) {
-            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { model.load() }
-        }
         LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
             selectedVid = null
             selectedUpMid = null
@@ -105,23 +83,12 @@ fun ShowPlaybackRankings(
                 }
             }
             if (state.isLoading) {
-                if (state.rankings == null) {
-                    Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                } else LinearProgressIndicator(Modifier.fillMaxWidth())
+                Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
             }
             if (state.error != null) {
-                if (state.rankings == null) {
-                    ShowErrorContent(message = state.error.orEmpty(), retry = { refreshKey++ })
-                } else {
-                    Card {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("刷新失败，仍显示上次读取的数据", color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = { refreshKey++ }) { Text("重试") }
-                        }
-                    }
-                }
+                ShowErrorContent(message = state.error.orEmpty(), retry = onRetry)
             }
             state.rankings?.let { rankings ->
                 Card(Modifier.fillMaxWidth()) {
@@ -170,7 +137,7 @@ fun ShowPlaybackRankings(
                 }
             }
             if (state.hasUnsavedPlayback) {
-                Text("部分播放记录尚未保存，当前显示已保存的数据。可稍后刷新。",
+                Text("部分播放记录尚未保存，当前显示已保存的数据。",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }

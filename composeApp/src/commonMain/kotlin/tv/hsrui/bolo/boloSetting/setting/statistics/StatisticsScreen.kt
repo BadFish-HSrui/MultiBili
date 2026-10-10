@@ -24,7 +24,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -33,10 +32,9 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,16 +49,14 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.datetime.LocalDate
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackDailyStats
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistoryType
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackStatisticsSummary
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
+import tv.hsrui.bolo.ui.components.statistics.PlaybackRankingsViewModel
 import tv.hsrui.bolo.ui.components.statistics.ShowPlaybackHistorySheet
 import tv.hsrui.bolo.ui.components.statistics.ShowPlaybackRankings
 import tv.hsrui.bolo.ui.components.statistics.ShowPlaybackRankingsSheet
@@ -74,13 +70,19 @@ fun StatisticsScreen(
     model: StatisticsViewModel = viewModel { StatisticsViewModel() },
 ) {
     val state by model.uiState.collectAsStateWithLifecycle()
+    val rankingsModel = viewModel { PlaybackRankingsViewModel(limit = 10) }
+    val rankingsState by rankingsModel.uiState.collectAsStateWithLifecycle()
     var dayCount by rememberSaveable { mutableIntStateOf(7) }
-    var refreshKey by rememberSaveable { mutableIntStateOf(0) }
+    val days = remember(state.days, dayCount) { state.days.takeLast(dayCount) }
     var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
     var selectedHistory by remember { mutableStateOf<PlaybackHistoryType?>(null) }
-    val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(model, lifecycleOwner, dayCount, refreshKey) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { model.load(dayCount) }
+    DisposableEffect(model) {
+        model.load()
+        onDispose { model.cancelLoading() }
+    }
+    DisposableEffect(rankingsModel) {
+        rankingsModel.load()
+        onDispose { rankingsModel.cancelLoading() }
     }
 
     selectedDay?.let { date ->
@@ -103,7 +105,7 @@ fun StatisticsScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                item {
+                item(key = "overview-title") {
                     Column {
                         Text("累计概览", style = MaterialTheme.typography.titleLarge)
                         Text("本设备的观看记录", style = MaterialTheme.typography.bodySmall,
@@ -111,37 +113,26 @@ fun StatisticsScreen(
                     }
                 }
                 if (state.isLoading) {
-                    item {
-                        if (state.snapshot == null) {
-                            Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator()
-                            }
-                        } else LinearProgressIndicator(Modifier.fillMaxWidth())
-                    }
-                }
-                if (state.error != null) {
-                    item {
-                        if (state.snapshot == null) {
-                            ShowErrorContent(message = state.error.orEmpty(), retry = { refreshKey++ })
-                        } else {
-                            Card {
-                                Column(Modifier.padding(16.dp)) {
-                                    Text("刷新失败，仍显示上次读取的数据", color = MaterialTheme.colorScheme.error)
-                                    TextButton(onClick = { refreshKey++ }) { Text("重试") }
-                                }
-                            }
+                    item(key = "initial-loading") {
+                        Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
                         }
                     }
                 }
+                if (state.error != null) {
+                    item(key = "statistics-error") {
+                        ShowErrorContent(message = state.error.orEmpty(), retry = model::load)
+                    }
+                }
                 state.snapshot?.let { snapshot ->
-                    item {
+                    item(key = "overview") {
                         StatisticsOverview(snapshot.summary, onHistoryClick = {
                             selectedDay = null
                             selectedHistory = it
                         })
                     }
                 }
-                item {
+                item(key = "trend-title") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("观看趋势", style = MaterialTheme.typography.titleMedium)
                         SingleChoiceSegmentedButtonRow(Modifier.widthIn(max = 280.dp).fillMaxWidth()) {
@@ -155,23 +146,24 @@ fun StatisticsScreen(
                         }
                     }
                 }
-                // 筛选切换的首帧也不把旧范围的数据放在新标签下。
-                if (state.dayCount == dayCount && state.days.isNotEmpty()) {
-                    item {
-                        StatisticsTrend(state.days, onDayClick = {
+                if (days.isNotEmpty()) {
+                    item(key = "trend") {
+                        StatisticsTrend(days, onDayClick = {
                             selectedHistory = null
                             selectedDay = it
                         })
                     }
                 }
-                item(key = "playback-rankings") { ShowPlaybackRankings() }
+                item(key = "playback-rankings") {
+                    ShowPlaybackRankings(state = rankingsState, onRetry = rankingsModel::load)
+                }
                 if (state.hasUnsavedPlayback) {
-                    item {
-                        Text("部分播放记录尚未保存，当前显示已保存的数据。可稍后刷新。",
+                    item(key = "unsaved-playback") {
+                        Text("部分播放记录尚未保存，当前显示已保存的数据。",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     }
                 }
-                item {
+                item(key = "local-storage-notice") {
                     Text(
                         "所有统计数据均仅在本地存储",
                         modifier = Modifier.fillMaxWidth(),

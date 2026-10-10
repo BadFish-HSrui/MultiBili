@@ -11,10 +11,18 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.datetime.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -23,13 +31,29 @@ fun ShowPlaybackRankingsSheet(
     onDismissRequest: () -> Unit,
     dateRange: ClosedRange<LocalDate>? = null,
 ) {
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP, onEvent = onDismissRequest)
-    ModalBottomSheet(
-        onDismissRequest = onDismissRequest,
-        sheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded)),
-    ) {
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.85f).verticalScroll(rememberScrollState()).padding(16.dp)) {
-            ShowPlaybackRankings(dateRange = dateRange, limit = 20)
+    key(dateRange) {
+        val owner = remember {
+            object : ViewModelStoreOwner {
+                override val viewModelStore = ViewModelStore()
+            }
+        }
+        val model = viewModel(viewModelStoreOwner = owner) { PlaybackRankingsViewModel(dateRange, limit = 20) }
+        val state by model.uiState.collectAsStateWithLifecycle()
+        DisposableEffect(model, owner) {
+            model.load()
+            onDispose {
+                model.cancelLoading()
+                owner.viewModelStore.clear()
+            }
+        }
+        LifecycleEventEffect(Lifecycle.Event.ON_STOP, onEvent = onDismissRequest)
+        ModalBottomSheet(
+            onDismissRequest = onDismissRequest,
+            sheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded)),
+        ) {
+            Column(Modifier.fillMaxWidth().fillMaxHeight(0.85f).verticalScroll(rememberScrollState()).padding(16.dp)) {
+                ShowPlaybackRankings(state = state, onRetry = model::load, dateRange = dateRange)
+            }
         }
     }
 }
