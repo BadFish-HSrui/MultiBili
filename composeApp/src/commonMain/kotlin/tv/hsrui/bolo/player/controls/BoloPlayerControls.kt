@@ -1086,6 +1086,7 @@ fun BoloPlayerControls(
                 data = highEnergyProgress!!,
                 durationMs = durationMs,
                 watchedRanges = { watchedRanges },
+                positionFraction = { sliderValue },
                 controlsFraction = { controlsReveal },
                 shownTrackBounds = { highEnergyTrackBounds },
                 hiddenBounds = { highEnergyHiddenBounds },

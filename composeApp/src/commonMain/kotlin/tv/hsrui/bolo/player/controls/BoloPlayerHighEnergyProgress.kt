@@ -25,6 +25,7 @@ internal fun BoloPlayerHighEnergyProgress(
     data: HighEnergyProgressData,
     durationMs: Long,
     watchedRanges: () -> List<PlaybackWatchedRange>,
+    positionFraction: () -> Float,
     controlsFraction: () -> Float,
     shownTrackBounds: () -> Rect?,
     hiddenBounds: () -> Rect,
@@ -34,6 +35,7 @@ internal fun BoloPlayerHighEnergyProgress(
     Box(modifier.drawWithCache {
         // 路径使用归一化坐标；显隐动画与进度更新只改变变换和裁切。
         val height = 32.dp.toPx()
+        val positionLineWidth = 1.dp.toPx()
         onDrawBehind {
             if (path == null) return@onDrawBehind
             val hidden = hiddenBounds()
@@ -67,6 +69,15 @@ internal fun BoloPlayerHighEnergyProgress(
                             }
                             if (cursor < 1f) drawRect(Color.White.copy(alpha = 0.5f),
                                 topLeft = Offset(cursor, 0f), size = Size(1f - cursor, 1f))
+                            // 标线随曲线变换，控制层隐藏后仍在底部曲线内标记播放位置。
+                            val lineWidth = (positionLineWidth / width).coerceAtMost(1f)
+                            val lineLeft = (positionFraction().coerceIn(0f, 1f) - lineWidth / 2f)
+                                .coerceIn(0f, 1f - lineWidth)
+                            drawRect(
+                                color = Color.White.copy(alpha = 0.75f),
+                                topLeft = Offset(lineLeft, 0f),
+                                size = Size(lineWidth, 1f),
+                            )
                         }
                     }
                 }
