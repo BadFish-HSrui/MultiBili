@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import tv.hsrui.bolo.ui.theme.BiliColor
+import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackWatchedRange
 import tv.hsrui.network.feature.player.HighEnergyProgressData
 import kotlin.math.floor
 
@@ -23,7 +24,7 @@ import kotlin.math.floor
 internal fun BoloPlayerHighEnergyProgress(
     data: HighEnergyProgressData,
     durationMs: Long,
-    positionFraction: () -> Float,
+    watchedRanges: () -> List<PlaybackWatchedRange>,
     controlsFraction: () -> Float,
     shownTrackBounds: () -> Rect?,
     hiddenBounds: () -> Rect,
@@ -44,7 +45,6 @@ internal fun BoloPlayerHighEnergyProgress(
             val bottom = hidden.bottom + ((shown?.top ?: hidden.bottom) - hidden.bottom) * fraction
             val width = right - left
             if (width <= 0f) return@onDrawBehind
-            val played = positionFraction().coerceIn(0f, 1f)
             val rtl = layoutDirection == LayoutDirection.Rtl
             clipRect(hidden.left, hidden.top, hidden.right, hidden.bottom) {
                 withTransform({
@@ -53,9 +53,20 @@ internal fun BoloPlayerHighEnergyProgress(
                 }) {
                     clipRect(0f, 0f, 1f, 1f) {
                         clipPath(path) {
-                            // 两段分别填充，避免叠色使已播放区域透明度变大。
-                            drawRect(BiliColor.ThemeColor.copy(alpha = 0.5f), size = Size(played, 1f))
-                            drawRect(Color.White.copy(alpha = 0.5f), topLeft = Offset(played, 0f), size = Size(1f - played, 1f))
+                            // 区间及其间隙分别填充，避免叠色改变透明度。
+                            var cursor = 0f
+                            for (range in watchedRanges()) {
+                                val start = (range.startMs.toDouble() / durationMs).coerceIn(0.0, 1.0).toFloat().coerceAtLeast(cursor)
+                                val end = (range.endMs.toDouble() / durationMs).coerceIn(0.0, 1.0).toFloat()
+                                if (end <= start) continue
+                                if (start > cursor) drawRect(Color.White.copy(alpha = 0.5f),
+                                    topLeft = Offset(cursor, 0f), size = Size(start - cursor, 1f))
+                                drawRect(BiliColor.ThemeColor.copy(alpha = 0.5f),
+                                    topLeft = Offset(start, 0f), size = Size(end - start, 1f))
+                                cursor = end
+                            }
+                            if (cursor < 1f) drawRect(Color.White.copy(alpha = 0.5f),
+                                topLeft = Offset(cursor, 0f), size = Size(1f - cursor, 1f))
                         }
                     }
                 }

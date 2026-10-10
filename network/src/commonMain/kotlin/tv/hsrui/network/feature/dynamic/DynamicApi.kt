@@ -22,3 +22,9 @@ suspend fun fetchFollowingVideos(pn: Int = 1,offset: String = ""): FollowingVide
 
     return FollowingVideosResponse(raw = response)
 }
+
+suspend fun fetchFollowingVideoUpdates(updateBaseline: String): DynamicUpdateResponse =
+    ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.DYNAMIC + "/update") {
+        parameter("type", "video")
+        parameter("update_baseline", updateBaseline)
+    }.body()

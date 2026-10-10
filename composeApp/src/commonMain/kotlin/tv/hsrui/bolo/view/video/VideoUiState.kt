@@ -1,5 +1,6 @@
 package tv.hsrui.bolo.view.video
 
+import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.player.PlayerInfoResponse
 import tv.hsrui.network.feature.video.collection.VideoCollectionEpisodeData
@@ -8,6 +9,7 @@ import tv.hsrui.network.feature.video.list.VideoListItemData
 sealed class VideoUiState {
     data object Loading : VideoUiState()
     data object Empty : VideoUiState()
+    data class RedirectToMedia(val route: BoloRoute.View.Media) : VideoUiState()
     data class Success(
         val video: VideoInfoData,
         val selectedSectionId: Long? = video.collection?.sections?.firstOrNull { section ->

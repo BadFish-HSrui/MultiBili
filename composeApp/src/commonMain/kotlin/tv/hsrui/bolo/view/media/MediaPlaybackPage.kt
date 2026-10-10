@@ -29,7 +29,6 @@ import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -71,19 +70,18 @@ fun MediaPlaybackPage(
     uiState: MediaPlaybackUiState.Success,
     viewModel: MediaPlaybackViewModel,
     fullscreenState: PlayerFullscreenState,
+    videoAspectRatio: Float?,
     isActive: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val episode = uiState.episode
     val playerViewModel = viewModel.playbackSession?.player
-    val playerUiState = playerViewModel?.uiState?.collectAsState()?.value
-    val playerInfo = playerViewModel?.controller?.info?.collectAsState()?.value
-    var videoAspectRatio by rememberSaveable(episode?.episodeId) { mutableStateOf<Float?>(null) }
-    SideEffect {
-        if (playerUiState is VideoPlayerUiState.Success) {
-            playerInfo?.video?.aspectRatio?.takeIf { it.isFinite() && it > 0F }?.let { videoAspectRatio = it }
-        }
-    }
+    val playerState = playerViewModel?.uiState?.collectAsState()?.value
+    val playerUiState = playerState.takeIf {
+        episode != null && playerViewModel?.avid == episode.avid && playerViewModel.cid == episode.cid &&
+            playerViewModel.episodeId == episode.episodeId &&
+            (it !is VideoPlayerUiState.Success || it.matches(episode.avid, episode.cid, episode.episodeId))
+    } ?: VideoPlayerUiState.Loading
     // 当前集评论随导航页面保留，切集或移出返回栈时释放。
     val replyOwner = viewModel.getDetailOwner(episode?.episodeId)
     val repliesViewModel = if (episode != null) {
@@ -121,7 +119,7 @@ fun MediaPlaybackPage(
         videoAspectRatio = videoAspectRatio,
         modifier = modifier,
     ) {
-        if (playerViewModel == null || playerUiState == null) return@PlayerPageLayout
+        if (playerViewModel == null) return@PlayerPageLayout
         if (episode != null) {
             VideoPlayer(
                 title = "${uiState.media.title} ${episode.displayTitle}",

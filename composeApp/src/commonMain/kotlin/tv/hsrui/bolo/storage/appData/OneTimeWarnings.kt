@@ -18,4 +18,17 @@ class OneTimeWarnings internal constructor(appDataKSafe: KSafePlain) {
             storedDynamicLoudnessPending = value
             currentDynamicLoudnessPending = value
         }
+
+    private var storedCheck114514 by appDataKSafe(
+        true, key = "hidden_easter_egg_114514_pending",
+    )
+    private var currentCheck114514 by mutableStateOf(storedCheck114514)
+
+    var Check114514: Boolean
+        get() = currentCheck114514
+        set(value) {
+            if (value == currentCheck114514) return
+            storedCheck114514 = value
+            currentCheck114514 = value
+        }
 }

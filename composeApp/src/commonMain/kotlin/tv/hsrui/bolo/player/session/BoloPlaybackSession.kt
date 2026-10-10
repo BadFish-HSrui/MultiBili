@@ -56,9 +56,8 @@ class BoloPlaybackSession private constructor(val key: String) {
         scope.launch {
             snapshotFlow { settings.playback.backgroundPlaybackEnabled to playerSettings.playback.resumeAfterBackgroundEnabled }
                 .collect { (background, resume) ->
-                    player.controller.setBackgroundPlaybackEnabled(background && getPlatform().type != PlatformType.Desktop)
+                    player.setBackgroundPlaybackEnabled(background && getPlatform().type != PlatformType.Desktop)
                     player.controller.setResumeAfterBackgroundEnabled(resume)
-                    player.setBackgroundPlaybackAllowed(background)
                     publish()
                 }
         }
@@ -132,7 +131,6 @@ class BoloPlaybackSession private constructor(val key: String) {
         if (closed || foreground == active) return
         foreground = active
         player.onPlaybackForegroundChanged(active)
-        player.controller.setForeground(active)
         publish(force = true)
     }
 
@@ -149,7 +147,7 @@ class BoloPlaybackSession private constructor(val key: String) {
         val revision = interruptionRevision
         interruptionRevision = null
         if (allowed && revision != null && !closed && interruptionMedia == metadata.mediaId &&
-            player.controller.playIntentRevision == revision && (foreground || settings.playback.backgroundPlaybackEnabled)) {
+            player.controller.playIntentRevision == revision) {
             player.play()
         }
     }
@@ -188,29 +186,28 @@ class BoloPlaybackSession private constructor(val key: String) {
         val playback = player.controller.state.value
         val hasMedia = metadata.mediaId.isNotEmpty()
         val loading = player.uiState.value is VideoPlayerUiState.Loading || player.pendingPlayWhenReady != null
-        val permitted = hasMedia && !playback.isPlaybackSuspended && (foreground || settings.playback.backgroundPlaybackEnabled)
+        val requested = player.pendingPlayWhenReady ?: playback.playWhenReady
+        val mobile = getPlatform().type != PlatformType.Desktop
         val status = when {
             !hasMedia || stopped -> BoloSystemMediaPlaybackStatus.Stopped
             player.uiState.value is VideoPlayerUiState.Error -> BoloSystemMediaPlaybackStatus.Error
-            playback.isPlaybackSuspended -> BoloSystemMediaPlaybackStatus.Paused
-            loading -> BoloSystemMediaPlaybackStatus.Buffering
-            playback.isEnded -> BoloSystemMediaPlaybackStatus.Ended
-            playback.isBuffering -> BoloSystemMediaPlaybackStatus.Buffering
+            playback.isEnded && !loading -> BoloSystemMediaPlaybackStatus.Ended
+            !requested && mobile -> BoloSystemMediaPlaybackStatus.Paused
+            loading || playback.isPlaybackSuspended || playback.isBuffering -> BoloSystemMediaPlaybackStatus.Buffering
             playback.isPlaying -> BoloSystemMediaPlaybackStatus.Playing
             else -> BoloSystemMediaPlaybackStatus.Paused
         }
-        // 只清空系统媒体输出，保留应用内媒体与进度，回到前台后重新发布。
-        val hideMedia = getPlatform().type != PlatformType.Desktop && !foreground && !settings.playback.backgroundPlaybackEnabled
-        val value = if (hideMedia) BoloSystemMediaState() else BoloSystemMediaState(
-            metadata, status, permitted && (player.pendingPlayWhenReady ?: playback.playWhenReady),
+        val value = BoloSystemMediaState(
+            metadata, status, hasMedia && requested,
             if (loading) 0 else playback.currentPositionMs.coerceAtLeast(0), if (loading) 0 else playback.durationMs.coerceAtLeast(0),
             playback.playbackSpeed.toDouble(),
             if (playerSettings.controls.desktopMuted) 0.0 else playerSettings.controls.desktopVolumePercent / 100.0,
-            canPlay = permitted && (loading || player.uiState.value is VideoPlayerUiState.Success),
-            canPause = permitted,
-            canSeek = permitted && !loading && playback.isSeekable && playback.hasConfirmedPosition,
-            canPrevious = permitted && navigationEnabled && previous != null,
-            canNext = permitted && navigationEnabled && next != null,
+            canPlay = hasMedia && (loading || player.uiState.value is VideoPlayerUiState.Success),
+            canPause = hasMedia,
+            canSeek = hasMedia && !loading && player.uiState.value is VideoPlayerUiState.Success && playback.isSeekable &&
+                (mobile || playback.hasConfirmedPosition),
+            canPrevious = hasMedia && navigationEnabled && previous != null,
+            canNext = hasMedia && navigationEnabled && next != null,
             artwork = artwork, seekRevision = seekRevision,
         )
         val old = state.value

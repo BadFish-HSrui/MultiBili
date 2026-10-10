@@ -1,5 +1,8 @@
 package tv.hsrui.bolo
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -17,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import androidx.navigation3.ui.defaultTransitionSpec
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
@@ -109,9 +113,17 @@ fun App() {
                         horizontalPartitionSpacerSize = 0.dp
                     )
                 )
+                val forwardTransition = defaultTransitionSpec<BoloRoute>()
                 NavDisplay(
                     backStack = navigator.backStack,
                     onBack = { navigator.goBack() },
+                    transitionSpec = {
+                        if (navigator.skipForwardTransition) {
+                            EnterTransition.None togetherWith ExitTransition.None
+                        } else {
+                            forwardTransition()
+                        }
+                    },
                     sceneStrategies = listOf(listDetailStrategy),
                     entryDecorators = listOf(
                         rememberSaveableStateHolderNavEntryDecorator(),

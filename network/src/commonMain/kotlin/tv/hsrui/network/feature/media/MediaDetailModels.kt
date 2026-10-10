@@ -19,6 +19,7 @@ data class MediaSeasonResponse(
 @Serializable
 data class MediaSeasonData(
     @SerialName("season_id") val seasonId: Long,
+    @SerialName("type") val seasonType: Int = 0,
     val title: String = "",
     @SerialName("cover") private val cover: String = "",
     @SerialName("evaluate") val description: String = "",
@@ -43,6 +44,16 @@ data class MediaSeasonData(
             return if (available.any { it.seasonId == seasonId }) available
             else listOf(MediaSeasonSummary(seasonId, title)) + available
         }
+
+    fun toMediaCard(episode: MediaEpisode? = null): MediaCard = MediaCard(
+        seasonId = seasonId,
+        cover = cover,
+        title = title,
+        subtitle = episode?.displayTitle.orEmpty(),
+        badge = episode?.badge.orEmpty(),
+        score = rating?.scoreValue.orEmpty(),
+        progressText = progressText,
+    )
 }
 
 @Serializable
@@ -56,6 +67,7 @@ data class MediaEpisode(
     @SerialName("id") val episodeId: Long,
     @SerialName("aid") val avid: Long = 0L,
     val cid: Long = 0L,
+    val bvid: String = "",
     private val title: String = "",
     @SerialName("long_title") private val longTitle: String = "",
     @SerialName("show_title") private val showTitle: String = "",

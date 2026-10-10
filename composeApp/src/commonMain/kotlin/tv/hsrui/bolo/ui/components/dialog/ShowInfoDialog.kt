@@ -3,6 +3,8 @@ package tv.hsrui.bolo.ui.components.dialog
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
 import tv.hsrui.bolo.ui.theme.BoloShapes
 import kotlin.time.TimeSource
@@ -30,6 +33,9 @@ fun ShowInfoDialog(
     onConfirm: () -> Unit,
     confirmEnabled: Boolean = true,
     forcedDisplaySeconds: Int? = null,
+    scrollableContent: Boolean = false,
+    modifier: Modifier = Modifier,
+    properties: DialogProperties = DialogProperties(),
     content: @Composable () -> Unit,
 ) {
     var remainingSeconds by remember(forcedDisplaySeconds) {
@@ -54,6 +60,8 @@ fun ShowInfoDialog(
         onDismissRequest = {
             if (forcedDisplaySeconds == null && confirmEnabled) onConfirm()
         },
+        modifier = modifier,
+        properties = properties,
     ) {
         Surface(
             modifier = Modifier.wrapContentSize(),
@@ -63,7 +71,16 @@ fun ShowInfoDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(horizontal = 20.dp).padding(top = 20.dp, bottom = 8.dp),
             ) {
-                content()
+                if (scrollableContent) {
+                    Column(
+                        modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        content()
+                    }
+                } else {
+                    content()
+                }
 
                 OutlinedButton(
                     onClick = onConfirm,
@@ -84,12 +101,18 @@ fun ShowInfoDialog(
     text: String = "",
     confirmEnabled: Boolean = true,
     forcedDisplaySeconds: Int? = null,
+    scrollableContent: Boolean = false,
+    modifier: Modifier = Modifier,
+    properties: DialogProperties = DialogProperties(),
     content: (@Composable () -> Unit)? = null,
 ) {
     ShowInfoDialog(
         onConfirm = onConfirm,
         confirmEnabled = confirmEnabled,
         forcedDisplaySeconds = forcedDisplaySeconds,
+        scrollableContent = scrollableContent,
+        modifier = modifier,
+        properties = properties,
     ) {
         if (icon != null) icon()
 

@@ -21,6 +21,22 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: 检查 Android 签名凭据
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "缺少 Android 签名 Secret：$name" >&2
+              exit 1
+            fi
+          done
+
       - name: 检出源码
         uses: actions/checkout@v7
         with:
@@ -43,7 +59,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential pkg-config nasm meson ninja-build cmake \
             python3 python3-jinja2 python3-markupsafe
-          sdkmanager "ndk;28.2.13676358"
+          sdkmanager "ndk;28.2.13676358" "build-tools;36.0.0"
 
       - name: 生成构建缓存键
         id: cache-keys
@@ -153,6 +169,57 @@ jobs:
             echo "未能成功识别并映射全部 5 个 APK 架构，成功映射数量：$matched_count" >&2
             exit 1
           fi
+
+      - name: 签名并验证 Android 安装包
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          EXPECTED_CERT_SHA256: b674d8d773c9f1329f199c553421e2ee89a8dc6f00f9697ff57adf226cf819d4
+        run: |
+          set -euo pipefail
+          umask 077
+          keystore="$RUNNER_TEMP/android-release-signing.jks"
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          unset ANDROID_KEYSTORE_BASE64
+          if [[ ! -s "$keystore" ]]; then
+            echo 'Android 签名密钥库为空' >&2
+            exit 1
+          fi
+          build_tools="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/build-tools/36.0.0"
+          shopt -s nullglob
+          apk_files=(staging/android/multi-bili-android-*.apk)
+          if [[ "${#apk_files[@]}" -ne 5 ]]; then
+            echo "期望签名 5 个 APK，实际为 ${#apk_files[@]}" >&2
+            exit 1
+          fi
+          for apk in "${apk_files[@]}"; do
+            "$build_tools/zipalign" -c 4 "$apk"
+            "$build_tools/apksigner" sign \
+              --ks "$keystore" \
+              --ks-key-alias "$ANDROID_KEY_ALIAS" \
+              --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+              --key-pass env:ANDROID_KEY_PASSWORD \
+              --v2-signing-enabled true \
+              --v4-signing-enabled false \
+              "$apk"
+            verification="$("$build_tools/apksigner" verify --verbose --print-certs "$apk")"
+            printf '%s\n' "$verification"
+            certificate_sha256="$(printf '%s\n' "$verification" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+            if [[ "$certificate_sha256" != "$EXPECTED_CERT_SHA256" ]]; then
+              echo "APK $apk 的签名证书与发行证书不一致" >&2
+              exit 1
+            fi
+            "$build_tools/zipalign" -c 4 "$apk"
+          done
+
+      - name: 清理 Android 签名密钥库
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/android-release-signing.jks"
 
       - name: 上传 Android 构建产物
         uses: actions/upload-artifact@v7

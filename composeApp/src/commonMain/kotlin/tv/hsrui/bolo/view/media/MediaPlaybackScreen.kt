@@ -13,6 +13,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
@@ -22,6 +27,7 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.PlayerFullscreenEffect
+import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.player.rememberPlayerFullscreenState
 import tv.hsrui.bolo.ui.common.player.PlayerStatusBarOverlay
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
@@ -41,6 +47,25 @@ fun MediaPlaybackScreen(
     LaunchedEffect(viewModel, isActive) {
         if (isActive) viewModel.bindPlayback()
     }
+    val player = viewModel.playbackSession?.player
+    val playerState = player?.uiState?.collectAsState()?.value
+    val episode = (uiState as? MediaPlaybackUiState.Success)?.episode
+    val ready = (playerState as? VideoPlayerUiState.Success)?.takeIf {
+        episode != null && it.matches(episode.avid, episode.cid, episode.episodeId)
+    }
+    val playbackError = (playerState as? VideoPlayerUiState.Error)?.takeIf {
+        episode != null && player.avid == episode.avid && player.cid == episode.cid && player.episodeId == episode.episodeId
+    }
+    var hasShownPage by rememberSaveable { mutableStateOf(false) }
+    var lastAspectRatio by rememberSaveable { mutableStateOf<Float?>(null) }
+    val videoAspectRatio = if (ready != null) ready.videoAspectRatio ?: (4F / 3F) else lastAspectRatio
+    SideEffect {
+        if (uiState is MediaPlaybackUiState.Success && episode == null) hasShownPage = true
+        if (ready != null) {
+            hasShownPage = true
+            lastAspectRatio = videoAspectRatio
+        }
+    }
     val fullscreenState = rememberPlayerFullscreenState()
     val fullscreenBackState = rememberNavigationEventState(NavigationEventInfo.None)
     val settings = koinInject<BoloSettings>()
@@ -59,14 +84,17 @@ fun MediaPlaybackScreen(
         )
     ) {
         Surface(modifier = Modifier.fillMaxSize()) {
-            when (val state = uiState) {
-                is MediaPlaybackUiState.Success -> MediaPlaybackPage(
+            val state = uiState
+            if (state is MediaPlaybackUiState.Success && (hasShownPage || ready != null || state.episode == null)) {
+                MediaPlaybackPage(
                     uiState = state,
                     viewModel = viewModel,
                     fullscreenState = fullscreenState,
+                    videoAspectRatio = videoAspectRatio,
                     isActive = isActive,
                 )
-                else -> Column(Modifier.fillMaxSize()) {
+            } else {
+                Column(Modifier.fillMaxSize()) {
                     ShowTopBarWithNavigationButton(
                         onBack = if (fullscreenState.isDesktop) fullscreenState::goBack else null,
                         title = {},
@@ -78,7 +106,15 @@ fun MediaPlaybackScreen(
                                 message = state.message,
                                 retry = { viewModel.loadMedia() },
                             )
-                            is MediaPlaybackUiState.Success -> Unit
+                            is MediaPlaybackUiState.Success -> if (playbackError != null && episode != null) {
+                                ShowErrorContent(
+                                    message = playbackError.message,
+                                    retry = {
+                                        player.switchMedia(episode.avid, episode.cid, episode.episodeId, forceReload = true,
+                                            seasonId = state.media.seasonId, seasonType = state.media.seasonType)
+                                    },
+                                )
+                            } else CircularProgressIndicator()
                         }
                     }
                 }

@@ -3,6 +3,7 @@ package tv.hsrui.network.feature.video
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import tv.hsrui.network.model.Owner
+import tv.hsrui.network.model.VideoCard
 import tv.hsrui.network.feature.video.collection.VideoCollectionData
 import tv.hsrui.network.utils.formatToDateTime
 import tv.hsrui.network.utils.formatToDuration
@@ -73,6 +74,8 @@ data class VideoInfoData(
     @SerialName("ugc_season") val collection: VideoCollectionData? = null,
     @SerialName("pages") private val rawParts: List<VideoPartData> = emptyList(),
     @SerialName("staff") private val rawStaff: List<VideoStaffData>? = null,
+    @SerialName("redirect_url") val redirectUrl: String = "",
+    @SerialName("duration") val duration: Int = 0,
 ) {
     val parts by lazy { rawParts.filter { it.cid > 0 }.distinctBy { it.cid }.sortedBy { it.pageNumber } }
 
@@ -94,6 +97,22 @@ data class VideoInfoData(
     val upAvatarUrl by lazy { _owner.face.toHttpsUrl() }
 
     val argueMessage: String by _argueInfo::message
+
+    fun toVideoCard(): VideoCard = VideoCard(
+        avid = avid,
+        bvid = bvid,
+        title = title,
+        publishDate = publishDate,
+        duration = duration,
+        _cover = _pic,
+        _stat = VideoCard.Stat(
+            view = stateCount.view,
+            like = stateCount.like,
+            danmaku = stateCount.danmaku,
+            reply = stateCount.reply,
+        ),
+        _owner = _owner,
+    )
 
     @Serializable
     data class Rights(

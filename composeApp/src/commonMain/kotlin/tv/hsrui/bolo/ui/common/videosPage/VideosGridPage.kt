@@ -15,7 +15,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.Job
@@ -39,23 +41,6 @@ fun VideosGridPage(
     otherButton: @Composable FloatingActionButtonMenuScope.() -> Unit = {},
 ) {
     val videoGridState = rememberLazyGridState()
-    LaunchedEffect(reselectEvents, viewModel, videoGridState) {
-        var scrollJob: Job? = null
-        reselectEvents?.collect {
-            if (scrollJob?.isActive == true) return@collect
-            val currentState = viewModel.uiState.value
-            val hasContent = currentState is VideosUiState.Success && currentState.videos.isNotEmpty()
-            val isAtTop = videoGridState.firstVisibleItemIndex == 0 &&
-                videoGridState.firstVisibleItemScrollOffset == 0
-            if (hasContent && !isAtTop) {
-                scrollJob = launch { videoGridState.animateScrollToItem(0) }
-            } else if (currentState !is VideosUiState.Loading && !viewModel.isLoading) {
-                videoGridState.requestScrollToItem(0)
-                viewModel.refreshVideos()
-            }
-        }
-    }
-
     VideosGridPage(
         uiState = uiState,
         isLoading = viewModel.isLoading,
@@ -64,6 +49,8 @@ fun VideosGridPage(
         modifier = modifier,
         emptyMessage = emptyMessage,
         videoGridState = videoGridState,
+        reselectEvents = reselectEvents,
+        reselectState = { viewModel.uiState.value to viewModel.isLoading },
         otherButton = otherButton,
     )
 }
@@ -79,9 +66,31 @@ fun VideosGridPage(
     emptyMessage: String? = null,
     videoGridState: LazyGridState = rememberLazyGridState(),
     enablePullToRefresh: Boolean = true,
+    isRefreshing: Boolean = false,
+    reselectEvents: Flow<Unit>? = null,
+    reselectState: () -> Pair<VideosUiState, Boolean> = { uiState to isLoading },
     otherButton: @Composable FloatingActionButtonMenuScope.() -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
+    val currentReselectState by rememberUpdatedState(reselectState)
+    val currentOnRefresh by rememberUpdatedState(onRefresh)
+
+    LaunchedEffect(reselectEvents, videoGridState) {
+        var scrollJob: Job? = null
+        reselectEvents?.collect {
+            if (scrollJob?.isActive == true) return@collect
+            val (currentState, loading) = currentReselectState()
+            val hasContent = currentState is VideosUiState.Success && currentState.videos.isNotEmpty()
+            val isAtTop = videoGridState.firstVisibleItemIndex == 0 &&
+                videoGridState.firstVisibleItemScrollOffset == 0
+            if (hasContent && !isAtTop) {
+                scrollJob = launch { videoGridState.animateScrollToItem(0) }
+            } else if (currentState !is VideosUiState.Loading && !loading) {
+                videoGridState.requestScrollToItem(0)
+                currentOnRefresh()
+            }
+        }
+    }
 
     videoGridState.OnGridBottomReached(buffer = 8, isLoading = isLoading) {
         onLoadMore()
@@ -149,7 +158,7 @@ fun VideosGridPage(
         }
     }
     if (enablePullToRefresh) {
-        PullToRefreshBox(isRefreshing = false, onRefresh = onRefresh, modifier = modifier.fillMaxSize(), content = content)
+        PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = onRefresh, modifier = modifier.fillMaxSize(), content = content)
     } else {
         Box(
             modifier = modifier.fillMaxSize().then(

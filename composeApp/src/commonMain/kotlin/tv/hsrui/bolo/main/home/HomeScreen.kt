@@ -71,7 +71,11 @@ fun HomeScreen(
             when (tabs[page]) {
                 HomeTab.Popular -> PopularPage(Modifier.fillMaxSize(), reselectEvents = activeReselectEvents)
                 HomeTab.Recommend -> RecommendPage(Modifier.fillMaxSize(), reselectEvents = activeReselectEvents)
-                HomeTab.Following -> FollowingVideosPage(Modifier.fillMaxSize(), reselectEvents = activeReselectEvents)
+                HomeTab.Following -> FollowingVideosPage(
+                    Modifier.fillMaxSize(),
+                    reselectEvents = activeReselectEvents,
+                    isSelected = pagerState.currentPage == page && !pagerState.isScrollInProgress,
+                )
             }
         }
     }

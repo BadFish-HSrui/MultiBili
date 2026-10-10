@@ -3,3 +3,4 @@
 -keep class org.freedesktop.dbus.** { *; }
 -keep class io.github.vinceglb.filekit.dialogs.platform.xdg.** { *; }
 -keepattributes Signature,InnerClasses,RuntimeVisibleAnnotations
+-keep class * extends androidx.room3.RoomDatabase { <init>(); }

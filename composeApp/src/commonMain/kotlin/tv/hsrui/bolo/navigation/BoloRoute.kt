@@ -53,6 +53,7 @@ sealed interface BoloRoute {
         @Serializable data object List : BoloSetting
         @Serializable data object General : BoloSetting
         @Serializable data object Playback : BoloSetting
+        @Serializable data object Statistics : BoloSetting
         @Serializable data object About : BoloSetting
     }
 

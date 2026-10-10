@@ -1,0 +1,256 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "c3c0d2345654df6dff01732f82564e95",
+    "entities": [
+      {
+        "tableName": "playback_stats",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `avid` INTEGER NOT NULL, `bvid` TEXT, `cid` INTEGER NOT NULL, `content_type` TEXT NOT NULL, `title` TEXT NOT NULL, `part_title` TEXT, `part_number` INTEGER, `up_mid` INTEGER, `up_name` TEXT, `season_id` INTEGER, `episode_id` INTEGER, `duration_ms` INTEGER NOT NULL DEFAULT 0, `total_played_ms` INTEGER NOT NULL DEFAULT 0, `play_count` INTEGER NOT NULL DEFAULT 0, `first_viewed_at_ms` INTEGER NOT NULL, `last_viewed_at_ms` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "avid",
+            "columnName": "avid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bvid",
+            "columnName": "bvid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "cid",
+            "columnName": "cid",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentType",
+            "columnName": "content_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "partTitle",
+            "columnName": "part_title",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "partNumber",
+            "columnName": "part_number",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "upMid",
+            "columnName": "up_mid",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "upName",
+            "columnName": "up_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "seasonId",
+            "columnName": "season_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "episodeId",
+            "columnName": "episode_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "durationMs",
+            "columnName": "duration_ms",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "totalPlayedMs",
+            "columnName": "total_played_ms",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "playCount",
+            "columnName": "play_count",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "firstViewedAtMs",
+            "columnName": "first_viewed_at_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastViewedAtMs",
+            "columnName": "last_viewed_at_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_playback_stats_avid_cid",
+            "unique": true,
+            "columnNames": [
+              "avid",
+              "cid"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_playback_stats_avid_cid` ON `${TABLE_NAME}` (`avid`, `cid`)"
+          },
+          {
+            "name": "index_playback_stats_last_viewed_at_ms_id",
+            "unique": false,
+            "columnNames": [
+              "last_viewed_at_ms",
+              "id"
+            ],
+            "orders": [
+              "DESC",
+              "DESC"
+            ],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_playback_stats_last_viewed_at_ms_id` ON `${TABLE_NAME}` (`last_viewed_at_ms` DESC, `id` DESC)"
+          }
+        ]
+      },
+      {
+        "tableName": "playback_watched_range",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`record_id` INTEGER NOT NULL, `start_ms` INTEGER NOT NULL, `end_ms` INTEGER NOT NULL, PRIMARY KEY(`record_id`, `start_ms`), FOREIGN KEY(`record_id`) REFERENCES `playback_stats`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "recordId",
+            "columnName": "record_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startMs",
+            "columnName": "start_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endMs",
+            "columnName": "end_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "record_id",
+            "start_ms"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "playback_stats",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "record_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "playback_daily_stats",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`record_id` INTEGER NOT NULL, `local_date` TEXT NOT NULL, `total_played_ms` INTEGER NOT NULL DEFAULT 0, `play_count` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`record_id`, `local_date`), FOREIGN KEY(`record_id`) REFERENCES `playback_stats`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "recordId",
+            "columnName": "record_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "localDate",
+            "columnName": "local_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalPlayedMs",
+            "columnName": "total_played_ms",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "playCount",
+            "columnName": "play_count",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "record_id",
+            "local_date"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_playback_daily_stats_local_date_record_id",
+            "unique": false,
+            "columnNames": [
+              "local_date",
+              "record_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_playback_daily_stats_local_date_record_id` ON `${TABLE_NAME}` (`local_date`, `record_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "playback_stats",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "record_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c3c0d2345654df6dff01732f82564e95')"
+    ]
+  }
+}
