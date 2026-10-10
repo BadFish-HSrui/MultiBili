@@ -5,13 +5,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +34,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -48,6 +54,11 @@ fun ShowPlaybackRankings(
     onRetry: () -> Unit,
     dateRange: ClosedRange<LocalDate>? = null,
     modifier: Modifier = Modifier,
+    showRank: Boolean = true,
+    cardShape: Shape = CardDefaults.shape,
+    segmentedButtonAlignment: Alignment.Horizontal = Alignment.Start,
+    fillRemainingHeight: Boolean = false,
+    showTitle: Boolean = true,
 ) {
     key(dateRange) {
         var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -65,16 +76,18 @@ fun ShowPlaybackRankings(
         }
 
         Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("观看时长排行", style = MaterialTheme.typography.titleMedium)
+            if (showTitle) Text("观看时长排行", style = MaterialTheme.typography.titleMedium)
             dateRange?.let { range ->
                 Text(
                     text = if (range.start == range.endInclusive) range.start.toString()
                         else "${range.start} 至 ${range.endInclusive}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = if (showTitle) Modifier else Modifier.fillMaxWidth(),
+                    style = if (showTitle) MaterialTheme.typography.labelMedium else MaterialTheme.typography.titleMedium,
+                    color = if (showTitle) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    textAlign = if (showTitle) TextAlign.Start else TextAlign.Center,
                 )
             }
-            SingleChoiceSegmentedButtonRow(Modifier.widthIn(max = 400.dp).fillMaxWidth()) {
+            SingleChoiceSegmentedButtonRow(Modifier.widthIn(max = 400.dp).fillMaxWidth().align(segmentedButtonAlignment)) {
                 listOf("UP主", "视频", "番剧影视").forEachIndexed { index, label ->
                     SegmentedButton(
                         selected = selectedIndex == index, onClick = { selectedIndex = index },
@@ -82,56 +95,79 @@ fun ShowPlaybackRankings(
                     ) { Text(label) }
                 }
             }
-            if (state.isLoading) {
+            if (state.isLoading && !fillRemainingHeight) {
                 Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             }
-            if (state.error != null) {
+            if (state.error != null && !fillRemainingHeight) {
                 ShowErrorContent(message = state.error.orEmpty(), retry = onRetry)
             }
-            state.rankings?.let { rankings ->
-                Card(Modifier.fillMaxWidth()) {
-                    if (selectedIndex == 0) {
-                        if (rankings.ups.isEmpty()) {
-                            Text(if (dateRange == null) "还没有 UP 主观看数据" else "这段时间还没有 UP 主观看数据",
-                                Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium)
+            if (fillRemainingHeight || state.rankings != null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().then(if (fillRemainingHeight) Modifier.weight(1f) else Modifier),
+                    shape = cardShape,
+                ) {
+                    when {
+                        state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
                         }
-                        rankings.ups.forEachIndexed { index, up ->
-                            if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                            StatisticsRankingRow(
-                                rank = index + 1,
-                                title = up.upName ?: "UP ${up.upMid}",
-                                subtitle = "${up.playCount} 次播放",
-                                totalPlayedMs = up.totalPlayedMs,
-                                modifier = Modifier.clickable(enabled = up.upMid > 0) {
-                                    selectedVid = null
-                                    selectedUpMid = up.upMid
-                                },
-                            )
-                        }
-                    } else {
-                        val videos = if (selectedIndex == 1) rankings.videos else rankings.media
-                        if (videos.isEmpty()) {
-                            val contentLabel = if (selectedIndex == 1) "视频" else "番剧影视"
-                            Text(if (dateRange == null) "还没有${contentLabel}观看数据" else "这段时间还没有${contentLabel}观看数据",
-                                Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium)
-                        }
-                        videos.forEachIndexed { index, video ->
-                            if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                            val title = if (video.contentType == "media" && !video.partTitle.isNullOrBlank()) {
-                                "${video.title} · ${video.partTitle}"
-                            } else video.title
-                            StatisticsRankingRow(
-                                rank = index + 1,
-                                title = title,
-                                subtitle = "${video.playCount} 次播放",
-                                totalPlayedMs = video.totalPlayedMs,
-                                modifier = Modifier.clickable(enabled = video.avid > 0) {
-                                    selectedUpMid = null
-                                    selectedVid = Vid.AVid(video.avid)
-                                },
-                            )
+                        state.error != null -> ShowErrorContent(message = state.error.orEmpty(), retry = onRetry)
+                        else -> state.rankings?.let { rankings ->
+                            val videos = if (selectedIndex == 1) rankings.videos else rankings.media
+                            val isEmpty = if (selectedIndex == 0) rankings.ups.isEmpty() else videos.isEmpty()
+                            if (isEmpty) {
+                                val contentLabel = when (selectedIndex) {
+                                    0 -> " UP 主"
+                                    1 -> "视频"
+                                    else -> "番剧影视"
+                                }
+                                Box(
+                                    modifier = (if (fillRemainingHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).padding(20.dp),
+                                    contentAlignment = if (fillRemainingHeight) Alignment.Center else Alignment.TopStart,
+                                ) {
+                                    Text(
+                                        text = if (dateRange == null) "还没有${contentLabel}观看数据" else "这段时间还没有${contentLabel}观看数据",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = if (fillRemainingHeight) TextAlign.Center else TextAlign.Start,
+                                    )
+                                }
+                            } else Column(
+                                if (fillRemainingHeight) Modifier.fillMaxSize().verticalScroll(rememberScrollState()) else Modifier,
+                            ) {
+                                if (selectedIndex == 0) {
+                                    rankings.ups.forEachIndexed { index, up ->
+                                        if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                                        StatisticsRankingRow(
+                                            rank = if (showRank) index + 1 else null,
+                                            title = up.upName ?: "UP ${up.upMid}",
+                                            subtitle = "${up.playCount} 次播放",
+                                            totalPlayedMs = up.totalPlayedMs,
+                                            modifier = Modifier.clickable(enabled = up.upMid > 0) {
+                                                selectedVid = null
+                                                selectedUpMid = up.upMid
+                                            },
+                                        )
+                                    }
+                                } else {
+                                    videos.forEachIndexed { index, video ->
+                                        if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                                        val title = if (video.contentType == "media" && !video.partTitle.isNullOrBlank()) {
+                                            "${video.title} · ${video.partTitle}"
+                                        } else video.title
+                                        StatisticsRankingRow(
+                                            rank = if (showRank) index + 1 else null,
+                                            title = title,
+                                            subtitle = "${video.playCount} 次播放",
+                                            totalPlayedMs = video.totalPlayedMs,
+                                            modifier = Modifier.clickable(enabled = video.avid > 0) {
+                                                selectedUpMid = null
+                                                selectedVid = Vid.AVid(video.avid)
+                                            },
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -146,7 +182,7 @@ fun ShowPlaybackRankings(
 
 @Composable
 internal fun StatisticsRankingRow(
-    rank: Int,
+    rank: Int?,
     title: String,
     subtitle: String,
     totalPlayedMs: Long,
@@ -155,10 +191,12 @@ internal fun StatisticsRankingRow(
 ) {
     Row(modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Surface(color = if (rank == 1) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-            shape = RoundedCornerShape(8.dp)) {
-            Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
-                Text(rank.toString(), style = MaterialTheme.typography.labelLarge)
+        if (rank != null) {
+            Surface(color = if (rank == 1) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                shape = RoundedCornerShape(8.dp)) {
+                Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                    Text(rank.toString(), style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {

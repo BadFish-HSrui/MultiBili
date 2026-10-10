@@ -13,6 +13,7 @@ import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.storage.appData.AppDataStorage
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistoryCursor
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistoryItem
+import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistorySort
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistoryType
 
 data class PlaybackHistoryUiState(
@@ -23,7 +24,11 @@ data class PlaybackHistoryUiState(
     val error: String? = null,
     val loadMoreError: String? = null,
     val hasUnsavedPlayback: Boolean = false,
-)
+    val sort: PlaybackHistorySort = PlaybackHistorySort.Time,
+    val descendingBySort: Map<PlaybackHistorySort, Boolean> = PlaybackHistorySort.entries.associateWith { true },
+) {
+    val descending: Boolean get() = descendingBySort.getValue(sort)
+}
 
 class PlaybackHistoryViewModel(
     private val type: PlaybackHistoryType,
@@ -39,8 +44,20 @@ class PlaybackHistoryViewModel(
     fun load() {
         cancelLoading()
         cursor = null
-        mutableUiState.value = PlaybackHistoryUiState()
+        val state = mutableUiState.value
+        mutableUiState.value = PlaybackHistoryUiState(sort = state.sort, descendingBySort = state.descendingBySort)
         loadPage(append = false)
+    }
+
+    fun selectSort(sort: PlaybackHistorySort) {
+        val state = mutableUiState.value
+        mutableUiState.value = state.copy(
+            sort = sort,
+            descendingBySort = if (sort == state.sort) {
+                state.descendingBySort + (sort to !state.descending)
+            } else state.descendingBySort,
+        )
+        load()
     }
 
     fun loadMore() {
@@ -53,9 +70,10 @@ class PlaybackHistoryViewModel(
     private fun loadPage(append: Boolean) {
         val version = ++requestVersion
         val pageCursor = if (append) cursor else null
+        val state = mutableUiState.value
         loadJob = viewModelScope.launch {
             try {
-                var hasUnsavedPlayback = mutableUiState.value.hasUnsavedPlayback
+                var hasUnsavedPlayback = state.hasUnsavedPlayback
                 if (!append) {
                     try {
                         appData.playbackStatistics.flush()
@@ -65,14 +83,24 @@ class PlaybackHistoryViewModel(
                         hasUnsavedPlayback = true
                     }
                 }
-                val page = appData.playbackStatistics.historyPage(type, pageCursor, pageSize)
+                val page = appData.playbackStatistics.historyPage(type, pageCursor, pageSize, state.sort, state.descending)
                 currentCoroutineContext().ensureActive()
                 if (version != requestVersion) return@launch
-                page.lastOrNull()?.let { cursor = PlaybackHistoryCursor(it.lastViewedAtMs, it.id) }
-                mutableUiState.value = PlaybackHistoryUiState(
-                    items = if (append) (mutableUiState.value.items + page).distinctBy { it.id } else page,
+                page.lastOrNull()?.let {
+                    val sortValue = when (state.sort) {
+                        PlaybackHistorySort.Time -> it.lastViewedAtMs
+                        PlaybackHistorySort.PlayCount -> it.playCount
+                        PlaybackHistorySort.Duration -> it.totalPlayedMs
+                    }
+                    cursor = PlaybackHistoryCursor(sortValue, it.id)
+                }
+                mutableUiState.value = state.copy(
+                    items = if (append) (state.items + page).distinctBy { it.id } else page,
                     isLoading = false,
+                    isLoadingMore = false,
                     hasMore = page.size == pageSize,
+                    error = null,
+                    loadMoreError = null,
                     hasUnsavedPlayback = hasUnsavedPlayback,
                 )
             } catch (error: CancellationException) {

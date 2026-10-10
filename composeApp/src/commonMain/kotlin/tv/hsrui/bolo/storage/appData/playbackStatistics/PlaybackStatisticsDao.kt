@@ -40,7 +40,10 @@ internal abstract class PlaybackStatisticsDao {
                watched.total_played_ms, watched.play_count, watched.last_viewed_at_ms
         FROM (
             SELECT avid AS id, SUM(total_played_ms) AS total_played_ms,
-                   SUM(play_count) AS play_count, MAX(last_viewed_at_ms) AS last_viewed_at_ms
+                   SUM(play_count) AS play_count, MAX(last_viewed_at_ms) AS last_viewed_at_ms,
+                   CASE :sort WHEN 'Time' THEN MAX(last_viewed_at_ms)
+                              WHEN 'PlayCount' THEN SUM(play_count)
+                              ELSE SUM(total_played_ms) END AS sort_value
             FROM playback_stats WHERE total_played_ms > 0 OR play_count > 0
             GROUP BY avid
         ) AS watched
@@ -48,10 +51,17 @@ internal abstract class PlaybackStatisticsDao {
             SELECT id FROM playback_stats WHERE avid = watched.id
             ORDER BY last_viewed_at_ms DESC, id DESC LIMIT 1
         )
-        WHERE :cursorTime IS NULL OR (watched.last_viewed_at_ms, watched.id) < (:cursorTime, :cursorId)
-        ORDER BY watched.last_viewed_at_ms DESC, watched.id DESC LIMIT :limit
+        WHERE :cursorValue IS NULL
+           OR (:descending AND (watched.sort_value, watched.id) < (:cursorValue, :cursorId))
+           OR (NOT :descending AND (watched.sort_value, watched.id) > (:cursorValue, :cursorId))
+        ORDER BY CASE WHEN :descending THEN watched.sort_value END DESC,
+                 CASE WHEN NOT :descending THEN watched.sort_value END ASC,
+                 CASE WHEN :descending THEN watched.id END DESC,
+                 CASE WHEN NOT :descending THEN watched.id END ASC LIMIT :limit
     """)
-    abstract suspend fun watchedVideos(cursorTime: Long?, cursorId: Long?, limit: Int): List<PlaybackHistoryItem>
+    abstract suspend fun watchedVideos(
+        cursorValue: Long?, cursorId: Long?, limit: Int, sort: String, descending: Boolean,
+    ): List<PlaybackHistoryItem>
 
     @Query("""
         SELECT watched.id,
@@ -62,15 +72,25 @@ internal abstract class PlaybackStatisticsDao {
                watched.total_played_ms, watched.play_count, watched.last_viewed_at_ms
         FROM (
             SELECT up_mid AS id, SUM(total_played_ms) AS total_played_ms,
-                   SUM(play_count) AS play_count, MAX(last_viewed_at_ms) AS last_viewed_at_ms
+                   SUM(play_count) AS play_count, MAX(last_viewed_at_ms) AS last_viewed_at_ms,
+                   CASE :sort WHEN 'Time' THEN MAX(last_viewed_at_ms)
+                              WHEN 'PlayCount' THEN SUM(play_count)
+                              ELSE SUM(total_played_ms) END AS sort_value
             FROM playback_stats
             WHERE content_type = 'video' AND up_mid > 0 AND (total_played_ms > 0 OR play_count > 0)
             GROUP BY up_mid
         ) AS watched
-        WHERE :cursorTime IS NULL OR (watched.last_viewed_at_ms, watched.id) < (:cursorTime, :cursorId)
-        ORDER BY watched.last_viewed_at_ms DESC, watched.id DESC LIMIT :limit
+        WHERE :cursorValue IS NULL
+           OR (:descending AND (watched.sort_value, watched.id) < (:cursorValue, :cursorId))
+           OR (NOT :descending AND (watched.sort_value, watched.id) > (:cursorValue, :cursorId))
+        ORDER BY CASE WHEN :descending THEN watched.sort_value END DESC,
+                 CASE WHEN NOT :descending THEN watched.sort_value END ASC,
+                 CASE WHEN :descending THEN watched.id END DESC,
+                 CASE WHEN NOT :descending THEN watched.id END ASC LIMIT :limit
     """)
-    abstract suspend fun watchedUps(cursorTime: Long?, cursorId: Long?, limit: Int): List<PlaybackHistoryItem>
+    abstract suspend fun watchedUps(
+        cursorValue: Long?, cursorId: Long?, limit: Int, sort: String, descending: Boolean,
+    ): List<PlaybackHistoryItem>
 
     @Query("""
         SELECT ranked.avid,
