@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -53,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.ui.components.button.RelationButton
 import tv.hsrui.bolo.ui.components.video.actionsBar.VideoActionsBar
+import tv.hsrui.network.feature.user.info.UserCardStatsData
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.utils.formatCountToString
 import tv.hsrui.network.utils.formatToDateTime
@@ -62,6 +62,7 @@ import kotlin.text.ifEmpty
 fun VideoDescContent(
     videoInfo: VideoInfoData,
     tags: List<String>,
+    upStats: UserCardStatsData? = null,
     onTagClick: (String) -> Unit,
 ) {
     Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
@@ -128,14 +129,21 @@ fun VideoDescContent(
                             .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) }
                             .background(Color.Black)
                     )
-                    Column(Modifier.padding(start = 8.dp)) {
+                    Column(Modifier.weight(1F).padding(start = 8.dp)) {
                         Text(
                             text = videoInfo.upName,
                             modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            text = "${upStats?.followerCount?.formatCountToString() ?: "--"} 粉丝   " +
+                                "${upStats?.uploadCount?.formatCountToString() ?: "--"} 投稿",
+                            modifier = Modifier.alpha(0.5F),
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Spacer(Modifier.weight(1F))
                     RelationButton(
                         upName = videoInfo.upName,
                         mid = videoInfo.upMid,

@@ -48,6 +48,14 @@ fun VideoDescPage(
     val uiState by viewModel.uiState.collectAsState()
     val tagsViewModel = viewModel(key = "video_tags_${videoInfo.avid}") { VideoTagsViewModel(videoInfo.avid) }
     val tags by tagsViewModel.tags.collectAsState()
+    val upStats = if (videoInfo.isCooperation && videoInfo.staff.isNotEmpty()) {
+        null
+    } else {
+        val upStatsViewModel = viewModel(key = "video_up_stats_${videoInfo.upMid}") {
+            VideoUpStatsViewModel(videoInfo.upMid)
+        }
+        upStatsViewModel.stats.collectAsState().value
+    }
     val navigator: Navigator = koinInject()
     val columns = if (isMedium()) 2 else 1
     val videoList = collectionState.videoList
@@ -63,6 +71,7 @@ fun VideoDescPage(
             VideoDescContent(
                 videoInfo = videoInfo,
                 tags = tags,
+                upStats = upStats,
                 onTagClick = { navigator.navigateTo(BoloRoute.Search.Results(it)) },
             )
         }

@@ -62,3 +62,20 @@ data class UserUpStatData(
 data class UserArchiveStatData(
     @SerialName("view") val playCount: Long? = null,
 )
+
+@Serializable
+data class UserCardStatsResponse(
+    val code: Int = -1,
+    val data: UserCardStatsData? = null,
+) {
+    val isSuccess get() = code == 0 && data != null
+}
+
+@Serializable
+data class UserCardStatsData(
+    @SerialName("follower") private val rawFollowerCount: Long? = null,
+    @SerialName("archive_count") private val rawUploadCount: Long? = null,
+) {
+    val followerCount get() = rawFollowerCount?.takeIf { it >= 0 }
+    val uploadCount get() = rawUploadCount?.takeIf { it >= 0 }
+}

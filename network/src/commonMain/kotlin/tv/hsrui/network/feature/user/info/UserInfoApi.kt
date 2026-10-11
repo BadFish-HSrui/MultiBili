@@ -18,3 +18,9 @@ suspend fun fetchUserUpStat(mid: Long): UserUpStatResponse {
         parameter("mid", mid)
     }.body()
 }
+
+suspend fun fetchUserCardStats(mid: Long): UserCardStatsResponse {
+    return ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.USER_CARD_STATS) {
+        parameter("mid", mid)
+    }.body()
+}
