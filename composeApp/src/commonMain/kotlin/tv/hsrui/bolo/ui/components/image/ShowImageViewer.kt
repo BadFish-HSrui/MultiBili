@@ -28,9 +28,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -64,12 +66,21 @@ import tv.hsrui.bolo.utils.file.fetchImageForSave
 fun ShowImageViewer(
     urls: List<String>,
     initialIndex: Int,
+    previewUrls: List<String> = urls,
+    initialShowOriginal: Boolean = true,
     onDismissRequest: () -> Unit,
 ) {
     if (urls.isEmpty()) return
+    require(previewUrls.size == urls.size) { "预览图片与原图数量必须一致" }
     val pager = rememberPagerState(initialPage = initialIndex.coerceIn(urls.indices)) { urls.size }
     val scope = rememberCoroutineScope()
-    val zoomStates: List<CoilZoomState> = List(urls.size) { rememberCoilZoomState() }
+    var originalPages by remember(urls) {
+        mutableStateOf(if (initialShowOriginal) urls.indices.toSet() else emptySet<Int>())
+    }
+    val displayUrls = urls.mapIndexed { page, url -> if (page in originalPages) url else previewUrls[page] }
+    val zoomStates: List<CoilZoomState> = List(urls.size) { page ->
+        key(page, displayUrls[page]) { rememberCoilZoomState() }
+    }
     val currentZoomable = zoomStates[pager.currentPage].zoomable
     val context = LocalPlatformContext.current
     val imageSaver = remember { ImageSaver() }
@@ -121,10 +132,10 @@ fun ShowImageViewer(
                     ) { page ->
                         val selected = page == pager.currentPage
                         val zoomable = zoomStates[page].zoomable
-                        LaunchedEffect(selected) { if (!selected) zoomable.reset() }
+                        LaunchedEffect(selected, zoomable) { if (!selected) zoomable.reset() }
                         Box(Modifier.fillMaxSize().clipToBounds()) {
                             ShowImage(
-                                url = urls[page],
+                                url = displayUrls[page],
                                 contentDescription = "图片 ${page + 1}",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Inside,
@@ -160,6 +171,14 @@ fun ShowImageViewer(
                         hostState = snackbarHostState,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp, vertical = 8.dp),
                     )
+                }
+                if (displayUrls[pager.currentPage] != urls[pager.currentPage]) {
+                    TextButton(
+                        onClick = { originalPages = originalPages + pager.currentPage },
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    ) {
+                        Text("查看原图")
+                    }
                 }
                 Row(Modifier.align(Alignment.CenterHorizontally).padding(vertical = 4.dp)) {
                     IconButton(

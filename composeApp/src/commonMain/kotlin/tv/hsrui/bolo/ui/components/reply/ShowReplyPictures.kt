@@ -43,7 +43,7 @@ fun ShowReplyPictures(
                     modifier = Modifier.size(width = itemWidth, height = height),
                 ) {
                     ShowImage(
-                        url = picture.url,
+                        url = picture.thumbnailUrl,
                         contentDescription = "评论图片 ${index + 1}，共 ${pictures.size} 张，点击查看大图",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = if (ratio < 9f / 21f || ratio > 16f / 9f) ContentScale.Crop else ContentScale.Fit,

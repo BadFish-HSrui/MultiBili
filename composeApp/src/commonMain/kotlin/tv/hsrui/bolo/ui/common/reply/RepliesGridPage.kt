@@ -46,6 +46,7 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.bolo.ui.components.dialog.ShowDeleteReplyDialog
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
@@ -77,11 +78,12 @@ fun RepliesGridPage(
         overlayContent: @Composable () -> Unit,
     ) -> Unit,
 ) {
-    var viewingImageUrls by remember(viewModel) { mutableStateOf<List<String>>(emptyList()) }
+    val settings: BoloSettings = koinInject()
+    var viewingPictures by remember(viewModel) { mutableStateOf<List<ReplyPicture>>(emptyList()) }
     var viewingImageIndex by remember(viewModel) { mutableStateOf(0) }
     val onImageClick: (List<ReplyPicture>, Int) -> Unit = { pictures, index ->
         viewingImageIndex = index
-        viewingImageUrls = pictures.map { it.url }
+        viewingPictures = pictures
     }
     val sortType by viewModel.sortType.collectAsState()
     val repliesGridState = rememberLazyGridState()
@@ -169,7 +171,7 @@ fun RepliesGridPage(
 
             NavigationBackHandler(
                 state = subRepliesBackState,
-                isBackEnabled = isActive && subRepliesSurfaceState.isVisible && viewingImageUrls.isEmpty(),
+                isBackEnabled = isActive && subRepliesSurfaceState.isVisible && viewingPictures.isEmpty(),
                 onBackCancelled = {
                     val progress = latestPredictiveBackProgress[0]
                     latestPredictiveBackProgress[0] = 0f
@@ -233,7 +235,7 @@ fun RepliesGridPage(
                                                     }
                                                 },
                                                 isTop = true,
-                                                imageAnimationEnabled = viewingImageUrls.isEmpty() && !subRepliesSurfaceState.isVisible,
+                                                imageAnimationEnabled = viewingPictures.isEmpty() && !subRepliesSurfaceState.isVisible,
                                                 onImageClick = onImageClick,
                                             )
                                         }
@@ -266,7 +268,7 @@ fun RepliesGridPage(
                                         }
                                     },
                                     updateReply = { viewModel.updateReply(it) },
-                                    imageAnimationEnabled = viewingImageUrls.isEmpty() && !subRepliesSurfaceState.isVisible,
+                                    imageAnimationEnabled = viewingPictures.isEmpty() && !subRepliesSurfaceState.isVisible,
                                     onImageClick = onImageClick,
                                 )
                             }
@@ -340,7 +342,7 @@ fun RepliesGridPage(
                         canDeleteReply = canDeleteReply,
                         onReplyDeleted = onReplyDeleted,
                         modifier = Modifier.fillMaxSize(),
-                        imageAnimationEnabled = viewingImageUrls.isEmpty(),
+                        imageAnimationEnabled = viewingPictures.isEmpty(),
                         onImageClick = onImageClick,
                     )
                 }
@@ -438,11 +440,13 @@ fun RepliesGridPage(
         overlayContent,
     )
 
-    if (viewingImageUrls.isNotEmpty()) {
+    if (viewingPictures.isNotEmpty()) {
         ShowImageViewer(
-            urls = viewingImageUrls,
+            urls = viewingPictures.map { it.url },
+            previewUrls = viewingPictures.map { it.thumbnailUrl },
+            initialShowOriginal = settings.general.commentOriginalImageEnabled,
             initialIndex = viewingImageIndex,
-            onDismissRequest = { viewingImageUrls = emptyList() },
+            onDismissRequest = { viewingPictures = emptyList() },
         )
     }
 }

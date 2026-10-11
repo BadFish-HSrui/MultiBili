@@ -174,6 +174,19 @@ class GeneralSettings(settingsKSafe: KSafePlain) {
             currentUpRecentUploadsSheetEnabled = value
         }
 
+    private var storedCommentOriginalImageEnabled by settingsKSafe(
+        false, key = "bolo_general_comment_original_image_enabled",
+    )
+    private var currentCommentOriginalImageEnabled by mutableStateOf(storedCommentOriginalImageEnabled)
+
+    var commentOriginalImageEnabled: Boolean
+        get() = currentCommentOriginalImageEnabled
+        set(value) {
+            if (value == currentCommentOriginalImageEnabled) return
+            storedCommentOriginalImageEnabled = value
+            currentCommentOriginalImageEnabled = value
+        }
+
     private var storedDownloadDirectory by settingsKSafe("", key = "bolo_general_download_directory")
     private var currentDownloadDirectory by mutableStateOf(storedDownloadDirectory)
 
