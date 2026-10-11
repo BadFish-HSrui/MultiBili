@@ -11,8 +11,26 @@ import tv.hsrui.bolo.boloSetting.AppThemeMode
 import tv.hsrui.bolo.ui.theme.DefaultColorSpec
 import tv.hsrui.bolo.ui.theme.DefaultPaletteStyle
 import tv.hsrui.bolo.ui.theme.DefaultSeedColorRgb
+import tv.hsrui.network.feature.region.Region
 
 class GeneralSettings(settingsKSafe: KSafePlain) {
+    private var storedRegionOrder by settingsKSafe(emptyList<Int>(), key = "bolo_general_region_order_list")
+    private var currentRegionOrder by mutableStateOf(normalizeRegionOrder(storedRegionOrder))
+
+    var regionOrder: List<Region>
+        get() = currentRegionOrder
+        set(value) {
+            val normalized = normalizeRegionOrder(value.map { it.tid })
+            if (normalized == currentRegionOrder) return
+            storedRegionOrder = normalized.map { it.tid }
+            currentRegionOrder = normalized
+        }
+
+    private fun normalizeRegionOrder(ids: List<Int>): List<Region> {
+        val regionsById = Region.entries.associateBy { it.tid }
+        return (ids.mapNotNull { regionsById[it] } + Region.entries).distinct()
+    }
+
     private var storedThemeMode by settingsKSafe("auto", key = "bolo_general_theme_mode")
     private var currentThemeMode by mutableStateOf(
         AppThemeMode.entries.firstOrNull { it.storedValue == storedThemeMode } ?: AppThemeMode.Auto,
