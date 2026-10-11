@@ -149,7 +149,7 @@ fun VideosGridPage(
                             onBackToTop = { scope.launch { videoGridState.animateScrollToItem(0) } },
                             onRefresh = { onRefresh() },
                             modifier = Modifier.align(Alignment.BottomEnd),
-                            otherButton = otherButton,
+                            otherButton = { otherButton() },
                         )
                     }
                 }
