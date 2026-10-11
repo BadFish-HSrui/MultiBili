@@ -1,5 +1,6 @@
 package tv.hsrui.bolo.ui.components.dialog
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
@@ -20,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -86,7 +88,24 @@ fun ShowInfoDialog(
                     onClick = onConfirm,
                     enabled = confirmEnabled && remainingSeconds == 0,
                 ) {
-                    Text(if (remainingSeconds > 0) "${remainingSeconds}s" else "确认")
+                    Box {
+                        Text(
+                            text = "确认",
+                            modifier = if (remainingSeconds > 0) {
+                                Modifier.alpha(0f).clearAndSetSemantics {}
+                            } else {
+                                Modifier
+                            },
+                        )
+                        if (remainingSeconds > 0) {
+                            Box(
+                                modifier = Modifier.matchParentSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("${remainingSeconds}s", maxLines = 1, softWrap = false)
+                            }
+                        }
+                    }
                 }
             }
         }
