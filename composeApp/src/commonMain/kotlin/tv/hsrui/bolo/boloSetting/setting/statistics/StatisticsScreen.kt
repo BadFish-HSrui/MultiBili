@@ -122,7 +122,7 @@ fun StatisticsScreen(
                 Text(if (awaitingClearConfirmation) "清除数据" else "恢复数据",
                     style = MaterialTheme.typography.titleLarge)
             },
-            text = if (awaitingClearConfirmation) "当前统计数据将被清除，此操作无法撤销" else "当前数据将被清除",
+            text = if (awaitingClearConfirmation) "当前统计数据将被清除，此操作无法撤销" else "备份将与当前数据合并，建议先备份当前数据",
             forcedDisplaySeconds = 5,
             onCancel = { model.confirmDataOperation(false) },
             onConfirm = { model.confirmDataOperation(true) },
