@@ -12,6 +12,9 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.navigation.openUserSpace
 import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.player.VideoPlayer
 import tv.hsrui.bolo.player.VideoPlayerUiState
@@ -30,9 +33,10 @@ fun VideoPage(
     modifier: Modifier = Modifier
 ) {
     val videoInfo = uiState.video
+    val settings: BoloSettings = koinInject()
     var selectedUpMid by remember(videoInfo.avid) { mutableStateOf<Long?>(null) }
-    LaunchedEffect(isActive) {
-        if (!isActive) selectedUpMid = null
+    LaunchedEffect(isActive, settings.general.upRecentUploadsSheetEnabled) {
+        if (!isActive || !settings.general.upRecentUploadsSheetEnabled) selectedUpMid = null
     }
     val viewModel = videoViewModel.playbackSession?.player
     val playerState = viewModel?.uiState?.collectAsState()?.value
@@ -55,7 +59,10 @@ fun VideoPage(
                         onPartSelected = videoViewModel::selectVideoPart,
                         onDescendingChange = videoViewModel::setDescending,
                         onUpClick = { mid ->
-                            if (isActive && mid > 0) selectedUpMid = mid
+                            if (isActive && mid > 0) {
+                                if (settings.general.upRecentUploadsSheetEnabled) selectedUpMid = mid
+                                else openUserSpace(mid)
+                            }
                         },
                         onListVideoSelected = videoViewModel::selectListVideo,
                         onLoadMoreListVideos = videoViewModel::loadMoreListVideos,
@@ -92,7 +99,7 @@ fun VideoPage(
             episodeNavigationEnabled = uiState.episodeNavigationEnabled,
         )
     }
-    if (isActive) {
+    if (isActive && settings.general.upRecentUploadsSheetEnabled) {
         selectedUpMid?.let { mid ->
             ShowUserUploadsSheet(mid = mid, onDismissRequest = { selectedUpMid = null })
         }

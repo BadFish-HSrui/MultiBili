@@ -161,6 +161,19 @@ class GeneralSettings(settingsKSafe: KSafePlain) {
             currentSearchTrendingEnabled = value
         }
 
+    private var storedUpRecentUploadsSheetEnabled by settingsKSafe(
+        false, key = "bolo_general_up_recent_uploads_sheet_enabled",
+    )
+    private var currentUpRecentUploadsSheetEnabled by mutableStateOf(storedUpRecentUploadsSheetEnabled)
+
+    var upRecentUploadsSheetEnabled: Boolean
+        get() = currentUpRecentUploadsSheetEnabled
+        set(value) {
+            if (value == currentUpRecentUploadsSheetEnabled) return
+            storedUpRecentUploadsSheetEnabled = value
+            currentUpRecentUploadsSheetEnabled = value
+        }
+
     private var storedDownloadDirectory by settingsKSafe("", key = "bolo_general_download_directory")
     private var currentDownloadDirectory by mutableStateOf(storedDownloadDirectory)
 
