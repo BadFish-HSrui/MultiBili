@@ -5,9 +5,28 @@ import androidx.room3.Insert
 import androidx.room3.Query
 import androidx.room3.Transaction
 import androidx.room3.Update
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 @Dao
 internal abstract class PlaybackStatisticsDao {
+    @Query("DELETE FROM playback_watched_range")
+    protected abstract suspend fun deleteWatchedRanges()
+
+    @Query("DELETE FROM playback_daily_stats")
+    protected abstract suspend fun deleteDailyStats()
+
+    @Query("DELETE FROM playback_stats")
+    protected abstract suspend fun deleteRecords()
+
+    @Transaction
+    open suspend fun clear() {
+        deleteWatchedRanges()
+        deleteDailyStats()
+        deleteRecords()
+        currentCoroutineContext().ensureActive()
+    }
+
     @Query("SELECT * FROM playback_stats WHERE avid = :avid AND cid = :cid")
     abstract suspend fun get(avid: Long, cid: Long): PlaybackStatisticsRecord?
 

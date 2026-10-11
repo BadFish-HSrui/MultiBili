@@ -107,6 +107,11 @@ class PlaybackStatisticsManager internal constructor(
         writeMutex.withLock { database().restoreBackup(path) }
     }
 
+    suspend fun clear() {
+        flush()
+        writeMutex.withLock { database().playbackStatisticsDao().clear() }
+    }
+
     /** 聚合后按指定字段和 AV/UID 同向分页；游标须来自相同排序，默认最近观看时间倒序。 */
     suspend fun historyPage(
         type: PlaybackHistoryType,

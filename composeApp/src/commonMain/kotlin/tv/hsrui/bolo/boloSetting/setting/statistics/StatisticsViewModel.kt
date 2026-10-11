@@ -46,6 +46,8 @@ class StatisticsViewModel(
     val dataOperationRunning = mutableDataOperationRunning.asStateFlow()
     private val mutableAwaitingRestoreConfirmation = MutableStateFlow(false)
     val awaitingRestoreConfirmation = mutableAwaitingRestoreConfirmation.asStateFlow()
+    private val mutableAwaitingClearConfirmation = MutableStateFlow(false)
+    val awaitingClearConfirmation = mutableAwaitingClearConfirmation.asStateFlow()
     private var dataOperationJob: Job? = null
     private var dataConfirmation: CompletableDeferred<Boolean>? = null
 
@@ -77,6 +79,14 @@ class StatisticsViewModel(
         } finally {
             releaseTemporaryFile(path)
         }
+    }
+
+    fun clearData(onCleared: () -> Unit) = runDataOperation("数据清除失败") {
+        if (!awaitConfirmation(mutableAwaitingClearConfirmation)) return@runDataOperation
+        appData.playbackStatistics.clear()
+        currentCoroutineContext().ensureActive()
+        onCleared()
+        showSnackbarMessage("数据已清除")
     }
 
     private suspend fun awaitConfirmation(awaiting: MutableStateFlow<Boolean>): Boolean {

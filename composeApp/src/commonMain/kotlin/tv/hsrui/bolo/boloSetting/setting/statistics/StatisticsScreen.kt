@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.SettingsBackupRestore
 import androidx.compose.material3.Card
@@ -79,6 +80,7 @@ fun StatisticsScreen(
     val state by model.uiState.collectAsStateWithLifecycle()
     val dataOperationRunning by model.dataOperationRunning.collectAsStateWithLifecycle()
     val awaitingRestoreConfirmation by model.awaitingRestoreConfirmation.collectAsStateWithLifecycle()
+    val awaitingClearConfirmation by model.awaitingClearConfirmation.collectAsStateWithLifecycle()
     val rankingsModel = viewModel { PlaybackRankingsViewModel(limit = 10) }
     val rankingsState by rankingsModel.uiState.collectAsStateWithLifecycle()
     var dayCount by rememberSaveable { mutableIntStateOf(7) }
@@ -114,13 +116,13 @@ fun StatisticsScreen(
     selectedHistory?.let { type ->
         ShowPlaybackHistorySheet(type = type, onDismissRequest = { selectedHistory = null })
     }
-    if (awaitingRestoreConfirmation) {
+    if (awaitingRestoreConfirmation || awaitingClearConfirmation) {
         ShowConfirmDialog(
             title = {
-                Text("恢复数据",
+                Text(if (awaitingClearConfirmation) "清除数据" else "恢复数据",
                     style = MaterialTheme.typography.titleLarge)
             },
-            text = "当前数据将被清除",
+            text = if (awaitingClearConfirmation) "当前统计数据将被清除，此操作无法撤销" else "当前数据将被清除",
             forcedDisplaySeconds = 5,
             onCancel = { model.confirmDataOperation(false) },
             onConfirm = { model.confirmDataOperation(true) },
@@ -144,6 +146,11 @@ fun StatisticsScreen(
                     },
                     text = { Text("恢复数据") },
                     icon = { Icon(Icons.Rounded.SettingsBackupRestore, contentDescription = null) },
+                )
+                FloatingActionButtonMenuItem(
+                    onClick = { closeMenu(); model.clearData(reloadStatistics) },
+                    text = { Text("清除数据") },
+                    icon = { Icon(Icons.Rounded.DeleteForever, contentDescription = null) },
                 )
             }
         },
