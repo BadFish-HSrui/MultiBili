@@ -116,6 +116,7 @@ kotlin {
             implementation(libs.zoomimage.compose.coil3.core)
             implementation(libs.material.icons)
             implementation(libs.material3.adaptive)
+            implementation(libs.reorderable)
             implementation(libs.qrose)
             implementation(libs.ksafe)
             implementation(libs.jetbrains.navigation3.ui)
