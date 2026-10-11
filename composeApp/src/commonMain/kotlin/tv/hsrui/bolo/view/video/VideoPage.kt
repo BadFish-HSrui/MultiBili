@@ -3,6 +3,11 @@ package tv.hsrui.bolo.view.video
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
@@ -11,6 +16,7 @@ import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.player.VideoPlayer
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.ui.common.player.PlayerPageLayout
+import tv.hsrui.bolo.userSpace.ShowUserUploadsSheet
 import tv.hsrui.bolo.view.video.desc.VideoDescPage
 import tv.hsrui.bolo.view.video.reply.VideoReplyPage
 
@@ -24,6 +30,10 @@ fun VideoPage(
     modifier: Modifier = Modifier
 ) {
     val videoInfo = uiState.video
+    var selectedUpMid by remember(videoInfo.avid) { mutableStateOf<Long?>(null) }
+    LaunchedEffect(isActive) {
+        if (!isActive) selectedUpMid = null
+    }
     val viewModel = videoViewModel.playbackSession?.player
     val playerState = viewModel?.uiState?.collectAsState()?.value
     val playerUiState = playerState.takeIf {
@@ -44,6 +54,9 @@ fun VideoPage(
                         onEpisodeSelected = videoViewModel::selectCollectionEpisode,
                         onPartSelected = videoViewModel::selectVideoPart,
                         onDescendingChange = videoViewModel::setDescending,
+                        onUpClick = { mid ->
+                            if (isActive && mid > 0) selectedUpMid = mid
+                        },
                         onListVideoSelected = videoViewModel::selectListVideo,
                         onLoadMoreListVideos = videoViewModel::loadMoreListVideos,
                         onRetryList = { videoViewModel.loadVideoList(uiState.videoList?.pendingDescending ?: false) },
@@ -78,5 +91,10 @@ fun VideoPage(
             onNextEpisode = if (uiState.hasNextEpisode) videoViewModel::selectNextEpisode else null,
             episodeNavigationEnabled = uiState.episodeNavigationEnabled,
         )
+    }
+    if (isActive) {
+        selectedUpMid?.let { mid ->
+            ShowUserUploadsSheet(mid = mid, onDismissRequest = { selectedUpMid = null })
+        }
     }
 }

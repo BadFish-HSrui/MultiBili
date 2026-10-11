@@ -47,6 +47,7 @@ fun VideoDescPage(
     onEpisodeSelected: (String) -> Unit,
     onPartSelected: (Long) -> Unit,
     onDescendingChange: (Boolean) -> Unit,
+    onUpClick: (Long) -> Unit,
     onListVideoSelected: (String) -> Unit = {},
     onLoadMoreListVideos: (Boolean) -> Unit = {},
     onRetryList: () -> Unit = {},
@@ -82,6 +83,7 @@ fun VideoDescPage(
                 tags = tags,
                 upStats = upStats,
                 onTagClick = { navigator.navigateTo(BoloRoute.Search.Results(it)) },
+                onUpClick = onUpClick,
             )
         }
         if (videoList != null) {
