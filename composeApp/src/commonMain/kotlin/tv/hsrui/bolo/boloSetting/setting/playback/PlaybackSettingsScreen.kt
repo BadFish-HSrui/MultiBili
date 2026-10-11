@@ -48,7 +48,6 @@ import org.koin.compose.koinInject
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.boloSetting.BoloSettings
-import tv.hsrui.bolo.boloSetting.PlaybackEndBehavior
 import tv.hsrui.bolo.boloSetting.PlaybackLoudnessMode
 import tv.hsrui.bolo.boloSetting.PlaybackProgressReportMode
 import tv.hsrui.bolo.ui.components.dialog.ShowInfoDialog
@@ -269,32 +268,6 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     checked = settings.playback.resumeFromHistoryEnabled,
                                     onCheckedChange = null
                                 )
-                            }
-                            HorizontalDivider()
-                            Row(
-                                modifier = Modifier.fillMaxWidth().height(64.dp)
-                                    .padding(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text("播放结束行为", style = MaterialTheme.typography.bodyLarge)
-                                Spacer(Modifier.weight(1f))
-                                SingleChoiceSegmentedButtonRow(modifier = Modifier.widthIn(max = 220.dp)) {
-                                    val behaviors = PlaybackEndBehavior.entries
-                                    behaviors.forEachIndexed { index, behavior ->
-                                        SegmentedButton(
-                                            selected = behavior == settings.playback.endBehavior,
-                                            onClick = { settings.playback.endBehavior = behavior },
-                                            shape = SegmentedButtonDefaults.itemShape(
-                                                index = index,
-                                                count = behaviors.size,
-                                            ),
-                                            modifier = Modifier.padding(vertical = 8.dp),
-                                        ) {
-                                            Text(behavior.title, style = MaterialTheme.typography.labelMedium, maxLines = 1)
-                                        }
-                                    }
-                                }
                             }
                         }
                     }

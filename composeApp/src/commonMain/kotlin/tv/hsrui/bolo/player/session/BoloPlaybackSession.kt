@@ -16,7 +16,6 @@ import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.settings.BoloPlayerSettings
-import tv.hsrui.bolo.boloSetting.PlaybackEndBehavior
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.player.VideoPlayerViewModel
@@ -72,12 +71,10 @@ class BoloPlaybackSession private constructor(val key: String) {
                 wasEnded = playback.isEnded
                 publish()
                 if (ended) {
-                    val behavior = if (player.singleEpisodeLoopEnabled) PlaybackEndBehavior.Replay
-                        else settings.playback.endBehavior
-                    when (behavior) {
-                        PlaybackEndBehavior.Off -> Unit
-                        PlaybackEndBehavior.Replay -> player.play()
-                        PlaybackEndBehavior.NextEpisode -> if (navigationEnabled) next?.invoke()
+                    if (player.singleEpisodeLoopEnabled) {
+                        player.play()
+                    } else if (playerSettings.playback.autoPlayNextEnabled && navigationEnabled) {
+                        next?.invoke()
                     }
                 }
             }

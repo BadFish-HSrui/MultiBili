@@ -8,6 +8,20 @@ import eu.anifantakis.lib.ksafe.KSafePlain
 import kotlin.math.roundToInt
 
 class PlayerPlaybackSettings(settingsKSafe: KSafePlain) {
+    private var storedAutoPlayNextEnabled by settingsKSafe(
+        false,
+        key = "player_playback_auto_play_next_enabled",
+    )
+    private var currentAutoPlayNextEnabled by mutableStateOf(storedAutoPlayNextEnabled)
+
+    var autoPlayNextEnabled: Boolean
+        get() = currentAutoPlayNextEnabled
+        set(value) {
+            if (value == currentAutoPlayNextEnabled) return
+            storedAutoPlayNextEnabled = value
+            currentAutoPlayNextEnabled = value
+        }
+
     private var storedResumeAfterBackgroundEnabled by settingsKSafe(
         false,
         key = "player_playback_resume_after_background_enabled",

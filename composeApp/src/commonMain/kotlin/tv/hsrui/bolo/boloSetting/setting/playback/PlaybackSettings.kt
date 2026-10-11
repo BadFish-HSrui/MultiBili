@@ -6,7 +6,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import eu.anifantakis.lib.ksafe.KSafePlain
 import kotlin.math.roundToInt
-import tv.hsrui.bolo.boloSetting.PlaybackEndBehavior
 import tv.hsrui.bolo.boloSetting.PlaybackLoudnessMode
 import tv.hsrui.bolo.boloSetting.PlaybackProgressReportMode
 import tv.hsrui.network.feature.player.enumModels.AudioQuality
@@ -281,20 +280,6 @@ class PlaybackSettings(settingsKSafe: KSafePlain) {
             if (value == currentAutoFullscreenOnRotateEnabled) return
             storedAutoFullscreenOnRotateEnabled = value
             currentAutoFullscreenOnRotateEnabled = value
-        }
-
-    private var storedEndBehavior by settingsKSafe("off", key = "bolo_playback_end_behavior")
-    private var currentEndBehavior by mutableStateOf(
-        PlaybackEndBehavior.entries.firstOrNull { it.storedValue == storedEndBehavior }
-            ?: PlaybackEndBehavior.Off,
-    )
-
-    var endBehavior: PlaybackEndBehavior
-        get() = currentEndBehavior
-        set(value) {
-            if (value == currentEndBehavior) return
-            storedEndBehavior = value.storedValue
-            currentEndBehavior = value
         }
 
     private var storedSubtitleAlwaysOn by settingsKSafe(false, key = "bolo_playback_subtitle_always_on")
