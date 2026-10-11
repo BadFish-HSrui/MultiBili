@@ -13,6 +13,7 @@ import tv.hsrui.bolo.player.session.BoloPlaybackSession
 import tv.hsrui.bolo.navigation.ExternalLinkHandler
 import tv.hsrui.bolo.download.DownloadFiles
 import tv.hsrui.bolo.utils.file.LocalFileAccess
+import tv.hsrui.bolo.utils.file.ImageSaver
 
 class MainActivity : ComponentActivity() {
     private fun receiveExternalLink(intent: Intent) {
@@ -50,6 +51,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         DownloadFiles.attach(this)
         LocalFileAccess.attach(this)
+        ImageSaver.attach(this)
         receiveExternalLink(intent)
 
         requestedOrientation = if (getPlatform().isPhone) {
