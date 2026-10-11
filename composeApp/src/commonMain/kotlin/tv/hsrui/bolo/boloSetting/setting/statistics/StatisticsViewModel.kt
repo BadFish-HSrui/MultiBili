@@ -3,12 +3,15 @@ package tv.hsrui.bolo.boloSetting.setting.statistics
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -19,6 +22,8 @@ import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.storage.appData.AppDataStorage
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackDailyStats
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackStatisticsSnapshot
+import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
+import tv.hsrui.bolo.utils.file.LocalFileAccess
 import kotlin.time.Clock
 
 data class StatisticsUiState(
@@ -36,6 +41,84 @@ class StatisticsViewModel(
     private val mutableUiState = MutableStateFlow(StatisticsUiState())
     val uiState = mutableUiState.asStateFlow()
     private var loadJob: Job? = null
+    private val files = LocalFileAccess()
+    private val mutableDataOperationRunning = MutableStateFlow(false)
+    val dataOperationRunning = mutableDataOperationRunning.asStateFlow()
+    private val mutableAwaitingRestoreConfirmation = MutableStateFlow(false)
+    val awaitingRestoreConfirmation = mutableAwaitingRestoreConfirmation.asStateFlow()
+    private var dataOperationJob: Job? = null
+    private var dataConfirmation: CompletableDeferred<Boolean>? = null
+
+    fun exportData() = runDataOperation("数据导出失败") {
+        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+        val time = listOf(now.hour, now.minute, now.second).joinToString("-") { it.toString().padStart(2, '0') }
+        val name = "multibili-statistics-${now.date}-$time.db"
+        val path = files.temporaryPath(name)
+        try {
+            appData.playbackStatistics.exportBackup(path)
+            val saved = files.saveFile(path, name) ?: return@runDataOperation
+            currentCoroutineContext().ensureActive()
+            val opened = files.showFileInFolder(saved)
+            showSnackbarMessage(if (opened) "数据已导出" else "数据已导出，无法打开所在文件夹")
+        } finally {
+            releaseTemporaryFile(path)
+        }
+    }
+
+    fun restoreData(onRestored: () -> Unit) = runDataOperation("数据恢复失败") {
+        val path = files.importFile() ?: return@runDataOperation
+        try {
+            appData.playbackStatistics.validateBackup(path)
+            if (!awaitConfirmation(mutableAwaitingRestoreConfirmation)) return@runDataOperation
+            appData.playbackStatistics.restoreBackup(path)
+            currentCoroutineContext().ensureActive()
+            onRestored()
+            showSnackbarMessage("数据已恢复")
+        } finally {
+            releaseTemporaryFile(path)
+        }
+    }
+
+    private suspend fun awaitConfirmation(awaiting: MutableStateFlow<Boolean>): Boolean {
+        currentCoroutineContext().ensureActive()
+        val confirmation = CompletableDeferred<Boolean>()
+        dataConfirmation = confirmation
+        awaiting.value = true
+        return try { confirmation.await() } finally {
+            awaiting.value = false
+            dataConfirmation = null
+        }
+    }
+
+    fun confirmDataOperation(confirmed: Boolean) {
+        dataConfirmation?.complete(confirmed)
+    }
+
+    private fun runDataOperation(failureMessage: String, action: suspend () -> Unit) {
+        if (mutableDataOperationRunning.value) return
+        mutableDataOperationRunning.value = true
+        dataOperationJob = viewModelScope.launch {
+            try {
+                action()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
+                showSnackbarMessage("$failureMessage：${error.message ?: "未知错误"}")
+            } finally {
+                mutableDataOperationRunning.value = false
+            }
+        }
+    }
+
+    private suspend fun releaseTemporaryFile(path: String) = withContext(NonCancellable) {
+        // 清理失败不改变已完成的导出或恢复结果。
+        runCatching { files.deleteTemporaryFile(path) }.onFailure { println("统计临时文件清理失败：${it.message}") }
+    }
+
+    fun cancelDataOperation() {
+        dataOperationJob?.cancel()
+    }
 
     /** 进入页面或读取失败后重试；统一读取近 30 天，查看期间复用同一快照。 */
     fun load() {

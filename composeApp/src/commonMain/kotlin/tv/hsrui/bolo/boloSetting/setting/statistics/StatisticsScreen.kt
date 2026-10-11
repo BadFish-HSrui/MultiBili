@@ -19,8 +19,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.FileUpload
+import androidx.compose.material.icons.rounded.SettingsBackupRestore
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButtonMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,6 +60,8 @@ import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackDailyStats
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistoryType
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackStatisticsSummary
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
+import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
+import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.statistics.PlaybackRankingsViewModel
 import tv.hsrui.bolo.ui.components.statistics.ShowPlaybackHistorySheet
 import tv.hsrui.bolo.ui.components.statistics.ShowPlaybackRankings
@@ -64,21 +70,35 @@ import tv.hsrui.bolo.ui.components.statistics.formatStatisticsDuration
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.utils.isExpanded
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun StatisticsScreen(
     modifier: Modifier = Modifier,
     model: StatisticsViewModel = viewModel { StatisticsViewModel() },
 ) {
     val state by model.uiState.collectAsStateWithLifecycle()
+    val dataOperationRunning by model.dataOperationRunning.collectAsStateWithLifecycle()
+    val awaitingRestoreConfirmation by model.awaitingRestoreConfirmation.collectAsStateWithLifecycle()
     val rankingsModel = viewModel { PlaybackRankingsViewModel(limit = 10) }
     val rankingsState by rankingsModel.uiState.collectAsStateWithLifecycle()
     var dayCount by rememberSaveable { mutableIntStateOf(7) }
     val days = remember(state.days, dayCount) { state.days.takeLast(dayCount) }
     var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
     var selectedHistory by remember { mutableStateOf<PlaybackHistoryType?>(null) }
+    val reloadStatistics: () -> Unit = {
+        selectedDay = null
+        selectedHistory = null
+        model.cancelLoading()
+        rankingsModel.cancelLoading()
+        model.load()
+        rankingsModel.load()
+    }
     DisposableEffect(model) {
         model.load()
-        onDispose { model.cancelLoading() }
+        onDispose {
+            model.cancelLoading()
+            model.cancelDataOperation()
+        }
     }
     DisposableEffect(rankingsModel) {
         rankingsModel.load()
@@ -94,10 +114,39 @@ fun StatisticsScreen(
     selectedHistory?.let { type ->
         ShowPlaybackHistorySheet(type = type, onDismissRequest = { selectedHistory = null })
     }
+    if (awaitingRestoreConfirmation) {
+        ShowConfirmDialog(
+            title = {
+                Text("恢复数据",
+                    style = MaterialTheme.typography.titleLarge)
+            },
+            text = "当前数据将被清除",
+            forcedDisplaySeconds = 5,
+            onCancel = { model.confirmDataOperation(false) },
+            onConfirm = { model.confirmDataOperation(true) },
+        )
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = { if (!isExpanded()) ShowTopBarWithNavigationButton(title = { Text("统计数据") }) },
+        floatingActionButton = {
+            ShowGridFABMenu(enabled = !dataOperationRunning) { closeMenu ->
+                FloatingActionButtonMenuItem(
+                    onClick = { closeMenu(); model.exportData() },
+                    text = { Text("导出数据") },
+                    icon = { Icon(Icons.Rounded.FileUpload, contentDescription = null) },
+                )
+                FloatingActionButtonMenuItem(
+                    onClick = {
+                        closeMenu()
+                        model.restoreData(reloadStatistics)
+                    },
+                    text = { Text("恢复数据") },
+                    icon = { Icon(Icons.Rounded.SettingsBackupRestore, contentDescription = null) },
+                )
+            }
+        },
     ) { innerPadding ->
         Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.TopCenter) {
             LazyColumn(
