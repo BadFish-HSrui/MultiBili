@@ -7,6 +7,7 @@ import androidx.room3.Transaction
 import androidx.room3.Update
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlin.uuid.Uuid
 
 @Dao
 internal abstract class PlaybackStatisticsDao {
@@ -19,13 +20,35 @@ internal abstract class PlaybackStatisticsDao {
     @Query("DELETE FROM playback_stats")
     protected abstract suspend fun deleteRecords()
 
+    @Query("DELETE FROM playback_source_daily_stats")
+    protected abstract suspend fun deleteSourceDailyStats()
+
+    @Query("DELETE FROM playback_legacy_totals")
+    protected abstract suspend fun deleteLegacyTotals()
+
+    @Query("DELETE FROM playback_source")
+    protected abstract suspend fun deleteSources()
+
     @Transaction
     open suspend fun clear() {
         deleteWatchedRanges()
         deleteDailyStats()
+        deleteSourceDailyStats()
+        deleteLegacyTotals()
         deleteRecords()
+        deleteSources()
         currentCoroutineContext().ensureActive()
     }
+
+    @Query("SELECT * FROM playback_source WHERE is_active = 1")
+    protected abstract suspend fun activeSource(): PlaybackStatisticsSourceEntity?
+
+    @Insert
+    protected abstract suspend fun insertSource(source: PlaybackStatisticsSourceEntity): Long
+
+    @Transaction
+    open suspend fun writerSourceId(): Long = activeSource()?.id
+        ?: insertSource(PlaybackStatisticsSourceEntity(sourceKey = Uuid.random().toString(), isActive = true))
 
     @Query("SELECT * FROM playback_stats WHERE avid = :avid AND cid = :cid")
     abstract suspend fun get(avid: Long, cid: Long): PlaybackStatisticsRecord?
@@ -252,10 +275,25 @@ internal abstract class PlaybackStatisticsDao {
 
     @Query("""
         SELECT d.local_date, d.total_played_ms, d.play_count
-        FROM playback_daily_stats d JOIN playback_stats h ON h.id = d.record_id
-        WHERE h.avid = :avid AND h.cid = :cid AND d.local_date IN (:dates)
+        FROM playback_source_daily_stats d JOIN playback_stats h ON h.id = d.record_id
+        WHERE h.avid = :avid AND h.cid = :cid AND d.source_id = :sourceId AND d.local_date IN (:dates)
     """)
-    abstract suspend fun dailyStatsForRecord(avid: Long, cid: Long, dates: List<String>): List<PlaybackDailyStats>
+    abstract suspend fun dailyStatsForRecord(avid: Long, cid: Long, sourceId: Long, dates: List<String>): List<PlaybackDailyStats>
+
+    @Query("SELECT * FROM playback_source_daily_stats WHERE record_id = :recordId AND source_id = :sourceId AND local_date = :date")
+    protected abstract suspend fun sourceDay(recordId: Long, sourceId: Long, date: String): PlaybackSourceDailyStatsEntity?
+
+    @Query("SELECT local_date, total_played_ms, play_count FROM playback_daily_stats WHERE record_id = :recordId AND local_date = :date")
+    protected abstract suspend fun cachedDay(recordId: Long, date: String): PlaybackDailyStats?
+
+    @Query("""
+        INSERT INTO playback_source_daily_stats (record_id, source_id, local_date, total_played_ms, play_count)
+        VALUES (:recordId, :sourceId, :date, :playedMs, :playCount)
+        ON CONFLICT(record_id, source_id, local_date) DO UPDATE SET
+            total_played_ms = MAX(total_played_ms, excluded.total_played_ms),
+            play_count = MAX(play_count, excluded.play_count)
+    """)
+    protected abstract suspend fun upsertSourceDay(recordId: Long, sourceId: Long, date: String, playedMs: Long, playCount: Long)
 
     @Query("""
         INSERT INTO playback_daily_stats (record_id, local_date, total_played_ms, play_count)
@@ -289,10 +327,7 @@ internal abstract class PlaybackStatisticsDao {
         metadata: PlaybackStatisticsMetadata,
         firstViewedAtMs: Long,
         lastViewedAtMs: Long,
-        basePlayedMs: Long,
-        playedMs: Long,
-        basePlayCount: Long,
-        playCount: Long,
+        sourceId: Long?,
         dailyStats: List<PlaybackDailyStats>,
         ranges: List<PlaybackWatchedRange>,
     ): PlaybackStatisticsRecord {
@@ -312,15 +347,28 @@ internal abstract class PlaybackStatisticsDao {
             seasonId = metadata.seasonId,
             episodeId = metadata.episodeId,
             durationMs = metadata.durationMs.takeIf { it > 0L } ?: old?.durationMs ?: 0L,
-            totalPlayedMs = maxOf(old?.totalPlayedMs ?: 0L, basePlayedMs + playedMs),
-            playCount = maxOf(old?.playCount ?: 0L, basePlayCount + playCount),
+            totalPlayedMs = old?.totalPlayedMs ?: 0L,
+            playCount = old?.playCount ?: 0L,
             firstViewedAtMs = old?.firstViewedAtMs ?: firstViewedAtMs,
             lastViewedAtMs = maxOf(old?.lastViewedAtMs ?: lastViewedAtMs, lastViewedAtMs),
         )
-        if (old == null) record = record.copy(id = insert(record)) else update(record)
+        if (old == null) record = record.copy(id = insert(record))
         for (day in dailyStats) {
-            upsertDailyStats(record.id, day.localDate, day.totalPlayedMs, day.playCount)
+            val writerId = checkNotNull(sourceId)
+            val previous = sourceDay(record.id, writerId, day.localDate)
+            val playedDelta = (day.totalPlayedMs - (previous?.totalPlayedMs ?: 0L)).coerceAtLeast(0L)
+            val countDelta = (day.playCount - (previous?.playCount ?: 0L)).coerceAtLeast(0L)
+            val cached = cachedDay(record.id, day.localDate)
+            upsertSourceDay(record.id, writerId, day.localDate, day.totalPlayedMs, day.playCount)
+            upsertDailyStats(record.id, day.localDate,
+                addPlaybackStatistics(cached?.totalPlayedMs ?: 0L, playedDelta),
+                addPlaybackStatistics(cached?.playCount ?: 0L, countDelta))
+            record = record.copy(
+                totalPlayedMs = addPlaybackStatistics(record.totalPlayedMs, playedDelta),
+                playCount = addPlaybackStatistics(record.playCount, countDelta),
+            )
         }
+        if (old != null || dailyStats.isNotEmpty()) update(record)
         for (range in ranges) {
             require(range.startMs >= 0L && range.endMs > range.startMs)
             val overlap = overlappingRanges(record.id, range.startMs, range.endMs)
@@ -329,6 +377,12 @@ internal abstract class PlaybackStatisticsDao {
             deleteOverlappingRanges(record.id, start, end)
             insertRange(PlaybackWatchedRangeEntity(record.id, start, end))
         }
+        currentCoroutineContext().ensureActive()
         return record
     }
+}
+
+internal fun addPlaybackStatistics(value: Long, increment: Long): Long {
+    check(value >= 0L && increment >= 0L && value <= Long.MAX_VALUE - increment) { "统计数据计数溢出" }
+    return value + increment
 }

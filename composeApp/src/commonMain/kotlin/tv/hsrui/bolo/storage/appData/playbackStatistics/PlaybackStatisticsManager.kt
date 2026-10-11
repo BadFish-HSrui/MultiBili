@@ -268,8 +268,7 @@ class PlaybackStatisticsManager internal constructor(
             private set
         internal var closed = false
             private set
-        private var basePlayedMs: Long? = null
-        private var basePlayCount: Long? = null
+        private var writerSourceId: Long? = null
         private val baseDailyStats = mutableMapOf<String, PlaybackDailyStats>()
         private val dailyTotals = mutableMapOf<String, PlaybackDailyStats>()
         private val pendingDates = mutableSetOf<String>()
@@ -385,7 +384,10 @@ class PlaybackStatisticsManager internal constructor(
         private fun updateDailyStats(date: String, playedMs: Long, starts: Long) {
             if (playedMs == 0L && starts == 0L) return
             val old = dailyTotals[date] ?: PlaybackDailyStats(date)
-            dailyTotals[date] = old.copy(totalPlayedMs = old.totalPlayedMs + playedMs, playCount = old.playCount + starts)
+            dailyTotals[date] = old.copy(
+                totalPlayedMs = addPlaybackStatistics(old.totalPlayedMs, playedMs),
+                playCount = addPlaybackStatistics(old.playCount, starts),
+            )
             pendingDates.add(date)
             dirty = true
         }
@@ -418,8 +420,6 @@ class PlaybackStatisticsManager internal constructor(
             if (!dirty && rangesLoaded) return
             val snapshotMetadata = metadata
             val snapshotTime = lastViewedAtMs
-            val snapshotPlayedMs = playedTime.inWholeMilliseconds
-            val snapshotPlayCount = playCount
             val snapshotDaily = pendingDates.map { dailyTotals.getValue(it) }
             val snapshotRanges = pendingRanges
             pendingRanges = emptyList()
@@ -428,24 +428,20 @@ class PlaybackStatisticsManager internal constructor(
             try {
                 val dao = database().playbackStatisticsDao()
                 // 单一写任务中先固定基值；即使提交后的返回被中断，重试也不以新总量重新加算。
-                if (basePlayedMs == null || basePlayCount == null) {
-                    val old = dao.get(snapshotMetadata.avid, snapshotMetadata.cid)
-                    basePlayedMs = old?.totalPlayedMs ?: 0L
-                    basePlayCount = old?.playCount ?: 0L
-                }
+                if (snapshotDaily.isNotEmpty() && writerSourceId == null) writerSourceId = dao.writerSourceId()
                 val missingDates = snapshotDaily.map { it.localDate }.filterNot(baseDailyStats::containsKey)
                 if (missingDates.isNotEmpty()) {
-                    val saved = dao.dailyStatsForRecord(snapshotMetadata.avid, snapshotMetadata.cid, missingDates)
+                    val saved = dao.dailyStatsForRecord(snapshotMetadata.avid, snapshotMetadata.cid, checkNotNull(writerSourceId), missingDates)
                         .associateBy { it.localDate }
                     missingDates.forEach { baseDailyStats[it] = saved[it] ?: PlaybackDailyStats(it) }
                 }
                 val absoluteDaily = snapshotDaily.map { day ->
                     val base = baseDailyStats.getValue(day.localDate)
-                    day.copy(totalPlayedMs = base.totalPlayedMs + day.totalPlayedMs, playCount = base.playCount + day.playCount)
+                    day.copy(totalPlayedMs = addPlaybackStatistics(base.totalPlayedMs, day.totalPlayedMs),
+                        playCount = addPlaybackStatistics(base.playCount, day.playCount))
                 }
                 val record = dao.save(snapshotMetadata, firstViewedAtMs, snapshotTime,
-                    checkNotNull(basePlayedMs), snapshotPlayedMs, checkNotNull(basePlayCount), snapshotPlayCount,
-                    absoluteDaily, snapshotRanges)
+                    writerSourceId, absoluteDaily, snapshotRanges)
                 if (!rangesLoaded) {
                     watched = mergeRanges(dao.ranges(record.id).map { PlaybackWatchedRange(it.startMs, it.endMs) }, watched)
                     rangesLoaded = true

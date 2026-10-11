@@ -17,12 +17,13 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 
-private val statisticsBackupTables = listOf("playback_stats", "playback_watched_range", "playback_daily_stats")
+private val statisticsBackupTables = listOf("playback_stats", "playback_source", "playback_watched_range",
+    "playback_daily_stats", "playback_source_daily_stats", "playback_legacy_totals")
 private val statisticsSchemaQueries = listOf(
     "PRAGMA user_version",
     "SELECT identity_hash FROM room_master_table WHERE id = 42",
     "SELECT type, name, tbl_name, replace(sql, 'IF NOT EXISTS ', '') FROM sqlite_master " +
-        "WHERE tbl_name IN ('playback_stats', 'playback_watched_range', 'playback_daily_stats') ORDER BY type, name",
+        "WHERE tbl_name IN (${statisticsBackupTables.joinToString { "'$it'" }}) ORDER BY type, name",
 )
 
 internal suspend fun StatisticsDatabase.exportBackup(destination: String) = withContext(Dispatchers.IO) {
@@ -58,7 +59,10 @@ internal suspend fun StatisticsDatabase.restoreBackup(path: String) = withContex
                 // 显式清理子表，不依赖调用方连接上的外键开关。
                 executeSQL("DELETE FROM playback_watched_range")
                 executeSQL("DELETE FROM playback_daily_stats")
+                executeSQL("DELETE FROM playback_source_daily_stats")
+                executeSQL("DELETE FROM playback_legacy_totals")
                 executeSQL("DELETE FROM playback_stats")
+                executeSQL("DELETE FROM playback_source")
                 for (table in statisticsBackupTables) {
                     source.prepare("SELECT * FROM $table").use { rows ->
                         val columns = rows.getColumnNames()
@@ -82,6 +86,7 @@ internal suspend fun StatisticsDatabase.restoreBackup(path: String) = withContex
                     }
                 }
                 usePrepared("PRAGMA foreign_key_check") { check(!it.step()) { "备份数据关联无效" } }
+                executeSQL("UPDATE playback_source SET is_active = 0 WHERE is_active <> 0")
                 currentCoroutineContext().ensureActive()
             }
         }
@@ -101,8 +106,8 @@ private fun openStatisticsBackup(path: String): SQLiteConnection =
 private suspend fun StatisticsDatabase.validateStatisticsBackup(source: SQLiteConnection) {
     useReaderConnection { current ->
         for (sql in statisticsSchemaQueries) {
-            val expected = current.usePrepared(sql) { it.readBackupSchemaRows() }
-            val actual = source.prepare(sql).use { it.readBackupSchemaRows() }
+            val expected = current.usePrepared(sql) { it.readBackupSchemaRows(normalizeSql = sql.contains("sqlite_master")) }
+            val actual = source.prepare(sql).use { it.readBackupSchemaRows(normalizeSql = sql.contains("sqlite_master")) }
             check(expected == actual) { "备份数据库版本或结构不兼容" }
         }
     }
@@ -130,12 +135,15 @@ private suspend fun StatisticsDatabase.validateStatisticsBackup(source: SQLiteCo
             "OR total_played_ms < 0 OR play_count < 0 OR content_type NOT IN ('video', 'media') LIMIT 1",
         "SELECT 1 FROM playback_watched_range WHERE start_ms < 0 OR end_ms <= start_ms LIMIT 1",
         "SELECT 1 FROM playback_daily_stats WHERE total_played_ms < 0 OR play_count < 0 LIMIT 1",
+        "SELECT 1 FROM playback_source WHERE id <= 0 OR is_active NOT IN (0, 1) OR (source_key = '0' AND is_active <> 0) LIMIT 1",
+        "SELECT 1 FROM playback_source_daily_stats WHERE total_played_ms < 0 OR play_count < 0 LIMIT 1",
+        "SELECT 1 FROM playback_legacy_totals WHERE total_played_ms < 0 OR play_count < 0 LIMIT 1",
     )
     for (sql in invalidQueries) {
         currentCoroutineContext().ensureActive()
         source.prepare(sql).use { check(!it.step()) { "备份包含无效的统计数据" } }
     }
-    source.prepare("SELECT DISTINCT local_date FROM playback_daily_stats").use { dates ->
+    source.prepare("SELECT local_date FROM playback_daily_stats UNION SELECT local_date FROM playback_source_daily_stats").use { dates ->
         while (dates.step()) {
             currentCoroutineContext().ensureActive()
             val date = dates.getText(0)
@@ -144,6 +152,10 @@ private suspend fun StatisticsDatabase.validateStatisticsBackup(source: SQLiteCo
     }
 }
 
-private fun SQLiteStatement.readBackupSchemaRows(): List<List<String?>> = buildList {
-    while (step()) add(List(getColumnCount()) { if (isNull(it)) null else getText(it) })
+private fun SQLiteStatement.readBackupSchemaRows(normalizeSql: Boolean = false): List<List<String?>> = buildList {
+    while (step()) add(List(getColumnCount()) { index ->
+        if (isNull(index)) null else getText(index).let { value ->
+            if (normalizeSql && index == 3) value.replace("IF NOT EXISTS ", "").replace(Regex("[\\s`]+"), "").lowercase() else value
+        }
+    })
 }
