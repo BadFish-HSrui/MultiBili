@@ -22,6 +22,7 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
 import platform.Foundation.NSNumber
 import platform.Foundation.NSURL
+import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSUserDomainMask
 import platform.CoreGraphics.CGRectMake
 import platform.UIKit.UIAdaptivePresentationControllerDelegateProtocol
@@ -127,6 +128,8 @@ actual class DownloadFiles actual constructor() {
     }
     actual suspend fun requestPermission(directory: String): Boolean = true
     actual suspend fun clearTemporaryFiles(completedOutputs: List<DownloadOutput>) = withContext(Dispatchers.Default) {
+        // 启动时也覆盖已有下载，包括已移除任务记录但保留的文件。
+        prepareDownloadDirectory()
         check(!manager.fileExistsAtPath(temporary) || manager.removeItemAtPath(temporary, null)) { "下载临时文件清理失败" }
     }
     actual suspend fun prepare(id: String) = withContext(Dispatchers.Default) {
@@ -147,10 +150,18 @@ actual class DownloadFiles actual constructor() {
             }
         }
 
-    actual suspend fun publish(id: String, fileName: String, directory: String, onPublished: suspend (DownloadOutput) -> Unit) = withContext(Dispatchers.Default) {
+    private fun prepareDownloadDirectory(): String {
         val base = checkNotNull(manager.URLForDirectory(NSDocumentDirectory, NSUserDomainMask, null, true, null)?.path)
         val directory = "$base/Downloads"
         check(manager.createDirectoryAtPath(directory, true, null, null)) { "无法创建下载目录" }
+        check(NSURL.fileURLWithPath(directory).setResourceValue(true, NSURLIsExcludedFromBackupKey, null)) {
+            "无法将下载目录排除出备份"
+        }
+        return directory
+    }
+
+    actual suspend fun publish(id: String, fileName: String, directory: String, onPublished: suspend (DownloadOutput) -> Unit) = withContext(Dispatchers.Default) {
+        val directory = prepareDownloadDirectory()
         val source = path(id, "output.mp4")
         val size = (manager.attributesOfItemAtPath(source, null)?.get(NSFileSize) as? NSNumber)?.longLongValue ?: error("无法读取文件大小")
         currentCoroutineContext().ensureActive()
