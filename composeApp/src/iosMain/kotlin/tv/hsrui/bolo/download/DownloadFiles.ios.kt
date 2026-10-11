@@ -2,6 +2,8 @@
 
 package tv.hsrui.bolo.download
 
+import tv.hsrui.bolo.utils.file.LocalFileAccess
+
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
@@ -20,14 +22,13 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
 import platform.Foundation.NSNumber
 import platform.Foundation.NSURL
+import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSUserDomainMask
 import platform.CoreGraphics.CGRectMake
 import platform.UIKit.UIAdaptivePresentationControllerDelegateProtocol
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIDevice
-import platform.UIKit.UIDocumentPickerDelegateProtocol
-import platform.UIKit.UIDocumentPickerViewController
 import platform.UIKit.UIModalPresentationPopover
 import platform.UIKit.UIPresentationController
 import platform.UIKit.UISceneActivationStateForegroundActive
@@ -37,7 +38,6 @@ import platform.UIKit.UIWindow
 import platform.UIKit.UIWindowScene
 import platform.UIKit.popoverPresentationController
 import platform.UIKit.presentationController
-import platform.UniformTypeIdentifiers.UTTypeItem
 import platform.darwin.NSObject
 import platform.posix.EEXIST
 import platform.posix.ENOENT
@@ -108,7 +108,7 @@ actual class DownloadFiles actual constructor() {
             NSURL.fileURLWithPath(location)
         }
         withContext(Dispatchers.Main.immediate) {
-            if (showDirectory) downloadFilePresentation.showDirectory(url)
+            if (showDirectory) LocalFileAccess().showFileInFolder(checkNotNull(url.absoluteString))
             else downloadFilePresentation.openFile(url)
         }
     } catch (error: CancellationException) {
@@ -128,6 +128,8 @@ actual class DownloadFiles actual constructor() {
     }
     actual suspend fun requestPermission(directory: String): Boolean = true
     actual suspend fun clearTemporaryFiles(completedOutputs: List<DownloadOutput>) = withContext(Dispatchers.Default) {
+        // 启动时也覆盖已有下载，包括已移除任务记录但保留的文件。
+        prepareDownloadDirectory()
         check(!manager.fileExistsAtPath(temporary) || manager.removeItemAtPath(temporary, null)) { "下载临时文件清理失败" }
     }
     actual suspend fun prepare(id: String) = withContext(Dispatchers.Default) {
@@ -148,10 +150,18 @@ actual class DownloadFiles actual constructor() {
             }
         }
 
-    actual suspend fun publish(id: String, fileName: String, directory: String, onPublished: suspend (DownloadOutput) -> Unit) = withContext(Dispatchers.Default) {
+    private fun prepareDownloadDirectory(): String {
         val base = checkNotNull(manager.URLForDirectory(NSDocumentDirectory, NSUserDomainMask, null, true, null)?.path)
         val directory = "$base/Downloads"
         check(manager.createDirectoryAtPath(directory, true, null, null)) { "无法创建下载目录" }
+        check(NSURL.fileURLWithPath(directory).setResourceValue(true, NSURLIsExcludedFromBackupKey, null)) {
+            "无法将下载目录排除出备份"
+        }
+        return directory
+    }
+
+    actual suspend fun publish(id: String, fileName: String, directory: String, onPublished: suspend (DownloadOutput) -> Unit) = withContext(Dispatchers.Default) {
+        val directory = prepareDownloadDirectory()
         val source = path(id, "output.mp4")
         val size = (manager.attributesOfItemAtPath(source, null)?.get(NSFileSize) as? NSNumber)?.longLongValue ?: error("无法读取文件大小")
         currentCoroutineContext().ensureActive()
@@ -183,12 +193,10 @@ actual class DownloadFiles actual constructor() {
 
 private val downloadFilePresentation by lazy { DownloadFilePresentation() }
 
-private class DownloadFilePresentation : NSObject(), UIDocumentPickerDelegateProtocol,
-    UIAdaptivePresentationControllerDelegateProtocol {
+private class DownloadFilePresentation : NSObject(), UIAdaptivePresentationControllerDelegateProtocol {
     // 系统 delegate 为弱引用；交接完成前保留控制器，不依赖下载页面的生命周期。
     // 回调可能重新包装 Obj-C 对象，控制器匹配使用其原生对象相等比较。
     private var activityController: UIActivityViewController? = null
-    private var picker: UIDocumentPickerViewController? = null
 
     private fun presenter(): UIViewController? {
         val window = UIApplication.sharedApplication.connectedScenes
@@ -204,7 +212,7 @@ private class DownloadFilePresentation : NSObject(), UIDocumentPickerDelegatePro
     }
 
     fun openFile(url: NSURL): Boolean {
-        if (activityController != null || picker != null) return false
+        if (activityController != null) return false
         val host = presenter() ?: return false
         val view = host.view
         if (view.window == null) return false
@@ -226,21 +234,6 @@ private class DownloadFilePresentation : NSObject(), UIDocumentPickerDelegatePro
         return true
     }
 
-    fun showDirectory(url: NSURL): Boolean {
-        if (activityController != null || picker != null) return false
-        val host = presenter() ?: return false
-        val directory = url.URLByDeletingLastPathComponent ?: return false
-        val controller = UIDocumentPickerViewController(forOpeningContentTypes = listOf(UTTypeItem), asCopy = false)
-        controller.directoryURL = directory
-        controller.allowsMultipleSelection = false
-        controller.shouldShowFileExtensions = true
-        controller.delegate = this
-        picker = controller
-        host.presentViewController(controller, animated = true, completion = null)
-        controller.presentationController?.delegate = this
-        return true
-    }
-
     private fun releaseActivity(controller: UIActivityViewController) {
         if (activityController == controller) {
             controller.completionWithItemsHandler = null
@@ -249,22 +242,7 @@ private class DownloadFilePresentation : NSObject(), UIDocumentPickerDelegatePro
         }
     }
 
-    private fun dismissPicker(controller: UIDocumentPickerViewController) {
-        controller.dismissViewControllerAnimated(true) {
-            if (picker == controller) picker = null
-        }
-    }
-
-    override fun documentPicker(controller: UIDocumentPickerViewController, didPickDocumentsAtURLs: List<*>) {
-        dismissPicker(controller)
-    }
-
-    override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
-        dismissPicker(controller)
-    }
-
     override fun presentationControllerDidDismiss(presentationController: UIPresentationController) {
         (presentationController.presentedViewController as? UIActivityViewController)?.let(::releaseActivity)
-        if (picker == presentationController.presentedViewController) picker = null
     }
 }

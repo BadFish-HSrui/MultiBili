@@ -1,5 +1,7 @@
 package tv.hsrui.bolo.download
 
+import tv.hsrui.bolo.utils.file.LocalFileAccess
+
 import java.io.File
 import java.io.FileOutputStream
 import java.awt.Desktop
@@ -56,7 +58,8 @@ actual class DownloadFiles actual constructor() {
         try {
             val file = outputFile(output)
             if (!fileExists(file) || !file.canRead()) return@withContext false
-            val target = if (showDirectory) file.parentFile ?: return@withContext false else file
+            if (showDirectory) return@withContext LocalFileAccess().showFileInFolder(file.absolutePath)
+            val target = file
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
                 Desktop.getDesktop().open(target)
                 true

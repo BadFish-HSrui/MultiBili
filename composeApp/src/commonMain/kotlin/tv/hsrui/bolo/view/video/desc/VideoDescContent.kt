@@ -1,6 +1,5 @@
 package tv.hsrui.bolo.view.video.desc
 
-import tv.hsrui.bolo.navigation.openUserSpace
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -53,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.ui.components.button.RelationButton
 import tv.hsrui.bolo.ui.components.video.actionsBar.VideoActionsBar
+import tv.hsrui.network.feature.user.info.UserCardStatsData
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.utils.formatCountToString
 import tv.hsrui.network.utils.formatToDateTime
@@ -62,7 +61,9 @@ import kotlin.text.ifEmpty
 fun VideoDescContent(
     videoInfo: VideoInfoData,
     tags: List<String>,
+    upStats: UserCardStatsData? = null,
     onTagClick: (String) -> Unit,
+    onUpClick: (Long) -> Unit,
 ) {
     Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Column(Modifier.padding(8.dp)) {
@@ -84,7 +85,7 @@ fun VideoDescContent(
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.size(48.dp)
                                             .clip(CircleShape)
-                                            .clickable { openUserSpace(member.mid) }
+                                            .clickable(enabled = member.mid > 0) { onUpClick(member.mid) }
                                             .background(Color.Black),
                                     )
                                     RelationButton(
@@ -94,7 +95,7 @@ fun VideoDescContent(
                                     )
                                     Text(
                                         text = member.name,
-                                        modifier = Modifier.fillMaxWidth().clickable { openUserSpace(member.mid) },
+                                        modifier = Modifier.fillMaxWidth().clickable(enabled = member.mid > 0) { onUpClick(member.mid) },
                                         style = MaterialTheme.typography.bodySmall,
                                         textAlign = TextAlign.Center,
                                         maxLines = 1,
@@ -125,17 +126,24 @@ fun VideoDescContent(
                             .fillMaxWidth()
                             .aspectRatio(1F)
                             .clip(CircleShape)
-                            .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) }
+                            .clickable(enabled = videoInfo.upMid > 0) { onUpClick(videoInfo.upMid) }
                             .background(Color.Black)
                     )
-                    Column(Modifier.padding(start = 8.dp)) {
+                    Column(Modifier.weight(1F).padding(start = 8.dp)) {
                         Text(
                             text = videoInfo.upName,
-                            modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
-                            style = MaterialTheme.typography.bodyMedium
+                            modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { onUpClick(videoInfo.upMid) },
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            text = "${upStats?.followerCount?.formatCountToString() ?: "--"} 粉丝   " +
+                                "${upStats?.uploadCount?.formatCountToString() ?: "--"} 投稿",
+                            modifier = Modifier.alpha(0.5F),
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Spacer(Modifier.weight(1F))
                     RelationButton(
                         upName = videoInfo.upName,
                         mid = videoInfo.upMid,

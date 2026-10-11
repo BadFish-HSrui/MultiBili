@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -26,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -37,19 +39,24 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import coil3.compose.AsyncImage
+import org.koin.compose.koinInject
 import tv.hsrui.bolo.navigation.openMedia
 import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.player.VideoPlayer
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.player.controls.BoloPlayerControls
+import tv.hsrui.bolo.player.settings.BoloPlayerSettings
 import tv.hsrui.bolo.ui.common.player.PlayerPageLayout
 import tv.hsrui.bolo.ui.common.reply.RepliesGridPage
 import tv.hsrui.bolo.ui.common.reply.RepliesUiState
@@ -151,6 +158,7 @@ private fun MediaDescPage(
     viewModel: MediaPlaybackViewModel,
     modifier: Modifier = Modifier,
 ) {
+    val playerSettings: BoloPlayerSettings = koinInject()
     LazyColumn(
         contentPadding = PaddingValues(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -176,7 +184,32 @@ private fun MediaDescPage(
             )
         }
         item(key = "recommendations_title") {
-            Text("相关推荐", style = MaterialTheme.typography.titleSmall, modifier = Modifier.fillMaxWidth().padding(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("相关推荐", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Row(
+                    modifier = Modifier.toggleable(
+                        value = playerSettings.playback.autoPlayNextEnabled,
+                        role = Role.Switch,
+                        onValueChange = { playerSettings.playback.autoPlayNextEnabled = it },
+                    ).height(32.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "自动连播",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.alpha(0.75f),
+                    )
+                    Switch(
+                        checked = playerSettings.playback.autoPlayNextEnabled,
+                        onCheckedChange = null,
+                        modifier = Modifier.size(26.dp, 16.dp).scale(0.5f),
+                    )
+                }
+            }
         }
         when {
             uiState.recommendationsLoading -> item(key = "recommendations_loading") {

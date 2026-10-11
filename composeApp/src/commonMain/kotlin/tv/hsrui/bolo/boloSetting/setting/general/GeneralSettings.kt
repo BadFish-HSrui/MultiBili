@@ -11,8 +11,26 @@ import tv.hsrui.bolo.boloSetting.AppThemeMode
 import tv.hsrui.bolo.ui.theme.DefaultColorSpec
 import tv.hsrui.bolo.ui.theme.DefaultPaletteStyle
 import tv.hsrui.bolo.ui.theme.DefaultSeedColorRgb
+import tv.hsrui.network.feature.region.Region
 
 class GeneralSettings(settingsKSafe: KSafePlain) {
+    private var storedRegionOrder by settingsKSafe(emptyList<Int>(), key = "bolo_general_region_order_list")
+    private var currentRegionOrder by mutableStateOf(normalizeRegionOrder(storedRegionOrder))
+
+    var regionOrder: List<Region>
+        get() = currentRegionOrder
+        set(value) {
+            val normalized = normalizeRegionOrder(value.map { it.tid })
+            if (normalized == currentRegionOrder) return
+            storedRegionOrder = normalized.map { it.tid }
+            currentRegionOrder = normalized
+        }
+
+    private fun normalizeRegionOrder(ids: List<Int>): List<Region> {
+        val regionsById = Region.entries.associateBy { it.tid }
+        return (ids.mapNotNull { regionsById[it] } + Region.entries).distinct()
+    }
+
     private var storedThemeMode by settingsKSafe("auto", key = "bolo_general_theme_mode")
     private var currentThemeMode by mutableStateOf(
         AppThemeMode.entries.firstOrNull { it.storedValue == storedThemeMode } ?: AppThemeMode.Auto,
@@ -141,6 +159,32 @@ class GeneralSettings(settingsKSafe: KSafePlain) {
             if (value == currentSearchTrendingEnabled) return
             storedSearchTrendingEnabled = value
             currentSearchTrendingEnabled = value
+        }
+
+    private var storedUpRecentUploadsSheetEnabled by settingsKSafe(
+        false, key = "bolo_general_up_recent_uploads_sheet_enabled",
+    )
+    private var currentUpRecentUploadsSheetEnabled by mutableStateOf(storedUpRecentUploadsSheetEnabled)
+
+    var upRecentUploadsSheetEnabled: Boolean
+        get() = currentUpRecentUploadsSheetEnabled
+        set(value) {
+            if (value == currentUpRecentUploadsSheetEnabled) return
+            storedUpRecentUploadsSheetEnabled = value
+            currentUpRecentUploadsSheetEnabled = value
+        }
+
+    private var storedCommentOriginalImageEnabled by settingsKSafe(
+        false, key = "bolo_general_comment_original_image_enabled",
+    )
+    private var currentCommentOriginalImageEnabled by mutableStateOf(storedCommentOriginalImageEnabled)
+
+    var commentOriginalImageEnabled: Boolean
+        get() = currentCommentOriginalImageEnabled
+        set(value) {
+            if (value == currentCommentOriginalImageEnabled) return
+            storedCommentOriginalImageEnabled = value
+            currentCommentOriginalImageEnabled = value
         }
 
     private var storedDownloadDirectory by settingsKSafe("", key = "bolo_general_download_directory")

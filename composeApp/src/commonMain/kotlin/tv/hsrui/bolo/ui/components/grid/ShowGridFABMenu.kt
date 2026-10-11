@@ -23,16 +23,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ShowGridFABMenu(
-    onBackToTop: () -> Unit,
-    onRefresh: () -> Unit,
+    onBackToTop: (() -> Unit)? = null,
+    onRefresh: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
-    otherButton: @Composable FloatingActionButtonMenuScope.() -> Unit = {}
+    enabled: Boolean = true,
+    otherButton: @Composable FloatingActionButtonMenuScope.(closeMenu: () -> Unit) -> Unit = {}
 ) {
     var fabMenuExpanded by rememberSaveable { mutableStateOf(false) }
 
@@ -42,11 +46,12 @@ fun ShowGridFABMenu(
     )
 
     FloatingActionButtonMenu(
-        expanded = fabMenuExpanded,
+        expanded = fabMenuExpanded && enabled,
         button = {
             ToggleFloatingActionButton(
                 checked = fabMenuExpanded,
-                onCheckedChange = { fabMenuExpanded = it },
+                onCheckedChange = { if (enabled) fabMenuExpanded = it },
+                modifier = Modifier.alpha(if (enabled) 1f else 0.38f).semantics { if (!enabled) disabled() },
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Add, contentDescription = "额外操作",
@@ -57,17 +62,21 @@ fun ShowGridFABMenu(
         modifier = modifier,
         horizontalAlignment = Alignment.End
     ) {
-        otherButton()
-        FloatingActionButtonMenuItem(
-            onClick = onBackToTop,
-            text = { Text("回到顶部") },
-            icon = { Icon(imageVector = Icons.Rounded.VerticalAlignTop, contentDescription = null) }
-        )
-        FloatingActionButtonMenuItem(
-            onClick = onRefresh,
-            text = { Text("刷新列表") },
-            icon = { Icon(imageVector = Icons.Rounded.Refresh, contentDescription = null) }
-        )
+        otherButton { fabMenuExpanded = false }
+        onBackToTop?.let {
+            FloatingActionButtonMenuItem(
+                onClick = it,
+                text = { Text("回到顶部") },
+                icon = { Icon(imageVector = Icons.Rounded.VerticalAlignTop, contentDescription = null) }
+            )
+        }
+        onRefresh?.let {
+            FloatingActionButtonMenuItem(
+                onClick = it,
+                text = { Text("刷新列表") },
+                icon = { Icon(imageVector = Icons.Rounded.Refresh, contentDescription = null) }
+            )
+        }
     }
 }
 

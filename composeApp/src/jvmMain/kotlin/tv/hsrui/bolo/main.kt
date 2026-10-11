@@ -25,6 +25,8 @@ import multibili.composeapp.generated.resources.jvm_icon
 import org.jetbrains.compose.resources.painterResource
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.download.DownloadFiles
+import tv.hsrui.bolo.utils.file.LocalFileAccess
+import tv.hsrui.bolo.utils.file.ImageSaver
 import tv.hsrui.bolo.player.DesktopPlayerFullscreenWindow
 import tv.hsrui.bolo.player.DesktopPlayerKeyboard
 import tv.hsrui.bolo.player.session.BoloPlaybackSession
@@ -85,9 +87,13 @@ fun main() {
                 DesktopPlayerFullscreenWindow.attach(window, windowState)
                 inputMethod.attach()
                 DownloadFiles.attach(window)
+                LocalFileAccess.attach(window)
+                ImageSaver.attach(window)
                 onDispose {
                     inputMethod.close()
                     DownloadFiles.detach(window)
+                    LocalFileAccess.detach(window)
+                    ImageSaver.detach(window)
                     DesktopPlayerFullscreenWindow.detach(window)
                 }
             }

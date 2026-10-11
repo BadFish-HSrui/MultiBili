@@ -19,6 +19,9 @@ import kotlinx.datetime.LocalDate
 import tv.hsrui.bolo.player.base.BoloPlaybackObservation
 import tv.hsrui.bolo.player.withPlaybackReportBackgroundExecution
 import tv.hsrui.bolo.storage.statistics.StatisticsDatabase
+import tv.hsrui.bolo.storage.statistics.exportBackup
+import tv.hsrui.bolo.storage.statistics.restoreBackup
+import tv.hsrui.bolo.storage.statistics.validateBackup
 import tv.hsrui.network.feature.media.MediaEpisode
 import tv.hsrui.network.feature.media.MediaSeasonData
 import tv.hsrui.network.feature.video.VideoInfoData
@@ -92,17 +95,36 @@ class PlaybackStatisticsManager internal constructor(
     suspend fun get(avid: Long, cid: Long): PlaybackStatisticsRecord? =
         database().playbackStatisticsDao().get(avid, cid)
 
-    /** 按最近观看时间倒序分页；与概览保持相同的已观看筛选和 AV/UID 去重口径。 */
+    suspend fun exportBackup(destination: String) {
+        flush()
+        writeMutex.withLock { database().exportBackup(destination) }
+    }
+
+    suspend fun validateBackup(path: String) = database().validateBackup(path)
+
+    suspend fun restoreBackup(path: String) {
+        flush()
+        writeMutex.withLock { database().restoreBackup(path) }
+    }
+
+    suspend fun clear() {
+        flush()
+        writeMutex.withLock { database().playbackStatisticsDao().clear() }
+    }
+
+    /** 聚合后按指定字段和 AV/UID 同向分页；游标须来自相同排序，默认最近观看时间倒序。 */
     suspend fun historyPage(
         type: PlaybackHistoryType,
         cursor: PlaybackHistoryCursor? = null,
         limit: Int = 50,
+        sort: PlaybackHistorySort = PlaybackHistorySort.Time,
+        descending: Boolean = true,
     ): List<PlaybackHistoryItem> {
         require(limit > 0)
         val dao = database().playbackStatisticsDao()
         return when (type) {
-            PlaybackHistoryType.Videos -> dao.watchedVideos(cursor?.lastViewedAtMs, cursor?.id, limit)
-            PlaybackHistoryType.Ups -> dao.watchedUps(cursor?.lastViewedAtMs, cursor?.id, limit)
+            PlaybackHistoryType.Videos -> dao.watchedVideos(cursor?.sortValue, cursor?.id, limit, sort.name, descending)
+            PlaybackHistoryType.Ups -> dao.watchedUps(cursor?.sortValue, cursor?.id, limit, sort.name, descending)
         }
     }
 
@@ -246,8 +268,7 @@ class PlaybackStatisticsManager internal constructor(
             private set
         internal var closed = false
             private set
-        private var basePlayedMs: Long? = null
-        private var basePlayCount: Long? = null
+        private var writerSourceId: Long? = null
         private val baseDailyStats = mutableMapOf<String, PlaybackDailyStats>()
         private val dailyTotals = mutableMapOf<String, PlaybackDailyStats>()
         private val pendingDates = mutableSetOf<String>()
@@ -363,7 +384,10 @@ class PlaybackStatisticsManager internal constructor(
         private fun updateDailyStats(date: String, playedMs: Long, starts: Long) {
             if (playedMs == 0L && starts == 0L) return
             val old = dailyTotals[date] ?: PlaybackDailyStats(date)
-            dailyTotals[date] = old.copy(totalPlayedMs = old.totalPlayedMs + playedMs, playCount = old.playCount + starts)
+            dailyTotals[date] = old.copy(
+                totalPlayedMs = addPlaybackStatistics(old.totalPlayedMs, playedMs),
+                playCount = addPlaybackStatistics(old.playCount, starts),
+            )
             pendingDates.add(date)
             dirty = true
         }
@@ -396,8 +420,6 @@ class PlaybackStatisticsManager internal constructor(
             if (!dirty && rangesLoaded) return
             val snapshotMetadata = metadata
             val snapshotTime = lastViewedAtMs
-            val snapshotPlayedMs = playedTime.inWholeMilliseconds
-            val snapshotPlayCount = playCount
             val snapshotDaily = pendingDates.map { dailyTotals.getValue(it) }
             val snapshotRanges = pendingRanges
             pendingRanges = emptyList()
@@ -406,24 +428,20 @@ class PlaybackStatisticsManager internal constructor(
             try {
                 val dao = database().playbackStatisticsDao()
                 // 单一写任务中先固定基值；即使提交后的返回被中断，重试也不以新总量重新加算。
-                if (basePlayedMs == null || basePlayCount == null) {
-                    val old = dao.get(snapshotMetadata.avid, snapshotMetadata.cid)
-                    basePlayedMs = old?.totalPlayedMs ?: 0L
-                    basePlayCount = old?.playCount ?: 0L
-                }
+                if (snapshotDaily.isNotEmpty() && writerSourceId == null) writerSourceId = dao.writerSourceId()
                 val missingDates = snapshotDaily.map { it.localDate }.filterNot(baseDailyStats::containsKey)
                 if (missingDates.isNotEmpty()) {
-                    val saved = dao.dailyStatsForRecord(snapshotMetadata.avid, snapshotMetadata.cid, missingDates)
+                    val saved = dao.dailyStatsForRecord(snapshotMetadata.avid, snapshotMetadata.cid, checkNotNull(writerSourceId), missingDates)
                         .associateBy { it.localDate }
                     missingDates.forEach { baseDailyStats[it] = saved[it] ?: PlaybackDailyStats(it) }
                 }
                 val absoluteDaily = snapshotDaily.map { day ->
                     val base = baseDailyStats.getValue(day.localDate)
-                    day.copy(totalPlayedMs = base.totalPlayedMs + day.totalPlayedMs, playCount = base.playCount + day.playCount)
+                    day.copy(totalPlayedMs = addPlaybackStatistics(base.totalPlayedMs, day.totalPlayedMs),
+                        playCount = addPlaybackStatistics(base.playCount, day.playCount))
                 }
                 val record = dao.save(snapshotMetadata, firstViewedAtMs, snapshotTime,
-                    checkNotNull(basePlayedMs), snapshotPlayedMs, checkNotNull(basePlayCount), snapshotPlayCount,
-                    absoluteDaily, snapshotRanges)
+                    writerSourceId, absoluteDaily, snapshotRanges)
                 if (!rangesLoaded) {
                     watched = mergeRanges(dao.ranges(record.id).map { PlaybackWatchedRange(it.startMs, it.endMs) }, watched)
                     rangesLoaded = true

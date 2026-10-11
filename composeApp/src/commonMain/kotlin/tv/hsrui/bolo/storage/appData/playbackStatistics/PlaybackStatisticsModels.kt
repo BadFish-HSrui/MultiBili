@@ -84,6 +84,44 @@ internal data class PlaybackDailyStatsEntity(
     @ColumnInfo(name = "play_count", defaultValue = "0") val playCount: Long = 0L,
 )
 
+@Entity(tableName = "playback_source", indices = [Index(value = ["source_key"], unique = true)])
+internal data class PlaybackStatisticsSourceEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    @ColumnInfo(name = "source_key") val sourceKey: String,
+    @ColumnInfo(name = "is_active", defaultValue = "0") val isActive: Boolean = false,
+)
+
+@Entity(
+    tableName = "playback_source_daily_stats",
+    primaryKeys = ["record_id", "source_id", "local_date"],
+    indices = [Index(value = ["source_id"])],
+    foreignKeys = [
+        ForeignKey(entity = PlaybackStatisticsRecord::class, parentColumns = ["id"],
+            childColumns = ["record_id"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = PlaybackStatisticsSourceEntity::class, parentColumns = ["id"],
+            childColumns = ["source_id"], onDelete = ForeignKey.CASCADE),
+    ],
+)
+internal data class PlaybackSourceDailyStatsEntity(
+    @ColumnInfo(name = "record_id") val recordId: Long,
+    @ColumnInfo(name = "source_id") val sourceId: Long,
+    @ColumnInfo(name = "local_date") val localDate: String,
+    @ColumnInfo(name = "total_played_ms", defaultValue = "0") val totalPlayedMs: Long = 0L,
+    @ColumnInfo(name = "play_count", defaultValue = "0") val playCount: Long = 0L,
+)
+
+/** 来源 0 的累计下限；不是需要与每日记录相加的额外播放量。 */
+@Entity(
+    tableName = "playback_legacy_totals",
+    foreignKeys = [ForeignKey(entity = PlaybackStatisticsRecord::class, parentColumns = ["id"],
+        childColumns = ["record_id"], onDelete = ForeignKey.CASCADE)],
+)
+internal data class PlaybackLegacyTotalsEntity(
+    @PrimaryKey @ColumnInfo(name = "record_id") val recordId: Long,
+    @ColumnInfo(name = "total_played_ms", defaultValue = "0") val totalPlayedMs: Long = 0L,
+    @ColumnInfo(name = "play_count", defaultValue = "0") val playCount: Long = 0L,
+)
+
 data class PlaybackDailyStats(
     @ColumnInfo(name = "local_date") val localDate: String,
     @ColumnInfo(name = "total_played_ms") val totalPlayedMs: Long = 0L,
@@ -130,6 +168,8 @@ data class PlaybackStatisticsCursor(val lastViewedAtMs: Long, val id: Long)
 
 enum class PlaybackHistoryType { Videos, Ups }
 
+enum class PlaybackHistorySort { Time, PlayCount, Duration }
+
 /** id 在视频列表中为 AV 号，在 UP 列表中为 UID。 */
 data class PlaybackHistoryItem(
     val id: Long,
@@ -140,4 +180,4 @@ data class PlaybackHistoryItem(
     @ColumnInfo(name = "last_viewed_at_ms") val lastViewedAtMs: Long,
 )
 
-data class PlaybackHistoryCursor(val lastViewedAtMs: Long, val id: Long)
+data class PlaybackHistoryCursor(val sortValue: Long, val id: Long)

@@ -1,5 +1,7 @@
 package tv.hsrui.bolo.download
 
+import tv.hsrui.bolo.utils.file.LocalFileAccess
+
 import android.Manifest
 import android.app.Activity
 import android.content.ContentValues
@@ -127,12 +129,7 @@ actual class DownloadFiles actual constructor() {
         withContext(Dispatchers.Main.immediate) {
             val intent = if (showDirectory) {
                 if (DocumentsContract.isTreeUri(uri)) {
-                    val directory = DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
-                    Intent(Intent.ACTION_VIEW).apply {
-                        setDataAndType(directory, DocumentsContract.Document.MIME_TYPE_DIR)
-                        clipData = ClipData.newRawUri("下载位置", directory)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
+                    return@withContext LocalFileAccess().showFileInFolder(uri.toString())
                 } else Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS)
             } else {
                 Intent(Intent.ACTION_VIEW).apply {

@@ -16,12 +16,10 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -99,10 +97,9 @@ fun PlayerPageLayout(
                 movableContentOf<@Composable () -> Unit, @Composable () -> Unit> { mainContent, overlayContent ->
                     Box(Modifier.fillMaxSize()) {
                         Column {
-                            PrimaryTabRow(
+                            PrimaryScrollableTabRow(
                                 selectedTabIndex = pagerState.currentPage,
-                                modifier = Modifier.widthIn(max = 224.dp),
-                                divider = {}
+                                edgePadding = 0.dp,
                             ) {
                                 tabs.forEachIndexed { index, tab ->
                                     Tab(
@@ -116,8 +113,6 @@ fun PlayerPageLayout(
                                     )
                                 }
                             }
-
-                            HorizontalDivider()
 
                             HorizontalPager(
                                 state = pagerState,

@@ -203,6 +203,38 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
                                 Spacer(Modifier.weight(1f))
                                 Switch(checked = settings.general.searchTrendingEnabled, onCheckedChange = null)
                             }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.general.upRecentUploadsSheetEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.general.upRecentUploadsSheetEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "点击UP头像查看最近投稿",
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                Switch(checked = settings.general.upRecentUploadsSheetEnabled, onCheckedChange = null)
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.general.commentOriginalImageEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.general.commentOriginalImageEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "默认查看评论原图",
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                Switch(checked = settings.general.commentOriginalImageEnabled, onCheckedChange = null)
+                            }
                             if (getPlatform().type != PlatformType.Ios) {
                                 val files = remember { DownloadFiles() }
                                 val directory = settings.general.downloadDirectory

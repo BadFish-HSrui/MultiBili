@@ -12,9 +12,9 @@ import androidx.compose.runtime.saveable.rememberSerializable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import org.koin.compose.koinInject
-import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
+import kotlinx.coroutines.ensureActive
 import tv.hsrui.bolo.download.DownloadTarget
 import tv.hsrui.network.feature.video.CopyrightType
 import tv.hsrui.network.feature.video.VideoInfoData
@@ -27,7 +27,6 @@ import kotlin.time.Duration.Companion.milliseconds
 fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
     var actionsState by rememberSerializable { mutableStateOf(VideoActionsStateResponse()) }
     var trigger by rememberSaveable { mutableStateOf(0) }
-    val snackbarManager: SnackbarManager = koinInject()
     val reloadState: suspend () -> Unit = {
         /*
         TODO:
@@ -43,16 +42,20 @@ fun VideoActionsBar(videoInfo: VideoInfoData, modifier: Modifier = Modifier) {
 
     LaunchedEffect(trigger) {
         if (isLogin) {
-            try {
-                val result = fetchVideoActionsStateFor(videoInfo.bvid)
-                if (result.isSuccess) {
-                    actionsState = result
-                } else {
-                    snackbarManager.showMessage(actionsState.message)
+            // 首次请求失败后最多重试三次，耗尽后静默保留当前状态。
+            repeat(4) {
+                val result = try {
+                    fetchVideoActionsStateFor(videoInfo.bvid)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
                 }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                snackbarManager.showMessage(e.message ?: "其他网络错误")
+                currentCoroutineContext().ensureActive()
+                if (result?.isSuccess == true) {
+                    actionsState = result
+                    return@LaunchedEffect
+                }
             }
         }
     }

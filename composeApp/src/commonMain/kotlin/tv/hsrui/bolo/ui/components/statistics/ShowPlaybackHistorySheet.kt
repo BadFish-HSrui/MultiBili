@@ -4,20 +4,32 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.ArrowDropUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SheetValue
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetState
@@ -32,6 +44,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelStore
@@ -41,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import tv.hsrui.bolo.model.Vid
+import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistorySort
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistoryType
 import tv.hsrui.bolo.ui.components.dialog.ShowUserInfoDialog
 import tv.hsrui.bolo.ui.components.dialog.ShowVideoInfoDialog
@@ -58,7 +73,7 @@ fun ShowPlaybackHistorySheet(type: PlaybackHistoryType, onDismissRequest: () -> 
         DisposableEffect(owner) { onDispose { owner.viewModelStore.clear() } }
         val model = viewModel(viewModelStoreOwner = owner) { PlaybackHistoryViewModel(type) }
         val state by model.uiState.collectAsStateWithLifecycle()
-        val listState = rememberLazyListState()
+        val listState = key(state.sort, state.descending) { rememberLazyListState() }
         var selectedId by remember { mutableStateOf<Long?>(null) }
         DisposableEffect(model) {
             model.load()
@@ -88,35 +103,66 @@ fun ShowPlaybackHistorySheet(type: PlaybackHistoryType, onDismissRequest: () -> 
             sheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded)),
         ) {
             Column(
-                Modifier.fillMaxWidth().fillMaxHeight(0.85f).padding(16.dp),
+                Modifier.fillMaxWidth().fillMaxHeight(0.85f).padding(horizontal = 16.dp)
+                    .nestedScroll(statisticsSheetNestedScrollConnection),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(
-                    text = if (type == PlaybackHistoryType.Videos) "看过的视频" else "看过的UP主",
-                    style = MaterialTheme.typography.titleMedium,
-                )
+                SingleChoiceSegmentedButtonRow(
+                    Modifier.widthIn(max = 400.dp).fillMaxWidth().align(Alignment.CenterHorizontally),
+                ) {
+                    PlaybackHistorySort.entries.forEachIndexed { index, sort ->
+                        val descending = state.descendingBySort.getValue(sort)
+                        SegmentedButton(
+                            selected = state.sort == sort,
+                            onClick = { model.selectSort(sort) },
+                            shape = SegmentedButtonDefaults.itemShape(index, PlaybackHistorySort.entries.size),
+                            icon = {},
+                        ) {
+                            Row(
+                                // 补偿右侧箭头内部留白，使图文可见区域居中。
+                                modifier = Modifier.offset(x = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(when (sort) {
+                                    PlaybackHistorySort.Time -> "时间"
+                                    PlaybackHistorySort.PlayCount -> "次数"
+                                    PlaybackHistorySort.Duration -> "时长"
+                                })
+                                Icon(
+                                    imageVector = if (descending) Icons.Rounded.ArrowDropDown else Icons.Rounded.ArrowDropUp,
+                                    contentDescription = if (descending) "降序" else "升序",
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                    }
+                }
                 if (state.hasUnsavedPlayback) {
                     Text("部分播放记录尚未保存，当前显示已保存的数据。",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
-                when {
-                    state.isLoading -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                    state.error != null -> ShowErrorContent(
-                        message = state.error.orEmpty(), retry = model::load, modifier = Modifier.weight(1f),
-                    )
-                    state.items.isEmpty() -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Text(if (type == PlaybackHistoryType.Videos) "还没有看过的视频" else "还没有看过的UP主")
-                    }
-                    else -> Card(Modifier.fillMaxWidth().weight(1f)) {
-                        LazyColumn(Modifier.fillMaxSize(), state = listState) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    shape = MaterialTheme.shapes.medium.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),
+                ) {
+                    when {
+                        state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                        state.error != null -> ShowErrorContent(message = state.error.orEmpty(), retry = model::load)
+                        state.items.isEmpty() -> Box(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = if (type == PlaybackHistoryType.Videos) "还没有看过的视频" else "还没有看过的UP主",
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                        else -> LazyColumn(Modifier.fillMaxSize(), state = listState) {
                             itemsIndexed(state.items, key = { _, item -> item.id }) { index, item ->
                                 if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                                 val title = item.title?.takeIf { it.isNotBlank() }
                                     ?: if (type == PlaybackHistoryType.Videos) "av${item.id}" else "UP ${item.id}"
                                 StatisticsRankingRow(
-                                    rank = index + 1,
+                                    rank = null,
                                     title = if (item.partTitle.isNullOrBlank()) title else "$title · ${item.partTitle}",
                                     subtitle = "${item.playCount} 次播放",
                                     totalPlayedMs = item.totalPlayedMs,

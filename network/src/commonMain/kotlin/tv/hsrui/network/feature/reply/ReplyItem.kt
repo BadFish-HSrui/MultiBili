@@ -1,5 +1,6 @@
 package tv.hsrui.network.feature.reply
 
+import io.ktor.http.Url
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import tv.hsrui.network.feature.reply.actions.ReplyLikeState
@@ -80,7 +81,35 @@ data class ReplyItem(
             @SerialName("img_width") val width: Int = 0,
             @SerialName("img_height") val height: Int = 0,
         ) {
-            val url: String get() = sourceUrl.trim().toHttpsUrl()
+            val url: String get() = imageUrl(thumbnail = false)
+            val thumbnailUrl: String get() = imageUrl(thumbnail = true)
+
+            private fun imageUrl(thumbnail: Boolean): String {
+                val normalized = sourceUrl.trim().toHttpsUrl()
+                val parsed = runCatching { Url(normalized) }.getOrNull() ?: return normalized
+                if (parsed.protocol.name !in listOf("http", "https") ||
+                    !(parsed.host.equals("hdslb.com", ignoreCase = true) ||
+                        parsed.host.endsWith(".hdslb.com", ignoreCase = true)) ||
+                    !parsed.encodedPath.startsWith("/bfs/")
+                ) return normalized
+
+                // 只替换原始路径，保留路径编码及查询参数、片段的原始表示。
+                val pathStart = normalized.indexOf('/', normalized.indexOf("://") + 3)
+                val pathEnd = normalized.indexOfAny(charArrayOf('?', '#')).let {
+                    if (it < 0) normalized.length else it
+                }
+                if (pathStart < 0 || pathStart >= pathEnd) return normalized
+                val path = normalized.substring(pathStart, pathEnd)
+                val originalPath = path.replace(
+                    Regex(
+                        "(?i)(\\.(?:jpe?g|png|gif|webp|bmp|avif|heic|heif|tiff?))(?:@|%40)" +
+                            "(?:(?:\\d+[whqcsfe]|![a-z0-9-]+)(?:_(?:\\d+[whqcsfe]|![a-z0-9-]+))*)?" +
+                            "(?:\\.(?:jpe?g|png|gif|webp|bmp|avif|heic|heif|tiff?))?$",
+                    ),
+                    "$1",
+                )
+                return normalized.replaceRange(pathStart, pathEnd, originalPath + if (thumbnail) "@480w" else "")
+            }
         }
 
         val hasExternalLink get() = jumpAppsName.isNotEmpty()

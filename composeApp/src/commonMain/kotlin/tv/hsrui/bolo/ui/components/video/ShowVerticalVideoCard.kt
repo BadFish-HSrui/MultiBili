@@ -51,6 +51,8 @@ import tv.hsrui.network.utils.formatCountToString
 fun ShowVerticalVideoCard(
     videoInfo: VideoCard,
     modifier: Modifier = Modifier,
+    onClick: () -> Unit = { openVideo(videoInfo.bvid) },
+    onUserClick: () -> Unit = { openUserSpace(videoInfo.upMid) },
     dropdownMenuItems: @Composable (ColumnScope.(onDismiss: () -> Unit) -> Unit)? = null
 ) {
     Card(
@@ -58,7 +60,7 @@ fun ShowVerticalVideoCard(
             .widthIn(max = 512.dp)
             .fillMaxWidth()
             .combinedClickable(
-                onClick = { openVideo(videoInfo.bvid) }
+                onClick = onClick,
             )
     ) {
         Row {
@@ -108,7 +110,7 @@ fun ShowVerticalVideoCard(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .padding(horizontal = 4.dp)
-                            .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) }
+                            .clickable(enabled = videoInfo.upMid > 0, onClick = onUserClick)
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.AccountBox,

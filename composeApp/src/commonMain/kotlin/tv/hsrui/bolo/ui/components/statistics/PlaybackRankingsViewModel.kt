@@ -1,11 +1,14 @@
 package tv.hsrui.bolo.ui.components.statistics
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.plus
@@ -27,46 +30,49 @@ class PlaybackRankingsViewModel(
 ) : ViewModel() {
     private val mutableUiState = MutableStateFlow(PlaybackRankingsUiState())
     val uiState = mutableUiState.asStateFlow()
-    private var requestVersion = 0L
+    private var loadJob: Job? = null
 
     init {
         require(dateRange == null || !dateRange.isEmpty())
         require(limit > 0)
     }
 
-    /** 由组件生命周期调用；日期范围包含首尾两天，null 表示累计总计。 */
-    suspend fun load() {
-        val version = ++requestVersion
-        mutableUiState.value = mutableUiState.value.copy(isLoading = true, error = null)
-        try {
-            var hasUnsavedPlayback = false
+    /** 由页面或弹层在进入时调用；日期范围包含首尾两天，null 表示累计总计。 */
+    fun load() {
+        if (loadJob?.isActive == true) return
+        mutableUiState.value = PlaybackRankingsUiState()
+        loadJob = viewModelScope.launch {
             try {
-                appData.playbackStatistics.flush()
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                hasUnsavedPlayback = true
-            }
-            val rankings = appData.playbackStatistics.rankings(
-                fromDate = dateRange?.start,
-                untilDateExclusive = dateRange?.endInclusive?.plus(1, DateTimeUnit.DAY),
-                limit = limit,
-            )
-            currentCoroutineContext().ensureActive()
-            if (version == requestVersion) {
+                var hasUnsavedPlayback = false
+                try {
+                    appData.playbackStatistics.flush()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    hasUnsavedPlayback = true
+                }
+                val rankings = appData.playbackStatistics.rankings(
+                    fromDate = dateRange?.start,
+                    untilDateExclusive = dateRange?.endInclusive?.plus(1, DateTimeUnit.DAY),
+                    limit = limit,
+                )
+                currentCoroutineContext().ensureActive()
                 mutableUiState.value = PlaybackRankingsUiState(
                     isLoading = false, rankings = rankings, hasUnsavedPlayback = hasUnsavedPlayback,
                 )
-            }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            currentCoroutineContext().ensureActive()
-            if (version == requestVersion) {
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
                 mutableUiState.value = mutableUiState.value.copy(
                     isLoading = false, error = error.message ?: "排行榜读取失败",
                 )
             }
         }
+    }
+
+    fun cancelLoading() {
+        loadJob?.cancel()
+        loadJob = null
     }
 }

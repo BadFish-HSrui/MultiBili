@@ -20,7 +20,6 @@ import kotlinx.coroutines.ensureActive
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.download.DownloadType
 import tv.hsrui.bolo.download.DownloadTarget
-import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.video.actionsBar.CoinButton
 import tv.hsrui.bolo.ui.components.video.actionsBar.DownloadButton
 import tv.hsrui.bolo.ui.components.video.actionsBar.FavoriteButton
@@ -36,7 +35,6 @@ import kotlin.time.Duration.Companion.milliseconds
 @Composable
 fun MediaActionsBar(episode: MediaEpisode, media: MediaSeasonData, modifier: Modifier = Modifier) {
     val loginStorage: LoginStorage = koinInject()
-    val snackbarManager: SnackbarManager = koinInject()
     val isLogin by loginStorage.isLoggedInFlow.collectAsState(initial = loginStorage.isLoggedIn)
     val accountMid by loginStorage.currentUserMidFlow.collectAsState(
         initial = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L,
@@ -53,36 +51,40 @@ fun MediaActionsBar(episode: MediaEpisode, media: MediaSeasonData, modifier: Mod
 
         LaunchedEffect(trigger) {
             if (episode.episodeId <= 0) return@LaunchedEffect
-            try {
-                val result = fetchMediaActionsState(episode.episodeId)
-                currentCoroutineContext().ensureActive()
-                if (result.isSuccess) {
-                    actionsState = result
-                } else {
-                    snackbarManager.showMessage(result.message)
+            // 首次请求失败后最多重试三次，耗尽后静默保留当前状态。
+            repeat(4) {
+                val result = try {
+                    fetchMediaActionsState(episode.episodeId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                snackbarManager.showMessage(e.message ?: "剧集操作状态加载失败")
+                currentCoroutineContext().ensureActive()
+                if (result?.isSuccess == true) {
+                    actionsState = result
+                    return@LaunchedEffect
+                }
             }
         }
 
         LaunchedEffect(trigger) {
             if (!isLogin || !episode.isAvailable) return@LaunchedEffect
             coinLimit = null
-            try {
-                val result = fetchMediaCoinLimit(episode.episodeId)
-                currentCoroutineContext().ensureActive()
-                if (result.isSuccess) {
-                    coinLimit = result.coinLimit
-                } else {
-                    snackbarManager.showMessage(result.message)
+            // 首次请求失败后最多重试三次，耗尽后静默保持投币入口不可用。
+            repeat(4) {
+                val result = try {
+                    fetchMediaCoinLimit(episode.episodeId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                snackbarManager.showMessage(e.message ?: "剧集投币上限加载失败")
+                currentCoroutineContext().ensureActive()
+                if (result?.isSuccess == true) {
+                    coinLimit = result.coinLimit
+                    return@LaunchedEffect
+                }
             }
         }
 

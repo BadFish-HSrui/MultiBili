@@ -109,6 +109,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -325,7 +326,9 @@ fun BoloPlayerControls(
     var controlsVisible by remember { mutableStateOf(false) }
     val controlsTransition = updateTransition(controlsVisible, label = "playerControls")
     val bottomControlsVisible = controlsTransition.currentState || controlsTransition.targetState
-    val playbackControlsPinned = !(viewModel.pendingPlayWhenReady ?: playState.playWhenReady)
+    val playbackEnded = playerUiState is VideoPlayerUiState.Success && playState.isEnded
+    val playbackPaused = !(viewModel.pendingPlayWhenReady ?: playState.playWhenReady)
+    val playbackControlsPinned = !playbackEnded && playbackPaused
     val controlsReveal by controlsTransition.animateFloat(
         transitionSpec = { tween(200) }, label = "highEnergyProgressPosition",
     ) { if (it) 1f else 0f }
@@ -561,7 +564,8 @@ fun BoloPlayerControls(
             cancelled || handled
         } else if (
             event.type != KeyEventType.KeyDown || keyboardBlocked || !windowFocused ||
-            event.isCtrlPressed || event.isAltPressed || event.isMetaPressed
+            event.isCtrlPressed || event.isAltPressed || event.isMetaPressed ||
+            (event.isShiftPressed && (event.key == Key.Zero || event.key == Key.NumPad0))
         ) {
             false
         } else if (event.key in keyboardCancelledKeys) {
@@ -582,6 +586,18 @@ fun BoloPlayerControls(
                 Key.D -> {
                     if (keyboardPressedKeys.add(Key.D)) {
                         viewModel.setDanmakuVisible(!viewModel.danmakuController.state.value.isVisible)
+                    }
+                    true
+                }
+                Key.Zero, Key.NumPad0 -> {
+                    if (keyboardPressedKeys.add(event.key)) {
+                        val playback = viewModel.controller.state.value
+                        if (playback.isSeekable && playback.durationMs > 0L && !playback.isPlaybackSuspended) {
+                            viewModel.seekToMs(
+                                0L,
+                                autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled,
+                            )
+                        }
                     }
                     true
                 }
@@ -690,6 +706,27 @@ fun BoloPlayerControls(
         ?.videoSource
         ?.audioQualities
         .orEmpty()
+    val gestureSpeedPreview = keyboardSpeedBoost ?: gestureSpeedBoost
+    val centerFeedback = when {
+        gestureSpeedPreview != null -> Icons.Rounded.FastForward to "长按快进"
+        previewPositionMs != null -> if (previewPositionMs < playState.displayPositionMs) {
+            Icons.Rounded.FastRewind to "快退"
+        } else {
+            Icons.Rounded.FastForward to "快进"
+        }
+        actionFeedback != null -> actionFeedback
+        else -> null
+    }
+    val feedbackVisibility = remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
+        MutableTransitionState(false)
+    }
+    var retainedFeedback by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
+        mutableStateOf<Pair<ImageVector, String>?>(null)
+    }
+    SideEffect {
+        if (centerFeedback != null) retainedFeedback = centerFeedback
+        feedbackVisibility.targetState = centerFeedback != null && !deviceFeedbackVisible && !settingsOpen
+    }
 
     Box(
         modifier = controlsModifier.onGloballyPositioned {
@@ -971,6 +1008,18 @@ fun BoloPlayerControls(
                     }
                 }
         )
+        if (playbackEnded) {
+            BoloPlayerEndedContent(
+                onReplay = viewModel::play,
+                onPreviousEpisode = onPreviousEpisode,
+                onNextEpisode = onNextEpisode,
+                episodeNavigationEnabled = episodeNavigationEnabled,
+                actionsVisible = !settingsOpen && !danmakuInputOpen && !deviceFeedbackVisible &&
+                    !playState.isBuffering && centerFeedback == null &&
+                    feedbackVisibility.isIdle && !feedbackVisibility.currentState,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
         if (showExtendedControls && infoOpen) {
             BoxWithConstraints(
                 Modifier.fillMaxSize()
@@ -1051,6 +1100,7 @@ fun BoloPlayerControls(
                 data = highEnergyProgress!!,
                 durationMs = durationMs,
                 watchedRanges = { watchedRanges },
+                positionFraction = { sliderValue },
                 controlsFraction = { controlsReveal },
                 shownTrackBounds = { highEnergyTrackBounds },
                 hiddenBounds = { highEnergyHiddenBounds },
@@ -1230,8 +1280,8 @@ fun BoloPlayerControls(
                                     modifier = Modifier.size(32.dp).layoutId("playback"),
                                 ) {
                                     Icon(
-                                        imageVector = if (playbackControlsPinned) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
-                                        contentDescription = if (playbackControlsPinned) "播放" else "暂停",
+                                        imageVector = if (playbackPaused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+                                        contentDescription = if (playbackPaused) "播放" else "暂停",
                                         tint = Color.White,
                                         modifier = Modifier.size(28.dp),
                                     )
@@ -1436,27 +1486,6 @@ fun BoloPlayerControls(
                     }
                 }
             }
-        }
-        val gestureSpeedPreview = keyboardSpeedBoost ?: gestureSpeedBoost
-        val centerFeedback = when {
-            gestureSpeedPreview != null -> Icons.Rounded.FastForward to "长按快进"
-            previewPositionMs != null -> if (previewPositionMs < playState.displayPositionMs) {
-                Icons.Rounded.FastRewind to "快退"
-            } else {
-                Icons.Rounded.FastForward to "快进"
-            }
-            actionFeedback != null -> actionFeedback
-            else -> null
-        }
-        val feedbackVisibility = remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
-            MutableTransitionState(false)
-        }
-        var retainedFeedback by remember(viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen) {
-            mutableStateOf<Pair<ImageVector, String>?>(null)
-        }
-        SideEffect {
-            if (centerFeedback != null) retainedFeedback = centerFeedback
-            feedbackVisibility.targetState = centerFeedback != null && !deviceFeedbackVisible && !settingsOpen
         }
         if (playState.isBuffering && !settingsOpen && !deviceFeedbackVisible &&
             centerFeedback == null && feedbackVisibility.isIdle && !feedbackVisibility.currentState) {
