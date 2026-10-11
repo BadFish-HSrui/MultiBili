@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
@@ -40,17 +42,21 @@ fun RelationButton(upName: String, mid: Long, modifier: Modifier = Modifier) {
 
     LaunchedEffect(trigger) {
         if (loginStorage.isLoggedIn) {
-            try {
-                val result = fetchRelationWith(mid)
-                if (result.isSuccess) {
+            // 首次请求失败后最多重试三次，耗尽后静默保留当前状态。
+            repeat(4) {
+                val result = try {
+                    fetchRelationWith(mid)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+                currentCoroutineContext().ensureActive()
+                if (result?.isSuccess == true) {
                     relationString = result.data.to.relationString
                     isFollowing = result.data.to.isFollowing
-                } else {
-                    snackbarManager.showMessage("[${result.code}]: ${result.message}")
+                    return@LaunchedEffect
                 }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                snackbarManager.showMessage(e.message ?: "其他网络错误")
             }
         }
     }
