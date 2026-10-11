@@ -109,6 +109,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -563,7 +564,8 @@ fun BoloPlayerControls(
             cancelled || handled
         } else if (
             event.type != KeyEventType.KeyDown || keyboardBlocked || !windowFocused ||
-            event.isCtrlPressed || event.isAltPressed || event.isMetaPressed
+            event.isCtrlPressed || event.isAltPressed || event.isMetaPressed ||
+            (event.isShiftPressed && (event.key == Key.Zero || event.key == Key.NumPad0))
         ) {
             false
         } else if (event.key in keyboardCancelledKeys) {
@@ -584,6 +586,18 @@ fun BoloPlayerControls(
                 Key.D -> {
                     if (keyboardPressedKeys.add(Key.D)) {
                         viewModel.setDanmakuVisible(!viewModel.danmakuController.state.value.isVisible)
+                    }
+                    true
+                }
+                Key.Zero, Key.NumPad0 -> {
+                    if (keyboardPressedKeys.add(event.key)) {
+                        val playback = viewModel.controller.state.value
+                        if (playback.isSeekable && playback.durationMs > 0L && !playback.isPlaybackSuspended) {
+                            viewModel.seekToMs(
+                                0L,
+                                autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled,
+                            )
+                        }
                     }
                     true
                 }

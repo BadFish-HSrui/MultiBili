@@ -57,9 +57,10 @@ internal object DesktopPlayerKeyboard {
     }
 
     fun onKeyEvent(event: KeyEvent): Boolean {
-        if (event.type == KeyEventType.KeyDown && event.key == Key.Spacebar) {
+        if (event.type == KeyEventType.KeyDown &&
+            (event.key == Key.Spacebar || event.key == Key.Zero || event.key == Key.NumPad0)) {
             val component = event.awtEventOrNull?.component ?: return false
-            // 编辑会话的空格留给文本输入和候选词确认，窗口兜底也不能接管。
+            // 编辑会话的空格和数字键留给文本输入及候选词操作，窗口兜底也不能接管。
             if (component.inputMethodRequests != null) return false
         }
         val handled = onKeyEvent?.invoke(event) == true
