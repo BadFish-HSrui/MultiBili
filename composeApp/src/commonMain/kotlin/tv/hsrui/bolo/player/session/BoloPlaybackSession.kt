@@ -122,7 +122,11 @@ class BoloPlaybackSession private constructor(val key: String) {
     }
 
     fun setForeground(active: Boolean) {
-        if (closed || foreground == active) return
+        if (closed) return
+        // 系统媒体服务可以独立于播放会话被回收，先恢复适配再恢复播放器资源。
+        try { adapter?.setForeground(active) }
+        catch (error: Exception) { println("系统媒体控件恢复失败：${error.message}") }
+        if (foreground == active) return
         foreground = active
         player.onPlaybackForegroundChanged(active)
         publish(force = true)

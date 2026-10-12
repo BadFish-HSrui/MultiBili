@@ -20,12 +20,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.PlayerFullscreenEffect
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.player.rememberPlayerFullscreenState
@@ -44,8 +49,11 @@ fun MediaPlaybackScreen(
     },
 ) {
     val uiState = viewModel.uiState.collectAsState().value
-    LaunchedEffect(viewModel, isActive) {
-        if (isActive) viewModel.bindPlayback()
+    val navigator = koinInject<Navigator>()
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    LaunchedEffect(viewModel, isActive, lifecycleState) {
+        if (isActive && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) &&
+            navigator.backStack.lastOrNull() == BoloRoute.View.Media(seasonId, episodeId)) viewModel.bindPlayback()
     }
     val player = viewModel.playbackSession?.player
     val playerState = player?.uiState?.collectAsState()?.value

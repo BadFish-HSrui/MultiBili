@@ -39,6 +39,7 @@ data class BoloSystemMediaCommand(
 )
 
 internal interface BoloSystemMediaSession {
+    fun setForeground(active: Boolean) {}
     fun publish(state: BoloSystemMediaState)
     fun close()
 }

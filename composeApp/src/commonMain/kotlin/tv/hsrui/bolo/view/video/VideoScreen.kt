@@ -21,6 +21,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
@@ -47,18 +50,21 @@ fun VideoScreen(
 ) {
     val uiState = viewModel.uiState.collectAsState().value
     val navigator = koinInject<Navigator>()
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val expectedRoute = when (request) {
+        is VideoPlaybackRequest.Single -> BoloRoute.View.Video(request.vid)
+        is VideoPlaybackRequest.VideoList -> BoloRoute.View.VideoList(request)
+    }
     LaunchedEffect(viewModel, isActive, uiState) {
         val redirect = uiState as? VideoUiState.RedirectToMedia ?: return@LaunchedEffect
-        val expectedRoute = when (request) {
-            is VideoPlaybackRequest.Single -> BoloRoute.View.Video(request.vid)
-            is VideoPlaybackRequest.VideoList -> BoloRoute.View.VideoList(request)
-        }
         if (isActive && navigator.backStack.lastOrNull() == expectedRoute && viewModel.uiState.value == redirect) {
             navigator.switchTo(redirect.route)
         }
     }
-    LaunchedEffect(viewModel, isActive) {
-        if (isActive && viewModel.uiState.value !is VideoUiState.RedirectToMedia) viewModel.bindPlayback()
+    LaunchedEffect(viewModel, isActive, lifecycleState) {
+        if (isActive && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) &&
+            navigator.backStack.lastOrNull() == expectedRoute &&
+            viewModel.uiState.value !is VideoUiState.RedirectToMedia) viewModel.bindPlayback()
     }
     val player = viewModel.playbackSession?.player
     val playerState = player?.uiState?.collectAsState()?.value

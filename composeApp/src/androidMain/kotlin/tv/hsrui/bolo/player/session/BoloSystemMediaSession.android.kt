@@ -6,6 +6,9 @@ import androidx.media3.common.util.UnstableApi
 internal actual fun createBoloSystemMediaSession(session: BoloPlaybackSession): BoloSystemMediaSession {
     BoloMediaSessionService.attach(session)
     return object : BoloSystemMediaSession {
+        override fun setForeground(active: Boolean) {
+            if (active) BoloMediaSessionService.attach(session)
+        }
         override fun publish(state: BoloSystemMediaState) = BoloMediaSessionService.publish(session, state)
         override fun close() = BoloMediaSessionService.detach(session)
     }
