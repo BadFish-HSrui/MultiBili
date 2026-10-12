@@ -603,7 +603,8 @@ class VideoPlayerViewModel(
         val durationSeconds = maxOf(source.getVideo(videoQuality, settings.playback.defaultVideoCodec).duration,
             source.getAudio(audioQuality)?.duration ?: 0L)
         val durationMs = durationSeconds.coerceIn(0L, Long.MAX_VALUE / 1000L) * 1000L
-        return info.resumePositionMs(cid, durationMs)
+        val positionMs = info.resumePositionMs(cid, durationMs)
+        return if (positionMs >= durationMs - 5_000L) 0L else positionMs
     }
 
     private fun playbackSuccess(source: VideoSource, video: BiliDashObject): VideoPlayerUiState.Success {
