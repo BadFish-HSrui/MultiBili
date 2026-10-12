@@ -650,6 +650,8 @@ fun BoloPlayerControls(
         } else false
     }
     val durationMs = playState.durationMs
+    val bottomProgressHeight = 2.dp
+    val bottomProgressEnabled = playerUiState is VideoPlayerUiState.Success && durationMs > 0L
     val previewPositionMs = gesturePreviewMs ?: sliderPreviewFraction?.let { fraction ->
         (fraction.toDouble() * durationMs.toDouble())
             .roundToLong()
@@ -688,6 +690,14 @@ fun BoloPlayerControls(
             gestureProgressPinned = false
         }
     }
+    val bottomProgressVisible = bottomProgressEnabled && !controlsVisible && !gestureProgressVisible && !gestureProgressPinned
+    val bottomProgressTransition = updateTransition(bottomProgressVisible, label = "bottomProgress")
+    val bottomProgressReveal by bottomProgressTransition.animateFloat(
+        transitionSpec = {
+            // 控制层隐藏共 200ms，细条在最后 50ms 上移；呼出时下移不延迟。
+            tween(durationMillis = 50, delayMillis = if (targetState && controlsTransition.currentState) 150 else 0)
+        }, label = "bottomProgressPosition",
+    ) { if (it) 1f else 0f }
     fun progressSlideOffsetPx(): Float = if (gestureProgressVisible || gestureProgressPinned) 0f else {
         (bottomControlsCoordinates?.size?.height ?: 0) * (1f - controlsReveal)
     }
@@ -1084,10 +1094,11 @@ fun BoloPlayerControls(
             highEnergyProgress != null && durationMs > 0L &&
             (playerSettings.playback.highEnergyProgressAlwaysVisible || controlsTransition.currentState || controlsTransition.targetState)
         ) {
-            // 使用同一套 Insets 消费规则测量可用区域，不叠加控制区内边距。
+            // 固定隐藏态终点，曲线直接移到细条上沿，不随细条显隐再次升降。
             Box(
                 Modifier.matchParentSize()
-                    .then(if (applyControlsInsets) Modifier.windowInsetsPadding(controlsInsets) else Modifier),
+                    .then(if (applyControlsInsets) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
+                    .padding(bottom = if (bottomProgressEnabled) bottomProgressHeight else 0.dp),
             ) {
                 Box(Modifier.matchParentSize().onGloballyPositioned { coordinates ->
                     val root = controlsRootCoordinates
@@ -1108,6 +1119,24 @@ fun BoloPlayerControls(
                     alpha = if (playerSettings.playback.highEnergyProgressAlwaysVisible) 1f else controlsReveal
                 },
             )
+        }
+        if (bottomProgressEnabled && (bottomProgressTransition.currentState || bottomProgressTransition.targetState)) {
+            Box(
+                Modifier.matchParentSize()
+                    .then(if (applyControlsInsets) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
+                    .clipToBounds(),
+            ) {
+                Box(
+                    Modifier.align(Alignment.BottomStart).fillMaxWidth().height(bottomProgressHeight)
+                        .graphicsLayer { translationY = size.height * (1f - bottomProgressReveal) }
+                        .background(Color.White.copy(alpha = 0.3f)),
+                ) {
+                    Box(
+                        Modifier.align(Alignment.CenterStart).fillMaxWidth(sliderValue).height(bottomProgressHeight)
+                            .background(BiliColor.ThemeColor),
+                    )
+                }
+            }
         }
         controlsTransition.AnimatedVisibility(
             visible = { it },
