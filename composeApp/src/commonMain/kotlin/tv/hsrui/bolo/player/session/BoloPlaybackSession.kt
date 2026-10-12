@@ -44,7 +44,6 @@ class BoloPlaybackSession private constructor(val key: String) {
     private var interruptionMedia = ""
     private var seekRevision = 0L
     private var wasSeeking = false
-    private var wasPlaying = false
     private var wasEnded = false
     private var lastPublish = TimeSource.Monotonic.markNow()
 
@@ -65,9 +64,8 @@ class BoloPlaybackSession private constructor(val key: String) {
                 if (stopped && playback.playWhenReady) stopped = false
                 if (wasSeeking && !playback.isSeeking && playback.hasConfirmedPosition) seekRevision++
                 wasSeeking = playback.isSeeking
-                val ended = (player.singleEpisodeLoopEnabled || wasPlaying) &&
-                    !wasEnded && playback.isEnded && !playback.isPlaybackSuspended
-                wasPlaying = playback.isPlaying && !playback.isPlaybackSuspended
+                // mpv 可能先报告暂停再报告 EOF，结束行为不能依赖上一状态是否正在播放。
+                val ended = !wasEnded && playback.isEnded && !playback.isPlaybackSuspended
                 wasEnded = playback.isEnded
                 publish()
                 if (ended) {
@@ -103,7 +101,6 @@ class BoloPlaybackSession private constructor(val key: String) {
         if (value.mediaId != metadata.mediaId) {
             stopped = false
             interruptionRevision = null
-            wasPlaying = false
             wasEnded = false
             seekRevision++
         }
