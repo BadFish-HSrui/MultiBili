@@ -644,7 +644,7 @@ fun BoloPlayerControls(
     val devicePreview = brightnessPreview ?: volumePreview
     val deviceFeedbackVisible = devicePreview != null || desktopVolumeFeedbackVisible
     val onDesktopVolumeScroll by rememberUpdatedState<(Float) -> Boolean> { delta ->
-        if (isDesktop && windowFocused && !keyboardBlocked && delta != 0f) {
+        if (isDesktop && isFullscreen && windowFocused && !keyboardBlocked && delta != 0f) {
             adjustDesktopVolume(if (delta < 0f) 2 else -2)
             true
         } else false
