@@ -6,7 +6,10 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -21,11 +24,15 @@ import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.model.Vid
 import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.openVideo
 import tv.hsrui.bolo.navigation.parseExternalLink
 import tv.hsrui.bolo.player.VideoPlayerUiState
+import tv.hsrui.bolo.player.settings.BoloPlayerSettings
 import tv.hsrui.bolo.player.session.BoloPlaybackSession
 import tv.hsrui.bolo.player.session.BoloSystemMediaMetadata
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
+import tv.hsrui.bolo.ui.common.videosPage.VideosUiState
+import tv.hsrui.bolo.view.video.desc.RelatedViewModel
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.video.fetchVideoInfo
 import tv.hsrui.network.feature.video.collection.VideoCollectionEpisodeData
@@ -81,6 +88,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
                         if (state.hasPreviousEpisode) ::selectPreviousEpisode else null,
                         if (state.hasNextEpisode) ::selectNextEpisode else null,
                         state.episodeNavigationEnabled,
+                        autoPlayNext = { autoPlayNextVideo(session) },
                     )
                     val result = player.uiState.first { it !is VideoPlayerUiState.Loading }
                     onEpisodePlaybackResult(video.avid, video.cid, result is VideoPlayerUiState.Error)
@@ -245,6 +253,38 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
 
     fun selectNextEpisode() = selectAdjacentEpisode(before = false)
 
+    private fun autoPlayNextVideo(session: BoloPlaybackSession) {
+        val current = _uiState.value as? VideoUiState.Success ?: return
+        if (BoloPlaybackSession.current !== session || !current.episodeNavigationEnabled ||
+            session.player.avid != current.video.avid || session.player.cid != current.video.cid) return
+        if (current.hasNextEpisode) {
+            selectAdjacentEpisode(before = false, onUnavailable = { autoPlayNextVideo(session) })
+            return
+        }
+        val version = generation
+        // 与简介页使用同一 Store 和 key，复用已加载的相关推荐。
+        val related = ViewModelProvider.create(
+            owner = getDetailOwner(current.video.avid),
+            factory = viewModelFactory { initializer { RelatedViewModel(current.video.avid) } },
+        )["desc_${current.video.bvid}", RelatedViewModel::class]
+        session.bindPlayback {
+            val recommendations = withTimeoutOrNull(15_000) {
+                related.uiState.first { it !is VideosUiState.Loading }
+            } as? VideosUiState.Success ?: return@bindPlayback
+            val latest = _uiState.value as? VideoUiState.Success ?: return@bindPlayback
+            val playback = session.player.controller.state.value
+            val playerSettings = getKoin().get<BoloPlayerSettings>()
+            if (version != generation || BoloPlaybackSession.current !== session ||
+                latest.video.avid != current.video.avid || latest.video.cid != current.video.cid ||
+                !latest.episodeNavigationEnabled || latest.hasNextEpisode ||
+                !playerSettings.playback.autoPlayNextEnabled || session.player.singleEpisodeLoopEnabled ||
+                !playback.isEnded || playback.isPlaybackSuspended) return@bindPlayback
+            val target = recommendations.videos.firstOrNull { it.avid > 0 && it.avid != current.video.avid }
+                ?: return@bindPlayback
+            if (target.bvid.isNotBlank()) openVideo(target.bvid) else openVideo(target.avid)
+        }
+    }
+
     fun cancelEpisodeNavigation() {
         val current = _uiState.value as? VideoUiState.Success ?: return
         val navigating = current.isSwitchingEpisode && current.switchingEpisodeKey == null
@@ -258,7 +298,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         )
     }
 
-    private fun selectAdjacentEpisode(before: Boolean) {
+    private fun selectAdjacentEpisode(before: Boolean, onUnavailable: (() -> Unit)? = null) {
         val current = _uiState.value as? VideoUiState.Success ?: return
         if (!current.episodeNavigationEnabled) return
         if (before && !current.hasPreviousEpisode || !before && !current.hasNextEpisode) return
@@ -300,7 +340,8 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
                     }
                     if (target == null) {
                         _uiState.value = latest.copy(isSwitchingEpisode = false)
-                        showSnackbarMessage(if (before) "无法加载上一集" else "无法加载下一集")
+                        if (onUnavailable != null) onUnavailable()
+                        else showSnackbarMessage(if (before) "无法加载上一集" else "无法加载下一集")
                         return@launch
                     }
                     targetAvid = target.id

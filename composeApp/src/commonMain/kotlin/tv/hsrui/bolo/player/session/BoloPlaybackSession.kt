@@ -36,6 +36,7 @@ class BoloPlaybackSession private constructor(val key: String) {
     private var metadata = BoloSystemMediaMetadata()
     private var previous: (() -> Unit)? = null
     private var next: (() -> Unit)? = null
+    private var autoPlayNext: (() -> Unit)? = null
     private var navigationEnabled = false
     private var closed = false
     private var foreground = true
@@ -72,7 +73,7 @@ class BoloPlaybackSession private constructor(val key: String) {
                     if (player.singleEpisodeLoopEnabled) {
                         player.play()
                     } else if (playerSettings.playback.autoPlayNextEnabled && navigationEnabled) {
-                        next?.invoke()
+                        autoPlayNext?.invoke()
                     }
                 }
             }
@@ -92,10 +93,17 @@ class BoloPlaybackSession private constructor(val key: String) {
         publish(force = true)
     }
 
-    fun updateMedia(value: BoloSystemMediaMetadata, previous: (() -> Unit)?, next: (() -> Unit)?, enabled: Boolean) {
+    fun updateMedia(
+        value: BoloSystemMediaMetadata,
+        previous: (() -> Unit)?,
+        next: (() -> Unit)?,
+        enabled: Boolean,
+        autoPlayNext: (() -> Unit)? = next,
+    ) {
         if (closed) return
         this.previous = previous
         this.next = next
+        this.autoPlayNext = autoPlayNext
         navigationEnabled = enabled
         val artworkChanged = value.artworkUrl != metadata.artworkUrl || value.mediaId != metadata.mediaId
         if (value.mediaId != metadata.mediaId) {
