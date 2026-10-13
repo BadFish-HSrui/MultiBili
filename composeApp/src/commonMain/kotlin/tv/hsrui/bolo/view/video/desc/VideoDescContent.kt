@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -91,7 +93,9 @@ fun VideoDescContent(
                                     RelationButton(
                                         upName = member.name,
                                         mid = member.mid,
-                                        modifier = Modifier.height(24.dp),
+                                        // 非零最小高度让按钮随文字测量，跳过默认最小高度。
+                                        modifier = Modifier.width(48.dp).heightIn(min = 1.dp).offset(y = (-4).dp),
+                                        minimumInteractiveComponentSize = 0.dp,
                                     )
                                     Text(
                                         text = member.name,

@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -32,7 +35,12 @@ import tv.hsrui.network.feature.user.relation.modifyRelation
 import tv.hsrui.network.login.storage.LoginStorage
 
 @Composable
-fun RelationButton(upName: String, mid: Long, modifier: Modifier = Modifier) {
+fun RelationButton(
+    upName: String,
+    mid: Long,
+    modifier: Modifier = Modifier,
+    minimumInteractiveComponentSize: Dp = LocalMinimumInteractiveComponentSize.current,
+) {
     val snackbarManager: SnackbarManager = koinInject()
     val loginStorage: LoginStorage = koinInject()
     var trigger by rememberSaveable { mutableStateOf(0) }
@@ -61,19 +69,21 @@ fun RelationButton(upName: String, mid: Long, modifier: Modifier = Modifier) {
         }
     }
 
-    Button(
-        onClick = { showDialog = true },
-        modifier = modifier.defaultMinSize(minWidth = 56.dp, minHeight = 24.dp),
-        contentPadding = PaddingValues(0.dp),
-        colors = ButtonDefaults.buttonColors()
-            .copy(containerColor = if (isFollowing) BiliColor.ThemeColor else Color.Gray)
-    ) {
-        Text(
-            text = relationString,
-            style = MaterialTheme.typography.labelSmall,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-        )
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides minimumInteractiveComponentSize) {
+        Button(
+            onClick = { showDialog = true },
+            modifier = modifier.defaultMinSize(minWidth = 56.dp, minHeight = 24.dp),
+            contentPadding = PaddingValues(0.dp),
+            colors = ButtonDefaults.buttonColors()
+                .copy(containerColor = if (isFollowing) BiliColor.ThemeColor else Color.Gray)
+        ) {
+            Text(
+                text = relationString,
+                style = MaterialTheme.typography.labelSmall,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+            )
+        }
     }
 
     if (showDialog) {
