@@ -488,7 +488,7 @@ class VideoPlayerViewModel(
                 audio = audio,
                 startPositionMs = startPositionMs,
                 loudness = currentState.videoSource.loudness,
-                sortCdn = settings.playback.optimizePlaybackSourceEnabled,
+                optimizeSource = settings.playback.optimizePlaybackSourceEnabled,
             )
             currentCoroutineContext().ensureActive()
             if (generation != sourceGeneration) return@launch

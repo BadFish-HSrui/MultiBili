@@ -40,5 +40,10 @@ data class PlayerStreamResponseData(
     val lastModified: String?,
 )
 
-class PlayerStreamException(message: String, val retryable: Boolean, cause: Throwable? = null) :
-    Exception(message, cause)
+class PlayerStreamException(
+    message: String,
+    val retryable: Boolean,
+    cause: Throwable? = null,
+    val statusCode: Int? = null,
+    val resourceChanged: Boolean = false,
+) : Exception(message, cause)

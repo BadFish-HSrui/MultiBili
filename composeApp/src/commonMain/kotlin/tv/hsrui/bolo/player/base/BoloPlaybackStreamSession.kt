@@ -26,12 +26,13 @@ import tv.hsrui.network.feature.player.PlayerStreamResponseData
 import tv.hsrui.network.feature.player.fetchPlayerStream
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicLong
+import kotlin.concurrent.atomics.AtomicReference
 import kotlin.time.TimeSource
 
 internal enum class BoloPlaybackTrack { Video, Audio }
 internal data class BoloPlaybackStreamSource(
     val track: BoloPlaybackTrack,
-    val url: String,
+    val urls: List<String>,
     val nominalBitrateBps: Long?,
     val index: PlayerStreamIndexData? = null,
 )
@@ -45,6 +46,7 @@ internal data class BoloPlaybackTrackSnapshot(
     val position: Long,
     val downloadBytesPerSecond: Long?,
     val bufferedRanges: List<BoloPlaybackTimeRange> = emptyList(),
+    val indexKnown: Boolean = false,
 )
 internal data class BoloPlaybackStreamSnapshot(
     val generation: Long,
@@ -56,6 +58,7 @@ internal data class BoloPlaybackStreamSnapshot(
 internal class BoloPlaybackStreamSession(
     val generation: Long,
     sources: List<BoloPlaybackStreamSource>,
+    private val optimizationEnabled: Boolean = true,
     private val onFailure: (BoloPlaybackTrack, Throwable) -> Unit,
 ) {
     internal class Reader internal constructor(val track: BoloPlaybackTrack, val job: Job) {
@@ -63,9 +66,11 @@ internal class BoloPlaybackStreamSession(
         var waiting = false // 会话 mutex 保护。
     }
 
-    private class Track(val source: BoloPlaybackStreamSource) {
+    private class Track(val source: BoloPlaybackStreamSource, optimizationEnabled: Boolean) {
+        val candidates = if (optimizationEnabled) BoloPlaybackCandidates(source.urls) else null
         val ready = CompletableDeferred<Unit>()
         val readers = mutableSetOf<Reader>()
+        val urgencyStart = AtomicLong(-1L)
         var position = 0L
         var total: Long? = null
         var metadata: PlayerStreamResponseData? = null
@@ -94,13 +99,21 @@ internal class BoloPlaybackStreamSession(
     private val mutex = Mutex()
     private val changed = MutableStateFlow(0L)
     private val cache = BoloPlaybackCache()
-    private val tracks = sources.associate { it.track to Track(it) }
+    private val downloader = BoloPlaybackDownloader()
+    private val tracks = sources.associate { it.track to Track(it, optimizationEnabled) }
+    private val demand = AtomicReference<BoloPlaybackDownloadDemand?>(null)
     private val clock = TimeSource.Monotonic.markNow()
     private var prepared = false
     private var suspended = false
     private var videoPrefetch = true
     val videoUri: String get() = "bolo-stream://$generation/video"
     val audioUri: String? get() = "bolo-stream://$generation/audio".takeIf { BoloPlaybackTrack.Audio in tracks }
+
+    fun updateDemand(value: BoloPlaybackDownloadDemand) {
+        if (value.generation != generation || closed.load()) return
+        demand.store(value)
+        if (optimizationEnabled) downloader.updateDemand(value)
+    }
 
     suspend fun prepare() {
         mutex.withLock {
@@ -193,7 +206,12 @@ internal class BoloPlaybackStreamSession(
         }
     }
 
-    private fun signal() { changed.value += 1 }
+    private fun signal() {
+        tracks.values.forEach { track ->
+            track.urgencyStart.store(track.readers.firstOrNull { it.waiting && it.job.isActive }?.position?.load() ?: -1L)
+        }
+        changed.value += 1
+    }
 
     private fun requestNeeded(track: Track) = track.readers.any {
         it.job.isActive && it.waiting && it.position.load() >= track.requestStart && it.position.load() < track.requestEnd
@@ -315,45 +333,74 @@ internal class BoloPlaybackStreamSession(
             var retryDelay = 0L
             val isIndex = track.requestIsIndex
             try {
+                val priority = mutex.withLock {
+                    when {
+                        isIndex -> BoloPlaybackRequestPriority.Metadata
+                        track.metadata == null || demand.load()?.pendingSeekMs != null -> BoloPlaybackRequestPriority.Startup
+                        track.readers.any { it.waiting && it.job.isActive } -> BoloPlaybackRequestPriority.Playback
+                        else -> BoloPlaybackRequestPriority.Prefetch
+                    }
+                }
+                val index = mutex.withLock { track.index }
                 withContext(request) {
                     val start = track.requestStart
                     val end = track.requestEnd
-                    val previous = track.metadata
-                    val response = fetchPlayerStream(track.source.url, start, end,
-                        validator = previous?.etag?.takeUnless { it.startsWith("W/") } ?: previous?.lastModified,
-                        continueFullResponse = !isIndex,
-                        receiveLimit = if (isIndex) BoloPlaybackIndex.ScanLimit - track.indexReceived else null,
-                        onResponse = { metadata -> mutex.withLock {
+                    val requestMetadata = AtomicReference<PlayerStreamResponseData?>(null)
+                    val onResponse: suspend (PlayerStreamResponseData) -> Unit = { metadata -> mutex.withLock {
+                        currentCoroutineContext().ensureActive()
+                        if (!request.isActive || closed.load() || failed.load() || track.request !== request)
+                            throw CancellationException("播放下载请求已失效")
+                        validate(track, metadata)
+                        requestMetadata.store(metadata)
+                        track.metadata = if (optimizationEnabled) metadata else metadata.copy(
+                            etag = metadata.etag ?: track.metadata?.etag,
+                            lastModified = metadata.lastModified ?: track.metadata?.lastModified,
+                        )
+                        if (metadata.statusCode == 200) {
+                            track.fullResponseSeen = true
+                            if (!isIndex) track.requestEnd = metadata.totalBytes ?: Long.MAX_VALUE
+                        }
+                        metadata.totalBytes?.let { track.total = it }
+                        track.ready.complete(Unit)
+                        signal()
+                    } }
+                    val onReceived: suspend (Int) -> Unit = { count -> withContext(kotlinx.coroutines.NonCancellable) { mutex.withLock {
+                        track.received += count
+                        if (isIndex) track.indexReceived += count
+                        val slot = clock.elapsedNow().inWholeMilliseconds / 50
+                        track.speedBuckets[slot] = (track.speedBuckets[slot] ?: 0L) + count
+                        track.speedBuckets.keys.removeAll { it < slot - 20 }
+                    } } }
+                    val write: suspend (Long, ByteArray, Int, Int) -> Unit = { offset, bytes, at, count ->
+                        if (requestMetadata.load()?.statusCode == 200 && !isIndex) writeSequential(track, request, offset, bytes, at, count)
+                        else mutex.withLock {
                             currentCoroutineContext().ensureActive()
-                            validate(track, metadata)
-                            track.metadata = metadata.copy(
-                                etag = metadata.etag ?: track.metadata?.etag,
-                                lastModified = metadata.lastModified ?: track.metadata?.lastModified,
-                            )
-                            if (metadata.statusCode == 200) {
-                                track.fullResponseSeen = true
-                                if (!isIndex) track.requestEnd = metadata.totalBytes ?: Long.MAX_VALUE
-                            }
-                            metadata.totalBytes?.let { track.total = it }
-                            track.ready.complete(Unit)
+                            if (!request.isActive || closed.load() || failed.load() || track.request !== request)
+                                throw CancellationException("播放下载请求已失效")
+                            cache.write(kind, offset, bytes, at, count)
                             signal()
-                        } },
-                        onReceived = { count -> mutex.withLock {
-                            currentCoroutineContext().ensureActive()
-                            track.received += count
-                            if (isIndex) track.indexReceived += count
-                            val slot = clock.elapsedNow().inWholeMilliseconds / 50
-                            track.speedBuckets[slot] = (track.speedBuckets[slot] ?: 0L) + count
-                            track.speedBuckets.keys.removeAll { it < slot - 20 }
-                        } },
-                        write = { offset, bytes, at, count ->
-                            if (track.metadata?.statusCode == 200 && !isIndex) writeSequential(track, offset, bytes, at, count)
-                            else mutex.withLock {
-                                currentCoroutineContext().ensureActive()
-                                cache.write(kind, offset, bytes, at, count)
-                                signal()
-                            }
+                        }
+                    }
+                    val receiveLimit = if (isIndex) BoloPlaybackIndex.ScanLimit - track.indexReceived else null
+                    val response = if (optimizationEnabled) downloader.download(checkNotNull(track.candidates), start, end,
+                        priority = priority,
+                        deadlineMs = { position ->
+                            val current = demand.load()
+                            val segment = index?.segments?.firstOrNull { position >= it.startByte && position < it.endByte }
+                            if (current == null || segment == null || isIndex) null
+                            else if (current.pendingSeekMs != null || current.buffering) 0L
+                            else if (!current.playing) null
+                            else ((segment.startMs - current.positionMs).coerceAtLeast(0L) / current.playbackSpeed).toLong()
                         },
+                        urgencyStart = { track.urgencyStart.load().takeIf { it >= 0L } },
+                        readHead = { buffer -> mutex.withLock { cache.read(kind, 0L, buffer) } },
+                        missingBytes = { offset, count -> mutex.withLock { cache.missingBytes(kind, offset, count) } },
+                        continueFullResponse = !isIndex, receiveLimit = receiveLimit,
+                        onResponse = onResponse, onReceived = onReceived, write = write,
+                    ) else fetchPlayerStream(track.source.urls.first(), start, end,
+                        validator = track.metadata?.etag?.takeUnless { it.startsWith("W/") } ?: track.metadata?.lastModified,
+                        continueFullResponse = !isIndex, receiveLimit = receiveLimit,
+                        onResponse = onResponse, onReceived = onReceived, write = write,
                     )
                     mutex.withLock {
                         validate(track, response)
@@ -363,8 +410,10 @@ internal class BoloPlaybackStreamSession(
             } catch (error: CancellationException) {
                 currentCoroutineContext().ensureActive()
             } catch (error: Throwable) {
+                if (error is PlayerStreamException && error.resourceChanged) track.resourceChanged = true
                 val retry = when (error) {
-                    is PlayerStreamException -> error.retryable
+                    is PlayerStreamException -> error.retryable &&
+                        (optimizationEnabled || error.statusCode !in listOf(412, 429))
                     is IllegalArgumentException, is IllegalStateException -> false
                     else -> error is Exception
                 }
@@ -391,7 +440,7 @@ internal class BoloPlaybackStreamSession(
                     }
                 }
             } finally {
-                // 取消当前请求只结束该次范围；会话停止时由 GC 回收全部缓存。
+                // download 的所有分块及输家已退出，才能释放该轨外层范围的预留。
                 withContext(kotlinx.coroutines.NonCancellable) {
                     mutex.withLock {
                         cache.finish(kind)
@@ -410,7 +459,7 @@ internal class BoloPlaybackStreamSession(
     }
 
     /** 忽略 Range 的源保持同一响应，缓存满时背压；向前 seek 可直接跳过未消费前缀。 */
-    private suspend fun writeSequential(track: Track, offset: Long, bytes: ByteArray, at: Int, count: Int) {
+    private suspend fun writeSequential(track: Track, request: Job, offset: Long, bytes: ByteArray, at: Int, count: Int) {
         var position = offset
         val end = offset + count
         val kind = track.source.track
@@ -419,6 +468,8 @@ internal class BoloPlaybackStreamSession(
             var revision = 0L
             val progressed = mutex.withLock {
                 currentCoroutineContext().ensureActive()
+                if (!request.isActive || closed.load() || failed.load() || track.request !== request)
+                    throw CancellationException("播放下载请求已失效")
                 val pending = track.readers.firstOrNull { it.waiting && it.job.isActive }
                 val cursor = pending?.position?.load() ?: track.position
                 if (position < cursor) {
@@ -459,10 +510,10 @@ internal class BoloPlaybackStreamSession(
     private fun validate(track: Track, response: PlayerStreamResponseData) {
         val previous = track.metadata
         if ((track.total != null && response.totalBytes != null && track.total != response.totalBytes) ||
-            (previous?.etag != null && response.etag != null && previous.etag != response.etag) ||
-            (previous?.lastModified != null && response.lastModified != null && previous.lastModified != response.lastModified)) {
+            (!optimizationEnabled && ((previous?.etag != null && response.etag != null && previous.etag != response.etag) ||
+                (previous?.lastModified != null && response.lastModified != null && previous.lastModified != response.lastModified)))) {
             track.resourceChanged = true
-            throw PlayerStreamException("播放资源发生变化", false)
+            throw PlayerStreamException("播放资源发生变化", false, resourceChanged = true)
         }
     }
 
@@ -476,7 +527,7 @@ internal class BoloPlaybackStreamSession(
             val speed = if (track.metadata == null) null else
                 track.speedBuckets.filterKeys { it > now / 50 - 20 }.values.sum() * 1_000 / now.coerceIn(1L, 1_000L)
             return BoloPlaybackTrackSnapshot(track.total, ranges, forward, backward, track.received, track.position, speed,
-                track.index?.bufferedRanges(ranges).orEmpty())
+                track.index?.bufferedRanges(ranges).orEmpty(), track.index != null)
         }
         BoloPlaybackStreamSnapshot(generation, checkNotNull(sample(BoloPlaybackTrack.Video)), sample(BoloPlaybackTrack.Audio), cache.allocatedBytes)
     }

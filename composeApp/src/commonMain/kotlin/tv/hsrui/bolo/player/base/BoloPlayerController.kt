@@ -15,6 +15,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -36,7 +37,7 @@ internal data class BoloPlayerSource(
     val video: BiliDashObject,
     val audio: BiliDashObject?,
     val loudness: VideoLoudnessData?,
-    val sortCdn: Boolean,
+    val optimizeSource: Boolean,
 )
 
 /** 共享播放策略。状态只在 Main 更新，普通 native 调用与渲染上下文分离。 */
@@ -63,6 +64,7 @@ class BoloPlayerController(
     private var lastInfoSample: TimeMark? = null
     private val mutableBufferedRanges = MutableStateFlow<List<BoloPlaybackTimeRange>>(emptyList())
     val bufferedRanges: StateFlow<List<BoloPlaybackTimeRange>> = mutableBufferedRanges.asStateFlow()
+    private var bufferedRangeKnown = false
     private var lastBufferSample: TimeMark? = null
     private val diagnosticsSampler = BoloPlayerDiagnosticsSampler()
     private var diagnosticsRevision = 0L
@@ -73,6 +75,7 @@ class BoloPlayerController(
     private var audioUrls = emptyList<String>()
     private var videoStreamIndex: PlayerStreamIndexData? = null
     private var audioStreamIndex: PlayerStreamIndexData? = null
+    private var optimizeSourceEnabled = false
     private var videoIndex = 0
     private var audioIndex = 0
     private var urlExpirations = emptyMap<String, Long?>()
@@ -92,9 +95,11 @@ class BoloPlayerController(
         set(value) {
             if (field !== value) {
                 mutableBufferedRanges.value = emptyList()
+                bufferedRangeKnown = false
                 lastBufferSample = null
             }
             field = value
+            updateStreamDemand()
         }
     private var seekJob: Job? = null
     private var speedJob: Job? = null
@@ -145,12 +150,35 @@ class BoloPlayerController(
     private var requestSequence = 0L
     private var activeSeekRequest = 0L
 
+    init {
+        scope.launch { state.collect { updateStreamDemand() } }
+    }
+
+    private fun updateStreamDemand() {
+        val streams = streamSession ?: return
+        val current = state.value
+        val position = current.pendingSeekPositionMs ?: current.currentPositionMs
+        val bufferedAhead = if (!bufferedRangeKnown) -1L else
+            mutableBufferedRanges.value.firstOrNull { position >= it.startMs && position < it.endMs }
+                ?.let { it.endMs - position } ?: 0L
+        streams.updateDemand(BoloPlaybackDownloadDemand(
+            generation = generation,
+            seekRevision = coordinator.currentRevision,
+            positionMs = current.currentPositionMs,
+            pendingSeekMs = current.pendingSeekPositionMs,
+            playbackSpeed = current.playbackSpeed.toDouble(),
+            playing = current.playWhenReady && !current.isPlaybackSuspended && !current.isEnded,
+            buffering = current.isBuffering,
+            bufferedAheadMs = bufferedAhead,
+        ))
+    }
+
     internal suspend fun loadMedia(
         video: BiliDashObject,
         audio: BiliDashObject?,
         start: Long,
         loudness: VideoLoudnessData?,
-        sortCdn: Boolean,
+        optimizeSource: Boolean,
     ) {
         withContext(Dispatchers.Main.immediate) {
             if (disposed) return@withContext
@@ -171,7 +199,7 @@ class BoloPlayerController(
                 ready = false
                 generation = coordinator.onMediaChanged()
             }
-            setSource(BoloPlayerSource(video, audio, loudness, sortCdn))
+            setSource(BoloPlayerSource(video, audio, loudness, optimizeSource))
             resetInfo()
             recoveryAttempted = false
             val duration = maxOf(video.duration, audio?.duration ?: 0L).coerceIn(0L, Long.MAX_VALUE / 1000) * 1000
@@ -195,8 +223,9 @@ class BoloPlayerController(
         mediaLoudness = source.loudness
         val video = source.video
         val audio = source.audio
-        videoUrls = video.getUrls(sortCDN = source.sortCdn)
-        audioUrls = audio?.getUrls(sortCDN = source.sortCdn).orEmpty()
+        optimizeSourceEnabled = source.optimizeSource
+        videoUrls = video.getUrls(sortCDN = true)
+        audioUrls = audio?.getUrls(sortCDN = true).orEmpty()
         videoStreamIndex = video.streamIndex
         audioStreamIndex = audio?.streamIndex
         urlExpirations = video.urlExpiresAtEpochSeconds + audio?.urlExpiresAtEpochSeconds.orEmpty()
@@ -217,8 +246,10 @@ class BoloPlayerController(
         Clock.System.now().epochSeconds >= it
     } == true
 
-    private fun needsSourceRefresh(): Boolean = sourceNeedsRefresh ||
-        isExpired(videoUrls.getOrNull(videoIndex)) || isExpired(audioUrls.getOrNull(audioIndex))
+    private fun needsSourceRefresh(): Boolean = sourceNeedsRefresh || if (optimizeSourceEnabled) {
+        (videoUrls.isNotEmpty() && videoUrls.all(::isExpired)) ||
+            (audioUrls.isNotEmpty() && audioUrls.all(::isExpired))
+    } else isExpired(videoUrls.getOrNull(videoIndex)) || isExpired(audioUrls.getOrNull(audioIndex))
 
     private fun beginSourceRecovery(position: Long) {
         if (disposed || resourcesSuspended) return
@@ -358,12 +389,13 @@ class BoloPlayerController(
                 if (needsSourceRefresh()) { beginSourceRecovery(state.value.displayPositionMs); return@launch }
                 val speed = state.value.playbackSpeed.toDouble()
                 val volume = volumeGain.toDouble()
-                val video = videoUrls[videoIndex]
-                val audio = audioUrls.getOrNull(audioIndex)
+                val optimize = optimizeSourceEnabled
+                val video = if (optimize) videoUrls else listOf(videoUrls[videoIndex])
+                val audio = if (optimize) audioUrls else audioUrls.getOrNull(audioIndex)?.let(::listOf).orEmpty()
                 val streams = BoloPlaybackStreamSession(expected, buildList {
                     add(BoloPlaybackStreamSource(BoloPlaybackTrack.Video, video, mediaInfo.video.nominalBitrateBps, videoStreamIndex))
-                    if (audio != null) add(BoloPlaybackStreamSource(BoloPlaybackTrack.Audio, audio, mediaInfo.audio?.nominalBitrateBps, audioStreamIndex))
-                }) { track, _ ->
+                    if (audio.isNotEmpty()) add(BoloPlaybackStreamSource(BoloPlaybackTrack.Audio, audio, mediaInfo.audio?.nominalBitrateBps, audioStreamIndex))
+                }, optimizationEnabled = optimize) { track, _ ->
                     scope.launch {
                         if (!disposed && !resourcesSuspended && generation == expected && mutableBackend.value === current)
                             retrySource(-1, if (track == BoloPlaybackTrack.Audio) 2 else 1)
@@ -376,7 +408,7 @@ class BoloPlayerController(
                     withTimeout(20_000) { streams.prepare() }
                 } catch (_: TimeoutCancellationException) {
                     streams.cancel()
-                    if (generation == expected) retrySource(-1, 0)
+                    if (generation == expected) retrySource(-1)
                     return@launch
                 } catch (error: CancellationException) {
                     // 会话失败已由 onFailure 交给统一切源；页面取消仍正常向上传递。
@@ -397,9 +429,9 @@ class BoloPlayerController(
                     current.load(streams, position / 1000.0, expected)
                 }
                 if (generation != expected) return@launch
-                if (result < 0) retrySource(result, 0) else {
+                if (result < 0) retrySource(result) else {
                     delay((20_000 - loadStarted.elapsedNow().inWholeMilliseconds).coerceAtLeast(0))
-                    if (generation == expected && !ready) retrySource(-1, 0)
+                    if (generation == expected && !ready) retrySource(-1)
                 }
             } catch (e: TimeoutCancellationException) {
                 if (generation == expected) fail(BoloPlayerError.DecoderError("视频输出准备超时", e))
@@ -513,6 +545,8 @@ class BoloPlayerController(
         mutableBufferedRanges.value = BoloPlaybackIndex.intersect(
             snapshot.video.bufferedRanges, snapshot.audio?.bufferedRanges, state.value.durationMs,
         )
+        bufferedRangeKnown = snapshot.video.indexKnown && (snapshot.audio == null || snapshot.audio.indexKnown)
+        updateStreamDemand()
     }
 
     private suspend fun sampleInfo(engine: BoloMpvBackend) {
@@ -679,21 +713,26 @@ class BoloPlayerController(
         return true
     }
 
-    private fun retrySource(error: Int, failedTrack: Int) {
+    private fun retrySource(error: Int, failedTrack: Int = 0) {
         if (resourcesSuspended || disposed) return
         if (sourceRefreshJob != null) return
         val position = state.value.displayPositionMs
-        val nextVideo = (videoIndex + 1 until videoUrls.size).firstOrNull { !isExpired(videoUrls[it]) }
-        val nextAudio = (audioIndex + 1 until audioUrls.size).firstOrNull { !isExpired(audioUrls[it]) }
-        if (failedTrack == 2 && nextAudio != null) audioIndex = nextAudio
-        else if (failedTrack != 2 && nextVideo != null) videoIndex = nextVideo
-        else if (failedTrack == 0 && nextAudio != null) audioIndex = nextAudio
-        else {
-            if (error == -17) fail(BoloPlayerError.FormatNotSupported("媒体格式不支持"))
-            else beginSourceRecovery(position)
+        if (!optimizeSourceEnabled) {
+            val nextVideo = (videoIndex + 1 until videoUrls.size).firstOrNull { !isExpired(videoUrls[it]) }
+            val nextAudio = (audioIndex + 1 until audioUrls.size).firstOrNull { !isExpired(audioUrls[it]) }
+            if (failedTrack == 2 && nextAudio != null) audioIndex = nextAudio
+            else if (failedTrack != 2 && nextVideo != null) videoIndex = nextVideo
+            else if (failedTrack == 0 && nextAudio != null) audioIndex = nextAudio
+            else {
+                if (error == -17) fail(BoloPlayerError.FormatNotSupported("媒体格式不支持"))
+                else beginSourceRecovery(position)
+                return
+            }
+            startLoad(position)
             return
         }
-        startLoad(position)
+        if (error == -17) fail(BoloPlayerError.FormatNotSupported("媒体格式不支持"))
+        else beginSourceRecovery(position)
     }
 
     fun setPlaybackSpeed(speed: Float) {
@@ -1268,5 +1307,5 @@ suspend fun BoloPlayerController.load(
     audio: BiliDashObject? = null,
     startPositionMs: Long = 0L,
     loudness: VideoLoudnessData? = null,
-    sortCdn: Boolean = false,
-) = loadMedia(video, audio, startPositionMs, loudness, sortCdn)
+    optimizeSource: Boolean = false,
+) = loadMedia(video, audio, startPositionMs, loudness, optimizeSource)

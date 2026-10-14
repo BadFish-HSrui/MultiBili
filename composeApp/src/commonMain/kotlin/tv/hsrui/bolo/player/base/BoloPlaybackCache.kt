@@ -22,6 +22,18 @@ internal class BoloPlaybackCache {
         }
     }
 
+    fun missingBytes(track: BoloPlaybackTrack, position: Long, length: Int): Int {
+        val end = position + length
+        var missing = length
+        if (length == 0) return 0
+        for (key in position / BlockSize..(end - 1) / BlockSize) {
+            blocks[track to key]?.ranges?.forEach { range ->
+                missing -= (minOf(end, range.endExclusive) - maxOf(position, range.start)).coerceAtLeast(0L).toInt()
+            }
+        }
+        return missing
+    }
+
     fun read(track: BoloPlaybackTrack, position: Long, buffer: ByteArray, offset: Int = 0): Int {
         val block = blocks[track to (position / BlockSize)] ?: return 0
         val range = block.ranges.firstOrNull { position >= it.start && position < it.endExclusive } ?: return 0
