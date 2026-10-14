@@ -92,9 +92,16 @@ internal fun BoloPlayerInfoPanel(
                 BoloPlayerInfoRow("视频输出", info.videoOutput)
                 BoloPlayerInfoRow("音频输出", info.audioOutput)
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Color.White.copy(alpha = 0.2f))
-                BoloPlayerInfoRow("视频下载速度", formatPlayerDownloadSpeed(video.downloadBytesPerSecond))
-                BoloPlayerInfoRow("音频下载速度", formatPlayerDownloadSpeed(audio?.downloadBytesPerSecond))
-                BoloPlayerInfoRow("合计下载速度", formatPlayerDownloadSpeed(info.downloadBytesPerSecond))
+                val audioSpeed = if (audio == null) video.downloadBytesPerSecond?.let { 0L } else audio.downloadBytesPerSecond
+                val audioReceived = if (audio == null) video.receivedBytes?.let { 0L } else audio.receivedBytes
+                BoloPlayerInfoRow(
+                    "下载速度",
+                    "${formatPlayerDownloadSpeed(info.downloadBytesPerSecond)} " +
+                        "(${formatPlayerDownloadSpeed(video.downloadBytesPerSecond)} + ${formatPlayerDownloadSpeed(audioSpeed)})",
+                    singleLine = true,
+                )
+                BoloPlayerInfoRow("预载大小", playerInfoByteAmounts(info.forwardBytes, info.backwardBytes), singleLine = true)
+                BoloPlayerInfoRow("下载总量", playerInfoByteAmounts(video.receivedBytes, audioReceived), singleLine = true)
             }
         }
     }
@@ -191,7 +198,20 @@ private fun formatPlayerBitrate(value: Long?): String = when {
 
 internal fun formatPlayerDownloadSpeed(value: Long?): String = when {
     value == null -> "—"
-    value >= 1_048_576 -> "${playerInfoDecimal(value / 1_048_576.0)} MiB/s"
-    value >= 1_024 -> "${playerInfoDecimal(value / 1_024.0)} KiB/s"
+    value >= 1_048_576 -> "${playerInfoDecimal(value / 1_048_576.0)} MB/s"
+    value >= 1_024 -> "${playerInfoDecimal(value / 1_024.0)} KB/s"
     else -> "$value B/s"
+}
+
+private fun formatPlayerBytes(value: Long?): String = when {
+    value == null -> "—"
+    value >= 1_073_741_824 -> "${playerInfoDecimal(value / 1_073_741_824.0)} GB"
+    value >= 1_048_576 -> "${playerInfoDecimal(value / 1_048_576.0)} MB"
+    value >= 1_024 -> "${playerInfoDecimal(value / 1_024.0)} KB"
+    else -> "$value B"
+}
+
+private fun playerInfoByteAmounts(first: Long?, second: Long?): String {
+    val total = if (first != null && second != null) first + second else null
+    return "${formatPlayerBytes(total)} (${formatPlayerBytes(first)} + ${formatPlayerBytes(second)})"
 }

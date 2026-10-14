@@ -541,7 +541,7 @@ class BoloPlayerController(
             null
         }
         if (disposed || inBackground || resourcesSuspended || generation != expected || mutableBackend.value !== engine ||
-            audioRevision != mergeAudioRevision || diagnosticsVersion != diagnosticsRevision) return
+            streamSession !== streams || audioRevision != mergeAudioRevision || diagnosticsVersion != diagnosticsRevision) return
         if (!infoPanelVisible && !state.value.isBuffering) {
             mutableInfo.value = info.value.withoutDynamicValues()
             return
@@ -585,10 +585,14 @@ class BoloPlayerController(
     private fun BoloPlayerInfo.withStreamInfo(snapshot: BoloPlaybackStreamSnapshot?): BoloPlayerInfo {
         val videoSpeed = snapshot?.video?.downloadBytesPerSecond
         val audioSpeed = snapshot?.audio?.downloadBytesPerSecond
-        return copy(video = video.copy(downloadBytesPerSecond = videoSpeed),
-            audio = audio?.copy(downloadBytesPerSecond = audioSpeed),
+        return copy(
+            video = video.copy(downloadBytesPerSecond = videoSpeed, receivedBytes = snapshot?.video?.receivedBytes),
+            audio = audio?.copy(downloadBytesPerSecond = audioSpeed, receivedBytes = snapshot?.audio?.receivedBytes),
             downloadBytesPerSecond = if (videoSpeed != null && (audio == null || audioSpeed != null))
-                videoSpeed + (audioSpeed ?: 0L) else null)
+                videoSpeed + (audioSpeed ?: 0L) else null,
+            forwardBytes = snapshot?.let { it.video.forwardBytes + (it.audio?.forwardBytes ?: 0L) },
+            backwardBytes = snapshot?.let { it.video.backwardBytes + (it.audio?.backwardBytes ?: 0L) },
+        )
     }
 
     private fun handleEvent(event: BoloMpvEvent): Boolean {

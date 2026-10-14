@@ -15,7 +15,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
 import kotlin.time.TimeSource
 
-/** 独立于播放控制状态；null 表示未知，码率为 bit/s，下载速度为 B/s。 */
+/** 独立于播放控制状态；null 表示未知，码率为 bit/s，下载速度为 B/s，缓存量和下载量为字节。 */
 data class BoloPlayerInfo(
     val video: BoloPlayerVideoInfo = BoloPlayerVideoInfo(),
     val audio: BoloPlayerAudioInfo? = null,
@@ -24,6 +24,8 @@ data class BoloPlayerInfo(
     val videoOutput: String? = null,
     val audioOutput: String? = null,
     val downloadBytesPerSecond: Long? = null,
+    val forwardBytes: Long? = null,
+    val backwardBytes: Long? = null,
     val decoderDroppedFrames: Long? = null,
     val outputDroppedFrames: Long? = null,
     val decoderDroppedFramesPerSecond: Double? = null,
@@ -43,6 +45,7 @@ data class BoloPlayerVideoInfo(
     val fragmentIndex: Int? = null,
     val fragmentCount: Int? = null,
     val downloadBytesPerSecond: Long? = null,
+    val receivedBytes: Long? = null,
 ) {
     val aspectRatio: Float?
         get() = if (width != null && width > 0 && height != null && height > 0) {
@@ -72,6 +75,7 @@ data class BoloPlayerAudioInfo(
     val fragmentIndex: Int? = null,
     val fragmentCount: Int? = null,
     val downloadBytesPerSecond: Long? = null,
+    val receivedBytes: Long? = null,
 )
 
 internal data class BoloMpvInfoSnapshot(
@@ -144,9 +148,11 @@ private fun JsonObject.decimal(key: String): Double? =
     (get(key) as? JsonPrimitive)?.doubleOrNull?.takeIf { it.isFinite() && it > 0 }
 
 internal fun BoloPlayerInfo.withoutDynamicValues(): BoloPlayerInfo = copy(
-    video = video.copy(playbackBitrateBps = null, fragmentIndex = null, downloadBytesPerSecond = null),
-    audio = audio?.copy(playbackBitrateBps = null, fragmentIndex = null, downloadBytesPerSecond = null),
+    video = video.copy(playbackBitrateBps = null, fragmentIndex = null, downloadBytesPerSecond = null, receivedBytes = null),
+    audio = audio?.copy(playbackBitrateBps = null, fragmentIndex = null, downloadBytesPerSecond = null, receivedBytes = null),
     downloadBytesPerSecond = null,
+    forwardBytes = null,
+    backwardBytes = null,
     decoderDroppedFrames = null,
     outputDroppedFrames = null,
     decoderDroppedFramesPerSecond = null,
