@@ -4,3 +4,4 @@
 -keep class io.github.vinceglb.filekit.dialogs.platform.xdg.** { *; }
 -keepattributes Signature,InnerClasses,RuntimeVisibleAnnotations
 -keep class * extends androidx.room3.RoomDatabase { <init>(); }
+-keep class tv.hsrui.bolo.player.base.BoloMpvStreamBridge { public *; }

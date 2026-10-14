@@ -4,6 +4,15 @@ package tv.hsrui.bolo.player.base
 
 import tv.hsrui.bolo.player.nativeinterop.*
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.ByteVar
+import kotlinx.cinterop.COpaquePointer
+import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.StableRef
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.asStableRef
+import kotlinx.cinterop.convert
+import kotlinx.cinterop.staticCFunction
+import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.rawValue
@@ -24,6 +33,7 @@ import platform.UIKit.UIApplicationState
 import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
 import platform.UIKit.UIViewAutoresizingFlexibleWidth
+import platform.posix.memcpy
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
@@ -72,7 +82,26 @@ internal object IosPlayerAudioSession {
 }
 
 internal actual class BoloMpvBackend actual constructor() {
+    private val streamBridge = BoloMpvStreamBridge()
     private val handle = checkNotNull(bolo_mpv_create("ios")) { "libmpv 初始化失败" }
+    private val streamReference = StableRef.create(streamBridge)
+    init {
+        val result = memScoped {
+            val callbacks = alloc<bolo_mpv_stream_callbacks>()
+            callbacks.open = staticCFunction(::iosStreamOpen)
+            callbacks.read = staticCFunction(::iosStreamRead)
+            callbacks.seek = staticCFunction(::iosStreamSeek)
+            callbacks.size = staticCFunction(::iosStreamSize)
+            callbacks.cancel = staticCFunction(::iosStreamCancel)
+            callbacks.close = staticCFunction(::iosStreamClose)
+            bolo_mpv_set_stream_callbacks(handle, callbacks.ptr, streamReference.asCPointer())
+        }
+        if (result < 0) {
+            bolo_mpv_destroy(handle)
+            streamReference.dispose()
+            error("播放数据源注册失败")
+        }
+    }
     private val outputMutex = Mutex()
     private var outputReady = CompletableDeferred<Unit>()
     private var outputGeneration = 0L
@@ -179,7 +208,12 @@ internal actual class BoloMpvBackend actual constructor() {
         }
     }
     actual suspend fun awaitOutput() { outputReady.await() }
-    actual fun load(video: String, audio: String?, startSeconds: Double, generation: Long, userAgent: String, referrer: String) = if (destroyed) -3 else bolo_mpv_load(handle, video, audio, startSeconds, generation, userAgent, referrer)
+    actual fun load(streams: BoloPlaybackStreamSession, startSeconds: Double, generation: Long): Int {
+        if (destroyed) return -3
+        streamBridge.bind(streams)
+        return bolo_mpv_load(handle, streams.videoUri, streams.audioUri, startSeconds, generation,
+            videoPlayHeaders.getValue("User-Agent"), videoPlayHeaders.getValue("Referer"))
+    }
     actual fun videoEnabled(enabled: Boolean) = if (destroyed) -3 else
         bolo_mpv_video_enabled(handle, if (enabled && videoOutputAllowed.value) 1 else 0)
     actual fun pause(paused: Boolean) = if (destroyed) -3 else bolo_mpv_pause(handle, if (paused) 1 else 0)
@@ -193,16 +227,55 @@ internal actual class BoloMpvBackend actual constructor() {
         if (bolo_mpv_poll(handle, event.ptr) == 0) null
         else BoloMpvEvent(event.type, event.generation, event.request, event.error, event.value)
     }
-    actual fun stop() = if (destroyed) -3 else bolo_mpv_stop(handle)
+    actual fun stop(): Int {
+        streamBridge.cancel()
+        return if (destroyed) -3 else bolo_mpv_stop(handle)
+    }
     actual fun info(includeDiagnostics: Boolean): BoloMpvInfoSnapshot? {
         if (destroyed) return null
         val text = bolo_mpv_info(handle, if (includeDiagnostics) 1 else 0) ?: return null
         return try { BoloMpvInfoSnapshot.parse(text.toKString(), this) }
         finally { bolo_mpv_info_free(text) }
     }
-    actual fun destroy() { if (!destroyed) { destroyed = true; bolo_mpv_destroy(handle) } }
+    actual fun destroy() {
+        if (destroyed) return
+        destroyed = true
+        streamBridge.cancel()
+        bolo_mpv_destroy(handle)
+        streamBridge.release()
+        streamReference.dispose()
+    }
     actual suspend fun setAudioActive(active: Boolean): Boolean = withContext(Dispatchers.Main.immediate) {
         if (active && closed) false
         else IosPlayerAudioSession.setPlaybackActive(this@BoloMpvBackend, active)
     }
+}
+
+private fun iosStreamOpen(context: COpaquePointer?, uri: CPointer<ByteVar>?): Long = try {
+    if (context == null || uri == null) 0L else context.asStableRef<BoloMpvStreamBridge>().get().open(uri.toKString())
+} catch (_: Throwable) { 0L }
+
+private fun iosStreamRead(context: COpaquePointer?, id: Long, buffer: CPointer<ByteVar>?, size: ULong): Long = try {
+    if (context == null || buffer == null) -1L else {
+        val bytes = ByteArray(minOf(size, 65536uL).toInt())
+        val count = context.asStableRef<BoloMpvStreamBridge>().get().read(id, bytes)
+        if (count > 0) bytes.usePinned { memcpy(buffer, it.addressOf(0), count.convert()) }
+        count.toLong()
+    }
+} catch (_: Throwable) { -1L }
+
+private fun iosStreamSeek(context: COpaquePointer?, id: Long, offset: Long): Long = try {
+    context?.asStableRef<BoloMpvStreamBridge>()?.get()?.seek(id, offset) ?: -1L
+} catch (_: Throwable) { -1L }
+
+private fun iosStreamSize(context: COpaquePointer?, id: Long): Long = try {
+    context?.asStableRef<BoloMpvStreamBridge>()?.get()?.size(id) ?: -1L
+} catch (_: Throwable) { -1L }
+
+private fun iosStreamCancel(context: COpaquePointer?, id: Long) {
+    try { context?.asStableRef<BoloMpvStreamBridge>()?.get()?.cancel(id) } catch (_: Throwable) { }
+}
+
+private fun iosStreamClose(context: COpaquePointer?, id: Long) {
+    try { context?.asStableRef<BoloMpvStreamBridge>()?.get()?.close(id) } catch (_: Throwable) { }
 }

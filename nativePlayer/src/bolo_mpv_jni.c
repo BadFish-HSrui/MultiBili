@@ -10,15 +10,118 @@
 #include <dlfcn.h>
 #endif
 
-typedef struct { bolo_mpv *core; jobject surface; } java_player;
+typedef struct {
+    bolo_mpv *core;
+    jobject surface, streams;
+    jmethodID stream_open, stream_read, stream_seek, stream_size, stream_cancel, stream_close;
+} java_player;
+static JavaVM *java_vm;
 #define PLAYER(value) ((java_player *)(intptr_t)(value))
 #define JNI(name) Java_tv_hsrui_bolo_player_base_BoloMpvNative_##name
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
+    java_vm = vm;
 #ifdef __ANDROID__
     if (av_jni_set_java_vm(vm, NULL) < 0) return JNI_ERR;
 #endif
     return JNI_VERSION_1_6;
+}
+
+static JNIEnv *stream_env(int *attached) {
+    JNIEnv *env = NULL;
+    *attached = 0;
+    jint result = (*java_vm)->GetEnv(java_vm, (void **)&env, JNI_VERSION_1_6);
+    if (result == JNI_EDETACHED) {
+        if ((*java_vm)->AttachCurrentThread(java_vm, (void **)&env, NULL) != JNI_OK) return NULL;
+        *attached = 1;
+    } else if (result != JNI_OK) return NULL;
+    return env;
+}
+static int stream_exception(JNIEnv *env) {
+    if (!(*env)->ExceptionCheck(env)) return 0;
+    (*env)->ExceptionClear(env);
+    return 1;
+}
+static int64_t java_stream_open(void *context, const char *uri) {
+    java_player *p = context;
+    int attached;
+    JNIEnv *env = stream_env(&attached);
+    if (!env) return 0;
+    jstring text = (*env)->NewStringUTF(env, uri);
+    jlong result = text ? (*env)->CallLongMethod(env, p->streams, p->stream_open, text) : 0;
+    if (stream_exception(env)) result = 0;
+    if (text) (*env)->DeleteLocalRef(env, text);
+    if (attached) (*java_vm)->DetachCurrentThread(java_vm);
+    return result;
+}
+static int64_t java_stream_read(void *context, int64_t id, char *buffer, uint64_t size) {
+    java_player *p = context;
+    int attached;
+    JNIEnv *env = stream_env(&attached);
+    if (!env) return -1;
+    jsize capacity = (jsize)(size < 65536 ? size : 65536);
+    jbyteArray bytes = (*env)->NewByteArray(env, capacity);
+    jint result = bytes ? (*env)->CallIntMethod(env, p->streams, p->stream_read, (jlong)id, bytes) : -1;
+    if (stream_exception(env) || result > capacity) result = -1;
+    if (result > 0) (*env)->GetByteArrayRegion(env, bytes, 0, result, (jbyte *)buffer);
+    if (stream_exception(env)) result = -1;
+    if (bytes) (*env)->DeleteLocalRef(env, bytes);
+    if (attached) (*java_vm)->DetachCurrentThread(java_vm);
+    return result;
+}
+static int64_t java_stream_seek(void *context, int64_t id, int64_t offset) {
+    java_player *p = context;
+    int attached;
+    JNIEnv *env = stream_env(&attached);
+    if (!env) return -1;
+    jlong result = (*env)->CallLongMethod(env, p->streams, p->stream_seek, (jlong)id, (jlong)offset);
+    if (stream_exception(env)) result = -1;
+    if (attached) (*java_vm)->DetachCurrentThread(java_vm);
+    return result;
+}
+static int64_t java_stream_size(void *context, int64_t id) {
+    java_player *p = context;
+    int attached;
+    JNIEnv *env = stream_env(&attached);
+    if (!env) return -1;
+    jlong result = (*env)->CallLongMethod(env, p->streams, p->stream_size, (jlong)id);
+    if (stream_exception(env)) result = -1;
+    if (attached) (*java_vm)->DetachCurrentThread(java_vm);
+    return result;
+}
+static void java_stream_end(void *context, int64_t id, int close) {
+    java_player *p = context;
+    int attached;
+    JNIEnv *env = stream_env(&attached);
+    if (!env) return;
+    (*env)->CallVoidMethod(env, p->streams, close ? p->stream_close : p->stream_cancel, (jlong)id);
+    stream_exception(env);
+    if (attached) (*java_vm)->DetachCurrentThread(java_vm);
+}
+static void java_stream_cancel(void *context, int64_t id) { java_stream_end(context, id, 0); }
+static void java_stream_close(void *context, int64_t id) { java_stream_end(context, id, 1); }
+
+JNIEXPORT jint JNICALL JNI(setStreamCallbacks)(JNIEnv *env, jobject self, jlong handle, jobject streams) {
+    java_player *p = PLAYER(handle);
+    if (p->streams || !streams) return -1;
+    jclass type = (*env)->GetObjectClass(env, streams);
+    if (!type) return -1;
+    p->stream_open = (*env)->GetMethodID(env, type, "open", "(Ljava/lang/String;)J");
+    p->stream_read = (*env)->GetMethodID(env, type, "read", "(J[B)I");
+    p->stream_seek = (*env)->GetMethodID(env, type, "seek", "(JJ)J");
+    p->stream_size = (*env)->GetMethodID(env, type, "size", "(J)J");
+    p->stream_cancel = (*env)->GetMethodID(env, type, "cancel", "(J)V");
+    p->stream_close = (*env)->GetMethodID(env, type, "close", "(J)V");
+    (*env)->DeleteLocalRef(env, type);
+    if (stream_exception(env) || !p->stream_open || !p->stream_read || !p->stream_seek ||
+        !p->stream_size || !p->stream_cancel || !p->stream_close) return -1;
+    p->streams = (*env)->NewGlobalRef(env, streams);
+    if (!p->streams) return -1;
+    const bolo_mpv_stream_callbacks callbacks = {.open = java_stream_open, .read = java_stream_read,
+        .seek = java_stream_seek, .size = java_stream_size, .cancel = java_stream_cancel, .close = java_stream_close};
+    int result = bolo_mpv_set_stream_callbacks(p->core, &callbacks, p);
+    if (result < 0) { (*env)->DeleteGlobalRef(env, p->streams); p->streams = NULL; }
+    return result;
 }
 JNIEXPORT jlong JNICALL JNI(create)(JNIEnv *env, jobject self, jstring platform) {
     const char *name = (*env)->GetStringUTFChars(env, platform, NULL);
@@ -118,6 +221,7 @@ JNIEXPORT void JNICALL JNI(renderFree)(JNIEnv *env, jobject self, jlong p) { bol
 JNIEXPORT void JNICALL JNI(destroy)(JNIEnv *env, jobject self, jlong handle) {
     java_player *p = PLAYER(handle);
     bolo_mpv_destroy(p->core);
+    if (p->streams) (*env)->DeleteGlobalRef(env, p->streams);
     if (p->surface) (*env)->DeleteGlobalRef(env, p->surface);
     free(p);
 }

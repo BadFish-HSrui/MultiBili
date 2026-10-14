@@ -1,2 +1,3 @@
 -keep class tv.hsrui.bolo.player.base.BoloMpvNative { native <methods>; }
+-keep class tv.hsrui.bolo.player.base.BoloMpvStreamBridge { public *; }
 -keep class tv.hsrui.bolo.download.DownloadNative { native <methods>; }

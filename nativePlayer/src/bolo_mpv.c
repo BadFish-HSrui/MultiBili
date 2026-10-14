@@ -1,6 +1,7 @@
 #include "bolo_mpv.h"
 #include <mpv/client.h>
 #include <mpv/render_gl.h>
+#include <mpv/stream_cb.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -24,6 +25,9 @@ struct bolo_mpv {
     int64_t resume_render_started_ns; // 仅渲染队列访问。
     int ios;
     int merge_audio_channels;
+    bolo_mpv_stream_callbacks streams;
+    void *stream_context;
+    int streams_registered;
 };
 
 static const char *properties[] = {
@@ -60,6 +64,9 @@ bolo_mpv *bolo_mpv_create(const char *platform) {
         {"ad-lavc-downmix", "no"},
         {"audio-fallback-to-null", "no"}, {"stop-playback-on-init-failure", "yes"},
         {"gapless-audio", "no"}, {"tls-verify", "yes"},
+        {"cache", "yes"}, {"cache-secs", "3"}, {"demuxer-readahead-secs", "3"},
+        {"demuxer-max-bytes", "16777216"}, {"demuxer-max-back-bytes", "4194304"},
+        {"demuxer-donate-buffer", "no"}, {"cache-on-disk", "no"},
     };
     for (unsigned i = 0; i < sizeof(opts) / sizeof(opts[0]); ++i)
         if (option(p, opts[i][0], opts[i][1]) < 0) goto fail;
@@ -80,6 +87,51 @@ fail:
     mpv_terminate_destroy(p->player);
     free(p);
     return NULL;
+}
+
+typedef struct { bolo_mpv *player; int64_t id; } bolo_stream;
+
+static int64_t stream_read(void *cookie, char *buffer, uint64_t size) {
+    bolo_stream *s = cookie;
+    return s->player->streams.read(s->player->stream_context, s->id, buffer, size);
+}
+static int64_t stream_seek(void *cookie, int64_t offset) {
+    bolo_stream *s = cookie;
+    return s->player->streams.seek(s->player->stream_context, s->id, offset);
+}
+static int64_t stream_size(void *cookie) {
+    bolo_stream *s = cookie;
+    return s->player->streams.size(s->player->stream_context, s->id);
+}
+static void stream_cancel(void *cookie) {
+    bolo_stream *s = cookie;
+    s->player->streams.cancel(s->player->stream_context, s->id);
+}
+static void stream_close(void *cookie) {
+    bolo_stream *s = cookie;
+    s->player->streams.close(s->player->stream_context, s->id);
+    free(s);
+}
+static int stream_open(void *context, char *uri, mpv_stream_cb_info *info) {
+    bolo_mpv *p = context;
+    bolo_stream *s = calloc(1, sizeof(*s));
+    if (!s) return MPV_ERROR_LOADING_FAILED;
+    s->player = p;
+    s->id = p->streams.open(p->stream_context, uri);
+    if (!s->id) { free(s); return MPV_ERROR_LOADING_FAILED; }
+    *info = (mpv_stream_cb_info){.cookie = s, .read_fn = stream_read,
+        .seek_fn = stream_seek, .size_fn = stream_size, .cancel_fn = stream_cancel, .close_fn = stream_close};
+    return 0;
+}
+int bolo_mpv_set_stream_callbacks(bolo_mpv *p, const bolo_mpv_stream_callbacks *callbacks, void *context) {
+    if (!p || p->streams_registered || !callbacks || !callbacks->open || !callbacks->read ||
+        !callbacks->seek || !callbacks->size || !callbacks->cancel || !callbacks->close)
+        return MPV_ERROR_INVALID_PARAMETER;
+    p->streams = *callbacks;
+    p->stream_context = context;
+    int result = mpv_stream_cb_add_ro(p->player, "bolo-stream", p, stream_open);
+    if (result >= 0) p->streams_registered = 1;
+    return result;
 }
 
 static mpv_node *field(mpv_node *node, const char *key) {

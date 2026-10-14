@@ -14,7 +14,14 @@ import tv.hsrui.bolo.player.DesktopPlayerFullscreenWindow
 internal actual class BoloMpvBackend actual constructor() {
     actual val retainsPausedResources: Boolean get() = false
     actual fun retainedPosition(generation: Long, positionMs: Long): Long? = null
+    private val streamBridge = BoloMpvStreamBridge()
     private val handle = BoloMpvNative.create("desktop").also { check(it != 0L) { "libmpv 初始化失败" } }
+    init {
+        if (BoloMpvNative.setStreamCallbacks(handle, streamBridge) < 0) {
+            BoloMpvNative.destroy(handle)
+            error("播放数据源注册失败")
+        }
+    }
     init {
         if (System.getProperty("os.name").startsWith("Linux")) {
             try { configureBoloMpvCertificates(handle, java.io.File(System.getProperty("java.io.tmpdir"), "bolo-mpv-certificates")) }
@@ -89,7 +96,12 @@ internal actual class BoloMpvBackend actual constructor() {
         }
     }
     actual suspend fun awaitOutput() { outputReady.await() }
-    actual fun load(video: String, audio: String?, startSeconds: Double, generation: Long, userAgent: String, referrer: String) = if (destroyed) -3 else BoloMpvNative.load(handle, video, audio, startSeconds, generation, userAgent, referrer)
+    actual fun load(streams: BoloPlaybackStreamSession, startSeconds: Double, generation: Long): Int {
+        if (destroyed) return -3
+        streamBridge.bind(streams)
+        return BoloMpvNative.load(handle, streams.videoUri, streams.audioUri, startSeconds, generation,
+            videoPlayHeaders.getValue("User-Agent"), videoPlayHeaders.getValue("Referer"))
+    }
     actual fun videoEnabled(enabled: Boolean) = if (destroyed) -3 else BoloMpvNative.videoEnabled(handle, enabled)
     actual fun pause(paused: Boolean) = if (destroyed) -3 else BoloMpvNative.pause(handle, paused)
     actual fun speed(speed: Double) = if (destroyed) -3 else BoloMpvNative.speed(handle, speed)
@@ -101,7 +113,10 @@ internal actual class BoloMpvBackend actual constructor() {
     actual fun info(includeDiagnostics: Boolean) = if (destroyed) null else BoloMpvNative.info(handle, includeDiagnostics)?.let {
         BoloMpvInfoSnapshot.parse(it.decodeToString(), this)
     }
-    actual fun stop() = if (destroyed) -3 else BoloMpvNative.stop(handle)
-    actual fun destroy() { if (!destroyed) { destroyed = true; BoloMpvNative.destroy(handle) } }
+    actual fun stop(): Int {
+        streamBridge.cancel()
+        return if (destroyed) -3 else BoloMpvNative.stop(handle)
+    }
+    actual fun destroy() { if (!destroyed) { destroyed = true; streamBridge.cancel(); BoloMpvNative.destroy(handle); streamBridge.release() } }
     actual suspend fun setAudioActive(active: Boolean) = true
 }

@@ -82,6 +82,7 @@ class BoloPlayerController(
     private var lifecycleRevision = 0L
     private var loadJob: Job? = null
     private var eventsJob: Job? = null
+    private var streamSession: BoloPlaybackStreamSession? = null
     private var seekJob: Job? = null
     private var speedJob: Job? = null
     private var intentJob: Job? = null
@@ -150,6 +151,13 @@ class BoloPlayerController(
             sourceRefreshAttempted = false
             endedBeforeSeek = state.value.isEnded
             cancelRebuild()
+            streamSession?.cancel()
+            streamSession = null
+            if (resourcesSuspended) {
+                publishPlaybackObservation()
+                ready = false
+                generation = coordinator.onMediaChanged()
+            }
             setSource(BoloPlayerSource(video, audio, loudness, sortCdn))
             resetInfo()
             recoveryAttempted = false
@@ -209,6 +217,8 @@ class BoloPlayerController(
         }
         sourceRefreshAttempted = true
         sourceNeedsRefresh = true
+        streamSession?.cancel()
+        streamSession = null
         advancingSince = null
         cancelRebuild()
         loadJob?.cancel()
@@ -252,6 +262,8 @@ class BoloPlayerController(
         sourceRefreshJob?.cancel()
         sourceRefreshJob = null
         if (!interrupted && !clearSource) return
+        streamSession?.cancel()
+        streamSession = null
         sourceNeedsRefresh = true
         sourceRefreshAttempted = false
         loadJob?.cancel()
@@ -287,6 +299,8 @@ class BoloPlayerController(
             return
         }
         advancingSince = null
+        streamSession?.cancel()
+        streamSession = null
         resetInfo()
         loudnessJob?.cancel()
         loadJob?.cancel()
@@ -331,6 +345,33 @@ class BoloPlayerController(
                 val volume = volumeGain.toDouble()
                 val video = videoUrls[videoIndex]
                 val audio = audioUrls.getOrNull(audioIndex)
+                val streams = BoloPlaybackStreamSession(expected, buildList {
+                    add(BoloPlaybackStreamSource(BoloPlaybackTrack.Video, video, mediaInfo.video.nominalBitrateBps))
+                    if (audio != null) add(BoloPlaybackStreamSource(BoloPlaybackTrack.Audio, audio, mediaInfo.audio?.nominalBitrateBps))
+                }) { track, _ ->
+                    scope.launch {
+                        if (!disposed && !resourcesSuspended && generation == expected && mutableBackend.value === current)
+                            retrySource(-1, if (track == BoloPlaybackTrack.Audio) 2 else 1)
+                    }
+                }
+                streamSession = streams
+                val loadStarted = TimeSource.Monotonic.markNow()
+                try {
+                    streams.setActivity(!resourcesSuspended && (!inBackground || playWhenReady), !inBackground && videoOutputActive)
+                    withTimeout(20_000) { streams.prepare() }
+                } catch (_: TimeoutCancellationException) {
+                    streams.cancel()
+                    if (generation == expected) retrySource(-1, 0)
+                    return@launch
+                } catch (error: CancellationException) {
+                    // 会话失败已由 onFailure 交给统一切源；页面取消仍正常向上传递。
+                    if (streams.hasFailed) return@launch
+                    throw error
+                } catch (error: Throwable) {
+                    if (streams.hasFailed) return@launch
+                    throw error
+                }
+                if (generation != expected || resourcesSuspended || disposed) { streams.cancel(); return@launch }
                 val mergeChannels = mergeAudioChannelsEnabled
                 val result = withContext(boloMpvDispatcher) {
                     val mergeResult = current.mergeAudioChannels(mergeChannels)
@@ -338,11 +379,11 @@ class BoloPlayerController(
                     current.volume(volume)
                     current.speed(speed)
                     playbackClock.begin(expected, speed)
-                    current.load(video, audio, position / 1000.0, expected, videoPlayHeaders.getValue("User-Agent"), videoPlayHeaders.getValue("Referer"))
+                    current.load(streams, position / 1000.0, expected)
                 }
                 if (generation != expected) return@launch
                 if (result < 0) retrySource(result, 0) else {
-                    delay(20_000)
+                    delay((20_000 - loadStarted.elapsedNow().inWholeMilliseconds).coerceAtLeast(0))
                     if (generation == expected && !ready) retrySource(-1, 0)
                 }
             } catch (e: TimeoutCancellationException) {
@@ -456,6 +497,8 @@ class BoloPlayerController(
         val audioRevision = mergeAudioRevision
         val diagnosticsVersion = diagnosticsRevision
         val includeDiagnostics = infoPanelVisible
+        val streams = streamSession
+        val network = streams?.takeIf { it.generation == expected }?.snapshot()
         val snapshot = try {
             withContext(boloMpvDispatcher) { engine.info(includeDiagnostics) }
         } catch (error: CancellationException) {
@@ -471,7 +514,7 @@ class BoloPlayerController(
         }
         if (snapshot == null || snapshot.instance !== engine || snapshot.generation != expected) {
             resetDiagnostics()
-            mutableInfo.value = mediaInfo.withLoudnessInfo()
+            mutableInfo.value = mediaInfo.withStreamInfo(network).withLoudnessInfo()
             return
         }
         val seeking = state.value.isSeeking
@@ -502,11 +545,16 @@ class BoloPlayerController(
                 outputChannelCount = native.audio.outputChannelCount.takeUnless { mergeAudioJob?.isActive == true },
                 channelsMerged = native.audio.channelsMerged.takeUnless { mergeAudioJob?.isActive == true },
             ) ?: mediaInfo.audio,
-            downloadBytesPerSecond = native.downloadBytesPerSecond.takeIf {
-                native.video.downloadBytesPerSecond != null &&
-                    (mediaInfo.audio == null || native.audio?.downloadBytesPerSecond != null)
-            },
-        ).withLoudnessInfo()
+        ).withStreamInfo(network).withLoudnessInfo()
+    }
+
+    private fun BoloPlayerInfo.withStreamInfo(snapshot: BoloPlaybackStreamSnapshot?): BoloPlayerInfo {
+        val videoSpeed = snapshot?.video?.downloadBytesPerSecond
+        val audioSpeed = snapshot?.audio?.downloadBytesPerSecond
+        return copy(video = video.copy(downloadBytesPerSecond = videoSpeed),
+            audio = audio?.copy(downloadBytesPerSecond = audioSpeed),
+            downloadBytesPerSecond = if (videoSpeed != null && (audio == null || audioSpeed != null))
+                videoSpeed + (audioSpeed ?: 0L) else null)
     }
 
     private fun handleEvent(event: BoloMpvEvent): Boolean {
@@ -541,7 +589,7 @@ class BoloPlayerController(
                     !state.value.isBuffering && !state.value.isSeeking && !state.value.isEnded)
             }
             BoloMpvEvent.Seeking -> nativeSeeking = event.value != 0.0
-            BoloMpvEvent.Eof -> if (ready && !resourcesSuspended && !state.value.isSeeking && event.value != 0.0) {
+            BoloMpvEvent.Eof -> if (ready && !resourcesSuspended && streamSession?.hasFailed != true && !state.value.isSeeking && event.value != 0.0) {
                 endedBeforeSeek = true
                 advancingSince = null
                 coordinator.cancelCurrentSeek()
@@ -555,7 +603,7 @@ class BoloPlayerController(
                 scheduleBackgroundRelease()
             }
             BoloMpvEvent.SeekReply -> if (event.request == activeSeekRequest && event.error < 0) failSeek("跳转命令失败（${event.error}）")
-            BoloMpvEvent.Error -> retrySource(event.error, event.value.toInt())
+            BoloMpvEvent.Error -> if (streamSession?.hasFailed != true) retrySource(event.error, event.value.toInt())
             BoloMpvEvent.Overflow -> fail(BoloPlayerError.UnknownError("播放器事件队列溢出，请重新加载"))
         }
         return false
@@ -804,6 +852,7 @@ class BoloPlayerController(
         val expected = generation
         intentJob?.cancel()
         intentJob = scope.launch {
+            streamSession?.setActivity(!resourcesSuspended && (!inBackground || playWhenReady), !inBackground && videoOutputActive)
             val playing = playWhenReady && ready && !resourcesSuspended && !state.value.isSeeking && !state.value.isEnded
             if (playing && !engine.setAudioActive(true)) { fail(BoloPlayerError.DecoderError("音频会话激活失败")); return@launch }
             val result = withContext(boloMpvDispatcher) { engine.pause(!playing).also { if (it >= 0) playbackClock.setPaused(!playing) } }
@@ -863,6 +912,7 @@ class BoloPlayerController(
         val revision = coordinator.currentRevision
         seekJob?.cancel()
         seekJob = scope.launch {
+            streamSession?.setActivity(!resourcesSuspended && (!inBackground || playWhenReady || state.value.isSeeking), !inBackground && videoOutputActive)
             repeat(BoloPlayerSeekCoordinator.MaxAttempts) {
                 if (!coordinator.isCurrent(expected, revision)) return@launch
                 activeSeekRequest = ++requestSequence
@@ -942,6 +992,7 @@ class BoloPlayerController(
                 if (!ready) generation = coordinator.onMediaChanged()
                 mutableState.value = state.value.copy(currentPositionMs = saved, pendingSeekPositionMs = null,
                     isPlaybackSuspended = true, isPlaying = false, isBuffering = false, hasConfirmedPosition = false)
+                streamSession?.setActivity(false, false)
                 mutableBackend.value?.let { engine ->
                     withContext(boloMpvDispatcher) { engine.pause(true); playbackClock.setPaused(true); engine.videoEnabled(false) }
                     if (lifecycle == lifecycleRevision && resourcesSuspended && mutableBackend.value === engine)
@@ -955,6 +1006,7 @@ class BoloPlayerController(
                 resumeEligible = false
                 resourcesSuspended = false
             }
+            streamSession?.setActivity(!resourcesSuspended && (!inBackground || playWhenReady), !inBackground && videoOutputActive)
             if (state.value.isPlaybackSuspended) {
                 restorePlayback()
                 return@launch
@@ -1000,6 +1052,7 @@ class BoloPlayerController(
         fun isCurrent() = lifecycle == lifecycleRevision && generation == expected && !resourcesSuspended &&
             !disposed && mutableBackend.value === engine && coordinator.currentRevision == seekRevision
         try {
+            streamSession?.setActivity(!inBackground || playWhenReady, !inBackground && videoOutputActive)
             if (!inBackground && videoOutputActive) withTimeout(8_000) { engine.awaitOutput() }
             if (!isCurrent()) return
             val result = withContext(boloMpvDispatcher) {
@@ -1056,6 +1109,7 @@ class BoloPlayerController(
         scope.launch {
             if (videoOutputActive != active) resetDiagnostics()
             videoOutputActive = active
+            streamSession?.setActivity(!resourcesSuspended && (!inBackground || playWhenReady), !inBackground && videoOutputActive)
             val engine = mutableBackend.value ?: return@launch
             if (active && !inBackground) {
                 try { withTimeout(8_000) { engine.awaitOutput() } }
@@ -1092,6 +1146,8 @@ class BoloPlayerController(
     fun release() { scope.launch { if (!disposed) { cancelSourceRefresh(); cancelRebuild(); releaseEngine() } } }
 
     private suspend fun releaseEngine() {
+        streamSession?.cancel()
+        streamSession = null
         resetInfo()
         loadJob?.cancel()
         eventsJob?.cancel()

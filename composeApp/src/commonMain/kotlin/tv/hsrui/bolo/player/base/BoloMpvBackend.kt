@@ -21,7 +21,7 @@ internal expect class BoloMpvBackend() {
     suspend fun detachOutput(output: Any)
     suspend fun unbind()
     suspend fun awaitOutput()
-    fun load(video: String, audio: String?, startSeconds: Double, generation: Long, userAgent: String, referrer: String): Int
+    fun load(streams: BoloPlaybackStreamSession, startSeconds: Double, generation: Long): Int
     fun videoEnabled(enabled: Boolean): Int
     fun pause(paused: Boolean): Int
     fun speed(speed: Double): Int

@@ -1,6 +1,8 @@
 [submodule "ffmpeg"]
 	path = nativePlayer/vendor/ffmpeg
 	url = https://github.com/BadFish-HSrui/FFmpeg.git
+	branch = bolo
 [submodule "mpv"]
 	path = nativePlayer/vendor/mpv
 	url = https://github.com/BadFish-HSrui/mpv.git
+	branch = bolo

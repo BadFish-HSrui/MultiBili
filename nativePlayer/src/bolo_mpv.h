@@ -7,6 +7,14 @@ extern "C" {
 
 typedef struct bolo_mpv bolo_mpv;
 typedef struct {
+    int64_t (*open)(void *context, const char *uri);
+    int64_t (*read)(void *context, int64_t stream, char *buffer, uint64_t size);
+    int64_t (*seek)(void *context, int64_t stream, int64_t offset);
+    int64_t (*size)(void *context, int64_t stream);
+    void (*cancel)(void *context, int64_t stream);
+    void (*close)(void *context, int64_t stream);
+} bolo_mpv_stream_callbacks;
+typedef struct {
     int type;
     int64_t generation;
     int64_t request;
@@ -21,6 +29,7 @@ enum {
 };
 
 bolo_mpv *bolo_mpv_create(const char *platform);
+int bolo_mpv_set_stream_callbacks(bolo_mpv *, const bolo_mpv_stream_callbacks *, void *context);
 int bolo_mpv_load(bolo_mpv *, const char *video, const char *audio, double start, int64_t generation, const char *user_agent, const char *referrer);
 int bolo_mpv_video_enabled(bolo_mpv *player, int enabled);
 void bolo_mpv_background(bolo_mpv *, int background);
