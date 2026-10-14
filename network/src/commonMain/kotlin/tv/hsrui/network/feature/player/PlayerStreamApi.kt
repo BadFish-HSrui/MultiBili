@@ -33,12 +33,14 @@ suspend fun fetchPlayerStream(
     endExclusive: Long,
     validator: String? = null,
     continueFullResponse: Boolean = false,
+    receiveLimit: Long? = null,
     onResponse: suspend (PlayerStreamResponseData) -> Unit,
     onReceived: suspend (Int) -> Unit,
     write: suspend (Long, ByteArray, Int, Int) -> Unit,
 ): PlayerStreamResponseData = coroutineScope {
     require(url.startsWith("https://") || url.startsWith("http://")) { "播放地址无效" }
     require(start >= 0 && endExclusive > start && endExclusive - start <= 4L * 1024 * 1024)
+    require(receiveLimit == null || receiveLimit > 0)
     val deadline = launch {
         delay(15_000)
         throw PlayerStreamException("播放连接超时", true)
@@ -90,12 +92,15 @@ suspend fun fetchPlayerStream(
             val channel = response.bodyAsChannel()
             val buffer = ByteArray(64 * 1024)
             var position = metadata.start
+            var received = 0L
             val stop = if (status == 200 && continueFullResponse) metadata.endExclusive ?: Long.MAX_VALUE
                 else minOf(endExclusive, metadata.endExclusive ?: endExclusive)
             while (position < stop) {
                 currentCoroutineContext().ensureActive()
+                val available = receiveLimit?.minus(received) ?: Long.MAX_VALUE
+                if (available <= 0) invalid("媒体请求超过接收上限")
                 val count = try {
-                    withTimeout(30_000) { channel.readAvailable(buffer, 0, minOf(buffer.size.toLong(), stop - position).toInt()) }
+                    withTimeout(30_000) { channel.readAvailable(buffer, 0, minOf(buffer.size.toLong(), stop - position, available).toInt()) }
                 } catch (error: TimeoutCancellationException) {
                     throw PlayerStreamException("播放超过 30 秒未收到数据", true, error)
                 }
@@ -106,6 +111,7 @@ suspend fun fetchPlayerStream(
                     return@execute metadata.copy(endExclusive = position, totalBytes = position)
                 }
                 if (count == 0) continue
+                received += count
                 onReceived(count)
                 val skip = (start - position).coerceIn(0L, count.toLong()).toInt()
                 if (skip < count) write(position + skip, buffer, skip, count - skip)
@@ -114,6 +120,7 @@ suspend fun fetchPlayerStream(
             if (status == 206) {
                 var trailing: Int
                 do {
+                    if (receiveLimit != null && received >= receiveLimit) invalid("媒体请求超过接收上限")
                     trailing = try { withTimeout(30_000) { channel.readAvailable(buffer, 0, 1) } }
                     catch (error: TimeoutCancellationException) {
                         throw PlayerStreamException("媒体范围响应未结束", true, error)

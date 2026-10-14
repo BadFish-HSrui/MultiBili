@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import tv.hsrui.bolo.boloSetting.PlaybackLoudnessMode
 import tv.hsrui.network.feature.player.BiliDashObject
+import tv.hsrui.network.feature.player.PlayerStreamIndexData
 import tv.hsrui.network.feature.player.VideoLoudnessData
 import kotlin.math.roundToLong
 import kotlin.time.Clock
@@ -60,6 +61,9 @@ class BoloPlayerController(
     private var mediaInfo = BoloPlayerInfo()
     private var infoPanelVisible = false
     private var lastInfoSample: TimeMark? = null
+    private val mutableBufferedRanges = MutableStateFlow<List<BoloPlaybackTimeRange>>(emptyList())
+    val bufferedRanges: StateFlow<List<BoloPlaybackTimeRange>> = mutableBufferedRanges.asStateFlow()
+    private var lastBufferSample: TimeMark? = null
     private val diagnosticsSampler = BoloPlayerDiagnosticsSampler()
     private var diagnosticsRevision = 0L
     private val mutableBackend = MutableStateFlow<BoloMpvBackend?>(null)
@@ -67,6 +71,8 @@ class BoloPlayerController(
     private val coordinator = BoloPlayerSeekCoordinator()
     private var videoUrls = emptyList<String>()
     private var audioUrls = emptyList<String>()
+    private var videoStreamIndex: PlayerStreamIndexData? = null
+    private var audioStreamIndex: PlayerStreamIndexData? = null
     private var videoIndex = 0
     private var audioIndex = 0
     private var urlExpirations = emptyMap<String, Long?>()
@@ -83,6 +89,13 @@ class BoloPlayerController(
     private var loadJob: Job? = null
     private var eventsJob: Job? = null
     private var streamSession: BoloPlaybackStreamSession? = null
+        set(value) {
+            if (field !== value) {
+                mutableBufferedRanges.value = emptyList()
+                lastBufferSample = null
+            }
+            field = value
+        }
     private var seekJob: Job? = null
     private var speedJob: Job? = null
     private var intentJob: Job? = null
@@ -184,6 +197,8 @@ class BoloPlayerController(
         val audio = source.audio
         videoUrls = video.getUrls(sortCDN = source.sortCdn)
         audioUrls = audio?.getUrls(sortCDN = source.sortCdn).orEmpty()
+        videoStreamIndex = video.streamIndex
+        audioStreamIndex = audio?.streamIndex
         urlExpirations = video.urlExpiresAtEpochSeconds + audio?.urlExpiresAtEpochSeconds.orEmpty()
         videoIndex = 0
         audioIndex = 0
@@ -346,8 +361,8 @@ class BoloPlayerController(
                 val video = videoUrls[videoIndex]
                 val audio = audioUrls.getOrNull(audioIndex)
                 val streams = BoloPlaybackStreamSession(expected, buildList {
-                    add(BoloPlaybackStreamSource(BoloPlaybackTrack.Video, video, mediaInfo.video.nominalBitrateBps))
-                    if (audio != null) add(BoloPlaybackStreamSource(BoloPlaybackTrack.Audio, audio, mediaInfo.audio?.nominalBitrateBps))
+                    add(BoloPlaybackStreamSource(BoloPlaybackTrack.Video, video, mediaInfo.video.nominalBitrateBps, videoStreamIndex))
+                    if (audio != null) add(BoloPlaybackStreamSource(BoloPlaybackTrack.Audio, audio, mediaInfo.audio?.nominalBitrateBps, audioStreamIndex))
                 }) { track, _ ->
                     scope.launch {
                         if (!disposed && !resourcesSuspended && generation == expected && mutableBackend.value === current)
@@ -416,6 +431,7 @@ class BoloPlayerController(
             }
             val infoSampling = launch {
                 while (isActive && mutableBackend.value === engine) {
+                    sampleBufferedRanges(engine)
                     sampleInfo(engine)
                     delay(20)
                 }
@@ -479,6 +495,24 @@ class BoloPlayerController(
         loudnessConfigured = configured
         appliedLoudnessGainDb = gainDb
         mutableInfo.value = info.value.withLoudnessInfo()
+    }
+
+    private suspend fun sampleBufferedRanges(engine: BoloMpvBackend) {
+        if (disposed || inBackground || resourcesSuspended || mutableBackend.value !== engine) {
+            lastBufferSample = null
+            return
+        }
+        val streams = streamSession ?: return
+        val expected = generation
+        if (streams.generation != expected || streams.hasFailed ||
+            lastBufferSample?.elapsedNow()?.inWholeMilliseconds?.let { it < 500 } == true) return
+        lastBufferSample = TimeSource.Monotonic.markNow()
+        val snapshot = streams.snapshot()
+        if (disposed || inBackground || resourcesSuspended || generation != expected || streams.hasFailed ||
+            streamSession !== streams || mutableBackend.value !== engine) return
+        mutableBufferedRanges.value = BoloPlaybackIndex.intersect(
+            snapshot.video.bufferedRanges, snapshot.audio?.bufferedRanges, state.value.durationMs,
+        )
     }
 
     private suspend fun sampleInfo(engine: BoloMpvBackend) {
@@ -969,6 +1003,7 @@ class BoloPlayerController(
         scope.launch {
             if (disposed || (!force && inBackground == !foreground)) return@launch
             inBackground = !foreground
+            lastBufferSample = null
             resetDiagnostics()
             val lifecycle = ++lifecycleRevision
             backgroundJob?.cancel()
@@ -1007,6 +1042,7 @@ class BoloPlayerController(
                 resourcesSuspended = false
             }
             streamSession?.setActivity(!resourcesSuspended && (!inBackground || playWhenReady), !inBackground && videoOutputActive)
+            if (foreground) mutableBackend.value?.let { sampleBufferedRanges(it) }
             if (state.value.isPlaybackSuspended) {
                 restorePlayback()
                 return@launch

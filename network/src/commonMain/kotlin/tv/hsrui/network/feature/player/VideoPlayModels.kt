@@ -68,12 +68,23 @@ data class BiliDashObject(
     val width: Int = 0,
     val height: Int = 0,
     val duration: Long = 0L,
+    @SerialName("segment_base") private val segmentBase: JsonElement? = null,
+    @SerialName("SegmentBase") private val legacySegmentBase: JsonElement? = null,
 ) {
     val quality: Quality? by lazy {
         _qualityCode.let { if (it < 256) VideoQuality(it) else AudioQuality(it) }
     }
 
     val codec by lazy { VideoCodec(_codecCode) }
+
+    val streamIndex: PlayerStreamIndexData? by lazy {
+        val primary = PlayerStreamIndexData.fromJson(segmentBase)
+        val fallback = PlayerStreamIndexData.fromJson(legacySegmentBase)
+        if (primary == null) fallback else PlayerStreamIndexData(
+            primary.initialization ?: fallback?.initialization,
+            primary.index ?: fallback?.index,
+        )
+    }
 
     val urlExpiresAtEpochSeconds: Map<String, Long?> by lazy {
         getUrls().associateWith(::getUrlExpiresAtEpochSeconds)

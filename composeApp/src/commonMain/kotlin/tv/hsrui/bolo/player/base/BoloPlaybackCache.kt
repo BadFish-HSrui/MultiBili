@@ -22,11 +22,11 @@ internal class BoloPlaybackCache {
         }
     }
 
-    fun read(track: BoloPlaybackTrack, position: Long, buffer: ByteArray): Int {
+    fun read(track: BoloPlaybackTrack, position: Long, buffer: ByteArray, offset: Int = 0): Int {
         val block = blocks[track to (position / BlockSize)] ?: return 0
         val range = block.ranges.firstOrNull { position >= it.start && position < it.endExclusive } ?: return 0
-        val count = minOf(buffer.size.toLong(), range.endExclusive - position).toInt()
-        block.bytes.copyInto(buffer, 0, (position - block.start).toInt(), (position - block.start).toInt() + count)
+        val count = minOf((buffer.size - offset).toLong(), range.endExclusive - position).toInt()
+        block.bytes.copyInto(buffer, offset, (position - block.start).toInt(), (position - block.start).toInt() + count)
         block.accessed = ++clock
         return count
     }

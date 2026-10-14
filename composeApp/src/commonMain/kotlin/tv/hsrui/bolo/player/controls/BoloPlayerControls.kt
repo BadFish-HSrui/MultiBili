@@ -95,6 +95,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -120,6 +121,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
@@ -164,6 +168,7 @@ import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.VideoPlayerViewModel
+import tv.hsrui.bolo.player.base.BoloPlaybackTimeRange
 import tv.hsrui.bolo.player.PlayerKeyboardEffect
 import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.player.settings.BoloPlayerSettings
@@ -181,6 +186,26 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
+
+private fun Modifier.clipBufferedRanges(
+    ranges: List<BoloPlaybackTimeRange>,
+    durationMs: Long,
+    include: Boolean,
+): Modifier = drawWithCache {
+    val path = Path()
+    if (durationMs > 0) for (range in ranges) {
+        val first = (range.startMs.toDouble() / durationMs).coerceIn(0.0, 1.0).toFloat()
+        val last = (range.endMs.toDouble() / durationMs).coerceIn(0.0, 1.0).toFloat()
+        if (last > first) {
+            val left = if (layoutDirection == LayoutDirection.Rtl) 1f - last else first
+            val right = if (layoutDirection == LayoutDirection.Rtl) 1f - first else last
+            path.addRect(Rect(left * size.width, 0f, right * size.width, size.height))
+        }
+    }
+    onDrawWithContent {
+        clipPath(path, if (include) ClipOp.Intersect else ClipOp.Difference) { this@onDrawWithContent.drawContent() }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -292,6 +317,7 @@ fun BoloPlayerControls(
     val desktopDefaultWindowFullscreenEnabled = playerSettings.playback.desktopDefaultWindowFullscreenEnabled
     val desktopFastForwardHoldSpeedEnabled = playerSettings.playback.desktopFastForwardHoldSpeedEnabled
     val playState by viewModel.controller.state.collectAsState()
+    val bufferedRanges by viewModel.controller.bufferedRanges.collectAsState()
     val playerInfo by viewModel.controller.info.collectAsState()
     val playerUiState by viewModel.uiState.collectAsState()
     val subtitleState by viewModel.subtitleController.state.collectAsState()
@@ -1128,9 +1154,12 @@ fun BoloPlayerControls(
             ) {
                 Box(
                     Modifier.align(Alignment.BottomStart).fillMaxWidth().height(bottomProgressHeight)
-                        .graphicsLayer { translationY = size.height * (1f - bottomProgressReveal) }
-                        .background(Color.White.copy(alpha = 0.3f)),
+                        .graphicsLayer { translationY = size.height * (1f - bottomProgressReveal) },
                 ) {
+                    Box(Modifier.matchParentSize().clipBufferedRanges(bufferedRanges, durationMs, false)
+                        .background(Color.White.copy(alpha = 0.3f)))
+                    Box(Modifier.matchParentSize().clipBufferedRanges(bufferedRanges, durationMs, true)
+                        .background(Color.White.copy(alpha = 0.5f)))
                     Box(
                         Modifier.align(Alignment.CenterStart).fillMaxWidth(sliderValue).height(bottomProgressHeight)
                             .background(BiliColor.ThemeColor),
@@ -1248,10 +1277,7 @@ fun BoloPlayerControls(
                             }
                         },
                         track = { sliderState ->
-                            SliderDefaults.Track(
-                                colors = sliderColors,
-                                sliderState = sliderState,
-                                thumbTrackGapSize = 0.dp,
+                            Box(
                                 modifier = Modifier.height(4.dp)
                                     .onGloballyPositioned {
                                         progressTrackCoordinates = it
@@ -1273,7 +1299,21 @@ fun BoloPlayerControls(
                                             }
                                         }
                                     },
-                            )
+                            ) {
+                                // 互补裁剪同一个原生轨道，保留圆角和尾标，加载底色不与未加载底色叠加。
+                                SliderDefaults.Track(
+                                    colors = sliderColors,
+                                    sliderState = sliderState,
+                                    thumbTrackGapSize = 0.dp,
+                                    modifier = Modifier.height(4.dp).clipBufferedRanges(bufferedRanges, durationMs, false),
+                                )
+                                SliderDefaults.Track(
+                                    colors = sliderColors.copy(inactiveTrackColor = Color.White.copy(alpha = 0.5f)),
+                                    sliderState = sliderState,
+                                    thumbTrackGapSize = 0.dp,
+                                    modifier = Modifier.height(4.dp).clipBufferedRanges(bufferedRanges, durationMs, true),
+                                )
+                            }
                         }
                     )
 
