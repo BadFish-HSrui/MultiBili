@@ -492,7 +492,12 @@ fun BoloPlayerControls(
     var rightHoldPending by remember(viewModel) { mutableStateOf(false) }
     var keyboardBaseSpeed by remember(viewModel) { mutableStateOf<Float?>(null) }
     var keyboardSpeedBoost by remember(viewModel) { mutableStateOf<Float?>(null) }
+    var keyboardSpeedFeedback by remember(viewModel) { mutableStateOf<Float?>(null) }
+    var keyboardSpeedFeedbackJob by remember(viewModel) { mutableStateOf<Job?>(null) }
     fun cancelKeyboardInteraction() {
+        keyboardSpeedFeedbackJob?.cancel()
+        keyboardSpeedFeedbackJob = null
+        keyboardSpeedFeedback = null
         rightHoldJob?.cancel()
         rightHoldJob = null
         rightHoldPending = false
@@ -593,7 +598,8 @@ fun BoloPlayerControls(
             event.type != KeyEventType.KeyDown || keyboardBlocked || !windowFocused ||
             event.isCtrlPressed || event.isAltPressed || event.isMetaPressed ||
             (event.isShiftPressed && (event.key == Key.Zero || event.key == Key.NumPad0 ||
-                event.key == Key.LeftBracket || event.key == Key.RightBracket))
+                event.key == Key.LeftBracket || event.key == Key.RightBracket ||
+                event.key == Key.Comma || event.key == Key.Period || event.key == Key.Slash))
         ) {
             false
         } else if (event.key in keyboardCancelledKeys) {
@@ -633,6 +639,29 @@ fun BoloPlayerControls(
                     if (keyboardPressedKeys.add(event.key) && episodeNavigationEnabled) {
                         if (event.key == Key.LeftBracket) onPreviousEpisode?.invoke()
                         else onNextEpisode?.invoke()
+                    }
+                    true
+                }
+                Key.Comma, Key.Period, Key.Slash -> {
+                    // 先记录按压，临时倍速期间忽略的按键必须松开后才能再次生效。
+                    if (keyboardPressedKeys.add(event.key) && !rightHoldPending &&
+                        keyboardBaseSpeed == null && keyboardSpeedBoost == null) {
+                        val currentSpeed = viewModel.controller.state.value.playbackSpeed
+                        val speed = when (event.key) {
+                            Key.Comma -> currentSpeed - 0.5f
+                            Key.Period -> currentSpeed + 0.5f
+                            else -> 1f
+                        }.coerceIn(0.5f, 3f)
+                        if (speed != currentSpeed) {
+                            viewModel.controller.setPlaybackSpeed(speed)
+                            keyboardSpeedFeedback = speed
+                            keyboardSpeedFeedbackJob?.cancel()
+                            keyboardSpeedFeedbackJob = keyboardScope.launch {
+                                delay(1_000)
+                                keyboardSpeedFeedback = null
+                                keyboardSpeedFeedbackJob = null
+                            }
+                        }
                     }
                     true
                 }
@@ -752,6 +781,9 @@ fun BoloPlayerControls(
         ?.audioQualities
         .orEmpty()
     val gestureSpeedPreview = keyboardSpeedBoost ?: gestureSpeedBoost
+    val speedFeedback = gestureSpeedPreview ?: keyboardSpeedFeedback
+    val speedFeedbackCentered = keyboardSpeedFeedback != null && gestureSpeedPreview == null &&
+        previewPositionMs == null && !deviceFeedbackVisible && !settingsOpen
     val centerFeedback = when {
         gestureSpeedPreview != null -> Icons.Rounded.FastForward to "长按快进"
         previewPositionMs != null -> if (previewPositionMs < playState.displayPositionMs) {
@@ -770,7 +802,7 @@ fun BoloPlayerControls(
     }
     SideEffect {
         if (centerFeedback != null) retainedFeedback = centerFeedback
-        feedbackVisibility.targetState = centerFeedback != null && !deviceFeedbackVisible && !settingsOpen
+        feedbackVisibility.targetState = centerFeedback != null && !deviceFeedbackVisible && !settingsOpen && !speedFeedbackCentered
     }
 
     Box(
@@ -1566,7 +1598,7 @@ fun BoloPlayerControls(
                 }
             }
         }
-        if (playState.isBuffering && !settingsOpen && !deviceFeedbackVisible &&
+        if (playState.isBuffering && !settingsOpen && !deviceFeedbackVisible && !speedFeedbackCentered &&
             centerFeedback == null && feedbackVisibility.isIdle && !feedbackVisibility.currentState) {
             BoloPlayerBufferingIndicator(
                 downloadBytesPerSecond = playerInfo.downloadBytesPerSecond,
@@ -1579,19 +1611,21 @@ fun BoloPlayerControls(
             exit = fadeOut(tween(200)),
             modifier = Modifier.align(Alignment.Center),
         ) {
-            (centerFeedback ?: retainedFeedback)?.let { feedback ->
-                Icon(
-                    imageVector = feedback.first,
-                    contentDescription = feedback.second,
-                    modifier = Modifier.size(64.dp),
-                    tint = Color.White,
-                )
+            if (!speedFeedbackCentered) {
+                (centerFeedback ?: retainedFeedback)?.let { feedback ->
+                    Icon(
+                        imageVector = feedback.first,
+                        contentDescription = feedback.second,
+                        modifier = Modifier.size(64.dp),
+                        tint = Color.White,
+                    )
+                }
             }
         }
-        if (deviceFeedbackVisible || previewPositionMs != null || gestureSpeedPreview != null) {
+        if (deviceFeedbackVisible || previewPositionMs != null || gestureSpeedPreview != null || speedFeedbackCentered) {
             Card(
                 modifier = Modifier.align(Alignment.Center)
-                    .then(if (!deviceFeedbackVisible) Modifier.offset(y = 52.dp) else Modifier),
+                    .then(if (!deviceFeedbackVisible && !speedFeedbackCentered) Modifier.offset(y = 52.dp) else Modifier),
                 shape = RoundedCornerShape(4.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = Color.Black.copy(alpha = 0.75f),
@@ -1629,9 +1663,9 @@ fun BoloPlayerControls(
                         style = MaterialTheme.typography.labelMedium,
                         color = Color.White,
                     )
-                } else if (gestureSpeedPreview != null) {
+                } else if (speedFeedback != null) {
                     Text(
-                        text = speedMultiplierText((gestureSpeedPreview * 100f).roundToInt()),
+                        text = speedMultiplierText((speedFeedback * 100f).roundToInt()),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelLarge,
                         color = Color.White,

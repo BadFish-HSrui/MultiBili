@@ -79,15 +79,15 @@ internal object DesktopPlayerKeyboard {
 
     fun onKeyEvent(event: KeyEvent): Boolean {
         val episodeKey = event.key == Key.LeftBracket || event.key == Key.RightBracket
+        val speedKey = event.key == Key.Comma || event.key == Key.Period || event.key == Key.Slash
         if (event.type == KeyEventType.KeyDown &&
-            (event.key == Key.Spacebar || event.key == Key.Zero || event.key == Key.NumPad0 || episodeKey)) {
+            (event.key == Key.Spacebar || event.key == Key.Zero || event.key == Key.NumPad0 || episodeKey || speedKey)) {
             val component = event.awtEventOrNull?.component ?: return false
             // 字符按键留给文本输入及候选词操作，窗口兜底也不能接管。
             if (component.inputMethodRequests != null) return false
-            if (episodeKey) {
-                if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed || event.isShiftPressed) return false
-                if (event.key in episodePressedKeys) return true
-            }
+            if ((episodeKey || speedKey) &&
+                (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed || event.isShiftPressed)) return false
+            if (episodeKey && event.key in episodePressedKeys) return true
         }
         val handled = onKeyEvent?.invoke(event) == true
         if (handled && event.type == KeyEventType.KeyDown) {
