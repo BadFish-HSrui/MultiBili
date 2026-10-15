@@ -107,10 +107,6 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isAltPressed
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isMetaPressed
-import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -172,6 +168,10 @@ import tv.hsrui.bolo.player.base.BoloPlaybackTimeRange
 import tv.hsrui.bolo.player.PlayerKeyboardEffect
 import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.player.settings.BoloPlayerSettings
+import tv.hsrui.bolo.player.settings.PlayerShortcutAction
+import tv.hsrui.bolo.player.settings.PlayerShortcutBinding
+import tv.hsrui.bolo.player.settings.shortcutAction
+import tv.hsrui.bolo.player.settings.shortcutModifiers
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.components.reply.ShowReplyInput
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
@@ -485,11 +485,13 @@ fun BoloPlayerControls(
         }
     }
     val keyboardScope = rememberCoroutineScope()
-    val keyboardPressedKeys = remember(viewModel) { mutableSetOf<Key>() }
+    val shortcutBindings = playerSettings.shortcuts.desktopBindings
+    val keyboardPressedKeys = remember(viewModel) { mutableMapOf<Key, Pair<PlayerShortcutAction, PlayerShortcutBinding>>() }
     val keyboardCancelledKeys = remember(viewModel) { mutableSetOf<Key>() }
     val keyboardSeekTimes = remember(viewModel) { mutableMapOf<Int, TimeMark>() }
     var rightHoldJob by remember(viewModel) { mutableStateOf<Job?>(null) }
     var rightHoldPending by remember(viewModel) { mutableStateOf(false) }
+    var rightHoldKey by remember(viewModel) { mutableStateOf<Key?>(null) }
     var keyboardBaseSpeed by remember(viewModel) { mutableStateOf<Float?>(null) }
     var keyboardSpeedBoost by remember(viewModel) { mutableStateOf<Float?>(null) }
     var keyboardSpeedFeedback by remember(viewModel) { mutableStateOf<Float?>(null) }
@@ -501,7 +503,8 @@ fun BoloPlayerControls(
         rightHoldJob?.cancel()
         rightHoldJob = null
         rightHoldPending = false
-        keyboardCancelledKeys.addAll(keyboardPressedKeys)
+        rightHoldKey = null
+        keyboardCancelledKeys.addAll(keyboardPressedKeys.keys)
         keyboardPressedKeys.clear()
         keyboardSeekTimes.clear()
         keyboardBaseSpeed?.let { viewModel.controller.setPlaybackSpeed(it) }
@@ -534,23 +537,57 @@ fun BoloPlayerControls(
     }
     val keyboardBlocked = settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen || audioQualityMenuOpen ||
         subtitleMenuOpen || chapterMenuOpen || danmakuInputOpen || mousePressed || sliderPreviewFraction != null
-    fun onVolumeKeyEvent(event: KeyEvent): Boolean {
-        if (event.key != Key.DirectionUp && event.key != Key.DirectionDown && event.key != Key.M) return false
-        if (event.type == KeyEventType.KeyUp) {
-            val cancelled = keyboardCancelledKeys.remove(event.key)
-            val handled = keyboardPressedKeys.remove(event.key)
-            return cancelled || handled
+    fun releaseKeyboardKey(key: Key, cancelled: Boolean): Boolean {
+        val pressed = keyboardPressedKeys.remove(key) ?: return false
+        if (cancelled) keyboardCancelledKeys.add(key)
+        if (rightHoldKey == key) {
+            val shouldSeek = !cancelled && rightHoldPending && keyboardBaseSpeed == null
+            rightHoldJob?.cancel()
+            rightHoldJob = null
+            rightHoldPending = false
+            rightHoldKey = null
+            keyboardBaseSpeed?.let { viewModel.controller.setPlaybackSpeed(it) }
+            keyboardBaseSpeed = null
+            keyboardSpeedBoost = null
+            if (shouldSeek) seekByKeyboard(1)
         }
-        if (event.type != KeyEventType.KeyDown || event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) return false
+        when (pressed.first) {
+            PlayerShortcutAction.SeekBackward -> keyboardSeekTimes.remove(-1)
+            PlayerShortcutAction.SeekForward -> keyboardSeekTimes.remove(1)
+            else -> Unit
+        }
+        return true
+    }
+    fun releaseKeyboardKeys(event: KeyEvent): Boolean {
+        var handled = false
+        if (event.type == KeyEventType.KeyUp) {
+            handled = keyboardCancelledKeys.remove(event.key)
+            handled = releaseKeyboardKey(event.key, cancelled = false) || handled
+        }
+        // 按下时捕获操作；所需修饰键松开后只取消，主键释放前不重新匹配另一绑定。
+        keyboardPressedKeys.filterValues { it.second.modifiers and event.shortcutModifiers != it.second.modifiers }.keys.toList().forEach {
+            handled = releaseKeyboardKey(it, cancelled = true) || handled
+        }
+        return handled
+    }
+    fun onVolumeKeyEvent(event: KeyEvent): Boolean {
+        if (viewModel.playbackClosed || !windowFocused) return false
+        val released = releaseKeyboardKeys(event)
+        if (event.type == KeyEventType.KeyUp) return released
+        if (event.type != KeyEventType.KeyDown) return false
         if (event.key in keyboardCancelledKeys) return true
-        val firstDown = keyboardPressedKeys.add(event.key)
-        when (event.key) {
-            Key.DirectionUp -> adjustDesktopVolume(10)
-            Key.DirectionDown -> adjustDesktopVolume(-10)
-            Key.M -> if (firstDown) {
+        val action = keyboardPressedKeys[event.key]?.first ?: shortcutBindings.shortcutAction(event)
+        if (action?.isVolume != true) return false
+        val firstDown = event.key !in keyboardPressedKeys
+        if (firstDown) keyboardPressedKeys[event.key] = action to PlayerShortcutBinding(event.key.keyCode, event.shortcutModifiers)
+        when (action) {
+            PlayerShortcutAction.VolumeUp -> adjustDesktopVolume(10)
+            PlayerShortcutAction.VolumeDown -> adjustDesktopVolume(-10)
+            PlayerShortcutAction.ToggleMuted -> if (firstDown) {
                 viewModel.toggleDesktopMuted()
                 showDesktopVolumeFeedback()
             }
+            else -> Unit
         }
         return true
     }
@@ -559,7 +596,7 @@ fun BoloPlayerControls(
     }
     LaunchedEffect(
         viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen,
-        desktopFastForwardHoldSpeedEnabled, longPressSpeed,
+        desktopFastForwardHoldSpeedEnabled, longPressSpeed, shortcutBindings,
     ) {
         cancelKeyboardInteraction()
     }
@@ -571,137 +608,98 @@ fun BoloPlayerControls(
         // 缓冲时的暂时未播放不取消长按；主动暂停仍须结束临时倍速。
         if (!keyboardPlayWhenReady || playState.isEnded || playState.isPlaybackSuspended || playState.isRebuilding ||
             keyboardBlocked || !windowFocused) cancelKeyboardInteraction()
+        if (!windowFocused) keyboardCancelledKeys.clear()
     }
     val onPlayerKeyEvent: (KeyEvent) -> Boolean = { event ->
+        val released = if (viewModel.playbackClosed) false else releaseKeyboardKeys(event)
         if (viewModel.playbackClosed) {
             cancelKeyboardInteraction()
             false
         } else if (event.type == KeyEventType.KeyUp) {
-            val cancelled = keyboardCancelledKeys.remove(event.key)
-            val handled = keyboardPressedKeys.remove(event.key)
-            if (event.key == Key.DirectionRight && handled) {
-                val shouldSeek = rightHoldPending && keyboardBaseSpeed == null
-                rightHoldJob?.cancel()
-                rightHoldJob = null
-                rightHoldPending = false
-                keyboardBaseSpeed?.let { viewModel.controller.setPlaybackSpeed(it) }
-                keyboardBaseSpeed = null
-                keyboardSpeedBoost = null
-                if (shouldSeek) seekByKeyboard(1)
-            }
-            when (event.key) {
-                Key.DirectionLeft -> keyboardSeekTimes.remove(-1)
-                Key.DirectionRight -> keyboardSeekTimes.remove(1)
-            }
-            cancelled || handled
-        } else if (
-            event.type != KeyEventType.KeyDown || keyboardBlocked || !windowFocused ||
-            event.isCtrlPressed || event.isAltPressed || event.isMetaPressed ||
-            (event.isShiftPressed && (event.key == Key.Zero || event.key == Key.NumPad0 ||
-                event.key == Key.LeftBracket || event.key == Key.RightBracket ||
-                event.key == Key.Comma || event.key == Key.Period || event.key == Key.Slash))
-        ) {
+            released
+        } else if (event.type != KeyEventType.KeyDown || keyboardBlocked || !windowFocused) {
             false
         } else if (event.key in keyboardCancelledKeys) {
             true
         } else {
-            when (event.key) {
-                Key.Spacebar -> {
-                    if (keyboardPressedKeys.add(Key.Spacebar)) {
-                        togglePlayback()
-                    }
-                    true
-                }
-                Key.F -> {
-                    if (keyboardPressedKeys.add(Key.F)) toggleDesktopFullscreen()
-                    true
-                }
-                Key.DirectionUp, Key.DirectionDown, Key.M -> onVolumeKeyEvent(event)
-                Key.D -> {
-                    if (keyboardPressedKeys.add(Key.D)) {
+            val action = keyboardPressedKeys[event.key]?.first ?: shortcutBindings.shortcutAction(event)
+            if (action?.isVolume == true) {
+                onVolumeKeyEvent(event)
+            } else if (action == null) {
+                false
+            } else {
+                val firstDown = event.key !in keyboardPressedKeys
+                if (firstDown) keyboardPressedKeys[event.key] = action to PlayerShortcutBinding(event.key.keyCode, event.shortcutModifiers)
+                when (action) {
+                    PlayerShortcutAction.TogglePlayback -> if (firstDown) togglePlayback()
+                    PlayerShortcutAction.ToggleFullscreen -> if (firstDown) toggleDesktopFullscreen()
+                    PlayerShortcutAction.ToggleDanmaku -> if (firstDown) {
                         viewModel.setDanmakuVisible(!viewModel.danmakuController.state.value.isVisible)
                     }
-                    true
-                }
-                Key.Zero, Key.NumPad0 -> {
-                    if (keyboardPressedKeys.add(event.key)) {
+                    PlayerShortcutAction.SeekToStart -> if (firstDown) {
                         val playback = viewModel.controller.state.value
                         if (playback.isSeekable && playback.durationMs > 0L && !playback.isPlaybackSuspended) {
-                            viewModel.seekToMs(
-                                0L,
-                                autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled,
-                            )
+                            viewModel.seekToMs(0L, autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled)
                         }
                     }
-                    true
-                }
-                Key.LeftBracket, Key.RightBracket -> {
-                    if (keyboardPressedKeys.add(event.key) && episodeNavigationEnabled) {
-                        if (event.key == Key.LeftBracket) onPreviousEpisode?.invoke()
-                        else onNextEpisode?.invoke()
+                    PlayerShortcutAction.PreviousEpisode, PlayerShortcutAction.NextEpisode -> if (firstDown && episodeNavigationEnabled) {
+                        if (action == PlayerShortcutAction.PreviousEpisode) onPreviousEpisode?.invoke() else onNextEpisode?.invoke()
                     }
-                    true
-                }
-                Key.Comma, Key.Period, Key.Slash -> {
-                    // 先记录按压，临时倍速期间忽略的按键必须松开后才能再次生效。
-                    if (keyboardPressedKeys.add(event.key) && !rightHoldPending &&
-                        keyboardBaseSpeed == null && keyboardSpeedBoost == null) {
-                        val currentSpeed = viewModel.controller.state.value.playbackSpeed
-                        val speed = when (event.key) {
-                            Key.Comma -> currentSpeed - 0.5f
-                            Key.Period -> currentSpeed + 0.5f
-                            else -> 1f
-                        }.coerceIn(0.5f, 3f)
-                        if (speed != currentSpeed) {
-                            viewModel.controller.setPlaybackSpeed(speed)
-                            keyboardSpeedFeedback = speed
-                            keyboardSpeedFeedbackJob?.cancel()
-                            keyboardSpeedFeedbackJob = keyboardScope.launch {
-                                delay(1_000)
-                                keyboardSpeedFeedback = null
-                                keyboardSpeedFeedbackJob = null
+                    PlayerShortcutAction.DecreaseSpeed, PlayerShortcutAction.IncreaseSpeed, PlayerShortcutAction.ResetSpeed -> {
+                        // 忽略的按压仍保留，临时倍速结束后必须重新按键。
+                        if (firstDown && !rightHoldPending && keyboardBaseSpeed == null && keyboardSpeedBoost == null) {
+                            val currentSpeed = viewModel.controller.state.value.playbackSpeed
+                            val speed = when (action) {
+                                PlayerShortcutAction.DecreaseSpeed -> currentSpeed - 0.5f
+                                PlayerShortcutAction.IncreaseSpeed -> currentSpeed + 0.5f
+                                else -> 1f
+                            }.coerceIn(0.5f, 3f)
+                            if (speed != currentSpeed) {
+                                viewModel.controller.setPlaybackSpeed(speed)
+                                keyboardSpeedFeedback = speed
+                                keyboardSpeedFeedbackJob?.cancel()
+                                keyboardSpeedFeedbackJob = keyboardScope.launch {
+                                    delay(1_000)
+                                    keyboardSpeedFeedback = null
+                                    keyboardSpeedFeedbackJob = null
+                                }
                             }
                         }
                     }
-                    true
-                }
-                Key.DirectionLeft -> {
-                    val firstDown = keyboardPressedKeys.add(Key.DirectionLeft)
-                    seekByKeyboard(-1, isRepeat = !firstDown)
-                    true
-                }
-                Key.DirectionRight -> {
-                    val firstDown = keyboardPressedKeys.add(Key.DirectionRight)
-                    val playback = viewModel.controller.state.value
-                    if (firstDown && desktopFastForwardHoldSpeedEnabled && !playback.isEnded &&
-                        !playback.isPlaybackSuspended && !playback.isRebuilding) {
-                        rightHoldPending = true
-                        rightHoldJob = keyboardScope.launch {
-                            delay(300)
-                            if (viewModel.playbackClosed) return@launch
-                            val current = viewModel.controller.state.value
-                            if (!current.isEnded && !current.isPlaybackSuspended && !current.isRebuilding) {
-                                keyboardBaseSpeed = current.playbackSpeed
-                                keyboardSpeedBoost = longPressSpeed
-                                viewModel.controller.setPlaybackSpeed(longPressSpeed)
-                                if (!(viewModel.pendingPlayWhenReady ?: current.playWhenReady)) viewModel.play()
+                    PlayerShortcutAction.SeekBackward -> seekByKeyboard(-1, isRepeat = !firstDown)
+                    PlayerShortcutAction.SeekForward -> {
+                        val playback = viewModel.controller.state.value
+                        if (firstDown && rightHoldKey != null) {
+                            releaseKeyboardKey(event.key, cancelled = true)
+                        } else if (firstDown && desktopFastForwardHoldSpeedEnabled && !playback.isEnded &&
+                            !playback.isPlaybackSuspended && !playback.isRebuilding) {
+                            rightHoldKey = event.key
+                            rightHoldPending = true
+                            rightHoldJob = keyboardScope.launch {
+                                delay(300)
+                                if (viewModel.playbackClosed) return@launch
+                                val current = viewModel.controller.state.value
+                                if (!current.isEnded && !current.isPlaybackSuspended && !current.isRebuilding) {
+                                    keyboardBaseSpeed = current.playbackSpeed
+                                    keyboardSpeedBoost = longPressSpeed
+                                    viewModel.controller.setPlaybackSpeed(longPressSpeed)
+                                    if (!(viewModel.pendingPlayWhenReady ?: current.playWhenReady)) viewModel.play()
+                                }
                             }
+                        } else if (!rightHoldPending) {
+                            seekByKeyboard(1, isRepeat = !firstDown)
                         }
-                    } else if (!rightHoldPending) {
-                        seekByKeyboard(1, isRepeat = !firstDown)
                     }
-                    true
+                    else -> Unit
                 }
-                else -> false
+                true
             }
         }
     }
     if (isDesktop) {
         PlayerKeyboardEffect(
-            onCancel = {
-                cancelKeyboardInteraction()
-                keyboardCancelledKeys.clear()
-            },
+            bindings = shortcutBindings,
+            onCancel = { cancelKeyboardInteraction() },
             onKeyEvent = onPlayerKeyEvent,
         )
     }
@@ -810,9 +808,10 @@ fun BoloPlayerControls(
             controlsRootCoordinates = it
             updateHighEnergyTrackBounds()
         }.onPreviewKeyEvent { event ->
-            // 播放器内优先接管音量与开关按键，播放器外的输入框仍自行处理。
-            isDesktop && (event.key == Key.Spacebar || event.key == Key.DirectionUp ||
-                event.key == Key.DirectionDown || event.key == Key.M || event.key == Key.D) && onPlayerKeyEvent(event)
+            // 播放器内优先接管音量与开关操作，不依赖其当前绑定的物理键。
+            val action = shortcutBindings.shortcutAction(event)
+            isDesktop && (action?.isVolume == true || action == PlayerShortcutAction.TogglePlayback ||
+                action == PlayerShortcutAction.ToggleDanmaku) && onPlayerKeyEvent(event)
         }.pointerInput(isDesktop, viewModel) {
             if (!isDesktop) return@pointerInput
             try {
@@ -1687,6 +1686,7 @@ fun BoloPlayerControls(
         }
         if (showExtendedControls) {
             BoloPlayerSettingsSheet(
+                shortcutSettings = playerSettings.shortcuts,
                 resumeAfterBackgroundEnabled = playerSettings.playback.resumeAfterBackgroundEnabled,
                 onResumeAfterBackgroundEnabledChange = { playerSettings.playback.resumeAfterBackgroundEnabled = it },
                 autoPlayAfterSeekEnabled = playerSettings.playback.autoPlayAfterSeekEnabled,

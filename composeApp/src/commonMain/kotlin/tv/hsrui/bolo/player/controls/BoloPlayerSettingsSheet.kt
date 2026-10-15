@@ -98,6 +98,7 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.getPlatform
+import tv.hsrui.bolo.player.settings.PlayerShortcutSettings
 import tv.hsrui.bolo.ui.components.dialog.ShowInfoDialog
 import tv.hsrui.bolo.ui.components.slider.ShowSlider
 import kotlin.math.roundToInt
@@ -106,6 +107,7 @@ import kotlin.math.roundToInt
 @Composable
 fun BoloPlayerSettingsSheet(
     isOpen: Boolean,
+    shortcutSettings: PlayerShortcutSettings,
     supportsDeviceGestures: Boolean,
     desktopDoubleClickPauseEnabled: Boolean,
     onDesktopDoubleClickPauseEnabledChange: (Boolean) -> Unit,
@@ -195,6 +197,7 @@ fun BoloPlayerSettingsSheet(
     var showFilterInfo by remember(isOpen) { mutableStateOf(false) }
     var showTopBottomScrollInfo by remember(isOpen) { mutableStateOf(false) }
     var showSubtitlePositionInfo by remember(isOpen) { mutableStateOf(false) }
+    var showShortcutSettings by remember(isOpen) { mutableStateOf(false) }
 
     LaunchedEffect(isOpen) {
         if (isOpen) drawerState.open() else drawerState.close()
@@ -213,16 +216,21 @@ fun BoloPlayerSettingsSheet(
     NavigationBackHandler(
         state = backState,
         isBackEnabled = (isOpen || !drawerState.isClosed) &&
+            !showShortcutSettings &&
             !showDefaultWindowFullscreenInfo && !showFilterInfo && !showTopBottomScrollInfo && !showSubtitlePositionInfo && !showAutoPlayAfterSeekInfo && !showResumeAfterBackgroundInfo,
         onBackCompleted = onDismissRequest,
     )
 
     if (!isOpen && drawerState.isClosed && !drawerState.isAnimationRunning) return
 
+    if (isDesktop && isOpen && showShortcutSettings) {
+        BoloPlayerShortcutSettingsSheet(shortcutSettings, onDismissRequest = { showShortcutSettings = false })
+    }
+
     if (isOpen && showDefaultWindowFullscreenInfo) {
         ShowInfoDialog(onConfirm = { showDefaultWindowFullscreenInfo = false }) {
             Text(
-                text = "双击或按 'F' 变为使播放区域填满窗口，而不是切换全屏，开启双击暂停后双击时不生效。",
+                text = "双击或使用切换全屏快捷键使播放区域填满窗口，而不是切换系统全屏，开启双击暂停后双击时不生效。",
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
@@ -571,6 +579,15 @@ fun BoloPlayerSettingsSheet(
                                                             enabled = isOpen,
                                                             onCheckedChange = onMergeAudioChannelsEnabledChange,
                                                         )
+                                                    }
+                                                }
+                                                if (isDesktop) {
+                                                    Card(onClick = { showShortcutSettings = true }, enabled = isOpen,
+                                                        modifier = Modifier.fillMaxWidth().height(40.dp)) {
+                                                        Box(Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                                                            contentAlignment = Alignment.CenterStart) {
+                                                            Text("快捷键设置", style = MaterialTheme.typography.bodyMedium)
+                                                        }
                                                     }
                                                 }
                                                 PlayerRebuildCard(

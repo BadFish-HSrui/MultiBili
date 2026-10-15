@@ -7,4 +7,5 @@ class BoloPlayerSettings(settingsKSafe: KSafePlain) {
     val playback = PlayerPlaybackSettings(settingsKSafe)
     val danmaku = PlayerDanmakuSettings(settingsKSafe)
     val subtitle = PlayerSubtitleSettings(settingsKSafe)
+    val shortcuts = PlayerShortcutSettings(settingsKSafe)
 }
