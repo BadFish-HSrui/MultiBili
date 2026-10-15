@@ -220,39 +220,63 @@ class DownloadManager private constructor() {
         }
     }
 
-    suspend fun remove(id: String, deleteFile: Boolean = false): Boolean = scope.async {
-        var reserved = false
-        var failurePrefix = "移除下载记录失败"
+    suspend fun remove(id: String, deleteFile: Boolean = false): Boolean = remove(listOf(id), deleteFile)
+
+    suspend fun remove(ids: List<String>, deleteFile: Boolean = false, cancelActive: Boolean = false): Boolean = scope.async {
+        var reservedIds = emptySet<String>()
         try {
             initialize()
-            val job = mutex.withLock {
-                val task = _tasks.value.firstOrNull { it.id == id } ?: return@async true
-                check(task.status.isTerminal) { "任务尚未结束" }
-                check(id !in retrying) { "任务正在重试" }
-                check(removing.add(id)) { "任务正在移除" }
-                reserved = true
-                jobs[id]
+            val runningJobs = mutex.withLock {
+                val current = _tasks.value.associateBy { it.id }
+                val targets = ids.distinct().mapNotNull { current[it] }
+                targets.forEach { task ->
+                    check(cancelActive || task.status.isTerminal) { "任务尚未结束" }
+                    check(task.id !in retrying) { "任务正在重试" }
+                    check(task.id !in removing) { "任务正在移除" }
+                }
+                // 整组先预留并取消，等待所有任务收尾后才清理，防止重试或迟到发布与移除交错。
+                reservedIds = targets.mapTo(mutableSetOf()) { it.id }
+                removing.addAll(reservedIds)
+                targets.mapNotNull { task ->
+                    jobs[task.id]?.also { if (cancelActive && !task.status.isTerminal) it.cancel() }
+                }
             }
-            job?.join()
-            val task = mutex.withLock {
-                check(id !in jobs) { "任务尚未结束" }
-                _tasks.value.first { it.id == id }.also { check(it.status.isTerminal) { "任务尚未结束" } }
+            runningJobs.forEach { it.join() }
+            var allRemoved = true
+            reservedIds.forEach { id ->
+                var failurePrefix = "移除下载记录失败"
+                try {
+                    val task = mutex.withLock {
+                        check(id !in jobs) { "任务尚未结束" }
+                        val current = _tasks.value.firstOrNull { it.id == id } ?: return@forEach
+                        if (cancelActive && !current.status.isTerminal) {
+                            val canceled = current.copy(status = DownloadStatus.Canceled, error = null, bytesPerSecond = 0, updatedAt = now())
+                            commit(_tasks.value.map { if (it.id == id) canceled else it })
+                            canceled
+                        } else current.also { check(it.status.isTerminal) { "任务尚未结束" } }
+                    }
+                    if (deleteFile) {
+                        failurePrefix = "清理本地文件失败"
+                        files.clean(id, task.output)
+                        task.output?.let { files.delete(it) }
+                    }
+                    failurePrefix = "移除下载记录失败"
+                    mutex.withLock { commit(_tasks.value.filterNot { it.id == id }) }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    allRemoved = false
+                    notify("$failurePrefix：${safeError(error)}")
+                }
             }
-            if (deleteFile) {
-                failurePrefix = "清理本地文件失败"
-                files.clean(id, task.output)
-                task.output?.let { files.delete(it) }
-            }
-            failurePrefix = "移除下载记录失败"
-            mutex.withLock { commit(_tasks.value.filterNot { it.id == id }) }
-            true
+            allRemoved
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            notify("$failurePrefix：${safeError(error)}")
+            notify("移除下载记录失败：${safeError(error)}")
             false
         } finally {
-            if (reserved) withContext(NonCancellable) { mutex.withLock { removing.remove(id) } }
+            if (reservedIds.isNotEmpty()) withContext(NonCancellable) { mutex.withLock { removing.removeAll(reservedIds) } }
         }
     }.await()
 
