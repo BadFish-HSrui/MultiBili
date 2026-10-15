@@ -1,5 +1,6 @@
 package tv.hsrui.bolo.ui.components.reply
 
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import tv.hsrui.bolo.ui.components.image.ShowImage
+import tv.hsrui.bolo.ui.components.scroll.containScroll
 import tv.hsrui.network.feature.reply.ReplyItem.ReplyContent.ReplyPicture
 
 @Composable
@@ -29,7 +31,10 @@ fun ShowReplyPictures(
         // 多图时收窄每张预览，保留横向可滑动的视觉线索；单图仍可铺满内容宽度。
         val multiPictureMaxWidthRatio = 0.8f
         val maxItemWidth = if (pictures.size > 1) availableWidth * multiPictureMaxWidthRatio else availableWidth
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        LazyRow(
+            modifier = Modifier.containScroll(Orientation.Horizontal),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             itemsIndexed(pictures) { index, picture ->
                 val ratio = if (picture.width > 0 && picture.height > 0) {
                     picture.width.toFloat() / picture.height

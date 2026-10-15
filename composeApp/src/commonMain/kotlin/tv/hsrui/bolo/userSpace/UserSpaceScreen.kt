@@ -68,6 +68,7 @@ import tv.hsrui.bolo.favorite.FavoriteFoldersContent
 import tv.hsrui.bolo.favorite.FavoriteFoldersUiState
 import tv.hsrui.bolo.ui.common.videosPage.VideosGridPage
 import tv.hsrui.bolo.ui.common.videosPage.VideosUiState
+import tv.hsrui.bolo.ui.components.scroll.containScroll
 import tv.hsrui.bolo.userSpace.collection.UserCollectionsContent
 import tv.hsrui.bolo.userSpace.series.UserSeriesContent
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
@@ -218,7 +219,7 @@ private fun UserSpaceContent(
                                             if (tab == UserSpaceTab.Uploads) {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     LazyRow(
-                                                        modifier = Modifier.weight(1f),
+                                                        modifier = Modifier.weight(1f).containScroll(Orientation.Horizontal),
                                                         contentPadding = PaddingValues(horizontal = 12.dp),
                                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                     ) {

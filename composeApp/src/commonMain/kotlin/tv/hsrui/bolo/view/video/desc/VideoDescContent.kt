@@ -2,6 +2,7 @@ package tv.hsrui.bolo.view.video.desc
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.ui.components.button.RelationButton
+import tv.hsrui.bolo.ui.components.scroll.containScroll
 import tv.hsrui.bolo.ui.components.video.actionsBar.VideoActionsBar
 import tv.hsrui.network.feature.user.info.UserCardStatsData
 import tv.hsrui.network.feature.video.VideoInfoData
@@ -72,7 +74,7 @@ fun VideoDescContent(
             if (videoInfo.isCooperation && videoInfo.staff.isNotEmpty()) {
                 key(videoInfo.bvid, videoInfo.avid) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        modifier = Modifier.fillMaxWidth().containScroll(Orientation.Horizontal).horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         videoInfo.staff.forEach { member ->

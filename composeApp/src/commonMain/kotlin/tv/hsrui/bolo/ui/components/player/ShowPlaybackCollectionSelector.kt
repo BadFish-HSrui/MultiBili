@@ -50,15 +50,8 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.semantics.selected
@@ -66,12 +59,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.Velocity
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
+import tv.hsrui.bolo.ui.components.scroll.containScroll
 import tv.hsrui.bolo.ui.theme.BiliColor
 
 data class PlaybackCollectionGroup(val id: String, val title: String)
@@ -120,38 +113,6 @@ fun ShowPlaybackCollectionSelector(
     val displayedItems = remember(items, isDescending, serverOrdered) { if (isDescending && !serverOrdered) items.reversed() else items }
     val listState = rememberLazyListState()
     val groupState = rememberLazyListState()
-    val groupNestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
-                Offset(available.x, 0f)
-
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity =
-                Velocity(available.x, 0f)
-        }
-    }
-    val contentNestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            // 列表先处理滚动，再消费竖向余量，避免边界滚动及惯性继续带动外层页面。
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
-                Offset(0f, available.y)
-
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity =
-                Velocity(0f, available.y)
-        }
-    }
-    val contentScrollModifier = Modifier.nestedScroll(contentNestedScrollConnection).pointerInput(Unit) {
-        awaitPointerEventScope {
-            while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Main)
-                // 列表到边界时可能不接收滚轮；在列表处理后、父页面处理前消费剩余竖向事件。
-                if (event.type == PointerEventType.Scroll) {
-                    event.changes.forEach { change ->
-                        if (change.scrollDelta.y != 0f) change.consume()
-                    }
-                }
-            }
-        }
-    }
     val playingIndex = displayedItems.indexOfFirst { it.id == playingItemId }
     val playingNumber = if (playingIndex >= 0 && firstItemIndex != null && firstItemIndex >= 0) {
         (firstItemIndex.toLong() + playingIndex + 1L).takeIf { it in 1L..totalCount.toLong() }
@@ -240,19 +201,7 @@ fun ShowPlaybackCollectionSelector(
             if (groups.size > 1) {
                 LazyRow(
                     state = groupState,
-                    modifier = Modifier.nestedScroll(groupNestedScrollConnection).pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Main)
-                                // 分季列表先处理横向滚动，再阻止边界滚轮传给外层分页。
-                                if (event.type == PointerEventType.Scroll) {
-                                    event.changes.forEach { change ->
-                                        if (change.scrollDelta.x != 0f) change.consume()
-                                    }
-                                }
-                            }
-                        }
-                    },
+                    modifier = Modifier.containScroll(Orientation.Horizontal),
                     contentPadding = PaddingValues(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -268,7 +217,7 @@ fun ShowPlaybackCollectionSelector(
             when {
                 isLoading -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(12.dp))
                 errorMessage != null -> Box(
-                    Modifier.heightIn(max = 300.dp).then(contentScrollModifier)
+                    Modifier.heightIn(max = 300.dp).containScroll(Orientation.Vertical)
                         .verticalScroll(rememberScrollState()),
                 ) {
                     ShowErrorContent(message = errorMessage, retry = onRetry)
@@ -276,7 +225,7 @@ fun ShowPlaybackCollectionSelector(
                 displayedItems.isEmpty() -> Text("暂无可选内容", Modifier.padding(16.dp))
                 else -> LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp).then(contentScrollModifier).scrollbar(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp).containScroll(Orientation.Vertical).scrollbar(
                         state = listState.scrollIndicatorState,
                         orientation = Orientation.Vertical,
                         isFadeEnabled = false,
