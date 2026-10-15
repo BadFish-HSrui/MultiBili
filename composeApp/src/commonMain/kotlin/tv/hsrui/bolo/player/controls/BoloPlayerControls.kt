@@ -592,7 +592,8 @@ fun BoloPlayerControls(
         } else if (
             event.type != KeyEventType.KeyDown || keyboardBlocked || !windowFocused ||
             event.isCtrlPressed || event.isAltPressed || event.isMetaPressed ||
-            (event.isShiftPressed && (event.key == Key.Zero || event.key == Key.NumPad0))
+            (event.isShiftPressed && (event.key == Key.Zero || event.key == Key.NumPad0 ||
+                event.key == Key.LeftBracket || event.key == Key.RightBracket))
         ) {
             false
         } else if (event.key in keyboardCancelledKeys) {
@@ -625,6 +626,13 @@ fun BoloPlayerControls(
                                 autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled,
                             )
                         }
+                    }
+                    true
+                }
+                Key.LeftBracket, Key.RightBracket -> {
+                    if (keyboardPressedKeys.add(event.key) && episodeNavigationEnabled) {
+                        if (event.key == Key.LeftBracket) onPreviousEpisode?.invoke()
+                        else onNextEpisode?.invoke()
                     }
                     true
                 }
