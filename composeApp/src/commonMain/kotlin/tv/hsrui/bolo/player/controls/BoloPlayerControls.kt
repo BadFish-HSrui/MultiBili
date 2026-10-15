@@ -219,6 +219,7 @@ fun BoloPlayerControls(
     onPreviousEpisode: (() -> Unit)? = null,
     onNextEpisode: (() -> Unit)? = null,
     episodeNavigationEnabled: Boolean = true,
+    endedContent: (@Composable () -> Unit)? = null,
 ) {
     val isFullscreen = fullscreenState.isFullscreen
     val isDesktop = fullscreenState.isDesktop
@@ -1054,6 +1055,7 @@ fun BoloPlayerControls(
                     !playState.isBuffering && centerFeedback == null &&
                     feedbackVisibility.isIdle && !feedbackVisibility.currentState,
                 modifier = Modifier.matchParentSize(),
+                endedContent = endedContent,
             )
         }
         if (showExtendedControls && infoOpen) {

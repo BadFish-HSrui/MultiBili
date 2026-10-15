@@ -1,8 +1,10 @@
 package tv.hsrui.bolo.view.video
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.ViewModel
@@ -13,10 +15,12 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -41,6 +45,8 @@ import tv.hsrui.network.feature.video.list.fetchVideoListVideos
 import tv.hsrui.network.feature.player.PlayerInfoResponse
 import tv.hsrui.network.feature.player.fetchPlayerInfo
 import tv.hsrui.network.login.storage.LoginStorage
+import tv.hsrui.network.model.VideoCard
+import kotlin.time.TimeSource
 
 class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
     constructor(vid: Vid) : this(VideoPlaybackRequest.Single(vid))
@@ -56,6 +62,14 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
     private var listState: VideoListUiState? = null
     private var hasOpenedVideo = false
     private var hasBoundPlayback = false
+    private var recommendationJob: Job? = null
+    private var recommendationToken: Any? = null
+    private var pendingRecommendationAction: (() -> Unit)? = null
+
+    var pendingRecommendation by mutableStateOf<VideoCard?>(null)
+        private set
+    var recommendationCountdownProgress by mutableFloatStateOf(0f)
+        private set
 
     var playbackSession by mutableStateOf<BoloPlaybackSession?>(null)
         private set
@@ -111,6 +125,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
     }
 
     override fun onCleared() {
+        cancelPendingRecommendation()
         playbackSession?.close()
         detailOwner.viewModelStore.clear()
     }
@@ -128,6 +143,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
 
     fun loadVideoList(descending: Boolean = listState?.isDescending ?: false) {
         val source = request as? VideoPlaybackRequest.VideoList ?: return
+        cancelPendingRecommendation()
         val version = ++listGeneration
         listJob?.cancel()
         previousJob?.cancel()
@@ -257,35 +273,98 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         val current = _uiState.value as? VideoUiState.Success ?: return
         if (BoloPlaybackSession.current !== session || !current.episodeNavigationEnabled ||
             session.player.avid != current.video.avid || session.player.cid != current.video.cid) return
+        cancelPendingRecommendation()
         if (current.hasNextEpisode) {
             selectAdjacentEpisode(before = false, onUnavailable = { autoPlayNextVideo(session) })
             return
         }
         val version = generation
+        val intentRevision = session.player.controller.playIntentRevision
+        val playerSettings = getKoin().get<BoloPlayerSettings>()
+        val token = Any()
+        recommendationToken = token
+        val canContinue = {
+            val latest = _uiState.value as? VideoUiState.Success
+            val playback = session.player.controller.state.value
+            val playerState = session.player.uiState.value as? VideoPlayerUiState.Success
+            recommendationToken === token && version == generation && BoloPlaybackSession.current === session &&
+                !session.player.playbackClosed && session.player.avid == current.video.avid &&
+                session.player.cid == current.video.cid && latest?.video?.avid == current.video.avid &&
+                latest.video.cid == current.video.cid && latest.episodeNavigationEnabled && !latest.hasNextEpisode &&
+                playerSettings.playback.autoPlayNextEnabled && !session.player.singleEpisodeLoopEnabled &&
+                session.player.controller.playIntentRevision == intentRevision &&
+                playerState?.matches(current.video.avid, current.video.cid) == true &&
+                playback.isEnded && !playback.isPlaybackSuspended && !playback.isRebuilding && !playback.isSeeking
+        }
         // 与简介页使用同一 Store 和 key，复用已加载的相关推荐。
         val related = ViewModelProvider.create(
             owner = getDetailOwner(current.video.avid),
             factory = viewModelFactory { initializer { RelatedViewModel(current.video.avid) } },
         )["desc_${current.video.bvid}", RelatedViewModel::class]
-        session.bindPlayback {
-            val recommendations = withTimeoutOrNull(15_000) {
-                related.uiState.first { it !is VideosUiState.Loading }
-            } as? VideosUiState.Success ?: return@bindPlayback
-            val latest = _uiState.value as? VideoUiState.Success ?: return@bindPlayback
-            val playback = session.player.controller.state.value
-            val playerSettings = getKoin().get<BoloPlayerSettings>()
-            if (version != generation || BoloPlaybackSession.current !== session ||
-                latest.video.avid != current.video.avid || latest.video.cid != current.video.cid ||
-                !latest.episodeNavigationEnabled || latest.hasNextEpisode ||
-                !playerSettings.playback.autoPlayNextEnabled || session.player.singleEpisodeLoopEnabled ||
-                !playback.isEnded || playback.isPlaybackSuspended) return@bindPlayback
-            val target = recommendations.videos.firstOrNull { it.avid > 0 && it.avid != current.video.avid }
-                ?: return@bindPlayback
-            if (target.bvid.isNotBlank()) openVideo(target.bvid) else openVideo(target.avid)
+        recommendationJob = session.bindPlayback {
+            // 加载推荐和倒计时共用取消边界，失效后不因设置恢复或再次 EOF 复活。
+            val cancellation = launch {
+                combine(
+                    uiState,
+                    session.player.controller.state,
+                    session.player.uiState,
+                    snapshotFlow { playerSettings.playback.autoPlayNextEnabled to session.player.singleEpisodeLoopEnabled },
+                ) { _, _, _, _ -> canContinue() }.first { !it }
+                if (recommendationToken === token) cancelPendingRecommendation()
+            }
+            try {
+                if (!canContinue()) return@bindPlayback
+                val recommendations = withTimeoutOrNull(15_000) {
+                    related.uiState.first { it !is VideosUiState.Loading }
+                } as? VideosUiState.Success ?: return@bindPlayback
+                if (!canContinue()) return@bindPlayback
+                val target = recommendations.videos.firstOrNull { it.avid > 0 && it.avid != current.video.avid }
+                    ?: return@bindPlayback
+                pendingRecommendationAction = {
+                    if (recommendationToken === token) {
+                        val allowed = canContinue()
+                        // 先消费本次目标，再导航，点击和计时完成只能有一个生效。
+                        cancelPendingRecommendation()
+                        if (allowed) {
+                            if (target.bvid.isNotBlank()) openVideo(target.bvid) else openVideo(target.avid)
+                        }
+                    }
+                }
+                recommendationCountdownProgress = 0f
+                pendingRecommendation = target
+                val startedAt = TimeSource.Monotonic.markNow()
+                while (canContinue()) {
+                    val elapsedMs = startedAt.elapsedNow().inWholeMilliseconds.coerceIn(0L, 5_000L)
+                    recommendationCountdownProgress = elapsedMs / 5_000f
+                    if (elapsedMs == 5_000L) {
+                        playPendingRecommendation()
+                        break
+                    }
+                    delay(minOf(16L, 5_000L - elapsedMs))
+                }
+            } finally {
+                cancellation.cancel()
+                if (recommendationToken === token) cancelPendingRecommendation()
+            }
         }
     }
 
+    fun playPendingRecommendation() {
+        pendingRecommendationAction?.invoke()
+    }
+
+    private fun cancelPendingRecommendation() {
+        recommendationToken = null
+        val job = recommendationJob
+        recommendationJob = null
+        pendingRecommendationAction = null
+        pendingRecommendation = null
+        recommendationCountdownProgress = 0f
+        job?.cancel()
+    }
+
     fun cancelEpisodeNavigation() {
+        cancelPendingRecommendation()
         val current = _uiState.value as? VideoUiState.Success ?: return
         val navigating = current.isSwitchingEpisode && current.switchingEpisodeKey == null
         if (navigating) {
@@ -302,6 +381,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         val current = _uiState.value as? VideoUiState.Success ?: return
         if (!current.episodeNavigationEnabled) return
         if (before && !current.hasPreviousEpisode || !before && !current.hasNextEpisode) return
+        cancelPendingRecommendation()
         val version = ++generation
         loadJob?.cancel()
         val part = current.adjacentPart(before)
@@ -417,6 +497,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
             ?: (request as? VideoPlaybackRequest.Single)?.vid
             ?: listState?.items?.firstOrNull { it.isAvailable }?.let { Vid.AVid(it.id) }
             ?: return
+        cancelPendingRecommendation()
         val version = ++generation
         loadJob?.cancel()
         val previous = _uiState.value as? VideoUiState.Success
@@ -474,6 +555,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         val current = _uiState.value as? VideoUiState.Success ?: return
         if (listState?.isReloading == true) return
         val item = listState?.items?.firstOrNull { it.key == key && it.isAvailable } ?: return
+        cancelPendingRecommendation()
         val version = ++generation
         loadJob?.cancel()
         if (item.id == current.video.avid) {
@@ -501,6 +583,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         if (current.videoList != null) return
         val episode = current.video.collection?.sections?.flatMap { it.episodes }?.firstOrNull { it.key == key && it.isAvailable } ?: return
         if (episode.avid == current.video.avid) {
+            cancelPendingRecommendation()
             ++generation
             loadJob?.cancel()
             _uiState.value = current.copy(switchingEpisodeKey = null, isSwitchingEpisode = false, episodeError = null, episodeNavigationPrevious = null)
@@ -512,6 +595,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
     fun selectVideoPart(cid: Long) {
         val current = _uiState.value as? VideoUiState.Success ?: return
         if (current.video.parts.none { it.cid == cid }) return
+        cancelPendingRecommendation()
         ++generation
         loadJob?.cancel()
         _uiState.value = current.copy(
@@ -536,6 +620,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
                 loadVideoList(descending)
             }
         } else {
+            cancelPendingRecommendation()
             ++generation
             loadJob?.cancel()
             _uiState.value = current.copy(isDescending = descending, isSwitchingEpisode = false,
