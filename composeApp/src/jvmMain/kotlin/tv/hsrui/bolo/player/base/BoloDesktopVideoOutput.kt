@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.awt.ComposeWindow
+import androidx.compose.ui.geometry.Rect as ComposeRect
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -12,14 +13,10 @@ import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.Rect
 import org.jetbrains.skiko.GraphicsApi
-import java.awt.BorderLayout
-import java.awt.Color
 import java.awt.EventQueue
-import javax.swing.JPanel
 
-/** 宿主只传递尺寸和已完成的不可变帧，不参与 OpenGL 渲染。 */
+/** 宿主传递布局和已完成的不可变帧，不参与 OpenGL 渲染。 */
 internal class BoloDesktopVideoOutput {
-    val panel = JPanel(BorderLayout()).apply { background = Color.BLACK }
     var direct by mutableStateOf(false)
         private set
     var error by mutableStateOf<String?>(null)
@@ -27,7 +24,14 @@ internal class BoloDesktopVideoOutput {
     var directDisabled = false
         private set
     @Volatile var size = IntSize.Zero
-    private val failureChannel = Channel<Pair<BoloMpvBackend, Throwable>>(Channel.CONFLATED)
+    var bounds = ComposeRect.Zero
+        private set
+    var clipBounds = ComposeRect.Zero
+        private set
+    var visible = false
+        private set
+    var geometryListener: (() -> Unit)? = null
+    private val failureChannel = Channel<Triple<BoloMpvBackend, Any, Throwable>>(Channel.CONFLATED)
     val failures = failureChannel.receiveAsFlow()
     private val frameLock = Any()
     private var owner: Any? = null
@@ -42,11 +46,20 @@ internal class BoloDesktopVideoOutput {
             System.getProperty("os.name").startsWith("Windows") -> window?.renderApi == GraphicsApi.DIRECT3D
             else -> false // 当前 Compose OpenGL 后端不支持同等 interop blending。
         }
-        // macOS 实测 GLCanvas 遮挡 Compose 叠加；Windows 尚未验收。
+        // macOS 和 Windows 均使用同一宿主下层的原生视频图层。
         // 只有叠加、输入及宿主退出都通过验收的后端才能加入此集合。
-        val verifiedApis = emptySet<GraphicsApi>()
+        val verifiedApis = setOf(GraphicsApi.METAL, GraphicsApi.DIRECT3D)
         return !directDisabled && candidate && window?.renderApi in verifiedApis &&
             System.getProperty("compose.interop.blending") == "true"
+    }
+
+    fun updateGeometry(next: ComposeRect, isVisible: Boolean, clip: ComposeRect = next) {
+        check(EventQueue.isDispatchThread())
+        if (bounds == next && visible == isVisible && clipBounds == clip) return
+        bounds = next
+        clipBounds = clip
+        visible = isVisible
+        geometryListener?.invoke()
     }
 
     fun attach(next: Any, useDirect: Boolean) {
@@ -79,15 +92,19 @@ internal class BoloDesktopVideoOutput {
         error = "视频输出失败：${cause.message ?: cause.javaClass.simpleName}"
     }
 
-    fun failed(backend: BoloMpvBackend, cause: Throwable) {
-        failureChannel.trySend(backend to cause)
+    fun failed(backend: BoloMpvBackend, source: Any, cause: Throwable) {
+        synchronized(frameLock) {
+            if (owner === source) failureChannel.trySend(Triple(backend, source, cause))
+        }
     }
 
-    fun handleFailure(controller: BoloPlayerController, backend: BoloMpvBackend, cause: Throwable) {
+    fun handleFailure(controller: BoloPlayerController, backend: BoloMpvBackend, source: Any, cause: Throwable) {
         check(EventQueue.isDispatchThread())
-        if (controller.backend.value !== backend) return
+        // 同一 backend 也可能解绑后重建输出，队列中的旧 renderer 错误不能影响新宿主。
+        if (controller.backend.value !== backend || synchronized(frameLock) { owner !== source }) return
         if (direct && !directDisabled) {
             disableDirect()
+            println("Bolo 视频直出运行失败，改用离屏输出：${cause.message}")
             controller.rebuild()
         } else {
             showError(cause)

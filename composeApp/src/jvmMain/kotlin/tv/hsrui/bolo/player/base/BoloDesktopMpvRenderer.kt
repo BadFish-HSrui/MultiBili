@@ -7,7 +7,6 @@ import com.jogamp.opengl.GLDrawableFactory
 import com.jogamp.opengl.GLEventListener
 import com.jogamp.opengl.GLProfile
 import com.jogamp.opengl.Threading
-import com.jogamp.opengl.awt.GLCanvas
 import com.jogamp.opengl.util.AnimatorBase
 import com.jogamp.opengl.util.FPSAnimator
 import kotlinx.coroutines.CompletableDeferred
@@ -19,9 +18,8 @@ import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
-import java.awt.BorderLayout
+import tv.hsrui.bolo.player.DesktopPlayerFullscreenWindow
 import java.awt.EventQueue
-import java.awt.Graphics
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -29,12 +27,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class BoloDesktopMpvRenderer(
     private val handle: Long,
     private val output: BoloDesktopVideoOutput,
-    val direct: Boolean,
-    private val onFailure: (Throwable) -> Unit,
+    private val direct: Boolean,
+    private val onFailure: (BoloDesktopMpvRenderer, Throwable) -> Unit,
 ) : GLEventListener {
     val ready = CompletableDeferred<Unit>()
     private var drawable: GLAutoDrawable? = null
     private var animator: FPSAnimator? = null
+    private var nativeOutput: BoloDesktopNativeVideoOutput? = null
     private val failed = AtomicBoolean(false)
     @Volatile private var closed = false
     private var initialized = false
@@ -47,25 +46,24 @@ internal class BoloDesktopMpvRenderer(
     private var pixelBuffer = ByteBuffer.allocateDirect(0)
 
     suspend fun start() {
+        withContext(Dispatchers.Swing) { output.attach(this@BoloDesktopMpvRenderer, direct) }
+        if (direct) {
+            val window = withContext(Dispatchers.Swing) {
+                checkNotNull(DesktopPlayerFullscreenWindow.window) { "播放器窗口不可用" }
+            }
+            val next = BoloDesktopNativeVideoOutput(handle, output, window, { ready.complete(Unit) }, ::fail)
+            nativeOutput = next
+            next.start()
+            if (System.getProperty("os.name").startsWith("Mac")) return
+        }
         withContext(Dispatchers.Default) {
             Threading.disableSingleThreading()
             val profile = GLProfile.get(GLProfile.GL3)
             val capabilities = GLCapabilities(profile).apply {
-                doubleBuffered = direct
-                if (!direct) isFBO = true
+                doubleBuffered = false
+                isFBO = true
             }
-            val view = if (direct) {
-                withContext(Dispatchers.Swing) {
-                    object : GLCanvas(capabilities) {
-                        override fun paint(graphics: Graphics) {
-                            redrawRequested.set(true)
-                            super.paint(graphics)
-                        }
-                    }.apply { isFocusable = false }
-                }
-            } else {
-                GLDrawableFactory.getFactory(profile).createOffscreenAutoDrawable(null, capabilities, null, 1, 1)
-            }
+            val view = GLDrawableFactory.getFactory(profile).createOffscreenAutoDrawable(null, capabilities, null, 1, 1)
             drawable = view
             view.autoSwapBufferMode = false
             view.addGLEventListener(this@BoloDesktopMpvRenderer)
@@ -74,19 +72,12 @@ internal class BoloDesktopMpvRenderer(
                 setUncaughtExceptionHandler { _, _, cause -> fail(cause) }
             }
             animator = driver
-            withContext(Dispatchers.Swing) {
-                output.attach(this@BoloDesktopMpvRenderer, direct)
-                if (view is GLCanvas) {
-                    output.panel.add(view, BorderLayout.CENTER)
-                    output.panel.revalidate()
-                }
-            }
             check(driver.start()) { "视频渲染线程启动失败" }
         }
     }
 
     override fun init(drawable: GLAutoDrawable) {
-        // GLCanvas 的首次 AWT paint 可能先于 Animator；native 初始化延后到后台 display。
+        // native 初始化统一延后到后台 display。
         redrawRequested.set(true)
     }
 
@@ -99,24 +90,30 @@ internal class BoloDesktopMpvRenderer(
                 check(BoloMpvNative.renderCreate(handle) >= 0) { "OpenGL 播放器初始化失败" }
                 initialized = true
             }
-            val width = if (direct) drawable.surfaceWidth else output.size.width.coerceAtLeast(1)
-            val height = if (direct) drawable.surfaceHeight else output.size.height.coerceAtLeast(1)
-            if (width <= 0 || height <= 0) return
+            val size = output.size
+            val width = size.width.coerceAtLeast(1)
+            val height = size.height.coerceAtLeast(1)
             val sizeChanged = width != pixelWidth || height != pixelHeight
+            val native = nativeOutput
+            val geometryChanged = native?.prepareFrame(width, height) ?: false
             val dirty = BoloMpvNative.renderDirty(handle)
             val redraw = redrawRequested.getAndSet(false)
-            if (!dirty && !redraw && !sizeChanged) return
+            if (!dirty && !redraw && !sizeChanged && !geometryChanged) return
             if (!direct && sizeChanged) allocateFramebuffer(gl, width, height)
             pixelWidth = width
             pixelHeight = height
-            val target = if (direct) gl.defaultDrawFramebuffer else framebuffer
-            check(BoloMpvNative.render(handle, target, width, height, direct && drawable.isGLOriented) >= 0) {
-                "视频帧渲染失败"
-            }
-            if (direct) {
-                restoreFramebuffer(gl)
-                drawable.swapBuffers()
+            if (native != null) {
+                val target = native.beginFrame()
+                var rendered = false
+                try {
+                    check(BoloMpvNative.render(handle, target, width, height, false) >= 0) { "视频帧渲染失败" }
+                    rendered = true
+                } finally {
+                    restoreFramebuffer(gl)
+                    native.endFrame(rendered)
+                }
             } else {
+                check(BoloMpvNative.render(handle, framebuffer, width, height, false) >= 0) { "视频帧渲染失败" }
                 gl.glBindFramebuffer(GL.GL_READ_FRAMEBUFFER, framebuffer)
                 gl.glPixelStorei(GL.GL_PACK_ALIGNMENT, 4)
                 pixelBuffer.clear()
@@ -174,6 +171,7 @@ internal class BoloDesktopMpvRenderer(
             BoloMpvNative.renderFree(handle)
             initialized = false
         }
+        nativeOutput?.releaseRender()
         val gl = drawable.gl
         if (framebuffer != 0) gl.glDeleteFramebuffers(1, intArrayOf(framebuffer), 0)
         if (texture != 0) gl.glDeleteTextures(1, intArrayOf(texture), 0)
@@ -185,26 +183,27 @@ internal class BoloDesktopMpvRenderer(
 
     private fun fail(error: Throwable) {
         if (closed || !failed.compareAndSet(false, true)) return
-        if (!ready.completeExceptionally(error)) onFailure(error)
+        if (!ready.completeExceptionally(error)) onFailure(this, error)
     }
 
     suspend fun close() = withContext(NonCancellable) {
         closed = true
         val view = drawable
         try {
-            withContext(Dispatchers.Default) {
-                // 先停止帧调用，再在后台以原上下文释放 Render API，最后移除 AWT 宿主。
-                animator?.stop()
-                view?.destroy()
+            try {
+                nativeOutput?.close()
+            } finally {
+                withContext(Dispatchers.Default) {
+                    // 停止帧调用后在原上下文释放 Render API 和视频资源。
+                    animator?.stop()
+                    view?.destroy()
+                }
             }
         } finally {
             animator = null
+            nativeOutput = null
             drawable = null
             withContext(Dispatchers.Swing) {
-                if (view is GLCanvas) {
-                    output.panel.remove(view)
-                    output.panel.revalidate()
-                }
                 output.detach(this@BoloDesktopMpvRenderer)
             }
             pixels = ByteArray(0)

@@ -2,6 +2,9 @@
 #include <jni.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(__APPLE__) || defined(_WIN32)
+#include "bolo_desktop_video.h"
+#endif
 #ifdef __ANDROID__
 #include <libavcodec/jni.h>
 #elif defined(_WIN32)
@@ -218,6 +221,42 @@ JNIEXPORT jint JNICALL JNI(render)(JNIEnv *env, jobject self, jlong p, jint fbo,
     return bolo_mpv_render(PLAYER(p)->core, fbo, w, h, flip);
 }
 JNIEXPORT void JNICALL JNI(renderFree)(JNIEnv *env, jobject self, jlong p) { bolo_mpv_render_free(PLAYER(p)->core); }
+#define VIDEO_JNI(name) Java_tv_hsrui_bolo_player_base_BoloDesktopNativeVideoOutput_##name
+#if defined(__APPLE__)
+JNIEXPORT jlong JNICALL VIDEO_JNI(create)(JNIEnv *env, jobject self, jlong p, jobject window, jstring jawt_path) {
+    if (!p || !window || !jawt_path) return 0;
+    const char *path = (*env)->GetStringUTFChars(env, jawt_path, NULL);
+    if (!path) return 0;
+    void *output = bolo_desktop_video_create(env, self, window, PLAYER(p)->core, path);
+    (*env)->ReleaseStringUTFChars(env, jawt_path, path);
+    return (jlong)(intptr_t)output;
+}
+JNIEXPORT jint JNICALL VIDEO_JNI(update)(JNIEnv *env, jobject self, jlong output, jobject window,
+    jdouble x, jdouble y, jdouble width, jdouble height, jdouble scale, jdouble refresh_rate, jboolean visible) {
+    return output ? bolo_desktop_video_update(env, (void *)(intptr_t)output, window, x, y, width, height, scale, refresh_rate, visible) : -1;
+}
+JNIEXPORT void JNICALL VIDEO_JNI(destroy)(JNIEnv *env, jobject self, jlong output) {
+    if (output) bolo_desktop_video_close(env, (void *)(intptr_t)output);
+}
+#elif defined(_WIN32)
+JNIEXPORT jlong JNICALL VIDEO_JNI(windowsCreate)(JNIEnv *env, jobject self, jlong hwnd) {
+    return (jlong)(intptr_t)bolo_desktop_video_windows_create(env, hwnd);
+}
+JNIEXPORT void JNICALL VIDEO_JNI(windowsUpdate)(JNIEnv *env, jobject self, jlong output,
+    jint x, jint y, jint width, jint height, jboolean visible, jint clip_left, jint clip_top, jint clip_right, jint clip_bottom) {
+    if (output) bolo_desktop_video_windows_update(env, (void *)(intptr_t)output, x, y, width, height, visible,
+        clip_left, clip_top, clip_right, clip_bottom);
+}
+JNIEXPORT jint JNICALL VIDEO_JNI(windowsBegin)(JNIEnv *env, jobject self, jlong output) {
+    return output ? bolo_desktop_video_windows_begin(env, (void *)(intptr_t)output) : 0;
+}
+JNIEXPORT void JNICALL VIDEO_JNI(windowsEnd)(JNIEnv *env, jobject self, jlong output, jboolean present) {
+    if (output) bolo_desktop_video_windows_end(env, (void *)(intptr_t)output, present);
+}
+JNIEXPORT void JNICALL VIDEO_JNI(windowsDestroy)(JNIEnv *env, jobject self, jlong output) {
+    if (output) bolo_desktop_video_windows_close((void *)(intptr_t)output);
+}
+#endif
 JNIEXPORT void JNICALL JNI(destroy)(JNIEnv *env, jobject self, jlong handle) {
     java_player *p = PLAYER(handle);
     bolo_mpv_destroy(p->core);

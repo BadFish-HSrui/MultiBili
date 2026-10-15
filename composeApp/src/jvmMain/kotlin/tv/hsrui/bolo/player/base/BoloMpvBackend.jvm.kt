@@ -45,13 +45,17 @@ internal actual class BoloMpvBackend actual constructor() {
                 host.supportsDirect(DesktopPlayerFullscreenWindow.window)
             }
             while (!closed) {
-                val next = BoloDesktopMpvRenderer(handle, host, direct) { cause ->
-                    if (!closed) host.failed(this@BoloMpvBackend, cause)
+                val startedAt = System.nanoTime()
+                val mode = if (!direct) "offscreen" else if (System.getProperty("os.name").startsWith("Mac"))
+                    "macos-native-layer" else "windows-dcomp"
+                val next = BoloDesktopMpvRenderer(handle, host, direct) { source, cause ->
+                    if (!closed) host.failed(this@BoloMpvBackend, source, cause)
                 }
                 renderer = next
                 try {
                     next.start()
                     withTimeout(if (direct) 3_000L else 4_000L) { next.ready.await() }
+                    println("Bolo 视频输出：$mode，初始化 ${(System.nanoTime() - startedAt) / 1_000_000} ms")
                     outputReady.complete(Unit)
                     break
                 } catch (error: Throwable) {
