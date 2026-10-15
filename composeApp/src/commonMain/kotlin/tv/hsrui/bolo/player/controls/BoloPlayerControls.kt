@@ -1120,11 +1120,11 @@ fun BoloPlayerControls(
             highEnergyProgress != null && durationMs > 0L &&
             (playerSettings.playback.highEnergyProgressAlwaysVisible || controlsTransition.currentState || controlsTransition.targetState)
         ) {
-            // 固定隐藏态终点，曲线直接移到细条上沿，不随细条显隐再次升降。
+            // 固定隐藏态终点，曲线与细条上沿间隔 1.dp，不随细条显隐再次升降。
             Box(
                 Modifier.matchParentSize()
                     .then(if (applyControlsInsets) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
-                    .padding(bottom = if (bottomProgressEnabled) bottomProgressHeight else 0.dp),
+                    .padding(bottom = if (bottomProgressEnabled) bottomProgressHeight + 1.dp else 0.dp),
             ) {
                 Box(Modifier.matchParentSize().onGloballyPositioned { coordinates ->
                     val root = controlsRootCoordinates
