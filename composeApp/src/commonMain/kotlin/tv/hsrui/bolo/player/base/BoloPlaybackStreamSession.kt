@@ -20,6 +20,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.koin.mp.KoinPlatform.getKoin
+import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.network.feature.player.PlayerStreamException
 import tv.hsrui.network.feature.player.PlayerStreamIndexData
 import tv.hsrui.network.feature.player.PlayerStreamResponseData
@@ -98,7 +100,7 @@ internal class BoloPlaybackStreamSession(
     val hasFailed: Boolean get() = failed.load()
     private val mutex = Mutex()
     private val changed = MutableStateFlow(0L)
-    private val cache = BoloPlaybackCache()
+    private val cache = BoloPlaybackCache(getKoin().get<BoloSettings>().playback.cacheSizeMiB.toLong() * 1024 * 1024)
     private val downloader = BoloPlaybackDownloader()
     private val tracks = sources.associate { it.track to Track(it, optimizationEnabled) }
     private val demand = AtomicReference<BoloPlaybackDownloadDemand?>(null)
@@ -276,19 +278,48 @@ internal class BoloPlaybackStreamSession(
         }
     }
 
-    private fun targets(): Map<BoloPlaybackTrack, Long> {
+    private fun targets(positions: Map<BoloPlaybackTrack, Long>): Map<BoloPlaybackTrack, Long> {
         val active = tracks.values.filter { track ->
             val waiting = track.readers.any { it.waiting && it.job.isActive && (track.total == null || it.position.load() < track.total!!) }
             (track.source.track != BoloPlaybackTrack.Video || videoPrefetch || waiting) &&
                 (track.total == null || track.position < track.total!! || waiting)
+        }.sortedBy { it.source.track.ordinal }
+        val budget = cache.forwardTarget(positions) / BoloPlaybackCache.BlockSize
+        val limits = active.associate { track ->
+            val remaining = track.total?.let { total ->
+                if (total <= positions.getValue(track.source.track)) 0L else
+                    (total - 1) / BoloPlaybackCache.BlockSize + 1 - positions.getValue(track.source.track) / BoloPlaybackCache.BlockSize
+            } ?: budget
+            track.source.track to minOf(remaining, budget)
         }
+        val allocated = tracks.mapValues { (kind, _) ->
+            minOf(limits[kind] ?: 0L, BoloPlaybackCache.MinimumBytes / BoloPlaybackCache.BlockSize)
+        }.toMutableMap()
         val known = active.all { (it.source.nominalBitrateBps ?: 0L) > 0L }
-        val weight = if (known) active.sumOf { it.source.nominalBitrateBps!!.toDouble() } else active.size.toDouble()
-        val extra = BoloPlaybackCache.ForwardBytes - active.size * BoloPlaybackCache.MinimumBytes
-        return tracks.mapValues { (_, track) ->
-            if (track !in active) 0L else BoloPlaybackCache.MinimumBytes +
-                (extra * (if (known) track.source.nominalBitrateBps!!.toDouble() else 1.0) / weight).toLong()
+        var remaining = budget - allocated.values.sum()
+        while (remaining > 0) {
+            val available = active.filter { allocated.getValue(it.source.track) < limits.getValue(it.source.track) }
+            if (available.isEmpty()) break
+            val weight = if (known) available.sumOf { it.source.nominalBitrateBps!!.toDouble() } else available.size.toDouble()
+            var granted = 0L
+            available.forEach { track ->
+                val kind = track.source.track
+                val share = (remaining * (if (known) track.source.nominalBitrateBps!!.toDouble() else 1.0) / weight).toLong()
+                val count = minOf(share, limits.getValue(kind) - allocated.getValue(kind))
+                allocated[kind] = allocated.getValue(kind) + count
+                granted += count
+            }
+            remaining -= granted
+            if (granted == 0L) {
+                for (track in available) {
+                    if (remaining == 0L) break
+                    val kind = track.source.track
+                    allocated[kind] = allocated.getValue(kind) + 1
+                    remaining--
+                }
+            }
         }
+        return allocated.mapValues { it.value * BoloPlaybackCache.BlockSize }
     }
 
     private suspend fun runDownload(kind: BoloPlaybackTrack) {
@@ -304,18 +335,21 @@ internal class BoloPlaybackStreamSession(
                         track.indexReceived < BoloPlaybackIndex.ScanLimit
                 }
                 val cursor = pending?.position?.load() ?: indexRead?.start ?: track.position
-                val target = targets()
+                val positions = tracks.mapValues { it.value.position }
+                val target = targets(positions)
+                val required = pending != null || indexRead != null || track.metadata == null
                 val canPrefetch = kind != BoloPlaybackTrack.Video || videoPrefetch
                 if (!canPrefetch && pending == null && track.metadata != null) return@withLock null
                 val start = cache.firstMissing(kind, cursor)
-                val limit = if (canPrefetch) target.getValue(kind) else BoloPlaybackCache.MinimumBytes
+                val limit = if (!canPrefetch || (required && target.getValue(kind) == 0L)) BoloPlaybackCache.MinimumBytes else target.getValue(kind)
                 val windowEnd = (cursor + minOf(limit, Long.MAX_VALUE - cursor)) / BoloPlaybackCache.BlockSize * BoloPlaybackCache.BlockSize
                 val end = if (indexRead != null) minOf(indexRead.endExclusive,
                     start + minOf(BoloPlaybackIndex.ReadLimit.toLong(), Long.MAX_VALUE - start), track.total ?: Long.MAX_VALUE)
                 else minOf(start + minOf(BoloPlaybackCache.MinimumBytes, Long.MAX_VALUE - start), windowEnd, track.total ?: Long.MAX_VALUE)
                 if (end <= start) return@withLock null
-                if (!cache.reserve(kind, start, end, tracks.mapValues { it.value.position }, target,
-                        tracks.mapValues { it.value.readers.filter { reader -> reader.job.isActive }.map { reader -> reader.position.load() } })) return@withLock null
+                if (!cache.reserve(kind, start, end, positions, target,
+                        tracks.mapValues { it.value.readers.filter { reader -> reader.job.isActive }.map { reader -> reader.position.load() } },
+                        required = required)) return@withLock null
                 if (pending != null) { track.readers.remove(pending); track.readers.add(pending) }
                 val job = Job(scope.coroutineContext[Job])
                 track.request = job
@@ -477,17 +511,21 @@ internal class BoloPlaybackStreamSession(
                     track.requestStart = position
                     return@withLock true
                 }
-                val target = targets()
-                val limit = if (kind == BoloPlaybackTrack.Video && !videoPrefetch) BoloPlaybackCache.MinimumBytes else target.getValue(kind)
-                val windowEnd = (cursor + limit) / BoloPlaybackCache.BlockSize * BoloPlaybackCache.BlockSize
+                val positions = tracks.mapValues { it.value.position }
+                val target = targets(positions)
+                val required = pending != null || track.indexRead != null
+                val limit = if ((kind == BoloPlaybackTrack.Video && !videoPrefetch) || (required && target.getValue(kind) == 0L))
+                    BoloPlaybackCache.MinimumBytes else target.getValue(kind)
+                val windowEnd = (cursor + minOf(limit, Long.MAX_VALUE - cursor)) / BoloPlaybackCache.BlockSize * BoloPlaybackCache.BlockSize
                 if (position >= track.allocationEnd || position < track.allocationStart) {
                     cache.finish(kind)
                     track.allocationStart = position
                     track.allocationEnd = position
-                    val allocationEnd = minOf(position + BoloPlaybackCache.MinimumBytes, windowEnd, track.total ?: Long.MAX_VALUE)
+                    val allocationEnd = minOf(position + minOf(BoloPlaybackCache.MinimumBytes, Long.MAX_VALUE - position), windowEnd, track.total ?: Long.MAX_VALUE)
                     if (allocationEnd > position && cache.reserve(kind, position, allocationEnd,
-                            tracks.mapValues { it.value.position }, target,
-                            tracks.mapValues { it.value.readers.filter { reader -> reader.job.isActive }.map { reader -> reader.position.load() } })) {
+                            positions, target,
+                            tracks.mapValues { it.value.readers.filter { reader -> reader.job.isActive }.map { reader -> reader.position.load() } },
+                            required = required)) {
                         track.allocationEnd = allocationEnd
                     }
                 }

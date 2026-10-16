@@ -71,6 +71,18 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
     var showDynamicLoudnessInfo by remember { mutableStateOf(false) }
     var showRecordQualitySelectionInfo by remember { mutableStateOf(false) }
     var showSubtitleAutoEnableInfo by remember { mutableStateOf(false) }
+    var showPlaybackCacheInfo by remember { mutableStateOf(false) }
+
+    if (showPlaybackCacheInfo) {
+        ShowInfoDialog(onConfirm = { showPlaybackCacheInfo = false }) {
+            Text(
+                text = "可用于预加载视频的空间大小，较小可避免视频只看一点就全部加载浪费流量，较大可优化跳转速度，过大时不一定能获取到足够空间。",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
+            )
+        }
+    }
 
     if (showSubtitleAutoEnableInfo) {
         ShowInfoDialog(onConfirm = { showSubtitleAutoEnableInfo = false }) {
@@ -407,6 +419,70 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 Text("优化播放源", style = MaterialTheme.typography.bodyLarge)
                                 Spacer(Modifier.weight(1f))
                                 Switch(checked = settings.playback.optimizePlaybackSourceEnabled, onCheckedChange = null)
+                            }
+                            HorizontalDivider()
+                            val cacheSizes = listOf(64, 128, 256, 512, 1024)
+                            val savedIndex = cacheSizes.indexOf(settings.playback.cacheSizeMiB)
+                            var previewIndex by remember(savedIndex) { mutableStateOf<Int?>(null) }
+                            val displayedIndex = previewIndex ?: savedIndex
+                            val displayedSize = cacheSizes[displayedIndex]
+                            val valueText = if (displayedSize == 1024) "1G" else "${displayedSize}M"
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("播放缓存", style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                IconButton(
+                                    onClick = { showPlaybackCacheInfo = true },
+                                    modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Info,
+                                        contentDescription = "播放缓存说明",
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                                Spacer(Modifier.weight(1f))
+                                Row(
+                                    modifier = Modifier.widthIn(max = 304.dp).fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(
+                                        valueText,
+                                        modifier = Modifier.width(64.dp),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.End,
+                                        maxLines = 1,
+                                    )
+                                    ShowSlider(
+                                        value = displayedIndex.toFloat(),
+                                        onValueChange = { previewIndex = it.roundToInt().coerceIn(cacheSizes.indices) },
+                                        onValueChangeFinished = {
+                                            previewIndex?.let { settings.playback.cacheSizeMiB = cacheSizes[it] }
+                                            previewIndex = null
+                                        },
+                                        valueRange = 0f..cacheSizes.lastIndex.toFloat(),
+                                        steps = cacheSizes.size - 2,
+                                        centered = false,
+                                        showStops = true,
+                                        showTicks = true,
+                                        modifier = Modifier.weight(1f).widthIn(max = 200.dp).semantics {
+                                            contentDescription = "播放缓存"
+                                            stateDescription = valueText
+                                        },
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            previewIndex = null
+                                            settings.playback.cacheSizeMiB = 256
+                                        },
+                                        enabled = displayedSize != 256,
+                                        modifier = Modifier.size(24.dp),
+                                    ) {
+                                        Icon(Icons.Rounded.RestartAlt, contentDescription = "重置播放缓存")
+                                    }
+                                }
                             }
                         }
                     }

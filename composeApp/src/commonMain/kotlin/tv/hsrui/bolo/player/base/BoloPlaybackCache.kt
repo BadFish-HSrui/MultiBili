@@ -1,7 +1,7 @@
 package tv.hsrui.bolo.player.base
 
 /** 所有访问由下载会话的 mutex 串行化；分配中的块也计入上限。 */
-internal class BoloPlaybackCache {
+internal class BoloPlaybackCache(val capacityBytes: Long) {
     private class Block(val track: BoloPlaybackTrack, val start: Long) {
         val bytes = ByteArray(BlockSize)
         val ranges = mutableListOf<BoloPlaybackByteRange>()
@@ -12,6 +12,12 @@ internal class BoloPlaybackCache {
     private val blocks = mutableMapOf<Pair<BoloPlaybackTrack, Long>, Block>()
     private var clock = 0L
     val allocatedBytes: Long get() = blocks.size.toLong() * BlockSize
+
+    private fun backwardBytes(positions: Map<BoloPlaybackTrack, Long>): Long =
+        blocks.values.count { it.start / BlockSize < positions.getValue(it.track) / BlockSize }.toLong() * BlockSize
+
+    fun forwardTarget(positions: Map<BoloPlaybackTrack, Long>): Long =
+        capacityBytes - minOf(backwardBytes(positions), capacityBytes / 4)
 
     fun firstMissing(track: BoloPlaybackTrack, from: Long): Long {
         var position = from
@@ -50,27 +56,33 @@ internal class BoloPlaybackCache {
         positions: Map<BoloPlaybackTrack, Long>,
         targets: Map<BoloPlaybackTrack, Long>,
         readers: Map<BoloPlaybackTrack, List<Long>>,
+        required: Boolean,
     ): Boolean {
         val keys = (start / BlockSize..(end - 1) / BlockSize).map { track to it }
         val needed = keys.count { it !in blocks }.toLong() * BlockSize
-        val forwardNeeded = keys.count { it !in blocks && (it.second + 1) * BlockSize > positions.getValue(track) }.toLong() * BlockSize
-        var forwardAllocated = blocks.values.count { it.start + BlockSize > positions.getValue(it.track) }.toLong() * BlockSize
+        var backward = backwardBytes(positions)
+        fun outsideWindow(block: Block): Boolean =
+            block.start / BlockSize >= positions.getValue(block.track) / BlockSize + targets.getValue(block.track) / BlockSize
         val candidates = blocks.values.filter { block ->
             !block.reserved && block.start >= HeaderBytes && (block.track to (block.start / BlockSize)) !in keys &&
                 readers[block.track].orEmpty().none { it >= block.start && it < block.start + BlockSize }
         }.sortedWith(compareBy<Block> { block ->
-            val cursor = positions.getValue(block.track)
-            val target = targets.getValue(block.track)
             // 旧位置的前向预取先回收，再回收最近读取位置之前的数据。
-            if (block.start >= cursor + target) 0 else if (block.start + BlockSize <= cursor) 1 else 2
+            if (outsideWindow(block)) 0 else if (block.start / BlockSize < positions.getValue(block.track) / BlockSize) 1 else 2
         }.thenBy { it.accessed })
+        var available = capacityBytes - allocatedBytes
+        val evicted = mutableListOf<Block>()
         for (block in candidates) {
-            if (allocatedBytes + needed <= Capacity && forwardAllocated + forwardNeeded <= ForwardBytes) break
-            if (allocatedBytes + needed <= Capacity && block.start + BlockSize <= positions.getValue(block.track)) continue
-            blocks.remove(block.track to (block.start / BlockSize))
-            if (block.start + BlockSize > positions.getValue(block.track)) forwardAllocated -= BlockSize
+            if (available >= needed) break
+            val behind = block.start / BlockSize < positions.getValue(block.track) / BlockSize
+            // 纯预取不能互相淘汰有效窗口，也不能为扩大前向窗口削减已不足四分之一的后向缓存。
+            if (!required && !outsideWindow(block) && (!behind || backward <= capacityBytes / 4)) continue
+            evicted.add(block)
+            available += BlockSize
+            if (behind) backward -= BlockSize
         }
-        if (allocatedBytes + needed > Capacity || forwardAllocated + forwardNeeded > ForwardBytes) return false
+        if (available < needed) return false
+        evicted.forEach { blocks.remove(it.track to (it.start / BlockSize)) }
         for (key in keys) blocks.getOrPut(key) { Block(track, key.second * BlockSize) }.reserved = true
         return true
     }
@@ -127,8 +139,6 @@ internal class BoloPlaybackCache {
 
     companion object {
         const val BlockSize = 64 * 1024
-        const val Capacity = 200L * 1024 * 1024
-        const val ForwardBytes = 150L * 1024 * 1024
         const val MinimumBytes = 4L * 1024 * 1024
         const val HeaderBytes = 1024L * 1024
     }
