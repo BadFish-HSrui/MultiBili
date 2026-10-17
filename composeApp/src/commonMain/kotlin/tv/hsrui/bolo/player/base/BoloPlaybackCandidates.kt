@@ -39,8 +39,9 @@ internal class BoloPlaybackCandidates(urls: List<String>) {
         internal val measurement = AtomicReference(Measurement(0.0, -MeasurementLifetime))
         internal var confirmedHeadBytes = 0
 
+        // 未确认强度的 Last-Modified 不作为分块请求的资源版本标识。
         val validator: String?
-            get() = metadata?.let { it.etag?.takeUnless { etag -> etag.startsWith("W/") } ?: it.lastModified }
+            get() = metadata?.etag?.takeUnless { it.startsWith("W/") }
         val totalBytes: Long? get() = metadata?.totalBytes
         val supportsRange: Boolean get() = rangeSupported == true
         val bytesPerSecond: Double
@@ -214,8 +215,7 @@ internal class BoloPlaybackCandidates(urls: List<String>) {
         val changed = (total != null && response.totalBytes != null && total != response.totalBytes) ||
             (knownTotal != null && response.statusCode == 206 && responseEnd != null && responseEnd > knownTotal) ||
             (responseTotal != null && responseTotal < (canonical?.confirmedHeadBytes ?: 0)) ||
-            (previous?.etag != null && response.etag != null && previous.etag != response.etag) ||
-            (previous?.lastModified != null && response.lastModified != null && previous.lastModified != response.lastModified)
+            (previous?.etag != null && response.etag != null && previous.etag != response.etag)
         if (changed) {
             candidate.rejected = true
             candidate.verified = false

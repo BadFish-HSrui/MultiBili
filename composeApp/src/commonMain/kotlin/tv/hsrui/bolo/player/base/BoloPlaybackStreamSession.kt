@@ -432,7 +432,7 @@ internal class BoloPlaybackStreamSession(
                         continueFullResponse = !isIndex, receiveLimit = receiveLimit,
                         onResponse = onResponse, onReceived = onReceived, write = write,
                     ) else fetchPlayerStream(track.source.urls.first(), start, end,
-                        validator = track.metadata?.etag?.takeUnless { it.startsWith("W/") } ?: track.metadata?.lastModified,
+                        validator = track.metadata?.etag?.takeUnless { it.startsWith("W/") },
                         continueFullResponse = !isIndex, receiveLimit = receiveLimit,
                         onResponse = onResponse, onReceived = onReceived, write = write,
                     )
@@ -548,8 +548,7 @@ internal class BoloPlaybackStreamSession(
     private fun validate(track: Track, response: PlayerStreamResponseData) {
         val previous = track.metadata
         if ((track.total != null && response.totalBytes != null && track.total != response.totalBytes) ||
-            (!optimizationEnabled && ((previous?.etag != null && response.etag != null && previous.etag != response.etag) ||
-                (previous?.lastModified != null && response.lastModified != null && previous.lastModified != response.lastModified)))) {
+            (!optimizationEnabled && previous?.etag != null && response.etag != null && previous.etag != response.etag)) {
             track.resourceChanged = true
             throw PlayerStreamException("播放资源发生变化", false, resourceChanged = true)
         }
