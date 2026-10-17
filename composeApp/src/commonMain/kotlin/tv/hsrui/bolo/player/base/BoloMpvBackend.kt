@@ -13,6 +13,18 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlin.time.TimeSource
 
+/** 由播放缓存独占；拷贝和释放均在缓存锁内执行。 */
+internal interface BoloPlaybackBuffer {
+    fun copyInto(destination: ByteArray, destinationOffset: Int, startIndex: Int, endIndex: Int)
+    fun copyFrom(source: ByteArray, sourceOffset: Int, destinationOffset: Int, length: Int)
+    fun close()
+}
+
+internal expect fun allocatePlaybackBuffer(size: Int): BoloPlaybackBuffer?
+
+/** 当前进程可继续使用的内存估计；查询失败为 null，0 表示当前没有余量。 */
+internal expect fun playbackAvailableMemoryBytes(): Long?
+
 /** 普通 native 调用由串行 dispatcher 执行；GL 只在平台渲染上下文执行。 */
 internal expect class BoloMpvBackend() {
     val retainsPausedResources: Boolean

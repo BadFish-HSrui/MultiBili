@@ -55,12 +55,26 @@ internal data class BoloPlaybackStreamSnapshot(
     val video: BoloPlaybackTrackSnapshot,
     val audio: BoloPlaybackTrackSnapshot?,
     val allocatedBytes: Long,
+    val effectiveCapacityBytes: Long = allocatedBytes,
+    val memoryLimited: Boolean = false,
+    val forwardTargetBytes: Long = 0L,
 )
+
+internal class BoloPlaybackMemoryException : Exception("播放缓存无法取得可用内存")
 
 internal class BoloPlaybackStreamSession(
     val generation: Long,
     sources: List<BoloPlaybackStreamSource>,
     private val optimizationEnabled: Boolean = true,
+    private val cache: BoloPlaybackCache = BoloPlaybackCache(
+        getKoin().get<BoloSettings>().playback.cacheSizeMiB.toLong() * 1024 * 1024,
+        availableMemory = {
+            // 新预留还会启动下载暂存；先覆盖其最坏增长，再保留缓存自身的运行余量。
+            playbackAvailableMemoryBytes()?.let {
+                (it - if (optimizationEnabled) BoloPlaybackDownloader.StagingLimit else 0).coerceAtLeast(0L)
+            }
+        },
+    ),
     private val onFailure: (BoloPlaybackTrack, Throwable) -> Unit,
 ) {
     internal class Reader internal constructor(val track: BoloPlaybackTrack, val job: Job) {
@@ -92,15 +106,18 @@ internal class BoloPlaybackStreamSession(
         var requestIsIndex = false
         var fullResponseSeen = false
         var resourceChanged = false
+        var waitingForMemory = false
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val closed = AtomicBoolean(false)
     private val failed = AtomicBoolean(false)
     val hasFailed: Boolean get() = failed.load()
+    private val requiredMemoryWait = AtomicBoolean(false)
+    val hasRequiredMemoryWait: Boolean get() = requiredMemoryWait.load()
+    private val closedComplete = CompletableDeferred<Unit>()
     private val mutex = Mutex()
     private val changed = MutableStateFlow(0L)
-    private val cache = BoloPlaybackCache(getKoin().get<BoloSettings>().playback.cacheSizeMiB.toLong() * 1024 * 1024)
     private val downloader = BoloPlaybackDownloader()
     private val tracks = sources.associate { it.track to Track(it, optimizationEnabled) }
     private val demand = AtomicReference<BoloPlaybackDownloadDemand?>(null)
@@ -133,9 +150,27 @@ internal class BoloPlaybackStreamSession(
 
     fun cancel() {
         if (closed.compareAndSet(false, true)) {
+            requiredMemoryWait.store(false)
             tracks.values.forEach { it.ready.cancel() }
             scope.cancel()
+            // 清理不能是已取消作用域的子任务，也不能在其子任务内等待父 Job。
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    scope.coroutineContext[Job]?.join()
+                    mutex.withLock {
+                        cache.close()
+                        signal()
+                    }
+                } finally {
+                    closedComplete.complete(Unit)
+                }
+            }
         }
+    }
+
+    suspend fun awaitClosed() {
+        cancel()
+        closedComplete.await()
     }
 
     suspend fun setActivity(networkEnabled: Boolean, prefetchVideo: Boolean) = mutex.withLock {
@@ -144,6 +179,7 @@ internal class BoloPlaybackStreamSession(
         tracks.values.forEach { track ->
             if (suspended || (!prefetchVideo && track.source.track == BoloPlaybackTrack.Video && track.readers.none { it.waiting })) {
                 track.request?.cancel()
+                memoryWait(track, false)
             }
         }
         signal()
@@ -156,7 +192,10 @@ internal class BoloPlaybackStreamSession(
     }
 
     suspend fun close(reader: Reader) = mutex.withLock {
-        tracks[reader.track]?.readers?.remove(reader)
+        tracks[reader.track]?.let { track ->
+            track.readers.remove(reader)
+            if (track.readers.none { it.waiting && it.job.isActive }) memoryWait(track, false)
+        }
         reader.job.cancel()
         signal()
     }
@@ -166,6 +205,7 @@ internal class BoloPlaybackStreamSession(
         val track = tracks.getValue(reader.track)
         reader.position.store(position)
         reader.waiting = false
+        memoryWait(track, false)
         track.position = position
         if ((position < track.requestStart || position >= track.requestEnd) && !requestNeeded(track)) track.request?.cancel()
         signal()
@@ -184,6 +224,7 @@ internal class BoloPlaybackStreamSession(
                 val position = reader.position.load()
                 if (track.total?.let { position >= it } == true) {
                     reader.waiting = false
+                    if (track.readers.none { it.waiting && it.job.isActive }) memoryWait(track, false)
                     signal()
                     return@withLock 0
                 }
@@ -191,6 +232,7 @@ internal class BoloPlaybackStreamSession(
                 if (found > 0) {
                     reader.position.store(position + found)
                     reader.waiting = false
+                    memoryWait(track, false)
                     track.position = position + found
                     signal()
                     found
@@ -292,9 +334,20 @@ internal class BoloPlaybackStreamSession(
             } ?: budget
             track.source.track to minOf(remaining, budget)
         }
-        val allocated = tracks.mapValues { (kind, _) ->
-            minOf(limits[kind] ?: 0L, BoloPlaybackCache.MinimumBytes / BoloPlaybackCache.BlockSize)
-        }.toMutableMap()
+        val allocated = tracks.mapValues { 0L }.toMutableMap()
+        var baseRemaining = budget
+        val baseOrder = active.sortedByDescending { track -> track.readers.any { it.waiting && it.job.isActive } }
+        for ((index, track) in baseOrder.withIndex()) {
+            val kind = track.source.track
+            val remainingTracks = baseOrder.size - index
+            val count = minOf(
+                limits.getValue(kind),
+                BoloPlaybackCache.MinimumBytes / BoloPlaybackCache.BlockSize,
+                (baseRemaining + remainingTracks - 1) / remainingTracks,
+            )
+            allocated[kind] = count
+            baseRemaining -= count
+        }
         val known = active.all { (it.source.nominalBitrateBps ?: 0L) > 0L }
         var remaining = budget - allocated.values.sum()
         while (remaining > 0) {
@@ -322,46 +375,127 @@ internal class BoloPlaybackStreamSession(
         return allocated.mapValues { it.value * BoloPlaybackCache.BlockSize }
     }
 
+    private fun memoryWait(track: Track, waiting: Boolean) {
+        if (track.waitingForMemory == waiting) return
+        track.waitingForMemory = waiting
+        requiredMemoryWait.store(tracks.values.any { it.waitingForMemory })
+        signal()
+    }
+
+    /** 返回实际预留末尾；失败时先缩为一个块，内存限额变化后使用新的完整窗口快照。 */
+    private fun reserve(
+        track: Track,
+        start: Long,
+        end: Long,
+        positions: Map<BoloPlaybackTrack, Long>,
+        target: Map<BoloPlaybackTrack, Long>,
+        required: Boolean,
+        isIndex: Boolean,
+    ): Long {
+        val readers = tracks.mapValues { (_, current) ->
+            current.readers.filter { it.job.isActive }.map { it.position.load() }
+        }
+        val kind = track.source.track
+        if (cache.reserve(kind, start, end, positions, target, readers, required)) {
+            memoryWait(track, false)
+            return end
+        }
+        val currentTarget = targets(positions)
+        val blockRemaining = BoloPlaybackCache.BlockSize - start % BoloPlaybackCache.BlockSize
+        val blockEnd = start + minOf(blockRemaining, Long.MAX_VALUE - start)
+        val retryEnd = minOf(end, blockEnd)
+        val position = positions.getValue(kind)
+        val windowEnd = position + minOf(currentTarget.getValue(kind), Long.MAX_VALUE - position)
+        if ((required || retryEnd <= windowEnd) &&
+            cache.reserve(kind, start, retryEnd, positions, currentTarget, readers, required)
+        ) {
+            memoryWait(track, false)
+            return retryEnd
+        }
+        if (!cache.memoryBlocked) return start
+        if (isIndex) {
+            track.indexDisabled = true
+            track.index = null
+            track.indexRead = null
+            signal()
+        } else if (required) {
+            // 其他轨尚在写入时不能偷用其预留；取消不再需要的预取，待 finally 归还后重算。
+            val pending = tracks.values.filter { it !== track && it.request != null }
+            pending.filter { !requestNeeded(it) }.forEach { it.request?.cancel() }
+            memoryWait(track, true)
+            if (pending.isEmpty() || pending.all { it.waitingForMemory && it.request?.isActive == true }) {
+                throw BoloPlaybackMemoryException()
+            }
+        }
+        return start
+    }
+
+    private suspend fun waitForChange(revision: Long) {
+        val limited = mutex.withLock { cache.memoryLimited }
+        if (limited) {
+            withTimeoutOrNull(BoloPlaybackCache.MemoryRetryMillis) { changed.first { it != revision } }
+        } else {
+            changed.first { it != revision }
+        }
+    }
+
+    private fun failMemory(kind: BoloPlaybackTrack, error: BoloPlaybackMemoryException) {
+        if (failed.compareAndSet(false, true)) {
+            tracks.getValue(kind).ready.completeExceptionally(error)
+            try {
+                onFailure(kind, error)
+            } finally {
+                cancel()
+            }
+        }
+    }
+
     private suspend fun runDownload(kind: BoloPlaybackTrack) {
         val track = tracks.getValue(kind)
         while (!closed.load() && !failed.load()) {
             var revision = 0L
-            val request = mutex.withLock {
-                revision = changed.value
-                if (suspended) return@withLock null
-                val pending = track.readers.firstOrNull { it.waiting && it.job.isActive }
-                val indexRead = track.indexRead?.takeIf {
-                    pending == null && videoPrefetch && !track.indexDisabled && !track.fullResponseSeen &&
-                        track.indexReceived < BoloPlaybackIndex.ScanLimit
+            val request = try {
+                mutex.withLock {
+                    revision = changed.value
+                    if (suspended) return@withLock null
+                    cache.refreshMemory()
+                    val pending = track.readers.firstOrNull { it.waiting && it.job.isActive }
+                    if (pending == null && track.metadata != null) memoryWait(track, false)
+                    val indexRead = track.indexRead?.takeIf {
+                        pending == null && videoPrefetch && !track.indexDisabled && !track.fullResponseSeen &&
+                            track.indexReceived < BoloPlaybackIndex.ScanLimit
+                    }
+                    val cursor = pending?.position?.load() ?: indexRead?.start ?: track.position
+                    val positions = tracks.mapValues { it.value.position }
+                    val target = targets(positions)
+                    val required = pending != null || indexRead != null || track.metadata == null
+                    val canPrefetch = kind != BoloPlaybackTrack.Video || videoPrefetch
+                    if (!canPrefetch && pending == null && track.metadata != null) return@withLock null
+                    val start = cache.firstMissing(kind, cursor)
+                    val limit = if (!canPrefetch || (required && target.getValue(kind) == 0L)) BoloPlaybackCache.MinimumBytes else target.getValue(kind)
+                    val windowEnd = (cursor + minOf(limit, Long.MAX_VALUE - cursor)) / BoloPlaybackCache.BlockSize * BoloPlaybackCache.BlockSize
+                    var end = if (indexRead != null) minOf(indexRead.endExclusive,
+                        start + minOf(BoloPlaybackIndex.ReadLimit.toLong(), Long.MAX_VALUE - start), track.total ?: Long.MAX_VALUE)
+                    else minOf(start + minOf(BoloPlaybackCache.MinimumBytes, Long.MAX_VALUE - start), windowEnd, track.total ?: Long.MAX_VALUE)
+                    if (end <= start) return@withLock null
+                    end = reserve(track, start, end, positions, target, required, isIndex = indexRead != null)
+                    if (end <= start) return@withLock null
+                    if (pending != null) { track.readers.remove(pending); track.readers.add(pending) }
+                    val job = Job(scope.coroutineContext[Job])
+                    track.request = job
+                    track.requestIsIndex = indexRead != null
+                    track.requestStart = start
+                    track.requestEnd = end
+                    track.allocationStart = start
+                    track.allocationEnd = end
+                    job
                 }
-                val cursor = pending?.position?.load() ?: indexRead?.start ?: track.position
-                val positions = tracks.mapValues { it.value.position }
-                val target = targets(positions)
-                val required = pending != null || indexRead != null || track.metadata == null
-                val canPrefetch = kind != BoloPlaybackTrack.Video || videoPrefetch
-                if (!canPrefetch && pending == null && track.metadata != null) return@withLock null
-                val start = cache.firstMissing(kind, cursor)
-                val limit = if (!canPrefetch || (required && target.getValue(kind) == 0L)) BoloPlaybackCache.MinimumBytes else target.getValue(kind)
-                val windowEnd = (cursor + minOf(limit, Long.MAX_VALUE - cursor)) / BoloPlaybackCache.BlockSize * BoloPlaybackCache.BlockSize
-                val end = if (indexRead != null) minOf(indexRead.endExclusive,
-                    start + minOf(BoloPlaybackIndex.ReadLimit.toLong(), Long.MAX_VALUE - start), track.total ?: Long.MAX_VALUE)
-                else minOf(start + minOf(BoloPlaybackCache.MinimumBytes, Long.MAX_VALUE - start), windowEnd, track.total ?: Long.MAX_VALUE)
-                if (end <= start) return@withLock null
-                if (!cache.reserve(kind, start, end, positions, target,
-                        tracks.mapValues { it.value.readers.filter { reader -> reader.job.isActive }.map { reader -> reader.position.load() } },
-                        required = required)) return@withLock null
-                if (pending != null) { track.readers.remove(pending); track.readers.add(pending) }
-                val job = Job(scope.coroutineContext[Job])
-                track.request = job
-                track.requestIsIndex = indexRead != null
-                track.requestStart = start
-                track.requestEnd = end
-                track.allocationStart = start
-                track.allocationEnd = end
-                job
+            } catch (error: BoloPlaybackMemoryException) {
+                failMemory(kind, error)
+                return
             }
             if (request == null) {
-                changed.first { it != revision }
+                waitForChange(revision)
                 continue
             }
             var retryDelay = 0L
@@ -443,6 +577,8 @@ internal class BoloPlaybackStreamSession(
                 }
             } catch (error: CancellationException) {
                 currentCoroutineContext().ensureActive()
+            } catch (error: BoloPlaybackMemoryException) {
+                failMemory(kind, error)
             } catch (error: Throwable) {
                 if (error is PlayerStreamException && error.resourceChanged) track.resourceChanged = true
                 val retry = when (error) {
@@ -479,6 +615,7 @@ internal class BoloPlaybackStreamSession(
                     mutex.withLock {
                         cache.finish(kind)
                         if (track.request === request) track.request = null
+                        memoryWait(track, false)
                         signal()
                     }
                 }
@@ -504,7 +641,9 @@ internal class BoloPlaybackStreamSession(
                 currentCoroutineContext().ensureActive()
                 if (!request.isActive || closed.load() || failed.load() || track.request !== request)
                     throw CancellationException("播放下载请求已失效")
+                cache.refreshMemory()
                 val pending = track.readers.firstOrNull { it.waiting && it.job.isActive }
+                if (pending == null) memoryWait(track, false)
                 val cursor = pending?.position?.load() ?: track.position
                 if (position < cursor) {
                     position = minOf(cursor, end)
@@ -522,11 +661,9 @@ internal class BoloPlaybackStreamSession(
                     track.allocationStart = position
                     track.allocationEnd = position
                     val allocationEnd = minOf(position + minOf(BoloPlaybackCache.MinimumBytes, Long.MAX_VALUE - position), windowEnd, track.total ?: Long.MAX_VALUE)
-                    if (allocationEnd > position && cache.reserve(kind, position, allocationEnd,
-                            positions, target,
-                            tracks.mapValues { it.value.readers.filter { reader -> reader.job.isActive }.map { reader -> reader.position.load() } },
-                            required = required)) {
-                        track.allocationEnd = allocationEnd
+                    if (allocationEnd > position) {
+                        track.allocationEnd = reserve(track, position, allocationEnd, positions, target,
+                            required, isIndex = pending == null && track.indexRead != null)
                     }
                 }
                 val next = minOf(end, track.allocationEnd, windowEnd)
@@ -541,7 +678,7 @@ internal class BoloPlaybackStreamSession(
                     false
                 }
             }
-            if (!progressed) changed.first { it != revision }
+            if (!progressed) waitForChange(revision)
         }
     }
 
@@ -566,6 +703,14 @@ internal class BoloPlaybackStreamSession(
             return BoloPlaybackTrackSnapshot(track.total, ranges, forward, backward, track.received, track.position, speed,
                 track.index?.bufferedRanges(ranges).orEmpty(), track.index != null)
         }
-        BoloPlaybackStreamSnapshot(generation, checkNotNull(sample(BoloPlaybackTrack.Video)), sample(BoloPlaybackTrack.Audio), cache.allocatedBytes)
+        BoloPlaybackStreamSnapshot(
+            generation = generation,
+            video = checkNotNull(sample(BoloPlaybackTrack.Video)),
+            audio = sample(BoloPlaybackTrack.Audio),
+            allocatedBytes = cache.allocatedBytes,
+            effectiveCapacityBytes = cache.effectiveCapacityBytes,
+            memoryLimited = cache.memoryLimited,
+            forwardTargetBytes = cache.forwardTarget(tracks.mapValues { it.value.position }),
+        )
     }
 }

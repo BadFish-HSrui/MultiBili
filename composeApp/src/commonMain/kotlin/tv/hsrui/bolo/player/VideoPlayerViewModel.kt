@@ -174,6 +174,7 @@ class VideoPlayerViewModel(
     val controller = BoloPlayerController(onError = { e ->
         when (e) {
             is BoloPlayerError.NetworkError -> showSnackbarMessage(e.message)
+            is BoloPlayerError.MemoryError -> showSnackbarMessage(e.message)
             is BoloPlayerError.DecoderError -> println("解码: ${e.message}")
             is BoloPlayerError.FormatNotSupported -> println("格式不支持: ${e.message}")
             is BoloPlayerError.SeekError -> println("跳转失败: ${e.message}")

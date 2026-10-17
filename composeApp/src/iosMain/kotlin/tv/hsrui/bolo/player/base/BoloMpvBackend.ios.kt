@@ -14,9 +14,12 @@ import kotlinx.cinterop.convert
 import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.plus
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.rawValue
+import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.toKString
+import kotlinx.cinterop.value
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -33,9 +36,68 @@ import platform.UIKit.UIApplicationState
 import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
 import platform.UIKit.UIViewAutoresizingFlexibleWidth
+import platform.darwin.KERN_SUCCESS
+import platform.darwin.TASK_VM_INFO
+import platform.darwin.TASK_VM_INFO_COUNT
+import platform.darwin.TASK_VM_INFO_REV4_COUNT
+import platform.darwin.mach_msg_type_number_tVar
+import platform.darwin.mach_task_self_
+import platform.darwin.task_info
+import platform.darwin.task_vm_info
+import platform.posix.MAP_ANON
+import platform.posix.MAP_FAILED
+import platform.posix.MAP_PRIVATE
+import platform.posix.PROT_READ
+import platform.posix.PROT_WRITE
+import platform.posix.mmap
+import platform.posix.munmap
 import platform.posix.memcpy
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+
+internal actual fun allocatePlaybackBuffer(size: Int): BoloPlaybackBuffer? {
+    require(size > 0)
+    val buffer = object : BoloPlaybackBuffer {
+        var pointer: CPointer<ByteVar>? = null
+
+        override fun copyInto(destination: ByteArray, destinationOffset: Int, startIndex: Int, endIndex: Int) {
+            require(startIndex >= 0 && endIndex >= startIndex && endIndex <= size)
+            val length = endIndex - startIndex
+            require(destinationOffset >= 0 && destinationOffset <= destination.size - length)
+            val source = checkNotNull(pointer)
+            if (length == 0) return
+            destination.usePinned { memcpy(it.addressOf(destinationOffset), source + startIndex, length.convert()) }
+        }
+
+        override fun copyFrom(source: ByteArray, sourceOffset: Int, destinationOffset: Int, length: Int) {
+            require(length >= 0 && sourceOffset >= 0 && sourceOffset <= source.size - length)
+            require(destinationOffset >= 0 && destinationOffset <= size - length)
+            val destination = checkNotNull(pointer)
+            if (length == 0) return
+            source.usePinned { memcpy(destination + destinationOffset, it.addressOf(sourceOffset), length.convert()) }
+        }
+
+        override fun close() {
+            val allocation = pointer ?: return
+            pointer = null
+            munmap(allocation, size.convert())
+        }
+    }
+    // 独立映射在关闭时直接归还页面，避免 malloc 保留空闲块导致余量迟迟不能恢复。
+    val allocation = mmap(null, size.convert(), PROT_READ or PROT_WRITE, MAP_PRIVATE or MAP_ANON, -1, 0)
+    if (allocation == MAP_FAILED || allocation == null) return null
+    buffer.pointer = allocation.reinterpret()
+    return buffer
+}
+
+internal actual fun playbackAvailableMemoryBytes(): Long? = memScoped {
+    val info = alloc<task_vm_info>()
+    val count = alloc<mach_msg_type_number_tVar>()
+    count.value = TASK_VM_INFO_COUNT
+    val result = task_info(mach_task_self_, TASK_VM_INFO.convert(), info.ptr.reinterpret(), count.ptr)
+    if (result != KERN_SUCCESS || count.value < TASK_VM_INFO_REV4_COUNT) return@memScoped null
+    info.limit_bytes_remaining.takeIf { it <= Long.MAX_VALUE.toULong() }?.toLong()
+}
 
 /** 仅在 Main 使用；播放和手势分别持有会话，互不释放对方的使用权。 */
 internal object IosPlayerAudioSession {

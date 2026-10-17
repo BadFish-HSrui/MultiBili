@@ -76,7 +76,7 @@ fun PlaybackSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
     if (showPlaybackCacheInfo) {
         ShowInfoDialog(onConfirm = { showPlaybackCacheInfo = false }) {
             Text(
-                text = "可用于预加载视频的空间大小，较小可避免视频只看一点就全部加载浪费流量，较大可优化跳转速度，过大时不一定能获取到足够空间。",
+                text = "可用于预加载视频的空间大小，较小可避免只观看部分内容时的流量浪费，较大可优化跳转速度，过大时可能无法获取足够空间。",
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),

@@ -1,6 +1,7 @@
 package tv.hsrui.bolo.player.base
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.hardware.display.DisplayManager
@@ -23,8 +24,22 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import tv.hsrui.bolo.utils.url.AppContext
 import tv.hsrui.bolo.player.session.BoloMediaSessionService
+import tv.hsrui.bolo.utils.url.AppContext
+
+internal actual fun playbackAvailableMemoryBytes(): Long? {
+    val runtime = Runtime.getRuntime()
+    val heapAvailable = (runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())).coerceAtLeast(0L)
+    return try {
+        val manager = AppContext.instance.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            ?: return heapAvailable
+        val memory = ActivityManager.MemoryInfo()
+        manager.getMemoryInfo(memory)
+        if (memory.lowMemory) 0L else minOf(heapAvailable, (memory.availMem - memory.threshold).coerceAtLeast(0L))
+    } catch (_: Exception) {
+        heapAvailable
+    }
+}
 
 internal actual class BoloMpvBackend actual constructor() {
     actual val retainsPausedResources: Boolean get() = false

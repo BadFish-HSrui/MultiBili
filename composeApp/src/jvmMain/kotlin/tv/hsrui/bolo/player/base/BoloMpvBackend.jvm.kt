@@ -11,6 +11,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import tv.hsrui.bolo.player.DesktopPlayerFullscreenWindow
 
+internal actual fun playbackAvailableMemoryBytes(): Long? {
+    val runtime = Runtime.getRuntime()
+    return (runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())).coerceAtLeast(0L)
+}
+
 internal actual class BoloMpvBackend actual constructor() {
     actual val retainsPausedResources: Boolean get() = false
     actual fun retainedPosition(generation: Long, positionMs: Long): Long? = null

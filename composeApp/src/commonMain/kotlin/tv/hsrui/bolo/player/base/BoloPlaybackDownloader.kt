@@ -309,6 +309,7 @@ internal class BoloPlaybackDownloader {
                             initialResponse = result
                         } catch (error: CancellationException) { throw error }
                         catch (error: Throwable) {
+                            if (error is BoloPlaybackMemoryException) throw error
                             candidates.failure(candidate, error, received)
                             feedback(error)
                             if ((error as? PlayerStreamException)?.let {
@@ -358,7 +359,10 @@ internal class BoloPlaybackDownloader {
                         }
                         accept(metadata, bytes, length)
                     } catch (error: CancellationException) { throw error }
-                    catch (error: Throwable) { feedback(error); throw error }
+                    catch (error: Throwable) {
+                        if (error !is BoloPlaybackMemoryException) feedback(error)
+                        throw error
+                    }
                     finally { release(lease) }
                 }, onReady = { metadata, bytes, length ->
                     if (hadCanonical) {
@@ -431,6 +435,7 @@ internal class BoloPlaybackDownloader {
             }
         } catch (error: CancellationException) { throw error }
         catch (error: Throwable) {
+            if (error is BoloPlaybackMemoryException) throw error
             if ((error as? PlayerStreamException)?.resourceChanged == true) throw error
             rangeFailure = error
         }
@@ -575,11 +580,14 @@ internal class BoloPlaybackDownloader {
                             } catch (error: CancellationException) {
                                 throw error
                             } catch (error: Throwable) {
-                                val failure = try {
-                                    candidates.failure(attempt.candidate, error, (attempt.received.load() - prefixLength).toLong())
-                                    error
-                                } catch (changed: Throwable) { changed }
-                                feedback(failure)
+                                val failure = if (error is BoloPlaybackMemoryException) error else {
+                                    val sourceFailure = try {
+                                        candidates.failure(attempt.candidate, error, (attempt.received.load() - prefixLength).toLong())
+                                        error
+                                    } catch (changed: Throwable) { changed }
+                                    feedback(sourceFailure)
+                                    sourceFailure
+                                }
                                 events.send(Completion(failure))
                             } finally {
                                 if (isRescue) attempt.bytes = ByteArray(0)
@@ -601,7 +609,7 @@ internal class BoloPlaybackDownloader {
                                 if (event != null) {
                                     if (event.error == null) return@supervisorScope true
                                     lastError = event.error
-                                    if (won.load() || (lastError as? PlayerStreamException)?.let {
+                                    if (lastError is BoloPlaybackMemoryException || won.load() || (lastError as? PlayerStreamException)?.let {
                                         it.resourceChanged || it.message == "媒体请求超过接收上限"
                                     } == true) throw lastError
                                     finished++
@@ -654,7 +662,7 @@ internal class BoloPlaybackDownloader {
 
     companion object {
         private const val BlockSize = 64 * 1024
-        private const val StagingLimit = 16 * 1024 * 1024
+        const val StagingLimit = 16 * 1024 * 1024
     }
 }
 

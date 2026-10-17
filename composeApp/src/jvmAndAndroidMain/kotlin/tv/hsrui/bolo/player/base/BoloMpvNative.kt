@@ -9,6 +9,30 @@ import kotlin.io.encoding.Base64
 
 internal expect fun loadBoloMpvLibrary()
 
+internal actual fun allocatePlaybackBuffer(size: Int): BoloPlaybackBuffer? {
+    require(size > 0)
+    return try {
+        object : BoloPlaybackBuffer {
+            private var bytes: ByteArray? = ByteArray(size)
+
+            override fun copyInto(destination: ByteArray, destinationOffset: Int, startIndex: Int, endIndex: Int) {
+                checkNotNull(bytes).copyInto(destination, destinationOffset, startIndex, endIndex)
+            }
+
+            override fun copyFrom(source: ByteArray, sourceOffset: Int, destinationOffset: Int, length: Int) {
+                require(length >= 0 && sourceOffset >= 0 && sourceOffset <= source.size - length)
+                source.copyInto(checkNotNull(bytes), destinationOffset, sourceOffset, sourceOffset + length)
+            }
+
+            override fun close() {
+                bytes = null
+            }
+        }
+    } catch (_: OutOfMemoryError) {
+        null
+    }
+}
+
 internal object BoloMpvNative {
     init { loadBoloMpvLibrary() }
     external fun create(platform: String): Long
