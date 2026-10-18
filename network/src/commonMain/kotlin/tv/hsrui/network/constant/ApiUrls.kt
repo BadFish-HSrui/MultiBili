@@ -90,6 +90,9 @@ object ApiUrls {
         const val SEGMENT = "x/v2/dm/wbi/web/seg.so" //分段弹幕
         const val VIEW = "x/v2/dm/web/view" //弹幕开放状态
         const val SEND = "x/v2/dm/post" //发送弹幕
+        const val FILTER_LIST = "x/dm/filter/user" //弹幕屏蔽列表
+        const val FILTER_ADD = "x/dm/filter/user/add" //添加单条弹幕屏蔽规则
+        const val FILTER_DELETE = "x/dm/filter/user/del" //删除弹幕屏蔽规则
     }
 
     const val WBI = "x/web-interface/nav" //用于获取WbiKey，实际上是导航栏接口

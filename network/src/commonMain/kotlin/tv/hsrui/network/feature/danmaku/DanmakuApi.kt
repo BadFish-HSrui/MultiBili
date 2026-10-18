@@ -1,8 +1,8 @@
 package tv.hsrui.network.feature.danmaku
 
-import io.ktor.client.request.get
 import io.ktor.client.call.body
 import io.ktor.client.request.forms.FormDataContent
+import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -10,15 +10,16 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.Parameters
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.protobuf.ProtoBuf
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.network.client.ApiClient
 import tv.hsrui.network.constant.ApiUrls
 import tv.hsrui.network.login.storage.LoginStorage
+import tv.hsrui.network.model.BaseResponse
 import tv.hsrui.network.wbi.buildWithWbi
 import kotlin.time.Clock
 
@@ -84,6 +85,43 @@ suspend fun sendDanmaku(avid: Long, cid: Long, progressMs: Long, message: String
         check(response.status.isSuccess()) { "弹幕发送失败：HTTP ${response.status.value}" }
         response.body<SendDanmakuResponse>()
     } ?: error("弹幕发送超时，结果未确认")
+
+suspend fun fetchDanmakuFilters(): DanmakuFilterListResponse = withTimeoutOrNull(15_000L) {
+    val response = ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.Danmaku.FILTER_LIST)
+    check(response.status.isSuccess()) { "弹幕屏蔽列表读取失败：HTTP ${response.status.value}" }
+    response.body<DanmakuFilterListResponse>()
+} ?: error("弹幕屏蔽列表读取超时")
+
+suspend fun addDanmakuFilter(filter: DanmakuFilterData): DanmakuFilterAddResponse =
+    withTimeoutOrNull(15_000L) {
+        require(filter.content.isNotBlank()) { "弹幕屏蔽内容不能为空白" }
+
+        val cookies = getKoin().get<LoginStorage>().cookies
+        check(cookies.sessData.isNotEmpty() && cookies.csrf.isNotEmpty()) { "请先登录" }
+        val response = ApiClient.httpClient.post(ApiUrls.BASE + ApiUrls.Danmaku.FILTER_ADD) {
+            setBody(FormDataContent(Parameters.build {
+                append("type", filter.type.code.toString())
+                append("filter", filter.content)
+                append("csrf", cookies.csrf)
+            }))
+        }
+        check(response.status.isSuccess()) { "弹幕屏蔽规则添加失败：HTTP ${response.status.value}" }
+        response.body<DanmakuFilterAddResponse>()
+    } ?: error("弹幕屏蔽规则添加超时，结果未确认")
+
+suspend fun deleteDanmakuFilter(id: Long): BaseResponse = withTimeoutOrNull(15_000L) {
+    require(id > 0L) { "弹幕屏蔽规则 ID 必须为正数" }
+    val cookies = getKoin().get<LoginStorage>().cookies
+    check(cookies.sessData.isNotEmpty() && cookies.csrf.isNotEmpty()) { "请先登录" }
+    val response = ApiClient.httpClient.post(ApiUrls.BASE + ApiUrls.Danmaku.FILTER_DELETE) {
+        setBody(FormDataContent(Parameters.build {
+            append("ids", id.toString())
+            append("csrf", cookies.csrf)
+        }))
+    }
+    check(response.status.isSuccess()) { "弹幕屏蔽规则删除失败：HTTP ${response.status.value}" }
+    response.body<BaseResponse>()
+} ?: error("弹幕屏蔽规则删除超时，结果未确认")
 
 private suspend fun HttpResponse.danmakuBytes(): ByteArray {
     check(status.isSuccess()) { "弹幕请求失败：HTTP ${status.value}" }
