@@ -850,6 +850,7 @@ class VideoPlayerViewModel(
                             weight = item.weight,
                             isOwn = loggedIn && (item.isOwn ||
                                 (item.senderHash.isNotEmpty() && item.senderHash == userHash)),
+                            senderHash = item.senderHash,
                         )
                     }
                     publishDanmakuSegments()

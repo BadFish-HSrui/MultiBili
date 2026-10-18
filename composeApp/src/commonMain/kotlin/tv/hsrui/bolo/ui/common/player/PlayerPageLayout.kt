@@ -41,15 +41,18 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.player.PlayerFullscreenState
+import tv.hsrui.bolo.ui.common.player.danmaku.PlayerDanmakuPage
 import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.network.utils.formatCountToString
 import kotlin.math.roundToInt
 
 private enum class PlayerInfoTab(val title: String) {
     Desc("简介"),
-    Reply("评论")
+    Reply("评论"),
+    Danmaku("弹幕"),
 }
 
 private fun Modifier.playerBounds(
@@ -83,6 +86,8 @@ fun PlayerPageLayout(
     val currentDescContent by rememberUpdatedState(descContent)
     val currentReplyContent by rememberUpdatedState(replyContent)
     val currentReplyCount by rememberUpdatedState(replyCount)
+    // 在评论的稿件/剧集作用域之外取得播放路由，屏蔽管理随路由存活。
+    val playerViewModelStoreOwner by rememberUpdatedState(checkNotNull(LocalViewModelStoreOwner.current))
     val isFullscreen = fullscreenState.isFullscreen
     var rootOffsetInRoot by remember { mutableStateOf(IntOffset.Zero) }
     var playerBoundsInRoot by remember { mutableStateOf(IntRect.Zero) }
@@ -122,6 +127,7 @@ fun PlayerPageLayout(
                                 when (tabs[page]) {
                                     PlayerInfoTab.Desc -> currentDescContent()
                                     PlayerInfoTab.Reply -> mainContent()
+                                    PlayerInfoTab.Danmaku -> PlayerDanmakuPage(playerViewModelStoreOwner)
                                 }
                             }
                         }

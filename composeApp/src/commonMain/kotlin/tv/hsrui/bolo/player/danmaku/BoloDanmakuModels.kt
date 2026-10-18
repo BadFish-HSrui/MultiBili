@@ -9,6 +9,7 @@ data class BoloDanmakuItem(
     val colorRgb: Long = 0xFFFFFF,
     val weight: Int = 0,
     val isOwn: Boolean = false,
+    val senderHash: String = "",
 )
 
 enum class BoloDanmakuMode {

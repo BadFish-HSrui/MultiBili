@@ -10,6 +10,8 @@ internal class BoloDanmakuEngine {
         var height: Float,
         var y: Float,
     ) {
+        var isBlocked = false
+
         private var anchorTimeMs = enteredAtMs
         private var anchorX = 0.0
         private var speed = 0.0
@@ -63,6 +65,7 @@ internal class BoloDanmakuEngine {
     private var verticalGap = 0f
     private var horizontalGap = 0f
     private var appliedSpeedFactor = 1f
+    private var appliedFilter: ((BoloDanmakuItem) -> Boolean)? = null
 
     fun load(newItems: List<BoloDanmakuItem>) {
         val byId = newItems.asSequence().filter { it.progressMs >= 0 && it.content.isNotBlank() }.associateBy { it.id }
@@ -145,6 +148,7 @@ internal class BoloDanmakuEngine {
         topEnabled: Boolean,
         bottomEnabled: Boolean,
         baseSpeed: (Float, Float) -> Float,
+        isBlocked: (BoloDanmakuItem) -> Boolean = { false },
         measure: (BoloDanmakuItem) -> Pair<Float, Float>,
     ): List<Entry> {
         fun isModeEnabled(mode: BoloDanmakuMode): Boolean = when (mode) {
@@ -154,6 +158,13 @@ internal class BoloDanmakuEngine {
         }
         active.removeAll {
             it.expired(animationTimeMs) || (!it.item.isOwn && (it.item.weight < filterLevel || !isModeEnabled(it.item.mode)))
+        }
+        if (appliedFilter !== isBlocked) {
+            // 已入场条目仅隐藏绘制，继续运动、占轨和自然过期，避免恢复时重叠。
+            for (entry in active) {
+                entry.isBlocked = !entry.item.isOwn && isBlocked(entry.item)
+            }
+            appliedFilter = isBlocked
         }
         if (!width.isFinite() || !height.isFinite() || width <= 0f || height <= 0f) return emptyList()
         if (layoutChanged) {
@@ -177,6 +188,8 @@ internal class BoloDanmakuEngine {
         active.removeAll { it.expired(animationTimeMs) }
         for (item in pending.values.sortedByDescending { it.isOwn }) {
             if (!item.isOwn && (item.weight < filterLevel || !isModeEnabled(item.mode))) continue
+            // 新命中的条目不测量、不入场，已处理 ID 仍保留到显式 Seek。
+            if (!item.isOwn && isBlocked(item)) continue
             if ((!item.isOwn && active.size >= 500) || active.any { it.item.id == item.id }) continue
             // 入场时固定显示字号；后续倍率变化不影响在屏条目，也不修改源数据。
             val displayItem = item.copy(
