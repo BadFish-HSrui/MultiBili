@@ -61,6 +61,8 @@ fun VideoPage(
     val detailOwner = videoViewModel.getDetailOwner(videoInfo.avid)
     PlayerPageLayout(
         fullscreenState = fullscreenState,
+        playerViewModel = viewModel,
+        danmakuMediaKey = videoInfo.avid to videoInfo.cid,
         descContent = {
             CompositionLocalProvider(LocalViewModelStoreOwner provides detailOwner) {
                 key(videoInfo.avid) {

@@ -285,8 +285,9 @@ fun ShowAddDanmakuFilterDialog(
     isWorking: Boolean,
     onCancel: () -> Unit,
     onConfirm: (String, DanmakuFilterType, Boolean) -> Unit,
+    initialContent: String = "",
 ) {
-    var content by rememberSaveable { mutableStateOf("") }
+    var content by rememberSaveable(initialContent) { mutableStateOf(initialContent) }
     var isRegex by rememberSaveable { mutableStateOf(false) }
     var upload by rememberSaveable { mutableStateOf(true) }
     val regexError = remember(content, isRegex) {

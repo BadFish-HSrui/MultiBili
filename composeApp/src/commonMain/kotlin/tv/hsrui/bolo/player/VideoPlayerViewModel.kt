@@ -40,6 +40,7 @@ import tv.hsrui.bolo.player.danmaku.BoloDanmakuMode
 import tv.hsrui.bolo.player.settings.BoloPlayerSettings
 import tv.hsrui.bolo.player.subtitle.BoloSubtitleController
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
+import tv.hsrui.network.feature.danmaku.DanmakuItem
 import tv.hsrui.network.feature.danmaku.DanmakuMode
 import tv.hsrui.network.feature.danmaku.fetchDanmakuSegment
 import tv.hsrui.network.feature.danmaku.fetchDanmakuView
@@ -115,6 +116,10 @@ class VideoPlayerViewModel(
     private val danmakuRequests = mutableMapOf<Long, Job>()
     private val failedDanmakuSegments = mutableSetOf<Long>()
     private val sentDanmaku = linkedMapOf<Long, BoloDanmakuItem>()
+    // 列表保留当前媒体已加载的记录，不随渲染窗口淘汰。
+    private val loadedDanmakuById = linkedMapOf<Long, DanmakuItem>()
+    private val _loadedDanmaku = MutableStateFlow<List<DanmakuItem>>(emptyList())
+    val loadedDanmaku = _loadedDanmaku.asStateFlow()
     private var danmakuContextJob: Job? = null
     private var danmakuSendJob: Job? = null
     private var danmakuCooldownJob: Job? = null
@@ -280,6 +285,7 @@ class VideoPlayerViewModel(
         }
         if (opensNewMedia) {
             sentDanmaku.clear()
+            clearLoadedDanmaku()
             danmakuDraft.value = ""
             _chapters.value = emptyList()
             singleEpisodeLoopEnabled = false
@@ -403,6 +409,17 @@ class VideoPlayerViewModel(
                     isOwn = true,
                 )
                 sentDanmaku[item.id] = item
+                val listItem = DanmakuItem(
+                    id = item.id,
+                    progressMs = progressMs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                    modeCode = 1,
+                    fontSize = 25,
+                    colorRgb = 0xFFFFFF,
+                    senderHash = danmakuPlayerInfo?.danmakuUserHash.orEmpty(),
+                    content = item.content,
+                    attributes = 1 shl 18,
+                )
+                mergeLoadedDanmaku(listOf(listItem))
                 publishDanmakuSegments()
                 danmakuController.showImmediately(item)
                 danmakuCoolingDown = true
@@ -833,6 +850,7 @@ class VideoPlayerViewModel(
                     }
                     val loggedIn = loginStorage.isLoggedIn
                     val userHash = danmakuPlayerInfo?.danmakuUserHash.orEmpty()
+                    mergeLoadedDanmaku(response.items)
                     danmakuSegments[segmentIndex] = response.items.mapNotNull { item ->
                         val mode = when (item.mode) {
                             DanmakuMode.Scroll -> BoloDanmakuMode.Scroll
@@ -876,6 +894,16 @@ class VideoPlayerViewModel(
         danmakuController.load(danmakuSegments.entries.sortedBy { it.key }.flatMap { it.value } + sentDanmaku.values)
     }
 
+    private fun mergeLoadedDanmaku(items: List<DanmakuItem>) {
+        items.forEach { loadedDanmakuById[it.id] = it }
+        _loadedDanmaku.value = loadedDanmakuById.values.sortedWith(compareBy(DanmakuItem::progressMs, DanmakuItem::id))
+    }
+
+    private fun clearLoadedDanmaku() {
+        loadedDanmakuById.clear()
+        _loadedDanmaku.value = emptyList()
+    }
+
     private fun resetDanmaku() {
         dismissDanmakuInput(resumePlayback = false)
         danmakuContextJob?.cancel()
@@ -909,6 +937,7 @@ class VideoPlayerViewModel(
         controller.onPlaybackObservation = null
         flushPlaybackStatistics()
         playbackClosed = true
+        clearLoadedDanmaku()
         _chapters.value = emptyList()
         highEnergyProgressGeneration += 1
         highEnergyProgressLoadJob?.cancel()

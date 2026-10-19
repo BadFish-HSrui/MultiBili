@@ -100,6 +100,8 @@ fun MediaPlaybackPage(
 
     PlayerPageLayout(
         fullscreenState = fullscreenState,
+        playerViewModel = playerViewModel,
+        danmakuMediaKey = episode?.let { it.avid to it.cid },
         descContent = { MediaDescPage(uiState = uiState, viewModel = viewModel, modifier = Modifier.fillMaxSize()) },
         replyContent = { content ->
             key(episode?.episodeId) {

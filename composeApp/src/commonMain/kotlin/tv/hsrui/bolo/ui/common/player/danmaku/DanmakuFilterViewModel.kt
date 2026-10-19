@@ -62,7 +62,6 @@ class DanmakuFilterViewModel(
             showMessage("屏蔽内容不能为空白")
             return null
         }
-        if (type == DanmakuFilterType.User) return null
         if (type == DanmakuFilterType.Regex) {
             danmakuFilterRegexError(content)?.let {
                 showMessage(it)
