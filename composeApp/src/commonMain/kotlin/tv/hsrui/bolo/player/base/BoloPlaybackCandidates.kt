@@ -39,9 +39,6 @@ internal class BoloPlaybackCandidates(urls: List<String>) {
         internal val measurement = AtomicReference(Measurement(0.0, -MeasurementLifetime))
         internal var confirmedHeadBytes = 0
 
-        // 未确认强度的 Last-Modified 不作为分块请求的资源版本标识。
-        val validator: String?
-            get() = metadata?.etag?.takeUnless { it.startsWith("W/") }
         val totalBytes: Long? get() = metadata?.totalBytes
         val supportsRange: Boolean get() = rangeSupported == true
         val bytesPerSecond: Double
@@ -214,18 +211,14 @@ internal class BoloPlaybackCandidates(urls: List<String>) {
         val responseEnd = response.endExclusive
         val changed = (total != null && response.totalBytes != null && total != response.totalBytes) ||
             (knownTotal != null && response.statusCode == 206 && responseEnd != null && responseEnd > knownTotal) ||
-            (responseTotal != null && responseTotal < (canonical?.confirmedHeadBytes ?: 0)) ||
-            (previous?.etag != null && response.etag != null && previous.etag != response.etag)
+            (responseTotal != null && responseTotal < (canonical?.confirmedHeadBytes ?: 0))
         if (changed) {
             candidate.rejected = true
             candidate.verified = false
-            throw PlayerStreamException("播放资源发生变化", false, resourceChanged = candidate === canonical)
+            // 只淘汰不再兼容当前缓存的地址，其余已验证候选仍可继续交付。
+            throw PlayerStreamException("播放资源发生变化", false, resourceChanged = true)
         }
-        if (response.statusCode == 200 && candidate.rangeSupported == true && candidate.validator != null) {
-            candidate.rejected = true
-            candidate.verified = false
-            throw PlayerStreamException("播放资源发生变化", false, resourceChanged = candidate === canonical)
-        }
+        // CDN 的 ETag / Last-Modified 可随节点或分块变化，不作为媒体字节兼容性的依据。
         if (response.statusCode == 200) candidate.rangeSupported = false
         if (response.statusCode == 206) candidate.rangeSupported = true
         candidate.metadata = response.copy(
@@ -252,13 +245,10 @@ internal class BoloPlaybackCandidates(urls: List<String>) {
         if (error is CancellationException) return@withLock
         val streamError = error as? PlayerStreamException
         if (streamError?.message == "媒体请求超过接收上限") return@withLock
-        if (streamError?.resourceChanged == true ||
-            (streamError?.statusCode == 200 && candidate === canonical && candidate.validator != null)) {
+        if (streamError?.resourceChanged == true) {
             candidate.rejected = true
             candidate.verified = false
-            if (candidate === canonical) {
-                throw PlayerStreamException("播放资源发生变化", false, error, resourceChanged = true)
-            }
+            return@withLock
         }
         if (streamError?.statusCode == 200) {
             candidate.rangeSupported = false

@@ -24,6 +24,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import tv.hsrui.bolo.boloSetting.PlaybackLoudnessMode
 import tv.hsrui.network.feature.player.BiliDashObject
+import tv.hsrui.network.feature.player.PlayerStreamException
 import tv.hsrui.network.feature.player.PlayerStreamIndexData
 import tv.hsrui.network.feature.player.VideoLoudnessData
 import kotlin.math.roundToLong
@@ -76,6 +77,7 @@ class BoloPlayerController(
     private var videoStreamIndex: PlayerStreamIndexData? = null
     private var audioStreamIndex: PlayerStreamIndexData? = null
     private var optimizeSourceEnabled = false
+    private var sourceOptimizationFallback = false
     private var videoIndex = 0
     private var audioIndex = 0
     private var urlExpirations = emptyMap<String, Long?>()
@@ -83,6 +85,8 @@ class BoloPlayerController(
     private var sourceRefreshJob: Job? = null
     private var sourceRevision = 0L
     private var sourceRefreshAttempted = false
+    private var sourceReloadAttempted = false
+    private var sourceFailure: Throwable? = null
     private var sourceNeedsRefresh = false
     private var memoryRecoveryAttempted = false
     private var memoryRecoveryFailed = false
@@ -94,9 +98,18 @@ class BoloPlayerController(
     private var lifecycleRevision = 0L
     private var loadJob: Job? = null
     private var eventsJob: Job? = null
+    private var streamClosingJob: Job? = null
     private var streamSession: BoloPlaybackStreamSession? = null
         set(value) {
             if (field !== value) {
+                field?.let { previous ->
+                    previous.cancel()
+                    val closing = streamClosingJob
+                    streamClosingJob = scope.launch {
+                        closing?.join()
+                        previous.awaitClosed()
+                    }
+                }
                 mutableBufferedRanges.value = emptyList()
                 bufferedRangeKnown = false
                 lastBufferSample = null
@@ -198,6 +211,10 @@ class BoloPlayerController(
             if (disposed || sourceRevision != revision) return@withContext
             if (playIntentRevision == intentRevision) playWhenReady = intent
             sourceRefreshAttempted = false
+            sourceReloadAttempted = false
+            sourceOptimizationFallback = false
+            sourceFailure = null
+            sourceNeedsRefresh = false
             endedBeforeSeek = state.value.isEnded
             cancelRebuild()
             streamSession?.cancel()
@@ -231,11 +248,12 @@ class BoloPlayerController(
         mediaLoudness = source.loudness
         val video = source.video
         val audio = source.audio
-        optimizeSourceEnabled = source.optimizeSource
+        // 当前媒体退回单地址后，续期仍沿用该方式；用户的持久化设置保持不变。
+        optimizeSourceEnabled = source.optimizeSource && !sourceOptimizationFallback
         videoUrls = video.getUrls(sortCDN = true)
         audioUrls = audio?.getUrls(sortCDN = true).orEmpty()
-        videoStreamIndex = video.streamIndex
-        audioStreamIndex = audio?.streamIndex
+        videoStreamIndex = video.streamIndex.takeUnless { sourceOptimizationFallback }
+        audioStreamIndex = audio?.streamIndex.takeUnless { sourceOptimizationFallback }
         urlExpirations = video.urlExpiresAtEpochSeconds + audio?.urlExpiresAtEpochSeconds.orEmpty()
         videoIndex = 0
         audioIndex = 0
@@ -296,7 +314,7 @@ class BoloPlayerController(
                 if (revision == sourceRevision) cancelSourceRefresh()
                 throw error
             } catch (error: Exception) {
-                if (revision == sourceRevision && !disposed) failSourceRecovery(error.message)
+                if (revision == sourceRevision && !disposed) failSourceRecovery(error.message, error)
             } finally {
                 if (revision == sourceRevision) sourceRefreshJob = null
             }
@@ -304,10 +322,10 @@ class BoloPlayerController(
         sourceRefreshJob?.start()
     }
 
-    private fun failSourceRecovery(message: String? = null) {
+    private fun failSourceRecovery(message: String? = null, cause: Throwable? = sourceFailure) {
         sourceNeedsRefresh = true
         mutableState.value = state.value.copy(isEnded = endedBeforeSeek || state.value.isEnded)
-        fail(BoloPlayerError.NetworkError(message ?: "播放地址刷新失败，请重试"))
+        fail(BoloPlayerError.NetworkError(message ?: "播放资源加载失败，请重试", cause))
     }
 
     internal fun cancelSourceRefresh(clearSource: Boolean = false) {
@@ -332,6 +350,9 @@ class BoloPlayerController(
         mutableState.value = state.value.copy(pendingSeekPositionMs = null, isPlaying = false,
             isBuffering = false, isEnded = endedBeforeSeek || state.value.isEnded, hasConfirmedPosition = false)
         if (clearSource) {
+            sourceReloadAttempted = false
+            sourceOptimizationFallback = false
+            sourceFailure = null
             memoryRecoveryAttempted = false
             memoryRecoveryFailed = false
             resumeEligible = false
@@ -346,7 +367,10 @@ class BoloPlayerController(
     }
 
     private fun allowSourceRecovery() {
-        if (sourceRefreshJob == null) sourceRefreshAttempted = false
+        if (sourceRefreshJob == null) {
+            sourceRefreshAttempted = false
+            sourceReloadAttempted = false
+        }
         advancingSince = null
     }
 
@@ -412,6 +436,9 @@ class BoloPlayerController(
             isSeekable = false, hasConfirmedPosition = false, pendingSeekPositionMs = position)
         loadJob = scope.launch {
             try {
+                // 旧请求、缓存和索引完全退出后再建立新会话，避免跨资源混用或叠加缓存预算。
+                streamClosingJob?.join()
+                if (!isActive || disposed || generation != expected) return@launch
                 val current = engineMutex.withLock {
                     if (!isActive || disposed || generation != expected) return@launch
                     var engine = mutableBackend.value
@@ -448,7 +475,7 @@ class BoloPlayerController(
                     scope.launch {
                         if (!disposed && !resourcesSuspended && generation == expected && mutableBackend.value === current) {
                             if (error is BoloPlaybackMemoryException) recoverMemory(error)
-                            else retrySource(-1, if (track == BoloPlaybackTrack.Audio) 2 else 1)
+                            else retrySource(-1, if (track == BoloPlaybackTrack.Audio) 2 else 1, error)
                         }
                     }
                 }
@@ -485,7 +512,7 @@ class BoloPlayerController(
                     current.volume(volume)
                     current.speed(speed)
                     playbackClock.begin(expected, speed)
-                    current.load(streams, position / 1000.0, expected)
+                    current.load(streams, state.value.displayPositionMs / 1000.0, expected)
                 }
                 if (generation != expected || streams.hasFailed) return@launch
                 if (result < 0) retrySource(result) else {
@@ -750,13 +777,17 @@ class BoloPlayerController(
         // UI 在 seek/缓冲期间会标为未播放，不能据此忽略原生继续前进的时间。
         if (!coordinator.acceptObservedPosition(position, playWhenReady && !state.value.isEnded, state.value.playbackSpeed)) return false
         val wasPending = state.value.isSeeking
-        if (sourceRefreshAttempted) {
+        if (sourceRefreshAttempted || sourceReloadAttempted) {
             val playing = !wasPending && state.value.isPlaying && !state.value.isBuffering
             if (!playing || position < state.value.currentPositionMs ||
                 lastAdvance?.elapsedNow()?.inWholeMilliseconds?.let { it >= 2_000L } == true) advancingSince = null
             if (playing && position > state.value.currentPositionMs) {
                 if (advancingSince == null) advancingSince = TimeSource.Monotonic.markNow()
-                else if (advancingSince!!.elapsedNow().inWholeMilliseconds >= 10_000L) sourceRefreshAttempted = false
+                else if (advancingSince!!.elapsedNow().inWholeMilliseconds >= 10_000L) {
+                    sourceRefreshAttempted = false
+                    sourceReloadAttempted = false
+                    sourceFailure = null
+                }
                 lastAdvance = TimeSource.Monotonic.markNow()
             }
         }
@@ -774,30 +805,37 @@ class BoloPlayerController(
         return true
     }
 
-    private fun retrySource(error: Int, failedTrack: Int = 0) {
+    private fun retrySource(error: Int, failedTrack: Int = 0, cause: Throwable? = null) {
         if (resourcesSuspended || disposed || memoryRecoveryJob != null || memoryRecoveryFailed) return
         if (streamSession?.hasRequiredMemoryWait == true) {
             recoverMemory(BoloPlaybackMemoryException())
             return
         }
         if (sourceRefreshJob != null) return
+        if (cause != null) sourceFailure = cause
         val position = state.value.displayPositionMs
-        if (!optimizeSourceEnabled) {
-            val nextVideo = (videoIndex + 1 until videoUrls.size).firstOrNull { !isExpired(videoUrls[it]) }
-            val nextAudio = (audioIndex + 1 until audioUrls.size).firstOrNull { !isExpired(audioUrls[it]) }
-            if (failedTrack == 2 && nextAudio != null) audioIndex = nextAudio
-            else if (failedTrack != 2 && nextVideo != null) videoIndex = nextVideo
-            else if (failedTrack == 0 && nextAudio != null) audioIndex = nextAudio
-            else {
-                if (error == -17) fail(BoloPlayerError.FormatNotSupported("媒体格式不支持"))
-                else beginSourceRecovery(position)
-                return
-            }
+        val resourceChanged = (cause as? PlayerStreamException)?.resourceChanged == true
+        if (optimizeSourceEnabled || (resourceChanged && !sourceReloadAttempted)) {
+            // 优先使用现有地址干净重载；真正的字节版本变化不能复用旧 SIDX 提示。
+            sourceOptimizationFallback = sourceOptimizationFallback || optimizeSourceEnabled
+            optimizeSourceEnabled = false
+            sourceReloadAttempted = true
+            videoStreamIndex = null
+            audioStreamIndex = null
             startLoad(position)
             return
         }
-        if (error == -17) fail(BoloPlayerError.FormatNotSupported("媒体格式不支持"))
-        else beginSourceRecovery(position)
+        val nextVideo = (videoIndex + 1 until videoUrls.size).firstOrNull { !isExpired(videoUrls[it]) }
+        val nextAudio = (audioIndex + 1 until audioUrls.size).firstOrNull { !isExpired(audioUrls[it]) }
+        if (failedTrack == 2 && nextAudio != null) audioIndex = nextAudio
+        else if (failedTrack != 2 && nextVideo != null) videoIndex = nextVideo
+        else if (failedTrack == 0 && nextAudio != null) audioIndex = nextAudio
+        else {
+            if (error == -17) fail(BoloPlayerError.FormatNotSupported("媒体格式不支持"))
+            else beginSourceRecovery(position)
+            return
+        }
+        startLoad(position)
     }
 
     fun setPlaybackSpeed(speed: Float) {
@@ -1334,6 +1372,7 @@ class BoloPlayerController(
                 }
             } finally {
                 streams?.awaitClosed()
+                streamClosingJob?.join()
             }
         }
     }

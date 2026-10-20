@@ -593,7 +593,7 @@ class VideoPlayerViewModel(
                     delay(1_000L)
                     return@repeat
                 }
-                throw IllegalStateException("播放地址刷新失败，请重试")
+                throw IllegalStateException("播放地址刷新失败，请重试", error)
             }
             currentCoroutineContext().ensureActive()
             if (playbackClosed || generation != sourceGeneration) {

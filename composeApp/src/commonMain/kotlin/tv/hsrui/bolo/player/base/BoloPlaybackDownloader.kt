@@ -282,7 +282,7 @@ internal class BoloPlaybackDownloader {
                         var received = 0L
                         try {
                             // 首个有效正文确定唯一写入者，备用无需等待首地址超时后重新探测。
-                            val result = fetchPlaybackRange(candidate.url, start, minOf(endExclusive, BlockSize.toLong()), candidate.validator,
+                            val result = fetchPlaybackRange(candidate.url, start, minOf(endExclusive, BlockSize.toLong()),
                                 headerTimeoutMillis = 1_500, readTimeoutMillis = 1_000, requestTimeoutMillis = 2_500,
                                 onResponse = { metadata = it },
                                 onReceived = { count -> received += count; counted(count) },
@@ -352,7 +352,7 @@ internal class BoloPlaybackDownloader {
                             length = cached
                             checkNotNull(candidate.metadata).copy(start = 0, endExclusive = cached.toLong())
                         } else {
-                            fetchPlaybackProbe(candidate.url, candidate.validator, counted) { offset, source, at, size ->
+                            fetchPlaybackProbe(candidate.url, counted) { offset, source, at, size ->
                                 source.copyInto(bytes, offset.toInt(), at, at + size)
                                 length = maxOf(length, offset.toInt() + size)
                             }.also { candidates.success(candidate, length.toLong(), now() - began) }
@@ -423,7 +423,8 @@ internal class BoloPlaybackDownloader {
                             val pieceStart = cursor
                             val pieceEnd = minOf(end, cursor + size)
                             jobs += launch {
-                                fetchPiece(candidates, pieceStart, pieceEnd, priority, deadlineMs, urgencyStart, missingBytes, counted, write)
+                                fetchPiece(candidates, pieceStart, pieceEnd, priority, deadlineMs, urgencyStart, missingBytes,
+                                    awaitCandidates = { preparation.join() }, onReceived = counted, write = write)
                             }
                             cursor = pieceEnd
                         }
@@ -436,7 +437,6 @@ internal class BoloPlaybackDownloader {
         } catch (error: CancellationException) { throw error }
         catch (error: Throwable) {
             if (error is BoloPlaybackMemoryException) throw error
-            if ((error as? PlayerStreamException)?.resourceChanged == true) throw error
             rangeFailure = error
         }
         preparation.join()
@@ -456,7 +456,7 @@ internal class BoloPlaybackDownloader {
             var checked = 0
             var published = false
             var metadata: PlayerStreamResponseData? = null
-            val result = fetchPlaybackRange(fallback.url, 0, BlockSize.toLong(), fallback.validator,
+            val result = fetchPlaybackRange(fallback.url, 0, BlockSize.toLong(),
                 strictRange = false, continueFullResponse = true, receiveLimit = receiveLimit,
                 onResponse = { value ->
                     if (value.statusCode != 200) throw PlayerStreamException("播放连续响应状态发生变化", false)
@@ -493,6 +493,7 @@ internal class BoloPlaybackDownloader {
         candidates: BoloPlaybackCandidates, start: Long, end: Long,
         priority: BoloPlaybackRequestPriority, deadlineMs: (Long) -> Long?, urgencyStart: () -> Long?,
         missingBytes: suspend (Long, Int) -> Int,
+        awaitCandidates: suspend () -> Unit,
         onReceived: suspend (Int) -> Unit, write: suspend (Long, ByteArray, Int, Int) -> Unit,
     ) {
         val size = (end - start).toInt()
@@ -519,7 +520,12 @@ internal class BoloPlaybackDownloader {
                     if (now() - began >= 25_000) break
                     delay(round * 500L)
                 }
-                val ranked = candidates.ranked().take(8)
+                var ranked = candidates.ranked().take(8)
+                if (ranked.isEmpty()) {
+                    // 起播时备用探测可晚于首块失败，先等其资格确认再判定地址耗尽。
+                    awaitCandidates()
+                    ranked = candidates.ranked().take(8)
+                }
                 if (ranked.isEmpty()) break
                 val choices = mutex.withLock {
                     ranked.sortedByDescending { (it.bytesPerSecond.takeIf { speed -> speed > 0 } ?: 1_000_000.0) /
@@ -557,7 +563,7 @@ internal class BoloPlaybackDownloader {
                                 attempt.lastReceivedMs.store(beganAttempt)
                                 attempt.startedMs.store(beganAttempt)
                                 val metadata = fetchPlaybackPiece(attempt.candidate.url, start + prefixLength, end,
-                                    attempt.candidate.validator, onReceived = onReceived, write = { offset, bytes, at, count ->
+                                    onReceived = onReceived, write = { offset, bytes, at, count ->
                                         val targetOffset = (offset - start).toInt()
                                         bytes.copyInto(attempt.bytes, targetOffset, at, at + count)
                                         attempt.received.store(targetOffset + count)
@@ -609,9 +615,8 @@ internal class BoloPlaybackDownloader {
                                 if (event != null) {
                                     if (event.error == null) return@supervisorScope true
                                     lastError = event.error
-                                    if (lastError is BoloPlaybackMemoryException || won.load() || (lastError as? PlayerStreamException)?.let {
-                                        it.resourceChanged || it.message == "媒体请求超过接收上限"
-                                    } == true) throw lastError
+                                    if (lastError is BoloPlaybackMemoryException || won.load() ||
+                                        (lastError as? PlayerStreamException)?.message == "媒体请求超过接收上限") throw lastError
                                     finished++
                                 }
                                 val count = first.received.load()
@@ -633,7 +638,7 @@ internal class BoloPlaybackDownloader {
                                     if (allowed) {
                                         launchedRescue = true
                                         next++
-                                        val prefixLength = count.takeIf { it >= 32 * 1024 && it < size } ?: 0
+                                        val prefixLength = count.takeIf { !primary.rejected && it >= 32 * 1024 && it < size } ?: 0
                                         rescue = Attempt(backup, ByteArray(0))
                                         attempts += launchAttempt(rescue, prefixLength, true)
                                     }
@@ -644,14 +649,15 @@ internal class BoloPlaybackDownloader {
                         } finally {
                             withContext(NonCancellable) { attempts.forEach { it.cancel() }; attempts.forEach { it.join() } }
                             if (launchedRescue) withContext(NonCancellable) { mutex.withLock { rescues-- } }
-                            if (!won.load()) retained = first.received.load().takeIf { it in 32 * 1024 until size } ?: 0
+                            if (!won.load()) retained = first.received.load().takeIf { !primary.rejected && it in 32 * 1024 until size } ?: 0
                             events.close()
                         }
                     }
                     if (completed) return
                 }
             }
-            throw PlayerStreamException("播放候选地址已耗尽", false, lastError)
+            throw PlayerStreamException("播放候选地址已耗尽", false, lastError,
+                resourceChanged = (lastError as? PlayerStreamException)?.resourceChanged == true)
         } finally {
             withContext(NonCancellable) { mutex.withLock {
                 assignments.forEach { url -> assigned[url] = ((assigned[url] ?: 1) - 1).coerceAtLeast(0) }
@@ -667,7 +673,7 @@ internal class BoloPlaybackDownloader {
 }
 
 internal suspend fun fetchPlaybackRange(
-    url: String, start: Long, endExclusive: Long, validator: String?,
+    url: String, start: Long, endExclusive: Long,
     strictRange: Boolean = true, continueFullResponse: Boolean = false, receiveLimit: Long? = null,
     headerTimeoutMillis: Long = if (strictRange) 5_500 else 15_000,
     readTimeoutMillis: Long = if (strictRange) 4_000 else 30_000,
@@ -675,21 +681,22 @@ internal suspend fun fetchPlaybackRange(
     onResponse: suspend (PlayerStreamResponseData) -> Unit,
     onReceived: suspend (Int) -> Unit,
     write: suspend (Long, ByteArray, Int, Int) -> Unit,
-): PlayerStreamResponseData = fetchPlayerStream(url, start, endExclusive, validator,
-    continueFullResponse, receiveLimit, onResponse, onReceived, write,
+): PlayerStreamResponseData = fetchPlayerStream(url, start, endExclusive,
+    continueFullResponse = continueFullResponse, receiveLimit = receiveLimit,
+    onResponse = onResponse, onReceived = onReceived, write = write,
     strictRange = strictRange, headerTimeoutMillis = headerTimeoutMillis,
     readTimeoutMillis = readTimeoutMillis, requestTimeoutMillis = requestTimeoutMillis)
 
 internal suspend fun fetchPlaybackPiece(
-    url: String, start: Long, endExclusive: Long, validator: String?,
+    url: String, start: Long, endExclusive: Long,
     onResponse: suspend (PlayerStreamResponseData) -> Unit = {},
     onReceived: suspend (Int) -> Unit,
     write: suspend (Long, ByteArray, Int, Int) -> Unit,
-): PlayerStreamResponseData = fetchPlaybackRange(url, start, endExclusive, validator,
+): PlayerStreamResponseData = fetchPlaybackRange(url, start, endExclusive,
     onResponse = onResponse, onReceived = onReceived, write = write)
 
 internal suspend fun fetchPlaybackProbe(
-    url: String, validator: String?, onReceived: suspend (Int) -> Unit,
+    url: String, onReceived: suspend (Int) -> Unit,
     write: suspend (Long, ByteArray, Int, Int) -> Unit,
-): PlayerStreamResponseData = fetchPlaybackPiece(url, 0, 64L * 1024, validator,
+): PlayerStreamResponseData = fetchPlaybackPiece(url, 0, 64L * 1024,
     onReceived = onReceived, write = write)
