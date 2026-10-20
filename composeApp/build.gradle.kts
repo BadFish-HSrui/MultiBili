@@ -161,6 +161,7 @@ compose.desktop {
         buildTypes.release.proguard.configurationFiles.from(project.file("desktop.pro"))
 
         nativeDistributions {
+            modules("jdk.unsupported")
             targetFormats(
                 TargetFormat.Dmg,
                 TargetFormat.Msi,
