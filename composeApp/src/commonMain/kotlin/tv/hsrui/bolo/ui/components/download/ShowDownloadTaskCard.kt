@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import tv.hsrui.bolo.download.DownloadStatus
 import tv.hsrui.bolo.download.DownloadTask
+import tv.hsrui.network.utils.formatBytes
 
 @Composable
 fun ShowDownloadTaskCard(
@@ -51,13 +52,13 @@ fun ShowDownloadTaskCard(
     val showProgress = task.status != DownloadStatus.Completed
     val statusText = when (task.status) {
         DownloadStatus.Downloading -> if (total != null) {
-            "${(downloadProgress * 100).toInt()}% · ${formatDownloadBytes(task.bytesPerSecond)}/s · " +
-                "${formatDownloadBytes(task.downloadedBytes)} / ${formatDownloadBytes(total)}"
+            "${(downloadProgress * 100).toInt()}% · ${task.bytesPerSecond.formatBytes()}/s · " +
+                "${task.downloadedBytes.formatBytes()} / ${total.formatBytes()}"
         } else {
-            "—% · ${formatDownloadBytes(task.bytesPerSecond)}/s · ${formatDownloadBytes(task.downloadedBytes)} / 未知"
+            "—% · ${task.bytesPerSecond.formatBytes()}/s · ${task.downloadedBytes.formatBytes()} / 未知"
         }
         DownloadStatus.Merging -> "合成中 · ${(mergeProgress * 100).toInt()}%"
-        DownloadStatus.Completed -> task.output?.let { "已完成 · ${formatDownloadBytes(it.size)}" } ?: "已完成"
+        DownloadStatus.Completed -> task.output?.let { "已完成 · ${it.size.formatBytes()}" } ?: "已完成"
         DownloadStatus.Failed -> task.error?.takeIf { it.isNotBlank() } ?: "下载失败"
         DownloadStatus.Queued, DownloadStatus.WaitingForMerge, DownloadStatus.Saving, DownloadStatus.Canceled -> task.status.title
     }
@@ -122,11 +123,4 @@ fun ShowDownloadTaskCard(
             }
         }
     }
-}
-
-internal fun formatDownloadBytes(bytes: Long): String = when {
-    bytes >= 1024L * 1024 * 1024 -> "${(bytes / (1024.0 * 1024 * 1024) * 10).toLong() / 10.0} GB"
-    bytes >= 1024L * 1024 -> "${(bytes / (1024.0 * 1024) * 10).toLong() / 10.0} MB"
-    bytes >= 1024 -> "${(bytes / 1024.0 * 10).toLong() / 10.0} KB"
-    else -> "$bytes B"
 }

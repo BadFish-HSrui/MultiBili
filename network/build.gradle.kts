@@ -62,6 +62,7 @@ kotlin {
         commonMain {
             dependencies {
                 implementation(libs.kotlin.stdlib)
+                implementation(libs.jako.stdlib)
                 // Add KMP dependencies here
                 implementation(libs.ktor.client.core)
                 implementation(libs.ktor.client.content.negotiation)

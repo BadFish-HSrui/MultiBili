@@ -1,3 +1,6 @@
 package tv.hsrui.network.utils
 
-expect fun String.toMD5(): String
+import java.security.MessageDigest
+
+fun String.toMD5(): String =
+    MessageDigest.getInstance("MD5").digest(encodeToByteArray()).toHexString()

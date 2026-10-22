@@ -26,6 +26,11 @@ dependencyResolutionManagement {
         }
         mavenCentral()
         maven("https://jogamp.org/deployment/maven")
+        maven("https://central.sonatype.com/repository/maven-snapshots/") {
+            content {
+                includeGroup("com.bennyhuo.jako")
+            }
+        }
     }
 }
 

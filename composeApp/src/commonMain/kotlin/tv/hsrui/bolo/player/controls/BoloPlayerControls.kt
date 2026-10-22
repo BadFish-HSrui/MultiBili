@@ -181,6 +181,7 @@ import tv.hsrui.network.feature.player.enumModels.AudioQuality
 import tv.hsrui.network.feature.player.PlayerChapterData
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.subtitle.SubtitleItem
+import tv.hsrui.network.utils.formatToDuration
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -1415,8 +1416,8 @@ fun BoloPlayerControls(
 
                                 // 时间显示
                                 Text(
-                                    text = "${displayedPositionMs.formatPlayerDuration()} / " +
-                                        playState.durationMs.formatPlayerDuration(),
+                                    text = "${(displayedPositionMs.coerceAtLeast(0L) / 1_000L).formatToDuration()} / " +
+                                        (playState.durationMs.coerceAtLeast(0L) / 1_000L).formatToDuration(),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White
                                 )
@@ -1657,7 +1658,8 @@ fun BoloPlayerControls(
                     }
                 } else if (previewPositionMs != null) {
                     Text(
-                        text = "${previewPositionMs.formatPlayerDuration()} / ${playState.durationMs.formatPlayerDuration()}",
+                        text = "${(previewPositionMs.coerceAtLeast(0L) / 1_000L).formatToDuration()} / " +
+                            (playState.durationMs.coerceAtLeast(0L) / 1_000L).formatToDuration(),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelMedium,
                         color = Color.White,
@@ -1768,22 +1770,6 @@ fun BoloPlayerControls(
                 },
             )
         }
-    }
-}
-
-private fun Long.formatPlayerDuration(): String {
-    val totalSeconds = coerceAtLeast(0L) / 1_000L
-    val hours = totalSeconds / 3_600L
-    val minutes = totalSeconds % 3_600L / 60L
-    val seconds = totalSeconds % 60L
-    return buildString {
-        if (hours > 0L) {
-            append(hours.toString().padStart(2, '0'))
-            append(':')
-        }
-        append(minutes.toString().padStart(2, '0'))
-        append(':')
-        append(seconds.toString().padStart(2, '0'))
     }
 }
 
@@ -1915,7 +1901,12 @@ private fun ChapterMenu(
                             overflow = TextOverflow.Ellipsis,
                         )
                     },
-                    leadingIcon = { Text(chapter.startMs.formatPlayerDuration(), style = MaterialTheme.typography.labelMedium) },
+                    leadingIcon = {
+                        Text(
+                            (chapter.startMs.coerceAtLeast(0L) / 1_000L).formatToDuration(),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    },
                     trailingIcon = {
                         if (chapter == currentChapter) Icon(Icons.Rounded.Check, contentDescription = "当前章节")
                     },

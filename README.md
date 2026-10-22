@@ -43,3 +43,4 @@
 - [panpf/zoomimage](https://github.com/panpf/zoomimage): 处理评论图片查看器的缩放与手势交互，以及通过子采样优化大图显示
 - [Calvin-LL/Reorderable](https://github.com/Calvin-LL/Reorderable): 用于实现拖动排序UI
 - [MrTangLuyao/Bilibili-thread-ripper](https://github.com/MrTangLuyao/Bilibili-thread-ripper): 播放源优化功能参考
+- [jako-projects/jako](https://github.com/jako-projects/jako): 跨平台数值格式化与MD5计算

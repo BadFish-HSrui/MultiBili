@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import tv.hsrui.network.utils.formatBytes
 
 @Composable
 internal fun BoloPlayerBufferingIndicator(
@@ -33,7 +34,7 @@ internal fun BoloPlayerBufferingIndicator(
         ) {
             CircularProgressIndicator(modifier = Modifier.size(28.dp), color = Color.White, strokeWidth = 2.dp)
             Text(
-                text = "缓冲中 · ${formatPlayerDownloadSpeed(downloadBytesPerSecond)}",
+                text = "缓冲中 · ${downloadBytesPerSecond?.let { "${it.formatBytes()}/s" } ?: "—"}",
                 style = MaterialTheme.typography.labelMedium,
             )
         }

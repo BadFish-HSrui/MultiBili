@@ -29,6 +29,7 @@ import tv.hsrui.bolo.download.DownloadStatus
 import tv.hsrui.bolo.download.DownloadTask
 import tv.hsrui.bolo.download.DownloadType
 import tv.hsrui.bolo.download.completedDownloadEpisodes
+import tv.hsrui.network.utils.formatBytes
 
 @Composable
 fun ShowDownloadGroupCard(
@@ -51,8 +52,12 @@ fun ShowDownloadGroupCard(
             Box(Modifier.fillMaxWidth().height(24.dp), contentAlignment = Alignment.CenterStart) {
                 LinearProgressIndicator(progress = { completed.toFloat() / total }, modifier = Modifier.fillMaxWidth())
             }
-            Text("已完成 $completed / $total $unit · ${formatDownloadBytes(speed)}/s · ${formatDownloadBytes(downloadedBytes)}",
-                style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "已完成 $completed / $total $unit · ${speed.formatBytes()}/s · ${downloadedBytes.formatBytes()}",
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             Spacer(Modifier.weight(1f))
             CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
