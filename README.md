@@ -28,7 +28,7 @@
 > 
 > [开发计划](https://github.com/BadFish-HSrui/MultiBili/issues/3) [已知问题](https://github.com/BadFish-HSrui/MultiBili/issues/4)
 > 
-> 本项目目标不是实现官方客户端的所有功能,而是优先专注于视频/番剧,当前阶段不会添加关于 私信/动态/直播 的内容
+> 本项目目标不是实现官方客户端的所有功能,而是优先专注于视频/番剧,当前阶段不会添加关于 私信/动态 的内容
 
 > [!CAUTION]
 > 为了项目的存续,**请勿在国内社交平台公开推广**
