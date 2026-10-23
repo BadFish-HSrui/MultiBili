@@ -11,6 +11,11 @@ sealed interface BoloRoute {
     @Serializable data object Main : BoloRoute
 
     @Serializable
+    sealed interface Live : BoloRoute {
+        @Serializable data class Area(val parentAreaId: Int, val areaId: Int? = null) : Live
+    }
+
+    @Serializable
     sealed interface User : BoloRoute {
         @Serializable data class Space(val mid: Long) : User
         @Serializable data class UploadsSearch(val mid: Long) : User

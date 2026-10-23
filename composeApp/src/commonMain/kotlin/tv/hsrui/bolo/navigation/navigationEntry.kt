@@ -27,6 +27,7 @@ import tv.hsrui.bolo.accountFeature.feature.watchLater.WatchLaterSearchScreen
 import tv.hsrui.bolo.userSpace.collection.UserCollectionScreen
 import tv.hsrui.bolo.userSpace.series.UserSeriesScreen
 import tv.hsrui.bolo.main.MainScreen
+import tv.hsrui.bolo.main.live.area.LiveAreaRoomsScreen
 import tv.hsrui.bolo.search.SearchInputScreen
 import tv.hsrui.bolo.search.SearchResultsScreen
 import tv.hsrui.bolo.view.video.VideoScreen
@@ -39,6 +40,15 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
     when (route) {
         is BoloRoute.Debug -> NavEntry(key = route) { DebugScreen() }
         is BoloRoute.Main -> NavEntry(key = route) { MainScreen() }
+
+        is BoloRoute.Live.Area -> NavEntry(key = route) {
+            val navigator: Navigator = koinInject()
+            LiveAreaRoomsScreen(
+                parentAreaId = route.parentAreaId,
+                areaId = route.areaId,
+                isActive = navigator.backStack.lastOrNull() == route,
+            )
+        }
 
         is BoloRoute.Search -> when (route) {
             is BoloRoute.Search.Input -> NavEntry(key = route) { SearchInputScreen() }

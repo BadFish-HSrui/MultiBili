@@ -1,6 +1,7 @@
 package tv.hsrui.bolo.main.live.area
 
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -20,9 +22,11 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.NavigateNext
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -47,6 +51,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.live.ShowLiveAreaItem
@@ -145,6 +152,7 @@ private fun LiveAreaGrid(
     gridState: LazyGridState,
     modifier: Modifier = Modifier,
 ) {
+    val navigator: Navigator = koinInject()
     val windowSize = getNowWindowSize()
     val columns = remember(windowSize) { createLiveAreaGridCells(windowSize) }
     val contentPadding = if (windowSize == AppWindowSize.COMPACT) 8.dp else 16.dp
@@ -186,11 +194,19 @@ private fun LiveAreaGrid(
                         span = { GridItemSpan(maxLineSpan) },
                         contentType = "parent",
                     ) {
-                        Text(
-                            text = parent.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { navigator.navigateTo(BoloRoute.Live.Area(parent.id)) }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = parent.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Icon(Icons.AutoMirrored.Rounded.NavigateNext, contentDescription = null, modifier = Modifier.size(24.dp))
+                        }
                     }
                     items(
                         items = visibleAreas,
@@ -200,6 +216,7 @@ private fun LiveAreaGrid(
                         ShowLiveAreaItem(
                             title = area.title,
                             iconUrl = area.iconUrl,
+                            onClick = { navigator.navigateTo(BoloRoute.Live.Area(parent.id, area.id)) },
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
