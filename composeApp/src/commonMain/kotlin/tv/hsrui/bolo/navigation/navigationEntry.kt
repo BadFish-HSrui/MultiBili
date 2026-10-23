@@ -16,6 +16,7 @@ import tv.hsrui.bolo.boloSetting.BoloSettingsScreen
 import tv.hsrui.bolo.boloSetting.setting.about.AboutScreen
 import tv.hsrui.bolo.boloSetting.setting.general.GeneralSettingsScreen
 import tv.hsrui.bolo.boloSetting.setting.playback.PlaybackSettingsScreen
+import tv.hsrui.bolo.boloSetting.setting.live.LiveSettingsScreen
 import tv.hsrui.bolo.boloSetting.setting.statistics.StatisticsScreen
 import tv.hsrui.bolo.debug.DebugScreen
 import tv.hsrui.bolo.login.LoginScreen
@@ -131,6 +132,12 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
                 contentKey = "BoloSetting.Playback",
                 metadata = ListDetailSceneStrategy.detailPane()
             ) { PlaybackSettingsScreen() }
+
+            is BoloRoute.BoloSetting.Live -> NavEntry(
+                key = route,
+                contentKey = "BoloSetting.Live",
+                metadata = ListDetailSceneStrategy.detailPane(),
+            ) { LiveSettingsScreen() }
 
             is BoloRoute.BoloSetting.Statistics -> NavEntry(
                 key = route,

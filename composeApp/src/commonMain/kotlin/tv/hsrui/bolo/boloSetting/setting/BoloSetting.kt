@@ -11,6 +11,7 @@ import tv.hsrui.bolo.navigation.BoloRoute
 enum class BoloSetting(val title: String, val icon: ImageVector, val route: BoloRoute) {
     General("通用设置", Icons.Outlined.Settings, route = BoloRoute.BoloSetting.General),
     Playback("播放设置", Icons.Outlined.PlayCircle, route = BoloRoute.BoloSetting.Playback),
+    Live("直播设置", Icons.Outlined.PlayCircle, route = BoloRoute.BoloSetting.Live),
     Statistics("统计数据", Icons.Outlined.BarChart, route = BoloRoute.BoloSetting.Statistics),
     About("关于", Icons.Outlined.Info, route = BoloRoute.BoloSetting.About)
 }
