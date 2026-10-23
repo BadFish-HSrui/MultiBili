@@ -22,7 +22,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 
 @Composable
-actual fun BoloVideoPlayer(controller: BoloPlayerController, modifier: Modifier) {
+actual fun BoloVideoPlayer(controller: BoloPlayerOutputController, modifier: Modifier) {
     val output = remember(controller) { BoloDesktopVideoOutput() }
     val backend by controller.backend.collectAsState()
     DisposableEffect(controller) {

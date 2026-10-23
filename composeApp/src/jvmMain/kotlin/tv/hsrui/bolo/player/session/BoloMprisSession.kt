@@ -64,7 +64,7 @@ internal interface BoloMprisPlayer : DBusInterface {
     class Seeked(path: String, val position: Long) : DBusSignal(path, position)
 }
 
-internal class BoloMprisSession(private val session: BoloPlaybackSession) :
+internal class BoloMprisSession(private val session: BoloSystemMediaOwner) :
     BoloSystemMediaSession, BoloMprisRoot, BoloMprisPlayer, Properties {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
@@ -164,7 +164,9 @@ internal class BoloMprisSession(private val session: BoloPlaybackSession) :
         if (interfaceName != player) return
         val number = ((if (value is Variant<*>) value.value else value) as? Number)?.toDouble() ?: return
         when (propertyName) {
-            "Rate" -> if (number == 0.0) Pause() else command(BoloSystemMediaAction.SetRate, value = number)
+            "Rate" -> if (snapshot.canSetRate) {
+                if (number == 0.0) Pause() else command(BoloSystemMediaAction.SetRate, value = number)
+            }
             "Volume" -> command(BoloSystemMediaAction.SetVolume, value = number.coerceAtLeast(0.0))
         }
     }
@@ -181,7 +183,7 @@ internal class BoloMprisSession(private val session: BoloPlaybackSession) :
                 val metadata = mutableMapOf<String, Variant<*>>()
                 if (state.metadata.mediaId.isNotEmpty()) {
                     metadata["mpris:trackid"] = Variant(trackId(state))
-                    metadata["mpris:length"] = Variant(microseconds(state.durationMs))
+                    if (!state.isLive) metadata["mpris:length"] = Variant(microseconds(state.durationMs))
                     metadata["xesam:title"] = Variant(state.metadata.title)
                     metadata["xesam:artist"] = Variant(arrayOf(state.metadata.artist))
                     metadata["xesam:album"] = Variant(state.metadata.album)
@@ -196,7 +198,8 @@ internal class BoloMprisSession(private val session: BoloPlaybackSession) :
                         else -> "Paused"
                     }),
                     "Rate" to Variant(state.playbackSpeed), "Volume" to Variant(state.volume),
-                    "MinimumRate" to Variant(0.25), "MaximumRate" to Variant(3.0),
+                    "MinimumRate" to Variant(if (state.canSetRate) 0.25 else 1.0),
+                    "MaximumRate" to Variant(if (state.canSetRate) 3.0 else 1.0),
                     "Metadata" to Variant(metadata, "a{sv}"), "Position" to Variant(microseconds(state.positionMs)),
                     "CanGoNext" to Variant(state.canNext), "CanGoPrevious" to Variant(state.canPrevious),
                     "CanPlay" to Variant(state.canPlay), "CanPause" to Variant(state.canPause),

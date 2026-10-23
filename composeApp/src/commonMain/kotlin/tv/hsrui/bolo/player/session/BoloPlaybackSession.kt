@@ -23,13 +23,15 @@ import tv.hsrui.network.feature.player.fetchSystemMediaArtwork
 import kotlin.time.TimeSource
 
 /** 页面与系统服务共享所有权，输出宿主的创建/销毁不改变会话寿命。仅在 Main 使用。 */
-class BoloPlaybackSession private constructor(val key: String) {
+class BoloPlaybackSession private constructor(val key: String) : BoloSystemMediaOwner() {
     val player = VideoPlayerViewModel(0L, 0L)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val settings: BoloSettings = getKoin().get()
     private val playerSettings: BoloPlayerSettings = getKoin().get()
     private val mutableState = MutableStateFlow(BoloSystemMediaState())
-    val state = mutableState.asStateFlow()
+    override val state = mutableState.asStateFlow()
+    override val isClosed: Boolean get() = closed
+    internal override val outputController get() = player.controller
     private var adapter: BoloSystemMediaSession? = null
     private var artworkJob: Job? = null
     private var artwork: ByteArray? = null
@@ -69,7 +71,7 @@ class BoloPlaybackSession private constructor(val key: String) {
                 val ended = !wasEnded && playback.isEnded && !playback.isPlaybackSuspended
                 wasEnded = playback.isEnded
                 publish()
-                if (ended) {
+                if (ended && isCurrent) {
                     if (player.singleEpisodeLoopEnabled) {
                         player.play()
                     } else if (playerSettings.playback.autoPlayNextEnabled && navigationEnabled) {
@@ -87,7 +89,9 @@ class BoloPlaybackSession private constructor(val key: String) {
         scope.launch { while (isActive) { delay(1_000); publish(force = true) } }
     }
 
-    private fun connect() {
+    override fun activate() {
+        if (closed || isCurrent) return
+        BoloSystemMediaOwner.acquire(this)
         adapter = try { createBoloSystemMediaSession(this) }
         catch (error: Exception) { println("系统媒体控件不可用：${error.message}"); null }
         publish(force = true)
@@ -129,8 +133,8 @@ class BoloPlaybackSession private constructor(val key: String) {
         publish(force = true)
     }
 
-    fun setForeground(active: Boolean) {
-        if (closed) return
+    override fun setForeground(active: Boolean) {
+        if (!isCurrent) return
         // 系统媒体服务可以独立于播放会话被回收，先恢复适配再恢复播放器资源。
         try { adapter?.setForeground(active) }
         catch (error: Exception) { println("系统媒体控件恢复失败：${error.message}") }
@@ -140,8 +144,8 @@ class BoloPlaybackSession private constructor(val key: String) {
         publish(force = true)
     }
 
-    fun interruptAudio(mayResume: Boolean) {
-        if (closed) return
+    override fun interruptAudio(mayResume: Boolean) {
+        if (!isCurrent) return
         val resume = mayResume && state.value.playWhenReady
         player.pause()
         interruptionRevision = player.controller.playIntentRevision.takeIf { resume }
@@ -149,19 +153,19 @@ class BoloPlaybackSession private constructor(val key: String) {
         publish(force = true)
     }
 
-    fun resumeAudioAfterInterruption(allowed: Boolean) {
+    override fun resumeAudioAfterInterruption(allowed: Boolean) {
         val revision = interruptionRevision
         interruptionRevision = null
-        if (allowed && revision != null && !closed && interruptionMedia == metadata.mediaId &&
+        if (allowed && revision != null && isCurrent && interruptionMedia == metadata.mediaId &&
             player.controller.playIntentRevision == revision) {
             player.play()
         }
     }
 
-    fun dispatch(command: BoloSystemMediaCommand) {
+    override fun dispatch(command: BoloSystemMediaCommand) {
         scope.launch {
             val snapshot = state.value
-            if (closed || command.mediaId != snapshot.metadata.mediaId || snapshot.metadata.mediaId.isEmpty()) return@launch
+            if (!isCurrent || command.mediaId != snapshot.metadata.mediaId || snapshot.metadata.mediaId.isEmpty()) return@launch
             when (command.action) {
                 BoloSystemMediaAction.Play -> if (snapshot.canPlay) { stopped = false; player.play() }
                 BoloSystemMediaAction.Pause -> if (snapshot.canPause) player.pause()
@@ -177,7 +181,7 @@ class BoloPlaybackSession private constructor(val key: String) {
                 BoloSystemMediaAction.Previous -> if (snapshot.canPrevious) previous?.invoke()
                 BoloSystemMediaAction.Next -> if (snapshot.canNext) next?.invoke()
                 BoloSystemMediaAction.Stop -> { player.pause(); player.seekToMs(0L); stopped = true }
-                BoloSystemMediaAction.SetRate -> if (snapshot.canPlay && command.value.isFinite())
+                BoloSystemMediaAction.SetRate -> if (snapshot.canPlay && snapshot.canSetRate && command.value.isFinite())
                     player.controller.setPlaybackSpeed(command.value.coerceIn(0.25, 3.0).toFloat())
                 BoloSystemMediaAction.SetVolume -> if (command.value.isFinite())
                     player.setDesktopVolume((command.value.coerceIn(0.0, 2.0) * 100).toInt())
@@ -221,29 +225,34 @@ class BoloPlaybackSession private constructor(val key: String) {
         val significant = old.copy(positionMs = value.positionMs) != value
         if (force || significant || lastPublish.elapsedNow().inWholeMilliseconds >= 1_000) {
             lastPublish = TimeSource.Monotonic.markNow()
-            try { adapter?.publish(value) }
+            try { if (isCurrent) adapter?.publish(value) }
             catch (error: Exception) { println("系统媒体状态更新失败：${error.message}") }
         }
     }
 
-    fun close() {
+    override fun close() {
         if (closed) return
         closed = true
-        if (current === this) current = null
+        BoloSystemMediaOwner.release(this)
         try { adapter?.close() } catch (error: Exception) { println("系统媒体会话释放失败：${error.message}") }
         adapter = null
         scope.cancel()
         player.closePlayback()
     }
 
+    internal override fun setVideoOutputActive(active: Boolean) = player.controller.setVideoOutputActive(active)
+
+    internal override fun releaseBackgroundResources() = player.controller.releaseBackgroundResources()
+
+    internal override suspend fun pauseAndObserve() = player.controller.pauseAndObserve()
+
     companion object {
-        var current: BoloPlaybackSession? = null
-            private set
+        val current: BoloPlaybackSession? get() = BoloSystemMediaOwner.current as? BoloPlaybackSession
 
         fun obtain(key: String): BoloPlaybackSession {
             current?.takeIf { it.key == key && !it.closed }?.let { return it }
-            current?.close()
-            return BoloPlaybackSession(key).also { current = it; it.connect() }
+            BoloSystemMediaOwner.current?.close()
+            return BoloPlaybackSession(key).also { it.activate() }
         }
     }
 }

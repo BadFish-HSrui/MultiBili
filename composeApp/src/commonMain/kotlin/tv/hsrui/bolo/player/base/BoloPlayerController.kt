@@ -13,9 +13,12 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -45,7 +48,7 @@ internal data class BoloPlayerSource(
 class BoloPlayerController(
     private val autoPlay: Boolean = true,
     private val onError: (BoloPlayerError) -> Unit = {},
-) {
+) : BoloPlayerOutputController() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutableState = MutableStateFlow(BoloPlayerState())
     val state: StateFlow<BoloPlayerState> = mutableState.asStateFlow()
@@ -60,6 +63,10 @@ class BoloPlayerController(
 
     private val mutableInfo = MutableStateFlow(BoloPlayerInfo())
     val info: StateFlow<BoloPlayerInfo> = mutableInfo.asStateFlow()
+    internal override val outputFrameRate: StateFlow<Float> = combine(state, info) { playback, info ->
+        val active = playback.playWhenReady && !playback.isEnded && !playback.isPlaybackSuspended && !playback.isRebuilding
+        (info.video.fps?.times(playback.playbackSpeed)?.takeIf { active && it.isFinite() && it > 0 } ?: 0.0).toFloat()
+    }.stateIn(scope, SharingStarted.WhileSubscribed(), 0f)
     private var mediaInfo = BoloPlayerInfo()
     private var infoPanelVisible = false
     private var lastInfoSample: TimeMark? = null
@@ -70,7 +77,7 @@ class BoloPlayerController(
     private val diagnosticsSampler = BoloPlayerDiagnosticsSampler()
     private var diagnosticsRevision = 0L
     private val mutableBackend = MutableStateFlow<BoloMpvBackend?>(null)
-    internal val backend: StateFlow<BoloMpvBackend?> = mutableBackend.asStateFlow()
+    internal override val backend: StateFlow<BoloMpvBackend?> = mutableBackend.asStateFlow()
     private val coordinator = BoloPlayerSeekCoordinator()
     private var videoUrls = emptyList<String>()
     private var audioUrls = emptyList<String>()
@@ -951,7 +958,7 @@ class BoloPlayerController(
         }
     }
 
-    fun rebuild() {
+    override fun rebuild() {
         scope.launch {
             if (disposed || resourcesSuspended || memoryRecoveryJob != null || memoryRecoveryFailed || state.value.isRebuilding || videoUrls.isEmpty()) return@launch
             allowSourceRecovery()
@@ -1307,12 +1314,12 @@ class BoloPlayerController(
         }
     }
 
-    internal fun outputAttached() {
+    internal override fun outputAttached() {
         setVideoOutputActive(true)
         scope.launch { if (!disposed && !inBackground && !resourcesSuspended && sourceRefreshJob == null && mutableBackend.value == null && videoUrls.isNotEmpty()) startLoad(state.value.displayPositionMs) }
     }
 
-    internal fun outputDetached(output: Any) {
+    internal override fun outputDetached(output: Any) {
         scope.launch {
             val engine = mutableBackend.value ?: return@launch
             engine.detachOutput(output)
@@ -1329,7 +1336,7 @@ class BoloPlayerController(
             }
         }
     }
-    fun release() { scope.launch { if (!disposed) { cancelSourceRefresh(); cancelRebuild(); releaseEngine() } } }
+    override fun release() { scope.launch { if (!disposed) { cancelSourceRefresh(); cancelRebuild(); releaseEngine() } } }
 
     private suspend fun releaseEngine() {
         val streams = streamSession

@@ -98,7 +98,7 @@ internal class BoloDesktopVideoOutput {
         }
     }
 
-    fun handleFailure(controller: BoloPlayerController, backend: BoloMpvBackend, source: Any, cause: Throwable) {
+    fun handleFailure(controller: BoloPlayerOutputController, backend: BoloMpvBackend, source: Any, cause: Throwable) {
         check(EventQueue.isDispatchThread())
         // 同一 backend 也可能解绑后重建输出，队列中的旧 renderer 错误不能影响新宿主。
         if (controller.backend.value !== backend || synchronized(frameLock) { owner !== source }) return

@@ -1,6 +1,6 @@
 package tv.hsrui.bolo.player.session
 
-internal actual fun createBoloSystemMediaSession(session: BoloPlaybackSession): BoloSystemMediaSession =
+internal actual fun createBoloSystemMediaSession(session: BoloSystemMediaOwner): BoloSystemMediaSession =
     try {
         if (System.getProperty("os.name").startsWith("Linux")) BoloMprisSession(session)
         else BoloDesktopSystemMediaNative.connect(session)

@@ -13,7 +13,7 @@ import com.google.common.util.concurrent.ListenableFuture
 
 /** Media3 只负责系统会话及通知，播放、seek 和切集仍由现有控制器执行。 */
 @UnstableApi
-internal class BoloMedia3Player(private val session: BoloPlaybackSession) : SimpleBasePlayer(Looper.getMainLooper()) {
+internal class BoloMedia3Player(private val session: BoloSystemMediaOwner) : SimpleBasePlayer(Looper.getMainLooper()) {
     private var snapshot = session.state.value
     private var released = false
 
@@ -33,7 +33,7 @@ internal class BoloMedia3Player(private val session: BoloPlaybackSession) : Simp
             if (value.canSeek) addAll(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM, Player.COMMAND_SEEK_TO_DEFAULT_POSITION)
             if (value.canPrevious) add(Player.COMMAND_SEEK_TO_PREVIOUS)
             if (value.canNext) add(Player.COMMAND_SEEK_TO_NEXT)
-            if (value.canPlay) add(Player.COMMAND_SET_SPEED_AND_PITCH)
+            if (value.canPlay && value.canSetRate) add(Player.COMMAND_SET_SPEED_AND_PITCH)
         }.build()
         val metadata = MediaMetadata.Builder().setTitle(value.metadata.title).setArtist(value.metadata.artist)
             .setAlbumTitle(value.metadata.album).setArtworkData(value.artwork, MediaMetadata.PICTURE_TYPE_FRONT_COVER).build()
@@ -41,7 +41,8 @@ internal class BoloMedia3Player(private val session: BoloPlaybackSession) : Simp
             MediaItemData.Builder(value.metadata.mediaId)
                 .setMediaItem(MediaItem.Builder().setMediaId(value.metadata.mediaId).setMediaMetadata(metadata).build())
                 .setDurationUs(if (value.durationMs > 0) value.durationMs * 1_000 else C.TIME_UNSET)
-                .setIsSeekable(value.canSeek).build(),
+                .setLiveConfiguration(if (value.isLive) MediaItem.LiveConfiguration.Builder().build() else null)
+                .setIsSeekable(value.canSeek).setIsDynamic(value.isLive).build(),
         )
         return State.Builder().setAvailableCommands(commands).setPlaylist(playlist)
             .setPlayWhenReady(value.playWhenReady, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)

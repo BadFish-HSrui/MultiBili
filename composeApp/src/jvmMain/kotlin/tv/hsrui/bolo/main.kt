@@ -29,7 +29,7 @@ import tv.hsrui.bolo.utils.file.LocalFileAccess
 import tv.hsrui.bolo.utils.file.ImageSaver
 import tv.hsrui.bolo.player.DesktopPlayerFullscreenWindow
 import tv.hsrui.bolo.player.DesktopPlayerKeyboard
-import tv.hsrui.bolo.player.session.BoloPlaybackSession
+import tv.hsrui.bolo.player.session.BoloSystemMediaOwner
 import tv.hsrui.bolo.storage.appData.AppDataStorage
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import java.awt.Dimension
@@ -48,8 +48,8 @@ fun main() {
                     scope.launch {
                         try {
                             withTimeout(10_000) {
-                                BoloPlaybackSession.current?.player?.controller?.pauseAndObserve()
-                                BoloPlaybackSession.current?.close()
+                                BoloSystemMediaOwner.current?.pauseAndObserve()
+                                BoloSystemMediaOwner.current?.close()
                                 getKoin().get<AppDataStorage>().playbackStatistics.flush()
                             }
                             exitApplication()

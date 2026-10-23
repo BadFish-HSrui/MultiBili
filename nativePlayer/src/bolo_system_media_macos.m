@@ -131,13 +131,16 @@ JNIEXPORT void JNICALL JNI(update)(JNIEnv *env, jobject self, jlong handle, jstr
         if (!media.length) { info.nowPlayingInfo = nil; info.playbackState = MPNowPlayingPlaybackStateStopped; return; }
         NSMutableDictionary *values = [@{
             MPMediaItemPropertyTitle: name,
-            MPMediaItemPropertyPlaybackDuration: @(duration / 1000.0),
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: @(position / 1000.0),
             MPNowPlayingInfoPropertyPlaybackRate: @(status == 1 ? speed : 0),
             MPNowPlayingInfoPropertyDefaultPlaybackRate: @(speed),
             MPNowPlayingInfoPropertyExternalContentIdentifier: media,
             MPNowPlayingInfoPropertyMediaType: @(MPNowPlayingInfoMediaTypeVideo),
+            MPNowPlayingInfoPropertyIsLiveStream: @((commands & 32) != 0),
         } mutableCopy];
+        if (!(commands & 32)) {
+            values[MPMediaItemPropertyPlaybackDuration] = @(duration / 1000.0);
+            values[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(position / 1000.0);
+        }
         NSCharacterSet *whitespace = NSCharacterSet.whitespaceAndNewlineCharacterSet;
         if ([author stringByTrimmingCharactersInSet:whitespace].length) values[MPMediaItemPropertyArtist] = author;
         if ([collection stringByTrimmingCharactersInSet:whitespace].length) values[MPMediaItemPropertyAlbumTitle] = collection;

@@ -14,7 +14,7 @@ import platform.CoreGraphics.CGRectMake
 import platform.UIKit.UIView
 
 @Composable
-actual fun BoloVideoPlayer(controller: BoloPlayerController, modifier: Modifier) {
+actual fun BoloVideoPlayer(controller: BoloPlayerOutputController, modifier: Modifier) {
     val host = remember { UIView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0)) }
     val backend by controller.backend.collectAsState()
     DisposableEffect(controller, host) {

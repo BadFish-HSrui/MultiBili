@@ -25,7 +25,7 @@ import tv.hsrui.bolo.utils.url.AppContext
 
 @UnstableApi
 class BoloMediaSessionService : MediaSessionService() {
-    private var owner: BoloPlaybackSession? = null
+    private var owner: BoloSystemMediaOwner? = null
     private var mediaSession: MediaSession? = null
     private var player: BoloMedia3Player? = null
     private lateinit var audioManager: AudioManager
@@ -86,7 +86,7 @@ class BoloMediaSessionService : MediaSessionService() {
         if (owner == null) stopPlaybackService()
     }
 
-    private fun install(session: BoloPlaybackSession) {
+    private fun install(session: BoloSystemMediaOwner) {
         if (owner === session) return
         releaseSession()
         owner = session
@@ -193,11 +193,11 @@ class BoloMediaSessionService : MediaSessionService() {
         // 与 Media3 默认通知 ID 一致，初始前台通知可原位替换。
         private const val NOTIFICATION_ID = 1001
         private var instance: BoloMediaSessionService? = null
-        private var desired: BoloPlaybackSession? = null
+        private var desired: BoloSystemMediaOwner? = null
         private var ready = CompletableDeferred<BoloMediaSessionService>()
 
-        internal fun attach(session: BoloPlaybackSession) {
-            if (BoloPlaybackSession.current !== session) return
+        internal fun attach(session: BoloSystemMediaOwner) {
+            if (BoloSystemMediaOwner.current !== session) return
             desired = session
             instance?.let { it.install(session); return }
             val intent = Intent(AppContext.instance, BoloMediaSessionService::class.java)
@@ -205,11 +205,11 @@ class BoloMediaSessionService : MediaSessionService() {
             else AppContext.instance.startService(intent)
         }
 
-        internal fun publish(session: BoloPlaybackSession, state: BoloSystemMediaState) {
+        internal fun publish(session: BoloSystemMediaOwner, state: BoloSystemMediaState) {
             instance?.takeIf { it.owner === session }?.publishState(state)
         }
 
-        internal fun detach(session: BoloPlaybackSession) {
+        internal fun detach(session: BoloSystemMediaOwner) {
             if (desired !== session) return
             desired = null
             instance?.stopPlaybackService()

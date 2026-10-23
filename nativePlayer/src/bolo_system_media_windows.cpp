@@ -241,8 +241,8 @@ extern "C" JNIEXPORT void JNICALL JNI(update)(JNIEnv *env, jobject, jlong handle
         check(bridge->display->Update());
         Com<Media::ISystemMediaTransportControlsTimelineProperties> timeline;
         activate(L"Windows.Media.SystemMediaTransportControlsTimelineProperties", timeline);
-        const int64_t end = std::max<int64_t>(duration, 0) * 10000;
-        const int64_t current = std::min<int64_t>(std::max<int64_t>(position, 0) * 10000, end);
+        const int64_t end = (commands & 32) ? 0 : std::max<int64_t>(duration, 0) * 10000;
+        const int64_t current = (commands & 32) ? 0 : std::min<int64_t>(std::max<int64_t>(position, 0) * 10000, end);
         timeline->put_StartTime({0}); timeline->put_EndTime({end});
         timeline->put_MinSeekTime({(commands & 4) ? 0 : current});
         timeline->put_MaxSeekTime({(commands & 4) ? end : current});
