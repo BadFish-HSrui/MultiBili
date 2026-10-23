@@ -1,6 +1,7 @@
 package tv.hsrui.bolo.livePlayer.base
 
 data class LivePlayerState(
+    val localReplayEnabled: Boolean = false,
     val playWhenReady: Boolean = false,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,

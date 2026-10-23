@@ -41,4 +41,30 @@ class LiveSettings(settingsKSafe: KSafePlain) {
             storedRecordQualitySelectionEnabled = value
             currentRecordQualitySelectionEnabled = value
         }
+
+    private var storedLocalReplayEnabled by settingsKSafe(false, key = "bolo_live_local_replay_enabled")
+    private var currentLocalReplayEnabled by mutableStateOf(storedLocalReplayEnabled)
+    var localReplayEnabled: Boolean
+        get() = currentLocalReplayEnabled
+        set(value) {
+            if (currentLocalReplayEnabled == value) return
+            storedLocalReplayEnabled = value
+            currentLocalReplayEnabled = value
+        }
+
+    private var storedCacheSizeMiB by settingsKSafe(256, key = "bolo_live_cache_size_mib")
+    private var currentCacheSizeMiB by mutableStateOf(normalizeCacheSizeMiB(storedCacheSizeMiB))
+    var cacheSizeMiB: Int
+        get() = currentCacheSizeMiB
+        set(value) {
+            val normalized = normalizeCacheSizeMiB(value)
+            if (storedCacheSizeMiB == normalized) return
+            storedCacheSizeMiB = normalized
+            currentCacheSizeMiB = normalized
+        }
+
+    private fun normalizeCacheSizeMiB(value: Int): Int = when (value) {
+        64, 128, 256, 512, 1024 -> value
+        else -> 256
+    }
 }

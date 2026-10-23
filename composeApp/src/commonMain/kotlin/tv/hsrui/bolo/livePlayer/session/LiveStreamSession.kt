@@ -39,6 +39,8 @@ internal class LiveStreamSession(
     private val stream: LivePlayStreamData,
     private val roomId: Long,
     private val url: String,
+    localReplayEnabled: Boolean = false,
+    val cacheCapacityBytes: Long = 256L * 1024 * 1024,
     private val onFailure: (Throwable) -> Unit,
 ) : BoloMpvStreamSource {
     val uri = "bolo-stream://live/$generation/${stream.formatName}"
@@ -58,7 +60,8 @@ internal class LiveStreamSession(
     val receivedBytes: Long get() = received.load()
 
     val isHls = stream.protocolName == "http_hls" && stream.formatName in setOf("fmp4", "ts")
-    val cache = LivePlaybackCache(mutex = transferMutex)
+    val localReplayEnabled = localReplayEnabled && isHls
+    val cache = LivePlaybackCache(capacity = cacheCapacityBytes, mutex = transferMutex)
     private var collector: Job? = null
     private var nextSequence: Long? = null
     private var index = LiveHlsMediaIndex(stream.formatName)
@@ -72,7 +75,7 @@ internal class LiveStreamSession(
 
     /** 同一临界区内采集实际缓存正文量与累计下载量。 */
     suspend fun transferSnapshot(): Pair<Long, Long> = transferMutex.withLock {
-        val cached = if (isHls) cache.snapshot.value.cachedBytes else buffer.bufferedBytes.value.toLong()
+        val cached = if (localReplayEnabled) cache.snapshot.value.cachedBytes else buffer.bufferedBytes.value.toLong()
         cached to received.load()
     }
 
@@ -95,14 +98,18 @@ internal class LiveStreamSession(
         collector = if (!active) previous else scope.launch {
             previous?.join()
             try {
-                if (isHls) runHls() else downloadFlv()
+                when {
+                    localReplayEnabled -> runHls()
+                    isHls -> runHlsInstant()
+                    else -> downloadFlv()
+                }
                 check(ready.isCompleted) { "直播媒体为空" }
-                if (isHls) cache.finish() else buffer.finish()
+                if (localReplayEnabled) cache.finish() else buffer.finish()
             } catch (error: Throwable) {
                 currentCoroutineContext().ensureActive()
                 val wasReady = ready.isCompleted
                 ready.completeExceptionally(error)
-                if (!isHls) buffer.close(error)
+                if (!localReplayEnabled) buffer.close(error)
                 if (wasReady && !closed.load()) onFailure(error)
             }
         }
@@ -111,6 +118,118 @@ internal class LiveStreamSession(
     fun retry(address: String) {
         playlistUrl = address
         setCollecting(true)
+    }
+
+    private suspend fun runHlsInstant() = coroutineScope {
+        var loadedAt = TimeSource.Monotonic.markNow()
+        val first = refreshPlaylist()
+        mutablePlaylist.value = first
+        val initialization = CompletableDeferred<Pair<LiveHlsResourceData, Pair<Long, Long>>>()
+        val refresh = launch {
+            var previous = first
+            var changed = true
+            var advancedAt = TimeSource.Monotonic.markNow()
+            while (isActive && !previous.ended) {
+                val interval = if (changed) previous.targetDurationMs else maxOf(1, previous.targetDurationMs / 2)
+                delay((interval - loadedAt.elapsedNow().inWholeMilliseconds).coerceAtLeast(0))
+                loadedAt = TimeSource.Monotonic.markNow()
+                val next = refreshPlaylist()
+                val oldSegments = previous.segments.associateBy { it.sequence }
+                check(next.segments.none { segment -> oldSegments[segment.sequence]?.let {
+                    identity(it) != identity(segment) || it.discontinuity != segment.discontinuity || it.isGap != segment.isGap
+                } == true } && (next.segments.lastOrNull()?.sequence ?: Long.MAX_VALUE) >=
+                    (previous.segments.lastOrNull()?.sequence ?: 0)) { "直播清单时间轴已变化" }
+                changed = next != previous
+                if (changed && initialization.isCompleted) {
+                    val (resource, fingerprint) = initialization.await()
+                    val nextInitialization = next.segments.lastOrNull()?.initialization
+                    if (nextInitialization != null &&
+                        io.ktor.http.Url(nextInitialization.url).encodedPath == io.ktor.http.Url(resource.url).encodedPath &&
+                        nextInitialization.range == resource.range) {
+                        check(downloadResourceToBuffer(nextInitialization, deliver = false, fingerprint = true) == fingerprint) {
+                            "直播初始化内容已变化"
+                        }
+                    }
+                }
+                if (next.segments.lastOrNull()?.sequence != previous.segments.lastOrNull()?.sequence) {
+                    advancedAt = TimeSource.Monotonic.markNow()
+                } else check(next.ended || advancedAt.elapsedNow().inWholeMilliseconds < maxOf(30_000, next.targetDurationMs * 3)) {
+                    "直播清单长时间没有新分片"
+                }
+                mutablePlaylist.value = next
+                previous = next
+            }
+        }
+        try {
+            var sequence: Long? = null
+            var previous: LiveHlsSegmentData? = null
+            while (isActive) {
+                val current = checkNotNull(mutablePlaylist.value)
+                if (sequence == null) {
+                    val available = current.segments.dropWhile { it.sequence <= (current.segments.lastOrNull { item -> item.isGap }?.sequence ?: -1) }
+                    sequence = available.lastOrNull { it.startsWithKeyframe == true || current.independentSegments }?.sequence
+                        ?: available.firstOrNull()?.sequence
+                }
+                val segment = current.segments.firstOrNull { sequence != null && it.sequence >= sequence }
+                if (segment == null) {
+                    if (current.ended) break
+                    mutablePlaylist.first { it != current }
+                    continue
+                }
+                check(segment.sequence == sequence && !segment.isGap) { "直播分片出现缺口" }
+                check(previous?.let {
+                    val previousTime = it.mediaStartTimeMs
+                    val currentTime = segment.mediaStartTimeMs
+                    it.discontinuity != segment.discontinuity ||
+                        identity(it).last() != identity(segment).last() ||
+                        previousTime != null && currentTime != null && currentTime < previousTime
+                } != true) { "直播分片连续区间已变化" }
+                if (previous == null) {
+                    if (stream.formatName == "fmp4") checkNotNull(segment.initialization) { "直播初始化片段缺失" }
+                    segment.initialization?.let {
+                        initialization.complete(it to downloadResourceToBuffer(it, fingerprint = true))
+                    }
+                }
+                downloadResourceToBuffer(segment.resource)
+                previous = segment
+                sequence = segment.sequence + 1
+            }
+        } finally { refresh.cancel() }
+    }
+
+    private suspend fun downloadResourceToBuffer(
+        resource: LiveHlsResourceData,
+        deliver: Boolean = true,
+        fingerprint: Boolean = false,
+    ): Pair<Long, Long> {
+        repeat(2) { attempt ->
+            var delivered = false
+            var size = 0L
+            var hash = -3750763034362895579L
+            try {
+                fetchLiveStream(resource.url, roomId, resource.range,
+                    receiveLimit = if (fingerprint) 1024 * 1024 else null,
+                    onReceived = ::onReceived) { bytes, offset, length ->
+                    size += length
+                    if (fingerprint) for (index in offset until offset + length) {
+                        hash = (hash xor (bytes[index].toLong() and 255)) * 1099511628211L
+                    }
+                    if (deliver) {
+                        // 部分正文一旦进入读取缓冲，就必须由新代次恢复，不能追加重试正文。
+                        delivered = true
+                        buffer.write(bytes, offset, length)
+                        ready.complete(Unit)
+                    }
+                }
+                check(size > 0) { "直播媒体正文为空" }
+                return size to hash
+            } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
+                if (delivered || attempt == 1) throw error
+                delay(250)
+            }
+        }
+        error("直播媒体请求失败")
     }
 
     private suspend fun runHls() = coroutineScope {

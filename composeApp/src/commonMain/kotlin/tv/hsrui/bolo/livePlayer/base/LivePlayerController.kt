@@ -21,6 +21,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import org.koin.mp.KoinPlatform.getKoin
+import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.boloSetting.setting.live.LiveSettings
 import tv.hsrui.bolo.player.base.BoloMpvBackend
 import tv.hsrui.bolo.player.base.BoloMpvEvent
 import tv.hsrui.bolo.player.base.BoloPlayerDiagnosticsSampler
@@ -38,7 +41,9 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
 
 /** 直播调度与字节流独立于点播；公开操作归 Main 所有。 */
-class LivePlayerController : BoloPlayerOutputController() {
+class LivePlayerController(
+    private val settings: LiveSettings = getKoin().get<BoloSettings>().live,
+) : BoloPlayerOutputController() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutableState = MutableStateFlow(LivePlayerState())
     val state: StateFlow<LivePlayerState> = mutableState.asStateFlow()
@@ -62,6 +67,8 @@ class LivePlayerController : BoloPlayerOutputController() {
     private var urlRetries = 0
     private var loadedAt: TimeMark? = null
     private var streamSession: LiveStreamSession? = null
+    private var localReplayEnabled = false
+    private var cacheCapacityBytes = 256L * 1024 * 1024
     private val playbackTimeline = LivePlaybackTimeline()
     val timeline = playbackTimeline.state
     private var timelineJob: Job? = null
@@ -93,7 +100,7 @@ class LivePlayerController : BoloPlayerOutputController() {
     init {
         scope.launch {
             while (isActive) {
-                if (streamSession?.isHls == false) playbackTimeline.observeInstant(state.value.playWhenReady)
+                if (!localReplayEnabled) playbackTimeline.observeInstant(state.value.playWhenReady)
                 else playbackTimeline.tick()
                 sampleInfo()
                 delay(250)
@@ -104,7 +111,7 @@ class LivePlayerController : BoloPlayerOutputController() {
     fun load(stream: LivePlayStreamData, roomId: Long, playWhenReady: Boolean, liveStartTimeEpochSeconds: Long? = null) {
         if (disposed) return
         playIntentRevision++
-        val keepCache = streamSession?.isHls == true && this.roomId == roomId &&
+        val keepCache = streamSession?.localReplayEnabled == true && this.roomId == roomId &&
             this.stream?.currentQn == stream.currentQn && this.stream?.codec == stream.codec &&
             this.stream?.formatName == stream.formatName && broadcastStart == liveStartTimeEpochSeconds
         if (!keepCache) {
@@ -114,6 +121,9 @@ class LivePlayerController : BoloPlayerOutputController() {
             timelineJob?.cancel()
             playbackTimeline.reset()
             sourceRevision++
+            localReplayEnabled = settings.localReplayEnabled && stream.protocolName == "http_hls" &&
+                stream.formatName in setOf("fmp4", "ts")
+            cacheCapacityBytes = settings.cacheSizeMiB.toLong() * 1024 * 1024
         }
         broadcastStart = liveStartTimeEpochSeconds
         playbackTimeline.setStartTime(liveStartTimeEpochSeconds)
@@ -125,12 +135,12 @@ class LivePlayerController : BoloPlayerOutputController() {
         urls = stream.urls.filter { it.isNotBlank() }.distinct()
         urlIndex = 0
         urlRetries = 0
-        mutableState.value = LivePlayerState(playWhenReady = playWhenReady && foreground)
+        mutableState.value = LivePlayerState(localReplayEnabled = localReplayEnabled, playWhenReady = playWhenReady && foreground)
         if (roomId <= 0L || urls.isEmpty()) {
             fail("直播播放地址为空")
             return
         }
-        if (!foreground) {
+        if (!foreground || !localReplayEnabled && !playWhenReady) {
             closeEngine(suspended = true)
             return
         }
@@ -139,7 +149,7 @@ class LivePlayerController : BoloPlayerOutputController() {
     }
 
     private fun startLoad(targetMs: Long? = null, live: Boolean = targetMs == null) {
-        if (disposed || !foreground || urls.isEmpty()) return
+        if (disposed || !foreground || urls.isEmpty() || !localReplayEnabled && !state.value.playWhenReady) return
         val expected = ++generation
         resetInfoSampling(clearMedia = true)
         readerInvalidated = false
@@ -189,15 +199,19 @@ class LivePlayerController : BoloPlayerOutputController() {
                 var streams = streamSession
                 if (streams == null) {
                     val revision = sourceRevision
-                    streams = LiveStreamSession(revision, checkNotNull(stream), roomId, urls[urlIndex]) { error ->
+                    lateinit var collecting: LiveStreamSession
+                    collecting = LiveStreamSession(revision, checkNotNull(stream), roomId, urls[urlIndex],
+                        localReplayEnabled = localReplayEnabled, cacheCapacityBytes = cacheCapacityBytes) { error ->
                         scope.launch {
-                            if (!disposed && foreground && sourceRevision == revision) retrySource("直播媒体读取失败：${error.message ?: "未知错误"}", reload = false)
+                            if (!disposed && foreground && sourceRevision == revision && streamSession === collecting) {
+                                retrySource("直播媒体读取失败：${error.message ?: "未知错误"}", reload = false)
+                            }
                         }
                     }
+                    streams = collecting
                     streamSession = streams
-                    val collecting = streams
                     timelineJob?.cancel()
-                    timelineJob = scope.launch {
+                    timelineJob = if (!collecting.localReplayEnabled) null else scope.launch {
                         collecting.cache.snapshot.collect { snapshot ->
                             playbackTimeline.update(snapshot)
                             val position = timeline.value.positionMs
@@ -210,7 +224,7 @@ class LivePlayerController : BoloPlayerOutputController() {
                 if (!isCurrent(expected, current)) return@launch
                 val source: BoloMpvStreamSource
                 val uri: String
-                if (streams.isHls) {
+                if (streams.localReplayEnabled) {
                     streams.cache.awaitSegment()
                     val segment = checkNotNull(streams.cache.select(targetMs))
                     val cached = LiveCachedStreamSource(streams.cache, segment, expected, checkNotNull(stream).formatName) { next ->
@@ -359,7 +373,7 @@ class LivePlayerController : BoloPlayerOutputController() {
                 receivedBytes = received,
                 cachedBytes = cachedBytes,
                 downloadBytesPerSecond = speed,
-                timeline = timeline.value.takeIf { streams.isHls },
+                timeline = timeline.value.takeIf { streams.localReplayEnabled },
             )
         } else updated = updated.copy(receivedBytes = null, cachedBytes = null, downloadBytesPerSecond = null,
             cachedDurationMs = null, forwardDurationMs = null, liveOffsetMs = null)
@@ -409,20 +423,21 @@ class LivePlayerController : BoloPlayerOutputController() {
     private fun retrySource(message: String, ended: Boolean = false, reload: Boolean = true) {
         if (disposed) return
         resetRetriesAfterPlayback()
-        val retainCache = streamSession?.isHls == true && streamSession?.cache?.snapshot?.value?.segments?.isNotEmpty() == true
+        val retainCache = streamSession?.localReplayEnabled == true && streamSession?.cache?.snapshot?.value?.segments?.isNotEmpty() == true
         if (!retainCache) {
+            streamSession?.let { retiringStream = it }
             streamSession?.cancel()
             streamSession = null
         }
         if (!ended && urlRetries < 1) {
             urlRetries++
             streamSession?.retry(urls[urlIndex])
-            if (reload || streamSession?.isHls != true) startLoad(timeline.value.positionMs, timeline.value.isLive)
+            if (reload || streamSession?.localReplayEnabled != true) startLoad(timeline.value.positionMs, timeline.value.isLive)
         } else if (urlIndex + 1 < urls.size) {
             urlIndex++
             urlRetries = 0
             streamSession?.retry(urls[urlIndex])
-            if (reload || streamSession?.isHls != true) startLoad(timeline.value.positionMs, timeline.value.isLive)
+            if (reload || streamSession?.localReplayEnabled != true) startLoad(timeline.value.positionMs, timeline.value.isLive)
         } else fail(message, ended)
     }
 
@@ -440,7 +455,7 @@ class LivePlayerController : BoloPlayerOutputController() {
     }
 
     fun seekToMs(positionMs: Long) {
-        val streams = streamSession?.takeIf { it.isHls } ?: return
+        val streams = streamSession?.takeIf { it.localReplayEnabled } ?: return
         val latest = timeline.value.latestPositionMs ?: return
         if (timeline.value.ranges.isEmpty()) return
         val live = positionMs >= latest
@@ -449,7 +464,7 @@ class LivePlayerController : BoloPlayerOutputController() {
     }
 
     fun resumePlayback(): Boolean {
-        val streams = streamSession?.takeIf { it.isHls } ?: return false
+        val streams = streamSession?.takeIf { it.localReplayEnabled } ?: return false
         if (disposed || !foreground || state.value.error != null || state.value.isEnded) return false
         playIntentRevision++
         playbackTimeline.setPaused(false)
@@ -467,7 +482,7 @@ class LivePlayerController : BoloPlayerOutputController() {
         playbackTimeline.setPaused(true)
         mutableState.value = state.value.copy(playWhenReady = false, isPlaying = false, isBuffering = false)
         updateFrameRate()
-        applyPlayIntent()
+        if (localReplayEnabled) applyPlayIntent() else closeEngine(suspended = true)
     }
 
     private fun applyPlayIntent() {
@@ -524,8 +539,8 @@ class LivePlayerController : BoloPlayerOutputController() {
             streamSession?.setCollecting(false)
             if (!ready) closeEngine(suspended = true)
         } else {
-            streamSession?.takeIf { it.isHls }?.setCollecting(true)
-            if (streamSession == null && stream?.protocolName == "http_hls") startLoad()
+            streamSession?.takeIf { it.localReplayEnabled }?.setCollecting(true)
+            if (streamSession == null && localReplayEnabled) startLoad()
         }
         mutableState.value = state.value.copy(isPlaybackSuspended = !active || mutableBackend.value == null)
         updateFrameRate()
@@ -606,6 +621,11 @@ class LivePlayerController : BoloPlayerOutputController() {
 
     private fun closeEngine(suspended: Boolean) {
         generation++
+        if (!localReplayEnabled) {
+            streamSession?.let { retiringStream = it }
+            streamSession?.cancel()
+            streamSession = null
+        }
         resetInfoSampling(clearMedia = true)
         reader?.cancel()
         reader = null

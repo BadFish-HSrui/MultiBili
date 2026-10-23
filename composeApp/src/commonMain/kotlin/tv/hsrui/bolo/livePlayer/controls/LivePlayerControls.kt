@@ -409,7 +409,7 @@ fun LivePlayerControls(
                             .then(if (applyInsets) Modifier.windowInsetsPadding(bottomInsets) else Modifier)
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                     ) {
-                        if (timeline.canSeek) {
+                        if (playback.localReplayEnabled && timeline.canSeek) {
                             LiveProgressBar(
                                 timeline = timeline,
                                 onSeek = viewModel::seekToMs,
@@ -443,7 +443,8 @@ fun LivePlayerControls(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
-                                        text = "${displayedElapsed?.let { (it.coerceAtLeast(0) / 1000).formatToDuration() } ?: "—"} / " +
+                                        text = (if (playback.localReplayEnabled)
+                                            "${displayedElapsed?.let { (it.coerceAtLeast(0) / 1000).formatToDuration() } ?: "—"} / " else "") +
                                             (timeline.latestElapsedMs?.let { (it / 1000).formatToDuration() } ?: "—"),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = Color.White,

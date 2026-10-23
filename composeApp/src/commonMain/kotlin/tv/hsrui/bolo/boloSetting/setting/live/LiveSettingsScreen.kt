@@ -59,12 +59,15 @@ import kotlin.math.roundToInt
 fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
     val settings = koinInject<BoloSettings>().live
     var showRecordQualitySelectionInfo by remember { mutableStateOf(false) }
-    if (showRecordQualitySelectionInfo) {
+    var showPlaybackCacheInfo by remember { mutableStateOf(false) }
+    if (showRecordQualitySelectionInfo || showPlaybackCacheInfo) {
         ShowInfoDialog(onConfirm = {
             showRecordQualitySelectionInfo = false
+            showPlaybackCacheInfo = false
         }) {
             Text(
-                text = "开启后修改音画质会同时修改默认项",
+                text = if (showRecordQualitySelectionInfo) "开启后修改音画质会同时修改默认项"
+                    else "可用于加载本地回放的空间大小,过大时可能无法获取足够空间。",
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
@@ -172,6 +175,69 @@ fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 ) { Icon(Icons.Outlined.Info, contentDescription = "记录画质选择说明", modifier = Modifier.size(16.dp)) }
                                 Spacer(Modifier.weight(1f))
                                 Switch(checked = settings.recordQualitySelectionEnabled, onCheckedChange = null)
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.localReplayEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.localReplayEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("开启本地回放", style = MaterialTheme.typography.bodyLarge)
+                                Spacer(Modifier.weight(1f))
+                                Switch(checked = settings.localReplayEnabled, onCheckedChange = null)
+                            }
+                            if (settings.localReplayEnabled) {
+                                HorizontalDivider()
+                                val cacheSizes = listOf(64, 128, 256, 512, 1024)
+                                val savedIndex = cacheSizes.indexOf(settings.cacheSizeMiB)
+                                var previewIndex by remember(savedIndex) { mutableStateOf<Int?>(null) }
+                                val displayedIndex = previewIndex ?: savedIndex
+                                val displayedSize = cacheSizes[displayedIndex]
+                                val valueText = if (displayedSize == 1024) "1G" else "${displayedSize}M"
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("播放缓存", style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                    IconButton(
+                                        onClick = { showPlaybackCacheInfo = true },
+                                        modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                    ) { Icon(Icons.Outlined.Info, contentDescription = "播放缓存说明", modifier = Modifier.size(16.dp)) }
+                                    Spacer(Modifier.weight(1f))
+                                    Row(
+                                        modifier = Modifier.widthIn(max = 304.dp).fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text(valueText, modifier = Modifier.width(64.dp), style = MaterialTheme.typography.bodyMedium,
+                                            textAlign = TextAlign.End, maxLines = 1)
+                                        ShowSlider(
+                                            value = displayedIndex.toFloat(),
+                                            onValueChange = { previewIndex = it.roundToInt().coerceIn(cacheSizes.indices) },
+                                            onValueChangeFinished = {
+                                                previewIndex?.let { settings.cacheSizeMiB = cacheSizes[it] }
+                                                previewIndex = null
+                                            },
+                                            valueRange = 0f..cacheSizes.lastIndex.toFloat(),
+                                            steps = cacheSizes.size - 2,
+                                            centered = false,
+                                            showStops = true,
+                                            showTicks = true,
+                                            modifier = Modifier.weight(1f).widthIn(max = 200.dp).semantics {
+                                                contentDescription = "播放缓存"
+                                                stateDescription = valueText
+                                            },
+                                        )
+                                        IconButton(
+                                            onClick = { previewIndex = null; settings.cacheSizeMiB = 256 },
+                                            enabled = displayedSize != 256,
+                                            modifier = Modifier.size(24.dp),
+                                        ) { Icon(Icons.Rounded.RestartAlt, contentDescription = "重置播放缓存") }
+                                    }
+                                }
                             }
                         }
                     }

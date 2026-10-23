@@ -67,7 +67,7 @@ class LivePlayerViewModel internal constructor(
         if (closed || playbackSession?.isClosed == false) return
         lateinit var session: LivePlaybackSession
         session = LivePlaybackSession(
-            controller = LivePlayerController(),
+            controller = LivePlayerController(settings),
             onPlay = ::resumePlayback,
             onPause = ::pause,
             onVolume = ::setVolume,
