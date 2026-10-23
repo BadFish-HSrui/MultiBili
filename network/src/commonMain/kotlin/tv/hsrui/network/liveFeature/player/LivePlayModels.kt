@@ -74,6 +74,7 @@ internal fun parseLiveHlsStreams(
     content: String,
     masterUrl: String,
     stream: LivePlayStreamData,
+    inheritSelection: Boolean = false,
 ): List<LivePlayStreamData> {
     val lines = content.removePrefix("\uFEFF").lineSequence().map(String::trim).filter(String::isNotEmpty).iterator()
     check(lines.hasNext() && lines.next() == "#EXTM3U") { "直播画质清单格式无效" }
@@ -85,15 +86,17 @@ internal fun parseLiveHlsStreams(
             val attributes = attributePattern.findAll(line.substringAfter(':')).associate {
                 it.groupValues[1] to it.groupValues[2].removeSurrounding("\"")
             }
-            val codecs = attributes["CODECS"].orEmpty().split(',').mapNotNull { value ->
+            val codecs = attributes["CODECS"]?.split(',')?.mapNotNull { value ->
                 when (value.trim().substringBefore('.').lowercase()) {
                     "avc1", "avc3" -> LiveVideoCodec.AVC
                     "hev1", "hvc1" -> LiveVideoCodec.HEVC
                     "av01" -> LiveVideoCodec.AV1
                     else -> null
                 }
-            }.toSet()
-            pendingQn = attributes["BILI-QN"]?.toIntOrNull()?.takeIf { it > 0 && codecs == setOf(stream.codec) }
+            }?.toSet() ?: if (inheritSelection) setOf(stream.codec) else emptySet()
+            pendingQn = (attributes["BILI-QN"]?.toIntOrNull()
+                ?: stream.currentQn.takeIf { inheritSelection && "BILI-QN" !in attributes })
+                ?.takeIf { it > 0 && codecs == setOf(stream.codec) }
         } else if (!line.startsWith('#')) {
             val qn = pendingQn
             pendingQn = null

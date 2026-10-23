@@ -147,9 +147,18 @@ static int flag(mpv_node *node, const char *key) {
 }
 
 static int load_file(bolo_mpv *p, const char *video, const char *audio, const char *start, int live, int64_t generation, const char *user_agent, const char *referrer) {
+    const char *format = "";
+    if (live) {
+        const char *suffix = strrchr(video, '/');
+        if (suffix && strcmp(suffix, "/fmp4") == 0) format = "mov";
+        else if (suffix && strcmp(suffix, "/ts") == 0) format = "mpegts";
+        else if (suffix && strcmp(suffix, "/flv") == 0) format = "flv";
+        else return MPV_ERROR_INVALID_PARAMETER;
+    }
     // 每次打开都显式配置，避免同一个核心从直播切回点播后残留直播选项。
     const char *options[][2] = {
-        {"options/demuxer-lavf-o", live ? "live_start_index=-1" : ""},
+        {"options/demuxer-lavf-format", format},
+        {"options/demuxer-lavf-o", live ? "protocol_whitelist=none" : ""},
         {"options/demuxer-seekable-cache", live ? "no" : "auto"},
         {"options/demuxer-max-back-bytes", live ? "0" : "4194304"},
         {"options/cache-on-disk", "no"},
@@ -208,7 +217,8 @@ int bolo_mpv_load(bolo_mpv *p, const char *video, const char *audio, double star
 }
 
 int bolo_mpv_load_live(bolo_mpv *p, const char *url, int64_t generation, const char *user_agent, const char *referrer) {
-    // 仅保留解码所需的有界前向缓冲；恢复播放由上层重新打开实时地址。
+    // 直播网络与 HLS 调度归应用层；原生只接受已注册的媒体字节流。
+    if (!p || !url || strncmp(url, "bolo-stream://", 14) != 0) return MPV_ERROR_INVALID_PARAMETER;
     return load_file(p, url, NULL, "none", 1, generation, user_agent, referrer);
 }
 

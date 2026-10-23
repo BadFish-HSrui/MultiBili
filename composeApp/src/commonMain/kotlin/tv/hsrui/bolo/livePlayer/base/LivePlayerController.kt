@@ -21,10 +21,12 @@ import tv.hsrui.bolo.player.base.BoloMpvBackend
 import tv.hsrui.bolo.player.base.BoloMpvEvent
 import tv.hsrui.bolo.player.base.BoloPlayerOutputController
 import tv.hsrui.bolo.player.base.boloMpvDispatcher
-import tv.hsrui.network.constant.BOLO_UA
+import tv.hsrui.bolo.livePlayer.session.LiveStreamSession
 import tv.hsrui.network.liveFeature.player.LivePlayStreamData
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
-/** 直播只打开实时地址；不复用点播缓存、进度恢复或 seek 策略。公开操作归 Main 所有。 */
+/** 直播调度与字节流独立于点播；公开操作归 Main 所有。 */
 class LivePlayerController : BoloPlayerOutputController() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutableState = MutableStateFlow(LivePlayerState())
@@ -37,6 +39,10 @@ class LivePlayerController : BoloPlayerOutputController() {
     private var roomId = 0L
     private var urls = emptyList<String>()
     private var urlIndex = 0
+    private var urlRetries = 0
+    private var streamReloads = 0
+    private var loadedAt: TimeMark? = null
+    private var streamSession: LiveStreamSession? = null
     private var generation = 0L
     private var ready = false
     private var foreground = true
@@ -62,6 +68,8 @@ class LivePlayerController : BoloPlayerOutputController() {
         this.roomId = roomId
         urls = stream.urls.filter { it.isNotBlank() }.distinct()
         urlIndex = 0
+        urlRetries = 0
+        streamReloads = 0
         mutableState.value = LivePlayerState(playWhenReady = playWhenReady && foreground)
         if (roomId <= 0L || urls.isEmpty()) {
             fail("直播播放地址为空")
@@ -77,12 +85,16 @@ class LivePlayerController : BoloPlayerOutputController() {
     private fun startLoad() {
         if (disposed || urls.isEmpty()) return
         val expected = ++generation
+        val previousStream = streamSession
+        streamSession = null
+        previousStream?.cancel()
         val previousLoad = loadJob
         previousLoad?.cancel()
         val previousCommands = commandJobs.toList()
         previousCommands.forEach { it.cancel() }
         intentJob = null
         ready = false
+        loadedAt = null
         sourceFrameRate = 0f
         mutableFrameRate.value = 0f
         mutableState.value = state.value.copy(isPlaying = false, isBuffering = true,
@@ -91,6 +103,7 @@ class LivePlayerController : BoloPlayerOutputController() {
         loadJob = scope.launch {
             try {
                 previousLoad?.join()
+                previousStream?.awaitClosed()
                 previousCommands.forEach { it.join() }
                 closing?.join()
                 if (!isCurrent(expected)) return@launch
@@ -115,14 +128,27 @@ class LivePlayerController : BoloPlayerOutputController() {
                 check(current.setAudioActive(state.value.playWhenReady)) { "音频会话激活失败" }
                 if (!isCurrent(expected, current)) return@launch
                 val address = urls[urlIndex]
-                val referrer = "https://live.bilibili.com/$roomId"
+                val streams = LiveStreamSession(expected, checkNotNull(stream), roomId, address) { error ->
+                    scope.launch {
+                        if (isCurrent(expected, current)) {
+                            resetRetriesAfterPlayback()
+                            if (error is LiveStreamSession.RestartRequired && streamReloads < 2) {
+                                streamReloads++
+                                startLoad()
+                            } else retrySource("直播媒体读取失败：${error.message ?: "未知错误"}")
+                        }
+                    }
+                }
+                streamSession = streams
+                streams.prepare()
+                if (!isCurrent(expected, current)) return@launch
                 val gain = volume.toDouble()
                 val visible = foreground && videoOutputActive
                 val result = withContext(boloMpvDispatcher) {
                     if (!isCurrent(expected, current)) return@withContext 0
                     check(current.videoEnabled(visible) >= 0) { "视频轨配置失败" }
                     check(current.volume(gain) >= 0) { "音量配置失败" }
-                    current.loadLive(address, expected, BOLO_UA, referrer)
+                    current.loadLive(streams, streams.uri, expected)
                 }
                 if (!isCurrent(expected, current)) return@launch
                 if (result < 0) retrySource("直播流打开失败（$result）")
@@ -131,7 +157,7 @@ class LivePlayerController : BoloPlayerOutputController() {
                     if (isCurrent(expected, current) && !ready) retrySource("直播流加载超时")
                 }
             } catch (error: TimeoutCancellationException) {
-                if (isCurrent(expected)) fail("直播画面准备超时")
+                if (isCurrent(expected)) retrySource("直播加载超时")
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -175,6 +201,7 @@ class LivePlayerController : BoloPlayerOutputController() {
         when (event.type) {
             BoloMpvEvent.Loaded -> {
                 ready = true
+                loadedAt = TimeSource.Monotonic.markNow()
                 loadJob?.cancel()
                 loadJob = null
                 mutableState.value = state.value.copy(isBuffering = state.value.playWhenReady)
@@ -193,8 +220,8 @@ class LivePlayerController : BoloPlayerOutputController() {
                 mutableState.value = state.value.copy(isBuffering = false,
                     isPlaying = !state.value.isPlaybackSuspended)
             }
-            BoloMpvEvent.Eof -> if (ready && event.value != 0.0) retrySource("直播流已结束", ended = true)
-            BoloMpvEvent.Error -> retrySource("直播流播放失败（${event.error}）")
+            BoloMpvEvent.Eof -> if (foreground && ready && event.value != 0.0) retrySource("直播流已结束", ended = true)
+            BoloMpvEvent.Error -> if (foreground) retrySource("直播流播放失败（${event.error}）")
             BoloMpvEvent.Overflow -> fail("播放器事件队列溢出，请重新加载")
         }
         updateFrameRate()
@@ -202,10 +229,23 @@ class LivePlayerController : BoloPlayerOutputController() {
 
     private fun retrySource(message: String, ended: Boolean = false) {
         if (disposed) return
-        if (urlIndex + 1 < urls.size) {
+        resetRetriesAfterPlayback()
+        if (!ended && urlRetries < 1) {
+            urlRetries++
+            startLoad()
+        } else if (urlIndex + 1 < urls.size) {
             urlIndex++
+            urlRetries = 0
             startLoad()
         } else fail(message, ended)
+    }
+
+    private fun resetRetriesAfterPlayback() {
+        if (state.value.isPlaying && loadedAt?.elapsedNow()?.inWholeSeconds?.let { it >= 30 } == true) {
+            urlRetries = 0
+            streamReloads = 0
+            loadedAt = null
+        }
     }
 
     private fun fail(message: String, ended: Boolean = false) {
@@ -272,6 +312,7 @@ class LivePlayerController : BoloPlayerOutputController() {
         foreground = active
         if (!active) {
             pause()
+            streamSession?.cancel()
             if (!ready) closeEngine(suspended = true)
         }
         mutableState.value = state.value.copy(isPlaybackSuspended = !active || mutableBackend.value == null)
@@ -342,6 +383,9 @@ class LivePlayerController : BoloPlayerOutputController() {
 
     private fun closeEngine(suspended: Boolean) {
         generation++
+        val streams = streamSession
+        streamSession = null
+        streams?.cancel()
         ready = false
         mutableFrameRate.value = 0f
         val loading = loadJob
@@ -365,6 +409,7 @@ class LivePlayerController : BoloPlayerOutputController() {
             try {
                 withContext(NonCancellable) {
                     loading?.join()
+                    streams?.awaitClosed()
                     events?.join()
                     commands.forEach { it.join() }
                     detach?.join()

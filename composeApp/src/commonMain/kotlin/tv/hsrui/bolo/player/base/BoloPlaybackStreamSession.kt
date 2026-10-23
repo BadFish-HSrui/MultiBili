@@ -76,7 +76,7 @@ internal class BoloPlaybackStreamSession(
         },
     ),
     private val onFailure: (BoloPlaybackTrack, Throwable) -> Unit,
-) {
+) : BoloMpvStreamSource {
     internal class Reader internal constructor(val track: BoloPlaybackTrack, val job: Job) {
         val position = AtomicLong(0)
         var waiting = false // 会话 mutex 保护。
@@ -148,7 +148,7 @@ internal class BoloPlaybackStreamSession(
         tracks.values.forEach { it.ready.await() }
     }
 
-    fun cancel() {
+    override fun cancel() {
         if (closed.compareAndSet(false, true)) {
             requiredMemoryWait.store(false)
             tracks.values.forEach { it.ready.cancel() }
@@ -183,6 +183,22 @@ internal class BoloPlaybackStreamSession(
             }
         }
         signal()
+    }
+
+    override suspend fun open(uri: String): BoloMpvStreamReader? {
+        val track = when (uri) {
+            videoUri -> BoloPlaybackTrack.Video
+            audioUri -> BoloPlaybackTrack.Audio
+            else -> return null
+        }
+        val reader = open(track) ?: return null
+        return object : BoloMpvStreamReader {
+            override val job: Job = reader.job
+            override suspend fun read(bytes: ByteArray) = read(reader, bytes)
+            override suspend fun seek(position: Long) = seek(reader, position)
+            override suspend fun size() = size(reader)
+            override suspend fun close() = close(reader)
+        }
     }
 
     suspend fun open(track: BoloPlaybackTrack): Reader? = mutex.withLock {
