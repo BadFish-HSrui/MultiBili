@@ -15,6 +15,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.koin.mp.KoinPlatform.getKoin
+import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.boloSetting.setting.live.LiveSettings
 import tv.hsrui.bolo.livePlayer.base.LivePlayerController
 import tv.hsrui.bolo.livePlayer.session.LivePlaybackSession
 import tv.hsrui.network.liveFeature.player.LivePlayInfoData
@@ -32,6 +35,7 @@ class LivePlayerViewModel internal constructor(
     private val roomInfoRequest: suspend (Long) -> LiveRoomInfoData = ::fetchLiveRoomInfo,
     private val playInfoRequest: suspend (Long, Int) -> LivePlayInfoData = ::fetchLivePlayInfo,
     private val hlsRequest: suspend (Long, LivePlayStreamData) -> List<LivePlayStreamData> = ::fetchLiveHlsStreams,
+    private val settings: LiveSettings = getKoin().get<BoloSettings>().live,
 ) : ViewModel() {
     private val mutableUiState = MutableStateFlow<LivePlayerUiState>(LivePlayerUiState.Loading)
     val uiState = mutableUiState.asStateFlow()
@@ -49,7 +53,8 @@ class LivePlayerViewModel internal constructor(
         private set
     var selectedQn by mutableStateOf<Int?>(null)
         private set
-    private var targetQn = LiveVideoQuality.ORIGINAL.code
+    private var targetQn = settings.defaultVideoQuality.code
+    private val targetCodec = settings.defaultVideoCodec
     private var loadJob: Job? = null
     private var requestRevision = 0L
     private var closed = false
@@ -123,7 +128,7 @@ class LivePlayerViewModel internal constructor(
                     }.awaitAll().flatten()
                     masters + info.streams
                 }
-                val stream = checkNotNull(selectStream(streams, targetQn, LiveVideoCodec.HEVC)) {
+                val stream = checkNotNull(selectStream(streams, targetQn, targetCodec)) {
                     "暂无可用的直播播放源"
                 }
                 if (!isCurrent(session, revision)) return@launch
@@ -155,6 +160,9 @@ class LivePlayerViewModel internal constructor(
     fun selectQuality(qn: Int) {
         if (qn !in availableQns || qn == targetQn && qn == selectedQn) return
         targetQn = qn
+        if (settings.recordQualitySelectionEnabled) {
+            LiveVideoQuality.fromCode(qn)?.let { settings.defaultVideoQuality = it }
+        }
         loadPlayback()
     }
 
