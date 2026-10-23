@@ -4,6 +4,13 @@ import org.koin.mp.KoinPlatformTools
 import tv.hsrui.bolo.model.Vid
 import tv.hsrui.bolo.view.video.VideoPlaybackRequest
 
+fun openLive(roomId: Long) {
+    if (roomId <= 0) return
+    val navigator: Navigator = KoinPlatformTools.defaultContext().get().get()
+    val route = BoloRoute.View.Live(roomId)
+    if (navigator.backStack.lastOrNull() != route) navigator.navigateTo(route)
+}
+
 fun openVideoList(request: VideoPlaybackRequest.VideoList) {
     if (!request.isValid) return
     val navigator: Navigator = KoinPlatformTools.defaultContext().get().get()

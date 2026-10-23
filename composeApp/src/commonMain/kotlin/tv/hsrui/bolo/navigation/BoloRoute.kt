@@ -64,6 +64,7 @@ sealed interface BoloRoute {
 
     @Serializable
     sealed interface View : BoloRoute {
+        @Serializable data class Live(val roomId: Long) : View
         @Serializable data class Video(val vid: Vid) : View
         @Serializable data class VideoList(val request: VideoPlaybackRequest.VideoList) : View
         @Serializable data class Media(val seasonId: Long = 0, val episodeId: Long = 0) : View

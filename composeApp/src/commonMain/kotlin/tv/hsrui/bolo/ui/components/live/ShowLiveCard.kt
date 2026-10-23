@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import tv.hsrui.bolo.navigation.openLive
 import tv.hsrui.bolo.navigation.openUserSpace
 import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.bolo.utils.isCompact
@@ -49,6 +50,8 @@ fun ShowLiveCard(
     val coverSuffix = if (compact) "@400w_225h_1c.webp" else "@800w_450h_1c.webp"
 
     Card(
+        onClick = { openLive(liveInfo.roomId) },
+        enabled = liveInfo.roomId > 0,
         shape = if (compact) BoloShapes.InfoCard.Compact else BoloShapes.InfoCard.Default,
         modifier = modifier,
     ) {
