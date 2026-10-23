@@ -14,6 +14,7 @@ internal data class RawLivePlayResponse(
 internal data class RawLivePlayData(
     @SerialName("room_id") val roomId: Long,
     @SerialName("live_status") val liveStatus: Int,
+    @SerialName("live_time") val liveStartTimeEpochSeconds: Long? = null,
     @SerialName("playurl_info") val playUrlInfo: RawLivePlayUrlInfo? = null,
 )
 

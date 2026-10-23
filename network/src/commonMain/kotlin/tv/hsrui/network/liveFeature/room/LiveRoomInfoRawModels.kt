@@ -24,6 +24,7 @@ internal data class RawLiveRoomInfo(
     val cover: String = "",
     val keyframe: String = "",
     @SerialName("live_status") val liveStatus: Int,
+    @SerialName("live_start_time") val liveStartTimeEpochSeconds: Long? = null,
 )
 
 @Serializable

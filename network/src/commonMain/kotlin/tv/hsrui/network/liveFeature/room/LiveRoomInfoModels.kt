@@ -9,6 +9,7 @@ data class LiveRoomInfoData(
     val upName: String,
     val coverUrl: String,
     val isLive: Boolean,
+    val liveStartTimeEpochSeconds: Long? = null,
 )
 
 internal fun RawLiveRoomInfoResponse.toLiveRoomInfo(): LiveRoomInfoData {
@@ -26,5 +27,6 @@ internal fun RawLiveRoomInfoResponse.toLiveRoomInfo(): LiveRoomInfoData {
         upName = anchor.name,
         coverUrl = room.cover.ifBlank { room.keyframe }.trim().toHttpsUrl(),
         isLive = room.liveStatus == 1,
+        liveStartTimeEpochSeconds = room.liveStartTimeEpochSeconds?.takeIf { it > 0 },
     )
 }

@@ -63,7 +63,7 @@ class LivePlayerViewModel internal constructor(
         lateinit var session: LivePlaybackSession
         session = LivePlaybackSession(
             controller = LivePlayerController(),
-            onPlay = ::resumeLatest,
+            onPlay = ::resumePlayback,
             onPause = ::pause,
             onVolume = ::setVolume,
             onClosed = {
@@ -95,7 +95,7 @@ class LivePlayerViewModel internal constructor(
                 roomInfo = room
                 if (!room.isLive) {
                     playWhenReady = false
-                    session.controller.release()
+                    session.controller.clearMedia()
                     mutableUiState.value = LivePlayerUiState.Offline(room)
                     session.clearMedia()
                     return@launch
@@ -105,7 +105,7 @@ class LivePlayerViewModel internal constructor(
                 if (!isCurrent(session, revision)) return@launch
                 if (!info.isLive) {
                     playWhenReady = false
-                    session.controller.release()
+                    session.controller.clearMedia()
                     mutableUiState.value = LivePlayerUiState.Offline(room)
                     session.clearMedia()
                     return@launch
@@ -132,7 +132,7 @@ class LivePlayerViewModel internal constructor(
                 availableQns = qns
                 selectedQn = stream.currentQn
                 session.controller.setVolume(if (muted) 0 else volumePercent)
-                session.controller.load(stream, room.roomId, playWhenReady)
+                session.controller.load(stream, room.roomId, playWhenReady, info.liveStartTimeEpochSeconds ?: room.liveStartTimeEpochSeconds)
                 mutableUiState.value = LivePlayerUiState.Success(room, stream, qns)
                 session.updateMedia(room)
             } catch (error: Exception) {
@@ -164,6 +164,15 @@ class LivePlayerViewModel internal constructor(
         loadPlayback()
     }
 
+    fun resumePlayback() {
+        if (closed || playbackSession?.isClosed != false) return
+        playWhenReady = true
+        if (playbackSession?.controller?.resumePlayback() != true) loadPlayback()
+        syncPlayback()
+    }
+
+    fun seekToMs(positionMs: Long) { playbackSession?.controller?.seekToMs(positionMs) }
+
     fun pause() {
         playWhenReady = false
         playbackSession?.controller?.pause()
@@ -171,7 +180,7 @@ class LivePlayerViewModel internal constructor(
     }
 
     fun togglePlayback() {
-        if (playWhenReady) pause() else resumeLatest()
+        if (playWhenReady) pause() else resumePlayback()
     }
 
     fun setVolume(percent: Int) {

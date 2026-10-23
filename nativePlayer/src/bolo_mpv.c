@@ -160,6 +160,7 @@ static int load_file(bolo_mpv *p, const char *video, const char *audio, const ch
         {"options/demuxer-lavf-format", format},
         {"options/demuxer-lavf-o", live ? "protocol_whitelist=none" : ""},
         {"options/demuxer-seekable-cache", live ? "no" : "auto"},
+        {"options/rebase-start-time", live ? "no" : "yes"},
         {"options/demuxer-max-back-bytes", live ? "0" : "4194304"},
         {"options/cache-on-disk", "no"},
         {"options/network-timeout", live ? "10" : "60"},

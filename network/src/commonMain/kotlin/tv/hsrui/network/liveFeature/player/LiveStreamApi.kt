@@ -33,12 +33,12 @@ suspend fun fetchLiveHlsPlaylist(
     roomId: Long,
     stream: LivePlayStreamData? = null,
 ): LiveHlsPlaylistData = withTimeout(15_000) {
-    val pending = ArrayDeque<Pair<String, Int>>().apply { add(url to 0) }
+    val pending = ArrayDeque<Triple<String, Int, Boolean>>().apply { add(Triple(url, 0, stream?.independentSegments == true)) }
     val visited = mutableSetOf<String>()
     var failure: Exception? = null
     repeat(12) {
         if (pending.isEmpty()) throw failure ?: IllegalStateException("直播媒体清单不可用")
-        val (address, depth) = pending.removeFirst()
+        val (address, depth, inheritedIndependent) = pending.removeFirst()
         if (!visited.add(address)) return@repeat
         try {
             check(depth < 4) { "直播清单嵌套层数过多" }
@@ -48,13 +48,15 @@ suspend fun fetchLiveHlsPlaylist(
             }
             val text = content.readByteArray().decodeToString()
             val variants = text.lineSequence().count { it.trim().startsWith("#EXT-X-STREAM-INF:") }
+            val independent = inheritedIndependent || text.lineSequence().any { it.trim() == "#EXT-X-INDEPENDENT-SEGMENTS" }
             if (variants == 0) return@withTimeout parseLiveHlsPlaylist(text, response.url)
+                .copy(independentSegments = independent)
             val selected = checkNotNull(stream) { "直播多画质清单缺少目标画质和编码" }
             // 单一变体可以继承上层选择，多画质清单必须声明实际档位与编码。
             val urls = parseLiveHlsStreams(text, response.url, selected, inheritSelection = variants == 1)
                 .filter { it.currentQn == selected.currentQn }.flatMap { it.urls }
             check(urls.isNotEmpty()) { "直播嵌套清单不包含所选画质和编码" }
-            urls.asReversed().forEach { pending.addFirst(it to depth + 1) }
+            urls.asReversed().forEach { pending.addFirst(Triple(it, depth + 1, independent)) }
         } catch (error: Exception) {
             currentCoroutineContext().ensureActive()
             failure = error
@@ -63,13 +65,14 @@ suspend fun fetchLiveHlsPlaylist(
     error("直播清单跳转次数过多")
 }
 
-/** write 返回前不会复用正文块；背压等待不计入网络读取超时。 */
+/** 正文读入后先调用 onReceived，再校验并写入；write 返回前不会复用正文块，背压等待不计入读取超时。 */
 suspend fun fetchLiveStream(
     url: String,
     roomId: Long,
     range: LongRange? = null,
     receiveLimit: Long? = null,
     onResponse: suspend (LiveStreamResponseData) -> Unit = {},
+    onReceived: suspend (Int) -> Unit = {},
     write: suspend (ByteArray, Int, Int) -> Unit,
 ): LiveStreamResponseData = coroutineScope {
     require(roomId > 0 && (url.startsWith("https://") || url.startsWith("http://"))) { "直播媒体地址无效" }
@@ -130,6 +133,7 @@ suspend fun fetchLiveStream(
                     break
                 }
                 if (count == 0) continue
+                onReceived(count)
                 check(remaining > 0) { "直播媒体超过接收上限或声明长度" }
                 received += count
                 write(buffer, 0, count)

@@ -17,6 +17,8 @@ data class LiveHlsSegmentData(
     val initialization: LiveHlsResourceData?,
     val programDateTimeMs: Long?,
     val isGap: Boolean,
+    val mediaStartTimeMs: Long? = null,
+    val startsWithKeyframe: Boolean? = null,
 )
 
 data class LiveHlsPlaylistData(
@@ -24,6 +26,7 @@ data class LiveHlsPlaylistData(
     val targetDurationMs: Long,
     val segments: List<LiveHlsSegmentData>,
     val ended: Boolean,
+    val independentSegments: Boolean = false,
 )
 
 internal fun parseLiveHlsPlaylist(content: String, url: String): LiveHlsPlaylistData {
@@ -39,6 +42,9 @@ internal fun parseLiveHlsPlaylist(content: String, url: String): LiveHlsPlaylist
     var date: Long? = null
     var gap = false
     var ended = false
+    var independent = false
+    var mediaTime: Long? = null
+    var keyframe: Boolean? = null
     val segments = mutableListOf<LiveHlsSegmentData>()
     fun positiveDuration(value: String): Long {
         val seconds = value.toDoubleOrNull()
@@ -96,6 +102,12 @@ internal fun parseLiveHlsPlaylist(content: String, url: String): LiveHlsPlaylist
             line.startsWith("#EXT-X-KEY:") -> check(attributes(line)["METHOD"] == "NONE") { "不支持加密的直播媒体清单" }
             line.startsWith("#EXT-X-PROGRAM-DATE-TIME:") -> date =
                 runCatching { Instant.parse(line.substringAfter(':')).toEpochMilliseconds() }.getOrNull()
+            line == "#EXT-X-INDEPENDENT-SEGMENTS" -> independent = true
+            line.startsWith("#EXT-BILI-AUX:") -> {
+                val fields = line.substringAfter(':').split('|')
+                mediaTime = fields.getOrNull(0)?.toLongOrNull(16)?.takeIf { it >= 0 }
+                keyframe = when (fields.getOrNull(1)) { "K" -> true; "N" -> false; else -> null }
+            }
             line == "#EXT-X-GAP" -> gap = true
             line == "#EXT-X-ENDLIST" -> ended = true
             line.startsWith("#EXT-X-STREAM-INF:") -> error("需要直播媒体清单，收到多画质清单")
@@ -103,15 +115,17 @@ internal fun parseLiveHlsPlaylist(content: String, url: String): LiveHlsPlaylist
                 val length = checkNotNull(duration) { "直播分片时长缺失" }
                 check(sequence < Long.MAX_VALUE)
                 val media = resource(line, byteRange, previous)
-                segments += LiveHlsSegmentData(sequence++, discontinuity, length, media, initialization, date, gap)
+                segments += LiveHlsSegmentData(sequence++, discontinuity, length, media, initialization, date, gap, mediaTime, keyframe)
                 date = date?.takeIf { it <= Long.MAX_VALUE - length }?.plus(length)
                 previous = media
                 duration = null
                 byteRange = null
                 gap = false
+                mediaTime = null
+                keyframe = null
             }
         }
     }
     check(target > 0 && duration == null) { "直播媒体清单不完整" }
-    return LiveHlsPlaylistData(url, target, segments, ended)
+    return LiveHlsPlaylistData(url, target, segments, ended, independent)
 }

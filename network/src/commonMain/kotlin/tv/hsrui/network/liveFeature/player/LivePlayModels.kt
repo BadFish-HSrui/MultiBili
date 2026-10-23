@@ -11,6 +11,7 @@ data class LivePlayInfoData(
     val roomId: Long,
     val isLive: Boolean,
     val streams: List<LivePlayStreamData>,
+    val liveStartTimeEpochSeconds: Long? = null,
 ) {
     val availableQns: List<Int>
         get() = streams.flatMap { it.availableQns }.distinct().sortedDescending()
@@ -28,6 +29,7 @@ data class LivePlayStreamData(
     val masterUrl: String?,
     val hdrType: Int,
     val isDrm: Boolean,
+    val independentSegments: Boolean = false,
 ) {
     val quality: LiveVideoQuality?
         get() = LiveVideoQuality.fromCode(currentQn)
@@ -67,7 +69,8 @@ internal fun RawLivePlayResponse.toLivePlayInfo(): LivePlayInfoData {
             }
         }
     }
-    return LivePlayInfoData(roomId = room.roomId, isLive = isLive, streams = streams)
+    return LivePlayInfoData(roomId = room.roomId, isLive = isLive, streams = streams,
+        liveStartTimeEpochSeconds = room.liveStartTimeEpochSeconds?.takeIf { it > 0 })
 }
 
 internal fun parseLiveHlsStreams(
@@ -80,6 +83,7 @@ internal fun parseLiveHlsStreams(
     check(lines.hasNext() && lines.next() == "#EXTM3U") { "直播画质清单格式无效" }
     val attributePattern = Regex("""([A-Z0-9-]+)=("[^"]*"|[^,]*)""")
     val urlsByQn = linkedMapOf<Int, MutableList<String>>()
+    val independent = stream.independentSegments || content.lineSequence().any { it.trim() == "#EXT-X-INDEPENDENT-SEGMENTS" }
     var pendingQn: Int? = null
     for (line in lines) {
         if (line.startsWith("#EXT-X-STREAM-INF:")) {
@@ -115,6 +119,6 @@ internal fun parseLiveHlsStreams(
         }
     }
     return urlsByQn.map { (qn, urls) ->
-        stream.copy(currentQn = qn, availableQns = listOf(qn), urls = urls)
+        stream.copy(currentQn = qn, availableQns = listOf(qn), urls = urls, independentSegments = independent)
     }
 }

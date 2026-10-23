@@ -11,9 +11,11 @@ import tv.hsrui.bolo.player.base.BoloPlaybackBuffer
 import tv.hsrui.bolo.player.base.allocatePlaybackBuffer
 
 /** 仅保留尚未交付的正文；块与读取游标独立于分片元数据。 */
-internal class LiveStreamBuffer(private val capacity: Int = 16 * 1024 * 1024) {
+internal class LiveStreamBuffer(
+    private val capacity: Int = 16 * 1024 * 1024,
+    private val mutex: Mutex = Mutex(),
+) {
     private class Block(val bytes: BoloPlaybackBuffer, val size: Int, var offset: Int = 0)
-    private val mutex = Mutex()
     private val blocks = ArrayDeque<Block>()
     private val changed = MutableStateFlow(0L)
     private val mutableBytes = MutableStateFlow(0)
