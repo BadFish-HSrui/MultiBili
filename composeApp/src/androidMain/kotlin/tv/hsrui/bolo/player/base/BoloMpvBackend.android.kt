@@ -278,6 +278,11 @@ internal actual class BoloMpvBackend actual constructor() {
         return BoloMpvNative.load(handle, streams.videoUri, streams.audioUri, startSeconds, generation,
             videoPlayHeaders.getValue("User-Agent"), videoPlayHeaders.getValue("Referer"))
     }
+    actual fun loadLive(url: String, generation: Long, userAgent: String, referrer: String): Int {
+        if (destroyed) return -3
+        streamBridge.cancel()
+        return BoloMpvNative.loadLive(handle, url, generation, userAgent, referrer)
+    }
     actual fun videoEnabled(enabled: Boolean): Int {
         if (destroyed) return -3
         videoRequested = enabled

@@ -146,7 +146,19 @@ static int flag(mpv_node *node, const char *key) {
     return v && v->format == MPV_FORMAT_FLAG && v->u.flag;
 }
 
-int bolo_mpv_load(bolo_mpv *p, const char *video, const char *audio, double start, int64_t generation, const char *user_agent, const char *referrer) {
+static int load_file(bolo_mpv *p, const char *video, const char *audio, const char *start, int live, int64_t generation, const char *user_agent, const char *referrer) {
+    // 每次打开都显式配置，避免同一个核心从直播切回点播后残留直播选项。
+    const char *options[][2] = {
+        {"options/demuxer-lavf-o", live ? "live_start_index=-1" : ""},
+        {"options/demuxer-seekable-cache", live ? "no" : "auto"},
+        {"options/demuxer-max-back-bytes", live ? "0" : "4194304"},
+        {"options/cache-on-disk", "no"},
+        {"options/network-timeout", live ? "10" : "60"},
+    };
+    for (unsigned i = 0; i < sizeof(options) / sizeof(options[0]); ++i) {
+        int result = mpv_set_property_string(p->player, options[i][0], options[i][1]);
+        if (result < 0) return result;
+    }
     atomic_store(&p->video_frame_ready, 0);
     for (int i = BOLO_POSITION; i <= BOLO_EOF; ++i)
         mpv_unobserve_property(p->player, ((uint64_t)p->generation << 8) | i);
@@ -170,10 +182,7 @@ int bolo_mpv_load(bolo_mpv *p, const char *video, const char *audio, double star
     mpv_node audio_files = {.format = MPV_FORMAT_NODE_ARRAY, .u.list = &audio_list};
     r = mpv_set_property(p->player, "options/audio-files", MPV_FORMAT_NODE, &audio_files);
     if (r < 0) return r;
-    char start_text[64];
-    snprintf(start_text, sizeof(start_text), "%.3f", start);
-    for (char *c = start_text; *c; ++c) if (*c == ',') *c = '.';
-    r = mpv_set_property_string(p->player, "options/start", start_text);
+    r = mpv_set_property_string(p->player, "options/start", start);
     if (r < 0) return r;
     mpv_node args[] = {
         {.format = MPV_FORMAT_STRING, .u.string = "loadfile"},
@@ -189,6 +198,18 @@ int bolo_mpv_load(bolo_mpv *p, const char *video, const char *audio, double star
     else if (r >= 0) r = MPV_ERROR_GENERIC;
     mpv_free_node_contents(&result);
     return r;
+}
+
+int bolo_mpv_load(bolo_mpv *p, const char *video, const char *audio, double start, int64_t generation, const char *user_agent, const char *referrer) {
+    char start_text[64];
+    snprintf(start_text, sizeof(start_text), "%.3f", start);
+    for (char *c = start_text; *c; ++c) if (*c == ',') *c = '.';
+    return load_file(p, video, audio, start_text, 0, generation, user_agent, referrer);
+}
+
+int bolo_mpv_load_live(bolo_mpv *p, const char *url, int64_t generation, const char *user_agent, const char *referrer) {
+    // 仅保留解码所需的有界前向缓冲；恢复播放由上层重新打开实时地址。
+    return load_file(p, url, NULL, "none", 1, generation, user_agent, referrer);
 }
 
 int bolo_mpv_pause(bolo_mpv *p, int paused) {
