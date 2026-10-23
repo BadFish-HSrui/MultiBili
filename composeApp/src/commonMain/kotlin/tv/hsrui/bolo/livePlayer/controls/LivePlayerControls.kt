@@ -1,22 +1,26 @@
 package tv.hsrui.bolo.livePlayer.controls
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.recalculateWindowInsets
@@ -35,6 +39,7 @@ import androidx.compose.material.icons.rounded.CropSquare
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RestartAlt
@@ -63,10 +68,14 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -80,6 +89,8 @@ import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -93,11 +104,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.livePlayer.LivePlayerViewModel
+import tv.hsrui.bolo.livePlayer.base.LivePlayerInfo
+import tv.hsrui.bolo.livePlayer.base.LivePlayerState
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.player.PlayerKeyboardEffect
@@ -105,8 +121,12 @@ import tv.hsrui.bolo.player.settings.PlayerShortcutAction
 import tv.hsrui.bolo.player.settings.shortcutAction
 import tv.hsrui.bolo.ui.components.slider.ShowSlider
 import tv.hsrui.bolo.utils.isExpanded
+import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.network.liveFeature.player.enumModels.LiveVideoQuality
 import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.MutableStateFlow
+import tv.hsrui.bolo.livePlayer.session.LivePlaybackTimelineState
+import tv.hsrui.network.utils.formatToDuration
 
 @Composable
 fun LivePlayerControls(
@@ -130,13 +150,35 @@ fun LivePlayerControls(
     val bottomInsets = insets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
     val applyInsets = isFullscreen || isIpad
     val showTitle = isFullscreen || isExpanded()
-    val playerUiState by viewModel.uiState.collectAsState()
-    var controlsVisible by remember(viewModel) { mutableStateOf(true) }
-    var interactionRevision by remember(viewModel) { mutableIntStateOf(0) }
+    var infoOpen by remember(viewModel, isFullscreen, showTitle, navigationOnly) { mutableStateOf(false) }
+    val controller = viewModel.playbackSession?.controller
+    val emptyInfo = remember { MutableStateFlow(LivePlayerInfo()) }
+    val playerInfo by (controller?.info ?: emptyInfo).collectAsState()
+    val emptyTimeline = remember { MutableStateFlow(LivePlaybackTimelineState()) }
+    val timeline by (viewModel.playbackSession?.controller?.timeline ?: emptyTimeline).collectAsState()
+    val emptyPlayback = remember { MutableStateFlow(LivePlayerState()) }
+    val playback by (viewModel.playbackSession?.controller?.state ?: emptyPlayback).collectAsState()
+    var previewPosition by remember(viewModel) { mutableStateOf<Long?>(null) }
+    val displayedElapsed = previewPosition?.let { position ->
+        timeline.playingElapsedMs?.let { it + position - (timeline.positionMs ?: position) }
+    } ?: timeline.playingElapsedMs
+    var controlsVisible by remember(viewModel) { mutableStateOf(false) }
+    val controlsTransition = updateTransition(controlsVisible, label = "livePlayerControls")
+    val bottomControlsVisible = controlsTransition.currentState || controlsTransition.targetState
+    val playbackControlsPinned = !playback.isEnded && !viewModel.playWhenReady
+    val controlsReveal by controlsTransition.animateFloat(transitionSpec = { tween(200) }, label = "liveControlsPosition") {
+        if (it) 1f else 0f
+    }
+    var bottomControlsHeight by remember { mutableIntStateOf(0) }
+    val controlsSlideOffset = bottomControlsHeight * (1f - controlsReveal)
+    var mouseInside by remember { mutableStateOf(false) }
+    var mouseMovementRevision by remember { mutableIntStateOf(0) }
     var pointerPressed by remember(viewModel) { mutableStateOf(false) }
     var primaryPress by remember(viewModel) { mutableStateOf(false) }
     var qualityMenuOpen by remember(viewModel, isFullscreen) { mutableStateOf(false) }
     var volumeMenuOpen by remember(viewModel, isFullscreen) { mutableStateOf(false) }
+    val controlsInteractionActive = pointerPressed || previewPosition != null || qualityMenuOpen || volumeMenuOpen
+    val latestControlsInteractionActive by rememberUpdatedState(controlsInteractionActive)
     val pressedKeys = remember(viewModel) { mutableSetOf<Key>() }
     val cancelledKeys = remember(viewModel) { mutableSetOf<Key>() }
     val shortcutBindings = remember {
@@ -150,12 +192,10 @@ fun LivePlayerControls(
     }
     fun revealControls() {
         controlsVisible = true
-        interactionRevision++
     }
     fun toggleFullscreen() {
         if (isDesktop && fullscreenState.isManualSystemFullscreen) fullscreenState.toggleWindowFullscreen()
         else fullscreenState.toggleFullscreen()
-        revealControls()
     }
     fun cancelKeyboard() {
         cancelledKeys.addAll(pressedKeys)
@@ -171,7 +211,7 @@ fun LivePlayerControls(
         val action = shortcutBindings.shortcutAction(event) ?: return false
         if (volumeOnly) {
             if (!action.isVolume) return false
-        } else if (qualityMenuOpen || volumeMenuOpen || pointerPressed) return false
+        } else if (qualityMenuOpen || volumeMenuOpen || previewPosition != null || pointerPressed) return false
         val firstDown = pressedKeys.add(event.key)
         when (action) {
             PlayerShortcutAction.TogglePlayback -> if (firstDown) viewModel.togglePlayback()
@@ -181,7 +221,6 @@ fun LivePlayerControls(
             PlayerShortcutAction.VolumeDown -> viewModel.setVolume((viewModel.volumePercent - 10).coerceAtLeast(0))
             else -> return false
         }
-        revealControls()
         return true
     }
     val onKeyEvent by rememberUpdatedState<(KeyEvent) -> Boolean> { handleKey(it) }
@@ -190,25 +229,24 @@ fun LivePlayerControls(
         if (isDesktop) {
             if (primaryPress) {
                 viewModel.togglePlayback()
-                revealControls()
             }
-        } else if (viewModel.playWhenReady) {
-            if (controlsVisible) controlsVisible = false else revealControls()
-        } else revealControls()
+        } else controlsVisible = !controlsVisible
     }
     val onDoubleTap by rememberUpdatedState {
         if (isDesktop) {
             if (primaryPress) toggleFullscreen()
         } else {
             viewModel.togglePlayback()
-            revealControls()
         }
     }
-    LaunchedEffect(playerUiState, isFullscreen, navigationOnly) { revealControls() }
-    LaunchedEffect(viewModel.playWhenReady, interactionRevision, qualityMenuOpen, volumeMenuOpen, pointerPressed, navigationOnly) {
-        if (navigationOnly || !viewModel.playWhenReady || qualityMenuOpen || volumeMenuOpen) {
+    LaunchedEffect(isDesktop, mouseInside, mouseMovementRevision, controlsInteractionActive) {
+        if (!isDesktop) return@LaunchedEffect
+        if (controlsInteractionActive) {
             controlsVisible = true
-        } else if (!pointerPressed) {
+        } else if (!mouseInside) {
+            controlsVisible = false
+        } else {
+            controlsVisible = true
             delay(2_000)
             controlsVisible = false
         }
@@ -217,14 +255,23 @@ fun LivePlayerControls(
         if (!windowFocused) {
             pressedKeys.clear()
             cancelledKeys.clear()
+            mouseInside = false
             pointerPressed = false
+            previewPosition = null
         }
     }
-    val visibility = remember(viewModel) { MutableTransitionState(true) }
     SideEffect {
-        visibility.targetState = navigationOnly || controlsVisible
-        fullscreenState.hasVisibleControls = visibility.currentState || visibility.targetState || qualityMenuOpen || volumeMenuOpen
+        fullscreenState.hasVisibleControls = navigationOnly || bottomControlsVisible || controlsInteractionActive || infoOpen
     }
+    DisposableEffect(controller, infoOpen) {
+        controller?.setInfoPanelVisible(infoOpen)
+        onDispose { controller?.setInfoPanelVisible(false) }
+    }
+    NavigationBackHandler(
+        state = rememberNavigationEventState(NavigationEventInfo.None),
+        isBackEnabled = showTitle && infoOpen,
+        onBackCompleted = { infoOpen = false },
+    )
     DisposableEffect(viewModel, fullscreenState) {
         onDispose {
             cancelKeyboard()
@@ -236,7 +283,7 @@ fun LivePlayerControls(
     }
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
         Box(
-            modifier.fillMaxSize()
+            modifier.fillMaxSize().clipToBounds()
                 .then(if (isIpad) Modifier.recalculateWindowInsets() else Modifier)
                 .onPreviewKeyEvent { event ->
                     val action = shortcutBindings.shortcutAction(event)
@@ -252,12 +299,24 @@ fun LivePlayerControls(
                                 if (event.type == PointerEventType.Press) {
                                     primaryPress = event.changes.any { it.type != PointerType.Mouse } || event.buttons.isPrimaryPressed
                                 }
-                                if (isDesktop && (event.type == PointerEventType.Move || event.type == PointerEventType.Enter)) {
-                                    revealControls()
+                                if (isDesktop) {
+                                    val mouse = event.changes.firstOrNull { it.type == PointerType.Mouse } ?: continue
+                                    when (event.type) {
+                                        PointerEventType.Move, PointerEventType.Enter -> {
+                                            mouseInside = mouse.position.x >= 0f && mouse.position.x < size.width &&
+                                                mouse.position.y >= 0f && mouse.position.y < size.height
+                                            if (mouseInside) { revealControls(); mouseMovementRevision++ }
+                                        }
+                                        PointerEventType.Exit -> {
+                                            mouseInside = false
+                                            if (!latestControlsInteractionActive) controlsVisible = false
+                                        }
+                                        PointerEventType.Press -> cancelKeyboard()
+                                    }
                                 }
                             }
                         }
-                    } finally { pointerPressed = false }
+                    } finally { mouseInside = false; pointerPressed = false }
                 },
         ) {
             if (!navigationOnly) {
@@ -265,62 +324,112 @@ fun LivePlayerControls(
                     detectTapGestures(onTap = { onTap() }, onDoubleTap = { onDoubleTap() })
                 })
             }
-            AnimatedVisibility(
-                visibleState = visibility,
-                enter = fadeIn(tween(200)),
-                exit = fadeOut(tween(200)),
-                modifier = Modifier.fillMaxSize(),
+            if (showTitle && infoOpen) {
+                BoxWithConstraints(
+                    Modifier.fillMaxSize()
+                        .then(if (applyInsets) Modifier.windowInsetsPadding(insets) else Modifier)
+                        .padding(16.dp),
+                ) {
+                    LivePlayerInfoPanel(
+                        info = playerInfo,
+                        onClose = { infoOpen = false },
+                        modifier = Modifier.align(Alignment.TopStart).heightIn(max = maxHeight),
+                    )
+                }
+            }
+            controlsTransition.AnimatedVisibility(
+                visible = { navigationOnly || it },
+                enter = slideInVertically(tween(200)) { -it },
+                exit = slideOutVertically(tween(200)) { -it },
+                modifier = Modifier.align(Alignment.TopStart).fillMaxWidth(),
             ) {
-                Box(Modifier.fillMaxSize()) {
-                    Row(
-                        modifier = Modifier.align(Alignment.TopStart).fillMaxWidth()
-                            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)))
-                            .then(if (applyInsets) Modifier.windowInsetsPadding(topInsets) else Modifier)
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (!isDesktop || !isFullscreen) {
-                            IconButton(
-                                onClick = {
-                                    if (!isDesktop && fullscreenState.isFullscreen) fullscreenState.exitFullscreen()
-                                    else fullscreenState.goBack()
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)))
+                        .then(if (applyInsets) Modifier.windowInsetsPadding(topInsets) else Modifier)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (!isDesktop || !isFullscreen) {
+                        IconButton(
+                            onClick = {
+                                if (!isDesktop && fullscreenState.isFullscreen) fullscreenState.exitFullscreen()
+                                else fullscreenState.goBack()
+                            },
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.ArrowBackIos,
+                                when {
+                                    !isDesktop && isFullscreen -> "退出全屏"
+                                    infoOpen -> "关闭播放信息"
+                                    fullscreenState.shouldHandleFullscreenBack -> "退出全屏"
+                                    else -> "返回"
                                 },
-                                modifier = Modifier.size(40.dp),
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Rounded.ArrowBackIos,
-                                    if (fullscreenState.shouldHandleFullscreenBack) "退出全屏" else "返回",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
-                        }
-                        if (!isFullscreen && navigator.currentDepth > 1) {
-                            IconButton(onClick = navigator::goHome, modifier = Modifier.size(40.dp)) {
-                                Icon(Icons.Rounded.Home, "回到主页", tint = Color.White, modifier = Modifier.size(24.dp))
-                            }
-                        }
-                        if (!navigationOnly && showTitle) {
-                            Text(
-                                viewModel.roomInfo?.title.orEmpty(),
-                                modifier = Modifier.padding(start = 8.dp).weight(1f),
-                                color = Color.White,
-                                style = MaterialTheme.typography.titleMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp),
                             )
                         }
                     }
-                    if (!navigationOnly) {
+                    if (!isFullscreen && navigator.currentDepth > 1) {
+                        IconButton(onClick = navigator::goHome, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Rounded.Home, "回到主页", tint = Color.White, modifier = Modifier.size(24.dp))
+                        }
+                    }
+                    if (!navigationOnly && showTitle) {
+                        Text(
+                            viewModel.roomInfo?.title.orEmpty(),
+                            modifier = Modifier.padding(start = 8.dp).weight(1f),
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        IconButton(onClick = { infoOpen = !infoOpen }) {
+                            Icon(
+                                Icons.Rounded.Info,
+                                contentDescription = if (infoOpen) "隐藏播放信息" else "显示播放信息",
+                                tint = if (infoOpen) BiliColor.ThemeColor else Color.White,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                    }
+                }
+            }
+            if (!navigationOnly && (bottomControlsVisible || playbackControlsPinned)) {
+                Box(Modifier.fillMaxSize().clipToBounds()) {
+                    Column(
+                        modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                            .onSizeChanged { bottomControlsHeight = it.height }
+                            .drawBehind {
+                                translate(top = controlsSlideOffset) {
+                                    drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f))))
+                                }
+                            }
+                            .then(if (applyInsets) Modifier.windowInsetsPadding(bottomInsets) else Modifier)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                    ) {
+                        if (timeline.canSeek) {
+                            LiveProgressBar(
+                                timeline = timeline,
+                                onSeek = viewModel::seekToMs,
+                                onPreview = { previewPosition = it },
+                                modifier = Modifier.graphicsLayer { translationY = controlsSlideOffset }
+                                    .then(if (!controlsVisible) Modifier.clearAndSetSemantics {} else Modifier),
+                                enabled = controlsVisible,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
                         Row(
-                            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f))))
-                                .then(if (applyInsets) Modifier.windowInsetsPadding(bottomInsets) else Modifier)
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
-                                .padding(horizontal = 8.dp).height(32.dp),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp).height(32.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            IconButton(onClick = { viewModel.togglePlayback(); revealControls() }, modifier = Modifier.size(32.dp)) {
+                            IconButton(
+                                onClick = viewModel::togglePlayback,
+                                modifier = Modifier.size(32.dp).graphicsLayer {
+                                    translationY = if (playbackControlsPinned) 0f else controlsSlideOffset
+                                },
+                            ) {
                                 Icon(
                                     if (viewModel.playWhenReady) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                                     if (viewModel.playWhenReady) "暂停" else "播放",
@@ -328,58 +437,72 @@ fun LivePlayerControls(
                                     modifier = Modifier.size(28.dp),
                                 )
                             }
-                            Spacer(Modifier.weight(1f))
-                            if (isDesktop) {
-                                LiveVolumePopup(
-                                    volumePercent = viewModel.volumePercent,
-                                    muted = viewModel.muted,
-                                    isFullscreen = isFullscreen,
-                                    onVolumeSelected = { viewModel.setVolume(it); revealControls() },
-                                    onToggleMuted = { viewModel.toggleMuted(); revealControls() },
-                                    onExpandedChange = { volumeMenuOpen = it },
-                                    onKeyEvent = onVolumeKeyEvent,
-                                )
-                            }
-                            if (viewModel.availableQns.isNotEmpty()) {
-                                LiveQualityMenu(
-                                    qns = viewModel.availableQns,
-                                    currentQn = viewModel.selectedQn,
-                                    isFullscreen = isFullscreen,
-                                    onQualitySelected = { viewModel.selectQuality(it); revealControls() },
-                                    onExpandedChange = { qualityMenuOpen = it },
-                                )
-                            }
-                            if (isDesktop) {
-                                IconButton(
-                                    onClick = { fullscreenState.toggleWindowFullscreen(); revealControls() },
-                                    modifier = Modifier.size(32.dp).semantics {
-                                        contentDescription = if (isFullscreen) "退出窗口全屏" else "窗口全屏"
-                                    },
+                            if (bottomControlsVisible) {
+                                Row(
+                                    modifier = Modifier.weight(1f).graphicsLayer { translationY = controlsSlideOffset },
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Rounded.CropSquare, null, tint = Color.White, modifier = Modifier.size(24.dp))
-                                        Icon(
-                                            if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                                            null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(16.dp),
+                                    Text(
+                                        text = "${displayedElapsed?.let { (it.coerceAtLeast(0) / 1000).formatToDuration() } ?: "—"} / " +
+                                            (timeline.latestElapsedMs?.let { (it / 1000).formatToDuration() } ?: "—"),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    if (isDesktop) {
+                                        LiveVolumePopup(
+                                            volumePercent = viewModel.volumePercent,
+                                            muted = viewModel.muted,
+                                            isFullscreen = isFullscreen,
+                                            onVolumeSelected = { viewModel.setVolume(it); revealControls() },
+                                            onToggleMuted = { viewModel.toggleMuted(); revealControls() },
+                                            onExpandedChange = { volumeMenuOpen = it },
+                                            onKeyEvent = onVolumeKeyEvent,
                                         )
                                     }
-                                }
-                            }
-                            if (!fullscreenState.isManualSystemFullscreen) {
-                                val fullscreen = if (isDesktop) fullscreenState.isSystemFullscreen else isFullscreen
-                                IconButton(
-                                    onClick = { toggleFullscreen() },
-                                    enabled = !fullscreenState.isChangingSystemFullscreen,
-                                    modifier = Modifier.size(32.dp),
-                                ) {
-                                    Icon(
-                                        if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                                        if (fullscreen) "退出全屏" else "全屏",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(24.dp),
-                                    )
+                                    if (viewModel.availableQns.isNotEmpty()) {
+                                        LiveQualityMenu(
+                                            qns = viewModel.availableQns,
+                                            currentQn = viewModel.selectedQn,
+                                            isFullscreen = isFullscreen,
+                                            onQualitySelected = { viewModel.selectQuality(it); revealControls() },
+                                            onExpandedChange = { qualityMenuOpen = it },
+                                        )
+                                    }
+                                    if (isDesktop) {
+                                        IconButton(
+                                            onClick = { fullscreenState.toggleWindowFullscreen(); revealControls() },
+                                            modifier = Modifier.size(32.dp).semantics {
+                                                contentDescription = if (isFullscreen) "退出窗口全屏" else "窗口全屏"
+                                            },
+                                        ) {
+                                            Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Rounded.CropSquare, null, tint = Color.White, modifier = Modifier.size(24.dp))
+                                                Icon(
+                                                    if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                                    null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (!fullscreenState.isManualSystemFullscreen) {
+                                        val fullscreen = if (isDesktop) fullscreenState.isSystemFullscreen else isFullscreen
+                                        IconButton(
+                                            onClick = { toggleFullscreen() },
+                                            enabled = !fullscreenState.isChangingSystemFullscreen,
+                                            modifier = Modifier.size(32.dp),
+                                        ) {
+                                            Icon(
+                                                if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                                if (fullscreen) "退出全屏" else "全屏",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(24.dp),
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
