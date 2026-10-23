@@ -1,9 +1,9 @@
-package tv.hsrui.bolo.main.live.recommend
+package tv.hsrui.bolo.ui.common.liveRoomsPage
 
 import tv.hsrui.network.model.LiveCard
 
-sealed interface LiveRecommendUiState {
-    data object Loading : LiveRecommendUiState
+sealed interface LiveRoomsUiState {
+    data object Loading : LiveRoomsUiState
     data class Success(
         val rooms: List<LiveCard>,
         val page: Int,
@@ -12,6 +12,6 @@ sealed interface LiveRecommendUiState {
         val refreshError: String? = null,
         val isLoadingMore: Boolean = false,
         val loadMoreError: String? = null,
-    ) : LiveRecommendUiState
-    data class Error(val message: String) : LiveRecommendUiState
+    ) : LiveRoomsUiState
+    data class Error(val message: String) : LiveRoomsUiState
 }
