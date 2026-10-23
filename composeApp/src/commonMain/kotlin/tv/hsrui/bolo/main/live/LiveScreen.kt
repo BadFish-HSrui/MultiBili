@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import tv.hsrui.bolo.main.live.area.LiveAreaPage
 import tv.hsrui.bolo.main.live.recommend.LiveRecommendPage
 
 @Composable
@@ -30,13 +31,15 @@ fun LiveScreen(
     val tabs = LiveTab.entries
     val pagerState = rememberPagerState(initialPage = tabs.indexOf(LiveTab.Recommend)) { tabs.size }
     val scope = rememberCoroutineScope()
-    val recommendReselectEvents = remember(reselectEvents, pagerState) {
-        MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val pageReselectEvents = remember(reselectEvents, pagerState) {
+        listOf(LiveTab.Area, LiveTab.Recommend).associateWith {
+            MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        }
     }
     LaunchedEffect(reselectEvents, pagerState) {
         reselectEvents?.collect {
-            if (!pagerState.isScrollInProgress && tabs[pagerState.currentPage] == LiveTab.Recommend) {
-                recommendReselectEvents.tryEmit(Unit)
+            if (!pagerState.isScrollInProgress) {
+                pageReselectEvents[tabs[pagerState.currentPage]]?.tryEmit(Unit)
             }
         }
     }
@@ -62,9 +65,13 @@ fun LiveScreen(
         ) { page ->
             val isSelected = pagerState.currentPage == page && !pagerState.isScrollInProgress
             when (tabs[page]) {
+                LiveTab.Area -> LiveAreaPage(
+                    modifier = Modifier.fillMaxSize(),
+                    reselectEvents = pageReselectEvents.getValue(LiveTab.Area).takeIf { isSelected },
+                )
                 LiveTab.Recommend -> LiveRecommendPage(
                     modifier = Modifier.fillMaxSize(),
-                    reselectEvents = recommendReselectEvents.takeIf { isSelected },
+                    reselectEvents = pageReselectEvents.getValue(LiveTab.Recommend).takeIf { isSelected },
                     isSelected = isSelected,
                 )
                 LiveTab.Following -> Box(Modifier.fillMaxSize())
