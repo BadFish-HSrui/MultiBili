@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -18,8 +20,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatform.getKoin
+import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.boloSetting.setting.live.LiveSettings
+import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.livePlayer.base.LivePlayerController
 import tv.hsrui.bolo.livePlayer.danmaku.LiveDanmakuController
 import tv.hsrui.bolo.livePlayer.session.LivePlaybackSession
@@ -55,10 +59,13 @@ class LivePlayerViewModel internal constructor(
         private set
     var broadcastEnded by mutableStateOf(false)
         private set
-    var volumePercent by mutableIntStateOf(100)
-        private set
-    var muted by mutableStateOf(false)
-        private set
+    private val isDesktop = getPlatform().type == PlatformType.Desktop
+    private var localVolumePercent by mutableIntStateOf(100)
+    private var localMuted by mutableStateOf(false)
+    val volumePercent: Int
+        get() = if (isDesktop) settings.desktopVolumePercent else localVolumePercent
+    val muted: Boolean
+        get() = if (isDesktop) settings.desktopMuted else localMuted
     var availableQns by mutableStateOf<List<Int>>(emptyList())
         private set
     var selectedQn by mutableStateOf<Int?>(null)
@@ -84,6 +91,12 @@ class LivePlayerViewModel internal constructor(
 
     init {
         require(roomId > 0)
+        if (isDesktop) viewModelScope.launch {
+            snapshotFlow { settings.desktopVolumePercent to settings.desktopMuted }.collect { (volume, muted) ->
+                playbackSession?.controller?.setVolume(if (muted) 0 else volume)
+                syncPlayback()
+            }
+        }
         viewModelScope.launch {
             messageManager.connectionState.collect { connection ->
                 val connectedRoom = connection.roomId
@@ -154,6 +167,7 @@ class LivePlayerViewModel internal constructor(
             },
         )
         playbackSession = session
+        session.controller.setVolume(if (muted) 0 else volumePercent)
         session.activate()
         playbackStateJob = viewModelScope.launch {
             session.controller.state.collect { state ->
@@ -348,14 +362,28 @@ class LivePlayerViewModel internal constructor(
     fun togglePlayback() { if (playWhenReady) pause() else resumePlayback() }
 
     fun setVolume(percent: Int) {
-        volumePercent = percent.coerceIn(0, 200)
-        muted = false
+        if (isDesktop) Snapshot.withMutableSnapshot {
+            settings.desktopVolumePercent = percent
+            settings.desktopMuted = false
+        } else {
+            localVolumePercent = percent.coerceIn(0, 200)
+            localMuted = false
+        }
         playbackSession?.controller?.setVolume(volumePercent)
         syncPlayback()
     }
 
     fun toggleMuted() {
-        muted = !muted
+        if (isDesktop) Snapshot.withMutableSnapshot {
+            if (settings.desktopVolumePercent == 0) {
+                settings.desktopVolumePercent = 100
+                settings.desktopMuted = false
+            } else {
+                settings.desktopMuted = !settings.desktopMuted
+            }
+        } else {
+            localMuted = !localMuted
+        }
         playbackSession?.controller?.setVolume(if (muted) 0 else volumePercent)
         syncPlayback()
     }

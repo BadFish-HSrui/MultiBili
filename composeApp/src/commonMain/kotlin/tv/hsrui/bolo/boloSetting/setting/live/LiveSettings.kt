@@ -1,6 +1,7 @@
 package tv.hsrui.bolo.boloSetting.setting.live
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import eu.anifantakis.lib.ksafe.KSafePlain
@@ -9,6 +10,27 @@ import tv.hsrui.network.liveFeature.player.enumModels.LiveVideoQuality
 
 class LiveSettings(settingsKSafe: KSafePlain) {
     val danmaku = LiveDanmakuSettings(settingsKSafe)
+
+    private var storedDesktopVolumePercent by settingsKSafe(100, key = "bolo_live_desktop_volume_percent")
+    private var currentDesktopVolumePercent by mutableIntStateOf(storedDesktopVolumePercent.coerceIn(0, 200))
+    var desktopVolumePercent: Int
+        get() = currentDesktopVolumePercent
+        set(value) {
+            val percent = value.coerceIn(0, 200)
+            if (percent == currentDesktopVolumePercent) return
+            storedDesktopVolumePercent = percent
+            currentDesktopVolumePercent = percent
+        }
+
+    private var storedDesktopMuted by settingsKSafe(false, key = "bolo_live_desktop_muted")
+    private var currentDesktopMuted by mutableStateOf(storedDesktopMuted)
+    var desktopMuted: Boolean
+        get() = currentDesktopMuted
+        set(value) {
+            if (value == currentDesktopMuted) return
+            storedDesktopMuted = value
+            currentDesktopMuted = value
+        }
 
     private var storedDefaultVideoCodec by settingsKSafe(1, key = "bolo_live_default_video_codec")
     private var currentDefaultVideoCodec by mutableStateOf(
