@@ -18,14 +18,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlin.time.Clock
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
@@ -40,6 +45,8 @@ fun LiveRoomsGridPage(
     gridState: LazyGridState = rememberLazyGridState(),
     reselectEvents: Flow<Unit>? = null,
     isSelected: Boolean = true,
+    showStatistics: Boolean = true,
+    showOfflineStatus: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     LaunchedEffect(viewModel, isSelected) {
@@ -53,6 +60,8 @@ fun LiveRoomsGridPage(
         gridState = gridState,
         reselectEvents = reselectEvents,
         isSelected = isSelected,
+        showStatistics = showStatistics,
+        showOfflineStatus = showOfflineStatus,
     )
 }
 
@@ -66,7 +75,18 @@ fun LiveRoomsGridPage(
     gridState: LazyGridState = rememberLazyGridState(),
     reselectEvents: Flow<Unit>? = null,
     isSelected: Boolean = true,
+    showStatistics: Boolean = true,
+    showOfflineStatus: Boolean = false,
 ) {
+    var currentTime by remember { mutableStateOf(Clock.System.now()) }
+    LaunchedEffect(showOfflineStatus, isSelected) {
+        if (showOfflineStatus && isSelected) {
+            while (true) {
+                currentTime = Clock.System.now()
+                delay(60_000)
+            }
+        }
+    }
     val success = uiState as? LiveRoomsUiState.Success
     val scope = rememberCoroutineScope()
     val refresh: () -> Unit = {
@@ -136,7 +156,13 @@ fun LiveRoomsGridPage(
                             gridState = gridState,
                             modifier = Modifier.fillMaxSize(),
                         ) { room ->
-                            ShowLiveCard(liveInfo = room, modifier = Modifier.fillMaxWidth())
+                            ShowLiveCard(
+                                liveInfo = room,
+                                modifier = Modifier.fillMaxWidth(),
+                                showStatistics = showStatistics,
+                                showOfflineStatus = showOfflineStatus,
+                                currentTime = currentTime,
+                            )
                         }
                     }
                 }

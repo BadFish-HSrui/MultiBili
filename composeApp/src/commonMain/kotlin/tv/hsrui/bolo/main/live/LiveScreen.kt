@@ -1,6 +1,5 @@
 package tv.hsrui.bolo.main.live
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,6 +20,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.main.live.area.LiveAreaPage
+import tv.hsrui.bolo.main.live.following.LiveFollowingPage
 import tv.hsrui.bolo.main.live.recommend.LiveRecommendPage
 
 @Composable
@@ -32,7 +32,7 @@ fun LiveScreen(
     val pagerState = rememberPagerState(initialPage = tabs.indexOf(LiveTab.Recommend)) { tabs.size }
     val scope = rememberCoroutineScope()
     val pageReselectEvents = remember(reselectEvents, pagerState) {
-        listOf(LiveTab.Area, LiveTab.Recommend).associateWith {
+        tabs.associateWith {
             MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         }
     }
@@ -74,7 +74,11 @@ fun LiveScreen(
                     reselectEvents = pageReselectEvents.getValue(LiveTab.Recommend).takeIf { isSelected },
                     isSelected = isSelected,
                 )
-                LiveTab.Following -> Box(Modifier.fillMaxSize())
+                LiveTab.Following -> LiveFollowingPage(
+                    modifier = Modifier.fillMaxSize(),
+                    reselectEvents = pageReselectEvents.getValue(LiveTab.Following).takeIf { isSelected },
+                    isSelected = isSelected,
+                )
             }
         }
     }

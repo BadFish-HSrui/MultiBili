@@ -22,6 +22,14 @@ abstract class LiveRoomsViewModel : ViewModel() {
     protected abstract suspend fun fetchRooms(page: Int): LiveRoomsResult
     protected open val loadErrorMessage: String = "直播加载失败"
 
+    protected fun resetRooms(message: String) {
+        requestVersion++
+        requestJob?.cancel()
+        requestJob = null
+        hasRequested = false
+        _uiState.value = LiveRoomsUiState.Error(message)
+    }
+
     fun loadRooms() {
         if (!hasRequested) refreshRooms()
     }

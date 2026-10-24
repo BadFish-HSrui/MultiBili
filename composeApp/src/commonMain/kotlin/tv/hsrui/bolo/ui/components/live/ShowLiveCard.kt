@@ -20,6 +20,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -34,6 +35,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.navigation.BoloRoute
 import tv.hsrui.bolo.navigation.Navigator
@@ -43,11 +50,16 @@ import tv.hsrui.bolo.ui.theme.BoloShapes
 import tv.hsrui.bolo.utils.isCompact
 import tv.hsrui.network.model.LiveCard
 import tv.hsrui.network.utils.formatCountToString
+import tv.hsrui.network.utils.formatToDateTime
+import tv.hsrui.network.utils.formatToDurationText
 
 @Composable
 fun ShowLiveCard(
     liveInfo: LiveCard,
     modifier: Modifier = Modifier,
+    showStatistics: Boolean = true,
+    showOfflineStatus: Boolean = false,
+    currentTime: Instant = Clock.System.now(),
 ) {
     val navigator: Navigator = koinInject()
     val compact = isCompact()
@@ -67,42 +79,57 @@ fun ShowLiveCard(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
                 )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .height(32.dp)
-                        .background(
-                            Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent))
-                        ),
-                )
-                CompositionLocalProvider(
-                    LocalContentColor provides Color.White,
-                    LocalTextStyle provides TextStyle(fontSize = if (compact) 10.sp else 12.sp),
-                ) {
-                    Row(Modifier.align(Alignment.TopStart)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(4.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Visibility,
-                                contentDescription = "看过人数",
-                                modifier = Modifier.size(10.dp),
-                            )
-                            Text(liveInfo.watchedCount.formatCountToString())
+                if (showStatistics) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(32.dp)
+                            .background(
+                                Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent))
+                            ),
+                    )
+                    CompositionLocalProvider(
+                        LocalContentColor provides Color.White,
+                        LocalTextStyle provides TextStyle(fontSize = if (compact) 10.sp else 12.sp),
+                    ) {
+                        Row(Modifier.align(Alignment.TopStart)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(4.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Visibility,
+                                    contentDescription = "看过人数",
+                                    modifier = Modifier.size(10.dp),
+                                )
+                                Text(liveInfo.watchedCount.formatCountToString())
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(4.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Whatshot,
+                                    contentDescription = "人气",
+                                    modifier = Modifier.size(10.dp),
+                                )
+                                Text(liveInfo.popularity.formatCountToString())
+                            }
                         }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(4.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Whatshot,
-                                contentDescription = "人气",
-                                modifier = Modifier.size(10.dp),
-                            )
-                            Text(liveInfo.popularity.formatCountToString())
-                        }
+                    }
+                }
+                if (showOfflineStatus && liveInfo.liveStatus != 1) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = formatOfflineText(liveInfo.recordLiveTime, currentTime),
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(8.dp),
+                        )
                     }
                 }
             }
@@ -147,5 +174,26 @@ fun ShowLiveCard(
                 )
             }
         }
+    }
+}
+
+private fun formatOfflineText(recordLiveTime: Long, currentTime: Instant): String {
+    if (recordLiveTime <= 0) return "未开播"
+    return try {
+        val endTime = Instant.fromEpochSeconds(recordLiveTime)
+        val elapsed = currentTime - endTime
+        when {
+            elapsed < 1.minutes -> "刚刚下播"
+            elapsed < 14.days -> "${elapsed.inWholeSeconds.formatToDurationText()}前下播"
+            else -> {
+                val zone = TimeZone.currentSystemDefault()
+                recordLiveTime.formatToDateTime(
+                    year = endTime.toLocalDateTime(zone).year != currentTime.toLocalDateTime(zone).year,
+                    hourMinute = false,
+                ) + "下播"
+            }
+        }
+    } catch (_: IllegalArgumentException) {
+        "未开播"
     }
 }
