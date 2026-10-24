@@ -41,26 +41,25 @@ fun LivePlayer(
                 modifier = Modifier.align(Alignment.Center),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("直播间未开播", color = Color.White)
-                TextButton(onClick = viewModel::loadPlayback) { Text("重试") }
+                Text(if (viewModel.broadcastEnded) "直播已结束" else "当前直播间未开播", color = Color.White)
             }
             error != null -> Surface(Modifier.matchParentSize(), color = Color.Black, contentColor = Color.White) {
                 ShowErrorContent(message = error, retry = viewModel::loadPlayback)
             }
             uiState is LivePlayerUiState.Loading || success?.isPreparing == true || playback?.isBuffering == true ->
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
-            playback?.isEnded == true -> Column(
+            playback?.isEnded == true && viewModel.broadcastEnded -> Column(
                 modifier = Modifier.align(Alignment.Center),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("直播播放已结束", color = Color.White)
-                TextButton(onClick = viewModel::resumeLatest) { Text("重试") }
+                Text("直播已结束", color = Color.White)
             }
         }
         LivePlayerControls(
             viewModel = viewModel,
             fullscreenState = fullscreenState,
-            navigationOnly = success == null || controller == null || error != null || playback?.isEnded == true,
+            navigationOnly = success == null || controller == null || error != null ||
+                playback?.isEnded == true && !playback.localReplayEnabled,
         )
         // 失败提示位于手势层之上，重试按钮不会被背景播放手势截获。
         if (success?.error != null && error == null) {

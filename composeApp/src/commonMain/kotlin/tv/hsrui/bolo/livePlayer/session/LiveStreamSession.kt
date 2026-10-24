@@ -10,6 +10,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -47,6 +48,7 @@ internal class LiveStreamSession(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val prepared = AtomicBoolean(false)
     private val closed = AtomicBoolean(false)
+    private val finished = AtomicBoolean(false)
     private val opened = AtomicBoolean(false)
     private val ready = CompletableDeferred<Unit>()
     private val closedComplete = CompletableDeferred<Unit>()
@@ -92,7 +94,7 @@ internal class LiveStreamSession(
     }
 
     fun setCollecting(active: Boolean) {
-        if (closed.load()) return
+        if (closed.load() || finished.load()) return
         val previous = collector
         previous?.cancel()
         collector = if (!active) previous else scope.launch {
@@ -118,6 +120,14 @@ internal class LiveStreamSession(
     fun retry(address: String) {
         playlistUrl = address
         setCollecting(true)
+    }
+
+    suspend fun finishCollection() {
+        if (closed.load() || !finished.compareAndSet(false, true)) return
+        collector?.cancelAndJoin()
+        collector = null
+        if (localReplayEnabled) cache.finish() else buffer.finish()
+        ready.complete(Unit)
     }
 
     private suspend fun runHlsInstant() = coroutineScope {

@@ -150,6 +150,7 @@ class LivePlayerController(
 
     private fun startLoad(targetMs: Long? = null, live: Boolean = targetMs == null) {
         if (disposed || !foreground || urls.isEmpty() || !localReplayEnabled && !state.value.playWhenReady) return
+        if (state.value.isBroadcastEnded && (streamSession == null || !localReplayEnabled)) return
         val expected = ++generation
         resetInfoSampling(clearMedia = true)
         readerInvalidated = false
@@ -413,7 +414,10 @@ class LivePlayerController(
                 mutableState.value = state.value.copy(isBuffering = false,
                     isPlaying = !state.value.isPlaybackSuspended)
             }
-            BoloMpvEvent.Eof -> if (foreground && ready && event.value != 0.0) retrySource("直播流已结束", ended = true)
+            BoloMpvEvent.Eof -> if (foreground && event.value != 0.0) {
+                if (state.value.isBroadcastEnded) finishReading()
+                else if (ready) retrySource("直播流已结束", ended = true)
+            }
             BoloMpvEvent.Error -> if (foreground && !readerInvalidated) retrySource("直播流播放失败（${event.error}）")
             BoloMpvEvent.Overflow -> fail("播放器事件队列溢出，请重新加载")
         }
@@ -422,6 +426,7 @@ class LivePlayerController(
 
     private fun retrySource(message: String, ended: Boolean = false, reload: Boolean = true) {
         if (disposed) return
+        if (state.value.isBroadcastEnded) { finishReading(); return }
         resetRetriesAfterPlayback()
         val retainCache = streamSession?.localReplayEnabled == true && streamSession?.cache?.snapshot?.value?.segments?.isNotEmpty() == true
         if (!retainCache) {
@@ -474,6 +479,30 @@ class LivePlayerController(
         else if (!ready) startLoad(position, timeline.value.isLive)
         else applyPlayIntent()
         return true
+    }
+
+    fun finishBroadcast() {
+        if (disposed || state.value.isBroadcastEnded) return
+        mutableState.value = state.value.copy(isBroadcastEnded = true, error = null)
+        playbackTimeline.finish()
+        val streams = streamSession
+        val expected = sourceRevision
+        scope.launch {
+            streams?.finishCollection()
+            if (disposed || sourceRevision != expected || streamSession !== streams) return@launch
+            if (streams == null || localReplayEnabled && streams.cache.snapshot.value.segments.isEmpty() ||
+                mutableBackend.value == null && !localReplayEnabled) finishReading()
+        }
+    }
+
+    private fun finishReading() {
+        loadJob?.cancel()
+        loadJob = null
+        ready = false
+        playbackTimeline.setPaused(true)
+        mutableState.value = state.value.copy(playWhenReady = false, isPlaying = false, isBuffering = false,
+            isEnded = true, error = null)
+        updateFrameRate()
     }
 
     fun pause() {
@@ -610,12 +639,19 @@ class LivePlayerController(
 
     internal fun clearMedia() {
         if (!disposed) {
+            sourceRevision++
             streamSession?.cancel()
             streamSession = null
+            stream = null
+            urls = emptyList()
+            broadcastStart = null
+            localReplayEnabled = false
             timelineJob?.cancel()
             playbackTimeline.reset()
+            playbackTimeline.setStartTime(null)
             mutableInfo.value = LivePlayerInfo()
             closeEngine(suspended = true)
+            mutableState.value = LivePlayerState()
         }
     }
 

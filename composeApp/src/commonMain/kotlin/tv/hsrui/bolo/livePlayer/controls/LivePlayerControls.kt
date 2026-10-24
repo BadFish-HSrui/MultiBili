@@ -426,6 +426,7 @@ fun LivePlayerControls(
                         ) {
                             IconButton(
                                 onClick = viewModel::togglePlayback,
+                                enabled = !(viewModel.broadcastEnded && playback.isEnded),
                                 modifier = Modifier.size(32.dp).graphicsLayer {
                                     translationY = if (playbackControlsPinned) 0f else controlsSlideOffset
                                 },
@@ -464,6 +465,7 @@ fun LivePlayerControls(
                                     }
                                     if (viewModel.availableQns.isNotEmpty()) {
                                         LiveQualityMenu(
+                                            enabled = !viewModel.broadcastEnded,
                                             qns = viewModel.availableQns,
                                             currentQn = viewModel.selectedQn,
                                             isFullscreen = isFullscreen,
@@ -516,13 +518,14 @@ fun LivePlayerControls(
 
 @Composable
 private fun LiveQualityMenu(
+    enabled: Boolean,
     qns: List<Int>,
     currentQn: Int?,
     isFullscreen: Boolean,
     onQualitySelected: (Int) -> Unit,
     onExpandedChange: (Boolean) -> Unit,
 ) {
-    var expanded by remember(isFullscreen) { mutableStateOf(false) }
+    var expanded by remember(isFullscreen, enabled) { mutableStateOf(false) }
     val onExpanded by rememberUpdatedState(onExpandedChange)
     DisposableEffect(expanded) {
         onExpanded(expanded)
@@ -531,6 +534,7 @@ private fun LiveQualityMenu(
     Box {
         TextButton(
             onClick = { expanded = true },
+            enabled = enabled,
             colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
             modifier = Modifier.height(32.dp),
         ) {

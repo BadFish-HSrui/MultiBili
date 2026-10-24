@@ -19,9 +19,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Surface
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -50,6 +49,8 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.PlatformType
+import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.livePlayer.LivePlayer
 import tv.hsrui.bolo.livePlayer.LivePlayerUiState
 import tv.hsrui.bolo.livePlayer.LivePlayerViewModel
@@ -81,6 +82,10 @@ fun LivePlaybackScreen(
     val navigator: Navigator = koinInject()
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val session = viewModel.playbackSession
+    val messagesActive = isActive && navigator.backStack.lastOrNull() == BoloRoute.View.Live(roomId) &&
+        (getPlatform().type == PlatformType.Desktop || lifecycle.isAtLeast(Lifecycle.State.RESUMED))
+    LaunchedEffect(viewModel, messagesActive) { viewModel.setMessageActive(messagesActive) }
+    DisposableEffect(viewModel) { onDispose { viewModel.setMessageActive(false) } }
     LaunchedEffect(viewModel, isActive, lifecycle, session) {
         if (isActive && lifecycle.isAtLeast(Lifecycle.State.RESUMED) &&
             navigator.backStack.lastOrNull() == BoloRoute.View.Live(roomId)) {
@@ -88,7 +93,8 @@ fun LivePlaybackScreen(
         }
     }
     var hasShownPage by remember(viewModel) { mutableStateOf(false) }
-    if (uiState is LivePlayerUiState.Success) SideEffect { hasShownPage = true }
+    val isPageReady = uiState is LivePlayerUiState.Success || uiState is LivePlayerUiState.Offline
+    if (isPageReady) SideEffect { hasShownPage = true }
     val fullscreenState = rememberPlayerFullscreenState()
     if (isActive) PlayerFullscreenEffect(fullscreenState, autoFullscreenOnRotateEnabled = true)
     NavigationBackHandler(
@@ -115,7 +121,7 @@ fun LivePlaybackScreen(
         },
     ) {
         Surface(Modifier.fillMaxSize()) {
-            if (hasShownPage || uiState is LivePlayerUiState.Success) {
+            if (hasShownPage || isPageReady) {
                 Box(
                     Modifier.fillMaxSize().windowInsetsPadding(
                         WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
@@ -152,17 +158,13 @@ fun LivePlaybackScreen(
                             is LivePlayerUiState.Error -> ShowErrorContent(
                                 message = state.message, retry = viewModel::loadPlayback,
                             )
-                            is LivePlayerUiState.Offline -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("直播间未开播")
-                                TextButton(onClick = viewModel::loadPlayback) { Text("重试") }
-                            }
-                            is LivePlayerUiState.Success -> Unit
+                            is LivePlayerUiState.Offline, is LivePlayerUiState.Success -> Unit
                         }
                     }
                 }
             }
         }
-        if ((hasShownPage || uiState is LivePlayerUiState.Success) &&
+        if ((hasShownPage || isPageReady) &&
             (fullscreenState.isFullscreen || !playerBounds.isEmpty)) {
             val bounds = playerBounds.translate(-rootOffset.x, -rootOffset.y)
             val playerModifier = if (fullscreenState.isFullscreen) Modifier.fillMaxSize() else {

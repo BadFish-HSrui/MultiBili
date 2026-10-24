@@ -35,6 +35,8 @@ internal class LivePlaybackTimeline(
     private var instantElapsed: Long? = null
     private var paused = false
     private var frozenElapsed: Long? = null
+    private var ended = false
+    private var endedElapsed: Long? = null
     private val mutableState = MutableStateFlow(LivePlaybackTimelineState())
     val state = mutableState.asStateFlow()
 
@@ -49,12 +51,22 @@ internal class LivePlaybackTimeline(
     }
 
     fun reset() {
+        ended = false
+        endedElapsed = null
         cache = LiveCacheSnapshot()
         instantElapsed = null
         frozenElapsed = null
         position = null
         anchor = null
         live = true
+        tick()
+    }
+
+    fun finish() {
+        if (ended) return
+        endedElapsed = elapsed()
+        ended = true
+        live = false
         tick()
     }
 
@@ -83,7 +95,7 @@ internal class LivePlaybackTimeline(
     }
     fun seek(positionMs: Long?, live: Boolean) {
         position = positionMs
-        this.live = live && !paused
+        this.live = live && !paused && !ended
         frozenElapsed = null
         tick()
     }
@@ -103,5 +115,5 @@ internal class LivePlaybackTimeline(
             if (position != null && range != null) range.endMs - position!! else 0,
             playingElapsed, elapsed(), mapping?.estimated == true, live, cache.ranges.isNotEmpty())
     }
-    private fun elapsed(): Long? = sampledElapsed?.plus((monotonicTime() - sampledAt).coerceAtLeast(0))
+    private fun elapsed(): Long? = if (ended) endedElapsed else sampledElapsed?.plus((monotonicTime() - sampledAt).coerceAtLeast(0))
 }

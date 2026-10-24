@@ -7,5 +7,6 @@ data class LivePlayerState(
     val isBuffering: Boolean = false,
     val isPlaybackSuspended: Boolean = false,
     val isEnded: Boolean = false,
+    val isBroadcastEnded: Boolean = false,
     val error: String? = null,
 )

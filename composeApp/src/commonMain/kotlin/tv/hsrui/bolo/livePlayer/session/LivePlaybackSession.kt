@@ -164,11 +164,12 @@ class LivePlaybackSession(
         if (isClosed) return
         val playback = controller.state.value
         val hasMedia = metadata.mediaId.isNotEmpty()
+        val playable = roomIsLive || playback.isBroadcastEnded && (!playback.isEnded || controller.timeline.value.canSeek)
         val status = when {
-            !hasMedia || !roomIsLive -> BoloSystemMediaPlaybackStatus.Stopped
+            !hasMedia || !playable -> BoloSystemMediaPlaybackStatus.Stopped
             playback.error != null || (requestError != null && !playback.isPlaying) -> BoloSystemMediaPlaybackStatus.Error
-            !requested || playback.isPlaybackSuspended -> BoloSystemMediaPlaybackStatus.Paused
             playback.isEnded -> BoloSystemMediaPlaybackStatus.Ended
+            !requested || playback.isPlaybackSuspended -> BoloSystemMediaPlaybackStatus.Paused
             loading || playback.isBuffering -> BoloSystemMediaPlaybackStatus.Buffering
             playback.isPlaying -> BoloSystemMediaPlaybackStatus.Playing
             else -> BoloSystemMediaPlaybackStatus.Paused
@@ -176,10 +177,10 @@ class LivePlaybackSession(
         val value = BoloSystemMediaState(
             metadata = metadata,
             status = status,
-            playWhenReady = hasMedia && roomIsLive && requested,
+            playWhenReady = hasMedia && playable && requested && !playback.isEnded,
             volume = if (muted) 0.0 else volume / 100.0,
-            canPlay = hasMedia && roomIsLive && foreground,
-            canPause = hasMedia && roomIsLive,
+            canPlay = hasMedia && playable && foreground && !playback.isEnded,
+            canPause = hasMedia && playable && !playback.isEnded,
             artwork = artwork,
             isLive = true,
             canSetRate = false,
