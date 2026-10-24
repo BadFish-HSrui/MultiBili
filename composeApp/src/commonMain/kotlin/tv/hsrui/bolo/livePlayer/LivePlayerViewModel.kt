@@ -8,12 +8,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -21,7 +21,10 @@ import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.boloSetting.setting.live.LiveSettings
 import tv.hsrui.bolo.livePlayer.base.LivePlayerController
+import tv.hsrui.bolo.livePlayer.danmaku.LiveDanmakuController
 import tv.hsrui.bolo.livePlayer.session.LivePlaybackSession
+import tv.hsrui.network.liveFeature.message.LiveMessageConnectionStatus
+import tv.hsrui.network.liveFeature.message.LiveMessageManager
 import tv.hsrui.network.liveFeature.player.LivePlayInfoData
 import tv.hsrui.network.liveFeature.player.LivePlayStreamData
 import tv.hsrui.network.liveFeature.player.enumModels.LiveVideoCodec
@@ -30,9 +33,6 @@ import tv.hsrui.network.liveFeature.player.fetchLiveHlsStreams
 import tv.hsrui.network.liveFeature.player.fetchLivePlayInfo
 import tv.hsrui.network.liveFeature.room.LiveRoomInfoData
 import tv.hsrui.network.liveFeature.room.fetchLiveRoomInfo
-
-import tv.hsrui.network.liveFeature.message.LiveMessageManager
-import tv.hsrui.network.liveFeature.message.LiveMessageConnectionStatus
 
 /** 房间资料、信息流与播放意图属于导航条目，原生资源由可重建的直播会话持有。 */
 class LivePlayerViewModel internal constructor(
@@ -50,6 +50,7 @@ class LivePlayerViewModel internal constructor(
         private set
     var roomInfo by mutableStateOf<LiveRoomInfoData?>(null)
         private set
+    val danmakuController = LiveDanmakuController(viewModelScope, messageManager, settings.danmaku, roomId = { roomInfo?.roomId })
     var playWhenReady by mutableStateOf(true)
         private set
     var broadcastEnded by mutableStateOf(false)
@@ -384,6 +385,7 @@ class LivePlayerViewModel internal constructor(
         streamRetryJob?.cancel()
         statusJob?.cancel()
         metadataJob?.cancel()
+        danmakuController.close()
         messageManager.close()
         playbackSession?.close()
     }

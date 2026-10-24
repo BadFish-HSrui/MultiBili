@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import tv.hsrui.bolo.livePlayer.danmaku.LiveDanmakuLayer
 import tv.hsrui.bolo.livePlayer.controls.LivePlayerControls
 import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.player.base.BoloVideoPlayer
@@ -55,6 +56,7 @@ fun LivePlayer(
                 Text("直播已结束", color = Color.White)
             }
         }
+        LiveDanmakuLayer(viewModel.danmakuController, Modifier.matchParentSize())
         LivePlayerControls(
             viewModel = viewModel,
             fullscreenState = fullscreenState,

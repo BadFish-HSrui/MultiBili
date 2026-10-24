@@ -27,6 +27,14 @@ fun parseLiveDanmakuMessage(message: LiveMessageData): LiveDanmakuData? {
     val emoticon = if (type == 1) meta.getOrNull(13).asObject()?.toEmoticon(content) else null
     if (content.isBlank() && emoticon == null) return null
     return LiveDanmakuData(
+        mode = when ((meta.getOrNull(1) as? JsonPrimitive)?.intOrNull) {
+            1, 6 -> LiveDanmakuMode.Scroll
+            4 -> LiveDanmakuMode.Bottom
+            5 -> LiveDanmakuMode.Top
+            else -> null
+        },
+        fontSize = (meta.getOrNull(2) as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 }?.toFloat() ?: 25f,
+        colorRgb = (meta.getOrNull(3) as? JsonPrimitive)?.longOrNull?.and(0xFFFFFF) ?: 0xFFFFFF,
         id = extra?.get("id_str").text().orEmpty(),
         sentAtEpochMillis = (meta.getOrNull(4) as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 }
             ?: (info.getOrNull(9).asObject()?.get("ts") as? JsonPrimitive)?.longOrNull

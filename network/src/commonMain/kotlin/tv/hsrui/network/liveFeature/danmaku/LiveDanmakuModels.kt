@@ -7,6 +7,9 @@ data class LiveDanmakuData(
     val content: String,
     val replyUsername: String = "",
     val emoticon: LiveDanmakuEmoticonData? = null,
+    val mode: LiveDanmakuMode? = null,
+    val fontSize: Float = 25f,
+    val colorRgb: Long = 0xFFFFFF,
     val inlineEmoticons: Map<String, LiveDanmakuEmoticonData> = emptyMap(),
 )
 
@@ -16,3 +19,9 @@ data class LiveDanmakuEmoticonData(
     val width: Int = 1,
     val height: Int = 1,
 )
+
+enum class LiveDanmakuMode {
+    Scroll,
+    Top,
+    Bottom,
+}

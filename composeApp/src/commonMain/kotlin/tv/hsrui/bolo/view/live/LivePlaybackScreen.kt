@@ -91,6 +91,11 @@ fun LivePlaybackScreen(
     val messagesActive = isActive && navigator.backStack.lastOrNull() == BoloRoute.View.Live(roomId) &&
         (getPlatform().type == PlatformType.Desktop || lifecycle.isAtLeast(Lifecycle.State.RESUMED))
     LaunchedEffect(viewModel, messagesActive) { viewModel.setMessageActive(messagesActive) }
+    val danmakuActive = messagesActive && lifecycle.isAtLeast(Lifecycle.State.RESUMED)
+    DisposableEffect(viewModel, danmakuActive) {
+        viewModel.danmakuController.setActive(danmakuActive)
+        onDispose { viewModel.danmakuController.setActive(false) }
+    }
     DisposableEffect(viewModel) { onDispose { viewModel.setMessageActive(false) } }
     LaunchedEffect(viewModel, isActive, lifecycle, session) {
         if (isActive && lifecycle.isAtLeast(Lifecycle.State.RESUMED) &&

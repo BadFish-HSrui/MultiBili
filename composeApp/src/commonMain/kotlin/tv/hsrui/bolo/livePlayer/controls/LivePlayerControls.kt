@@ -12,8 +12,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -87,9 +88,9 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -107,25 +108,25 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.livePlayer.LivePlayerViewModel
 import tv.hsrui.bolo.livePlayer.base.LivePlayerInfo
 import tv.hsrui.bolo.livePlayer.base.LivePlayerState
+import tv.hsrui.bolo.livePlayer.session.LivePlaybackTimelineState
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.player.PlayerKeyboardEffect
 import tv.hsrui.bolo.player.settings.PlayerShortcutAction
 import tv.hsrui.bolo.player.settings.shortcutAction
 import tv.hsrui.bolo.ui.components.slider.ShowSlider
-import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.bolo.ui.theme.BiliColor
+import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.network.liveFeature.player.enumModels.LiveVideoQuality
-import kotlin.math.roundToInt
-import kotlinx.coroutines.flow.MutableStateFlow
-import tv.hsrui.bolo.livePlayer.session.LivePlaybackTimelineState
 import tv.hsrui.network.utils.formatToDuration
 
 @Composable
@@ -150,6 +151,10 @@ fun LivePlayerControls(
     val bottomInsets = insets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
     val applyInsets = isFullscreen || isIpad
     val showTitle = isFullscreen || isExpanded()
+    var settingsOpen by remember(viewModel, navigationOnly) { mutableStateOf(false) }
+    val danmakuSettings = viewModel.danmakuController.settings
+    val pageActive = viewModel.danmakuController.isPageActive
+    LaunchedEffect(pageActive) { if (!pageActive) settingsOpen = false }
     var infoOpen by remember(viewModel, isFullscreen, showTitle, navigationOnly) { mutableStateOf(false) }
     val controller = viewModel.playbackSession?.controller
     val emptyInfo = remember { MutableStateFlow(LivePlayerInfo()) }
@@ -177,7 +182,7 @@ fun LivePlayerControls(
     var primaryPress by remember(viewModel) { mutableStateOf(false) }
     var qualityMenuOpen by remember(viewModel, isFullscreen) { mutableStateOf(false) }
     var volumeMenuOpen by remember(viewModel, isFullscreen) { mutableStateOf(false) }
-    val controlsInteractionActive = pointerPressed || previewPosition != null || qualityMenuOpen || volumeMenuOpen
+    val controlsInteractionActive = pointerPressed || previewPosition != null || qualityMenuOpen || volumeMenuOpen || settingsOpen
     val latestControlsInteractionActive by rememberUpdatedState(controlsInteractionActive)
     val pressedKeys = remember(viewModel) { mutableSetOf<Key>() }
     val cancelledKeys = remember(viewModel) { mutableSetOf<Key>() }
@@ -211,7 +216,7 @@ fun LivePlayerControls(
         val action = shortcutBindings.shortcutAction(event) ?: return false
         if (volumeOnly) {
             if (!action.isVolume) return false
-        } else if (qualityMenuOpen || volumeMenuOpen || previewPosition != null || pointerPressed) return false
+        } else if (settingsOpen || qualityMenuOpen || volumeMenuOpen || previewPosition != null || pointerPressed) return false
         val firstDown = pressedKeys.add(event.key)
         when (action) {
             PlayerShortcutAction.TogglePlayback -> if (firstDown) viewModel.togglePlayback()
@@ -393,6 +398,9 @@ fun LivePlayerControls(
                                 modifier = Modifier.size(24.dp),
                             )
                         }
+                        IconButton(onClick = { infoOpen = false; settingsOpen = true; revealControls() }) {
+                            Icon(Icons.Rounded.Settings, "播放器设置", tint = Color.White, modifier = Modifier.size(24.dp))
+                        }
                     }
                 }
             }
@@ -452,6 +460,14 @@ fun LivePlayerControls(
                                         maxLines = 1,
                                     )
                                     Spacer(Modifier.weight(1f))
+                                    TextButton(
+                                        onClick = { danmakuSettings.enabled = !danmakuSettings.enabled; revealControls() },
+                                        colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+                                        modifier = Modifier.height(32.dp),
+                                    ) {
+                                        Text(if (danmakuSettings.enabled) "弹幕 - 开" else "弹幕 - 关",
+                                            style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                    }
                                     if (isDesktop) {
                                         LiveVolumePopup(
                                             volumePercent = viewModel.volumePercent,
@@ -514,6 +530,7 @@ fun LivePlayerControls(
             }
         }
     }
+    LivePlayerSettingsSheet(settingsOpen, danmakuSettings, onDismissRequest = { settingsOpen = false })
 }
 
 @Composable

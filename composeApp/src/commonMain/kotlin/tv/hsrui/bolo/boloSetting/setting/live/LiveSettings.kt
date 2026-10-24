@@ -8,6 +8,8 @@ import tv.hsrui.network.liveFeature.player.enumModels.LiveVideoCodec
 import tv.hsrui.network.liveFeature.player.enumModels.LiveVideoQuality
 
 class LiveSettings(settingsKSafe: KSafePlain) {
+    val danmaku = LiveDanmakuSettings(settingsKSafe)
+
     private var storedDefaultVideoCodec by settingsKSafe(1, key = "bolo_live_default_video_codec")
     private var currentDefaultVideoCodec by mutableStateOf(
         LiveVideoCodec.fromCode(storedDefaultVideoCodec) ?: LiveVideoCodec.HEVC,
