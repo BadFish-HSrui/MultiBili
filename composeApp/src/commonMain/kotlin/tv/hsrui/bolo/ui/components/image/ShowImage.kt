@@ -46,6 +46,7 @@ expect fun ShowImage(
     animationEnabled: Boolean = true,
     zoomState: CoilZoomState? = null,
     onTap: (() -> Unit)? = null,
+    fallbackContent: (@Composable () -> Unit)? = null,
 )
 
 internal interface ImageAnimation {
@@ -64,6 +65,7 @@ internal fun ShowImage(
     animationEnabled: Boolean,
     zoomState: CoilZoomState? = null,
     onTap: (() -> Unit)? = null,
+    fallbackContent: (@Composable () -> Unit)? = null,
     decoderFactory: Decoder.Factory,
     createAnimation: (Image, Painter, CoroutineScope) -> ImageAnimation?,
 ) {
@@ -137,6 +139,9 @@ internal fun ShowImage(
                 )
             }
             when {
+                fallbackContent != null && (animation?.failed == true || state !is AsyncImagePainter.State.Success) -> {
+                    fallbackContent()
+                }
                 animation?.failed == true -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("图片加载失败")
                     TextButton(onClick = { retry++ }) { Text("重试") }
