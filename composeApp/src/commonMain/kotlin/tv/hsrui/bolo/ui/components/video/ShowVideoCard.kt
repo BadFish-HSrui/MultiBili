@@ -218,11 +218,11 @@ fun ShowVideoCard(
                 text = videoInfo.title,
                 fontSize = 13.sp,
                 lineHeight = 16.sp,
+                minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .padding(start = 4.dp, top = 4.dp, end = 4.dp)
-                    .height(40.dp)
             )
             HorizontalDivider(Modifier.height(2.dp))
             Box(Modifier.fillMaxWidth()) {

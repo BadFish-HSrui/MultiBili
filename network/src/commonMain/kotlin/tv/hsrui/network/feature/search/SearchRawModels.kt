@@ -1,7 +1,12 @@
 package tv.hsrui.network.feature.search
 
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
+import tv.hsrui.network.utils.toHttpsUrl
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import tv.hsrui.network.model.LiveCard
 import tv.hsrui.network.model.MediaCard
 import tv.hsrui.network.model.Owner
 import tv.hsrui.network.model.VideoCard
@@ -115,4 +120,95 @@ data class RawSearchUsersData(
     val numResults: Int? = null,
     @SerialName("numPages") val pageCount: Int = -1,
     @SerialName("result") val users: List<SearchUserData>? = null,
+)
+
+
+@Serializable
+data class RawSearchLiveRoomsResponse(
+    val code: Int = -1,
+    val message: String = "",
+    val data: RawSearchLiveRoomsData? = null,
+)
+
+@Serializable
+data class RawSearchLiveRoomsData(
+    val page: Int = 0,
+    val numResults: Int? = null,
+    @SerialName("numPages") val pageCount: Int = -1,
+    @SerialName("result") val rooms: List<RawSearchLiveRoomItem>? = null,
+)
+
+@Serializable
+data class RawSearchLiveRoomItem(
+    @SerialName("roomid") val roomId: Long = 0,
+    val uid: Long = 0,
+    val uname: String = "",
+    val uface: String = "",
+    val title: String = "",
+    @SerialName("user_cover") val userCover: String = "",
+    val cover: String = "",
+    @SerialName("cate_name") val categoryName: String = "",
+    @SerialName("live_status") val liveStatus: Int = 0,
+    val online: Long? = null,
+    @SerialName("watched_show") val watchedShow: LiveCard.WatchedShow? = null,
+)
+
+fun RawSearchLiveRoomItem.toLiveCard(): LiveCard = LiveCard(
+    roomId = roomId,
+    title = title.replace("<em class=\"keyword\">", "").replace("</em>", ""),
+    userCover = userCover,
+    systemCover = cover,
+    upMid = uid,
+    upName = uname.replace("<em class=\"keyword\">", "").replace("</em>", ""),
+    avatar = uface,
+    areaName = categoryName.replace("<em class=\"keyword\">", "").replace("</em>", ""),
+    liveStatus = liveStatus,
+    popularity = online ?: -1,
+    watchedShow = watchedShow ?: LiveCard.WatchedShow(count = -1),
+)
+
+@Serializable
+data class RawSearchLiveUsersResponse(
+    val code: Int = -1,
+    val message: String = "",
+    val data: RawSearchLiveUsersData? = null,
+)
+
+@Serializable
+data class RawSearchLiveUsersData(
+    val page: Int = 0,
+    val numResults: Int? = null,
+    @SerialName("numPages") val pageCount: Int = -1,
+    @SerialName("result") val users: List<RawSearchLiveUserItem>? = null,
+)
+
+@Serializable
+data class RawSearchLiveUserItem(
+    val uid: Long = 0,
+    val uname: String = "",
+    val uface: String = "",
+    @SerialName("roomid") val roomId: Long = 0,
+    val attentions: Long? = null,
+    @SerialName("cate_name") val categoryName: String = "",
+    @SerialName("live_status") val liveStatus: Int? = null,
+    @SerialName("is_live") val isLive: Boolean = false,
+    @SerialName("live_time") val liveTime: String? = null,
+)
+
+fun RawSearchLiveUserItem.toSearchLiveUserData(): SearchLiveUserData = SearchLiveUserData(
+    mid = uid,
+    name = uname.replace("<em class=\"keyword\">", "").replace("</em>", ""),
+    avatarUrl = uface.toHttpsUrl(),
+    roomId = roomId,
+    followerCount = attentions?.takeIf { it >= 0 },
+    areaName = categoryName.replace("<em class=\"keyword\">", "").replace("</em>", "").trim(),
+    isLive = liveStatus?.let { it == 1 } ?: isLive,
+    liveStartTime = try {
+        liveTime?.let {
+            LocalDateTime.parse(it.replace(' ', 'T')).toInstant(TimeZone.of("Asia/Shanghai"))
+                .epochSeconds.takeIf { seconds -> seconds > 0 }
+        }
+    } catch (_: IllegalArgumentException) {
+        null
+    },
 )

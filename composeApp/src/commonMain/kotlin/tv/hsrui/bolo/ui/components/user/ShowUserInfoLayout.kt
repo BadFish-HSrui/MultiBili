@@ -51,10 +51,16 @@ internal fun ShowUserInfoLayout(
     signMinLines: Int = 1,
     onClick: (() -> Unit)? = null,
     onUserClick: (() -> Unit)? = null,
+    onAvatarClick: (() -> Unit)? = onUserClick,
+    avatarBadgeText: String? = if (isVip) vipTypeString else null,
+    showLevel: Boolean = true,
+    showStatistics: Boolean = true,
+    descriptionContent: (@Composable ColumnScope.() -> Unit)? = null,
     nameTrailingContent: @Composable RowScope.() -> Unit = {},
     statistics: @Composable RowScope.() -> Unit,
 ) {
     val userClickModifier = if (onUserClick == null) Modifier else Modifier.clickable(onClick = onUserClick)
+    val avatarClickModifier = if (onAvatarClick == null) Modifier else Modifier.clickable(onClick = onAvatarClick)
     val content: @Composable ColumnScope.() -> Unit = {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -67,16 +73,16 @@ internal fun ShowUserInfoLayout(
                     model = face,
                     contentDescription = "个人头像",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(1F).clip(CircleShape).then(userClickModifier),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1F).clip(CircleShape).then(avatarClickModifier),
                 )
-                if (isVip) {
+                if (avatarBadgeText != null) {
                     Surface(
                         shape = CircleShape,
                         color = BiliColor.ThemeColor,
                         modifier = Modifier.width(64.dp),
                     ) {
                         Text(
-                            text = vipTypeString,
+                            text = avatarBadgeText,
                             color = Color.White,
                             textAlign = TextAlign.Center,
                             maxLines = 1,
@@ -88,13 +94,15 @@ internal fun ShowUserInfoLayout(
             Column(modifier = Modifier.weight(1F).padding(start = 8.dp).wrapContentHeight()) {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Row(modifier = Modifier.weight(1F), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(shape = CircleShape, color = BiliColor.getLevelColor(level)) {
-                            Text(
-                                text = levelString,
-                                color = Color.White,
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier.padding(horizontal = 4.dp),
-                            )
+                        if (showLevel) {
+                            Surface(shape = CircleShape, color = BiliColor.getLevelColor(level)) {
+                                Text(
+                                    text = levelString,
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    modifier = Modifier.padding(horizontal = 4.dp),
+                                )
+                            }
                         }
                         Text(
                             text = name,
@@ -107,17 +115,23 @@ internal fun ShowUserInfoLayout(
                     }
                     nameTrailingContent()
                 }
-                Text(
-                    text = sign.ifEmpty { "这个人很懒，没有签名喵" },
-                    style = MaterialTheme.typography.bodyMedium,
-                    minLines = signMinLines,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.alpha(0.75F),
-                )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), thickness = 2.dp)
-                CompositionLocalProvider(LocalTextStyle provides MaterialTheme.typography.labelMedium) {
-                    Row(modifier = Modifier.fillMaxWidth(), content = statistics)
+                if (descriptionContent != null) {
+                    descriptionContent()
+                } else {
+                    Text(
+                        text = sign.ifEmpty { "这个人很懒，没有签名喵" },
+                        style = MaterialTheme.typography.bodyMedium,
+                        minLines = signMinLines,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.alpha(0.75F),
+                    )
+                }
+                if (showStatistics) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), thickness = 2.dp)
+                    CompositionLocalProvider(LocalTextStyle provides MaterialTheme.typography.labelMedium) {
+                        Row(modifier = Modifier.fillMaxWidth(), content = statistics)
+                    }
                 }
             }
         }

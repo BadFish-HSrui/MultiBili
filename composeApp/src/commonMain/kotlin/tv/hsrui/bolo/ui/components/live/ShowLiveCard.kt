@@ -79,7 +79,7 @@ fun ShowLiveCard(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
                 )
-                if (showStatistics) {
+                if (showStatistics && (liveInfo.watchedCount >= 0 || liveInfo.popularity >= 0)) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
@@ -94,27 +94,31 @@ fun ShowLiveCard(
                         LocalTextStyle provides TextStyle(fontSize = if (compact) 10.sp else 12.sp),
                     ) {
                         Row(Modifier.align(Alignment.TopStart)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(4.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Visibility,
-                                    contentDescription = "看过人数",
-                                    modifier = Modifier.size(10.dp),
-                                )
-                                Text(liveInfo.watchedCount.formatCountToString())
+                            if (liveInfo.watchedCount >= 0) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(4.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Visibility,
+                                        contentDescription = "看过人数",
+                                        modifier = Modifier.size(10.dp),
+                                    )
+                                    Text(liveInfo.watchedCount.formatCountToString())
+                                }
                             }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(4.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Whatshot,
-                                    contentDescription = "人气",
-                                    modifier = Modifier.size(10.dp),
-                                )
-                                Text(liveInfo.popularity.formatCountToString())
+                            if (liveInfo.popularity >= 0) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(4.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Whatshot,
+                                        contentDescription = "人气",
+                                        modifier = Modifier.size(10.dp),
+                                    )
+                                    Text(liveInfo.popularity.formatCountToString())
+                                }
                             }
                         }
                     }
