@@ -35,12 +35,12 @@ fun LivePlaybackInfo(
     room: LiveRoomInfoData,
     messageManager: LiveMessageManager,
     isActive: Boolean = true,
-    isDanmakuVisible: Boolean = isActive,
+    isInteractionVisible: Boolean = isActive,
     modifier: Modifier = Modifier,
 ) {
     key(room.roomId) {
         val settings: BoloSettings = koinInject()
-        val tabs = listOf("直播间", "弹幕")
+        val tabs = listOf("直播间", "互动")
         val pagerState = rememberPagerState { tabs.size }
         val coroutineScope = rememberCoroutineScope()
         val danmakuViewModel: LiveDanmakuViewModel = viewModel(key = "live_danmaku_${room.roomId}") {
@@ -80,7 +80,7 @@ fun LivePlaybackInfo(
                     )
                     1 -> LiveDanmakuPage(
                         viewModel = danmakuViewModel,
-                        isVisible = isDanmakuVisible && pagerState.settledPage == 1 &&
+                        isVisible = isInteractionVisible && pagerState.settledPage == 1 &&
                             pagerState.currentPage == 1 && !pagerState.isScrollInProgress,
                         modifier = Modifier.fillMaxSize(),
                     )

@@ -80,7 +80,7 @@ fun LivePlaybackScreen(
                 room = info,
                 messageManager = viewModel.messageManager,
                 isActive = active,
-                isDanmakuVisible = visible,
+                isInteractionVisible = visible,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -102,7 +102,7 @@ fun LivePlaybackScreen(
     val isPageReady = uiState is LivePlayerUiState.Success || uiState is LivePlayerUiState.Offline
     if (isPageReady) SideEffect { hasShownPage = true }
     val fullscreenState = rememberPlayerFullscreenState()
-    val danmakuVisible = messagesActive && lifecycle.isAtLeast(Lifecycle.State.RESUMED) &&
+    val interactionVisible = messagesActive && lifecycle.isAtLeast(Lifecycle.State.RESUMED) &&
         !fullscreenState.isFullscreen
     if (isActive) PlayerFullscreenEffect(fullscreenState, autoFullscreenOnRotateEnabled = true)
     NavigationBackHandler(
@@ -141,7 +141,7 @@ fun LivePlaybackScreen(
                             Row(Modifier.fillMaxSize()) {
                                 Box(Modifier.weight(1F).fillMaxHeight().then(boundsTracker))
                                 Box(Modifier.width(infoWidth).fillMaxHeight()) {
-                                    room?.let { infoContent(it, isActive, danmakuVisible) }
+                                    room?.let { infoContent(it, isActive, interactionVisible) }
                                 }
                             }
                         }
@@ -149,7 +149,7 @@ fun LivePlaybackScreen(
                         Column(Modifier.fillMaxSize()) {
                             Box(Modifier.fillMaxWidth().aspectRatio(16F / 9F).then(boundsTracker))
                             Box(Modifier.weight(1F).fillMaxWidth()) {
-                                room?.let { infoContent(it, isActive, danmakuVisible) }
+                                room?.let { infoContent(it, isActive, interactionVisible) }
                             }
                         }
                     }
