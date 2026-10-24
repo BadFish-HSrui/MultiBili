@@ -162,7 +162,7 @@ private fun LiveDanmakuCard(data: LiveDanmakuData, isVisible: Boolean) {
                 parts.forEachIndexed { index, (text, emoticon) ->
                     if (emoticon == null) append(text) else {
                         val key = "emoticon_$index"
-                        val height = if (data.emoticon != null) imageHeight else style.fontSize * (5f / 3f)
+                        val height = if (data.emoticon != null) imageHeight else style.fontSize
                         val width = (height.value * emoticon.width / emoticon.height)
                             .coerceAtMost(maxImageWidth.value).sp
                         appendInlineContent(key, text.ifEmpty { "表情" })
