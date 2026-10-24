@@ -35,6 +35,8 @@ android {
         }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // Android 通过 JNI 加载 Brotli；依赖携带的桌面构建元数据不参与运行。
+            excludes += "META-INF/nativebuild.json"
             merges -= "/META-INF/services/**"
             merges += "/META-INF/services/{coil3.util.FetcherServiceLoaderTarget,io.ktor.*,kotlinx.*}"
             excludes += "META-INF/services/coil3.util.DecoderServiceLoaderTarget"
@@ -56,6 +58,7 @@ android {
         }
     }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -64,6 +67,7 @@ android {
 
 
 dependencies {
+    coreLibraryDesugaring(libs.android.desugar.jdk.libs)
     implementation(projects.composeApp)
     implementation(libs.compose.uiToolingPreview)
     implementation(libs.androidx.activity.compose)

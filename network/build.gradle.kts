@@ -65,6 +65,11 @@ kotlin {
                 implementation(libs.jako.stdlib)
                 // Add KMP dependencies here
                 implementation(libs.ktor.client.core)
+                implementation(libs.ktor.client.websockets)
+                implementation(libs.kompressor.brotli)
+                implementation(libs.brotli.common)
+                implementation(libs.brotli.decoder)
+                implementation(libs.brotli.encoder)
                 implementation(libs.ktor.client.content.negotiation)
                 implementation(libs.ktor.serialization.kotlinx.json)
                 implementation(libs.kotlinx.serialization.json)

@@ -21,6 +21,9 @@ jako = "1.0.0-SNAPSHOT"
 kotlinx-coroutines = "1.11.0"
 material3 = "1.12.0-alpha03"
 ktor = "3.6.0"
+kompressor = "0.5.0"
+brotli = "1.2.0_4"
+desugar = "2.1.5"
 coil = "3.6.3"
 zoomimage = "1.7.0"
 kotlinx-serialization = "1.11.0"
@@ -57,6 +60,12 @@ compose-components-resources = { module = "org.jetbrains.compose.components:comp
 compose-uiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
 kotlinx-coroutinesSwing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
+kompressor-brotli = { module = "com.ensody.kompressor:kompressor-brotli--nativelib", version.ref = "kompressor" }
+brotli-common = { module = "com.ensody.nativebuilds:brotli-libbrotlicommon", version.ref = "brotli" }
+brotli-decoder = { module = "com.ensody.nativebuilds:brotli-libbrotlidec", version.ref = "brotli" }
+brotli-encoder = { module = "com.ensody.nativebuilds:brotli-libbrotlienc", version.ref = "brotli" }
+android-desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar" }
 ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
