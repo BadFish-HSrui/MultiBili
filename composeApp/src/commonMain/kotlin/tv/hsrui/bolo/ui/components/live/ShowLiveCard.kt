@@ -34,6 +34,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import org.koin.compose.koinInject
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.navigation.openLive
 import tv.hsrui.bolo.navigation.openUserSpace
 import tv.hsrui.bolo.ui.theme.BoloShapes
@@ -46,6 +49,7 @@ fun ShowLiveCard(
     liveInfo: LiveCard,
     modifier: Modifier = Modifier,
 ) {
+    val navigator: Navigator = koinInject()
     val compact = isCompact()
     val coverSuffix = if (compact) "@400w_225h_1c.webp" else "@800w_450h_1c.webp"
 
@@ -131,6 +135,11 @@ fun ShowLiveCard(
                 }
                 Text(
                     text = liveInfo.areaDisplayName,
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = liveInfo.parentAreaId > 0) {
+                        navigator.navigateTo(
+                            BoloRoute.Live.Area(liveInfo.parentAreaId, liveInfo.areaId.takeIf { it > 0 })
+                        )
+                    },
                     fontSize = 10.sp,
                     lineHeight = 12.sp,
                     maxLines = 1,
