@@ -149,11 +149,11 @@ JNIEXPORT jint JNICALL JNI(load)(JNIEnv *env, jobject self, jlong handle, jstrin
 JNIEXPORT jint JNICALL JNI(videoEnabled)(JNIEnv *env, jobject self, jlong handle, jboolean enabled) {
     return bolo_mpv_video_enabled(PLAYER(handle)->core, enabled);
 }
-JNIEXPORT jint JNICALL JNI(loadLive)(JNIEnv *env, jobject self, jlong handle, jstring url, jlong generation, jstring user_agent, jstring referrer) {
+JNIEXPORT jint JNICALL JNI(loadLive)(JNIEnv *env, jobject self, jlong handle, jstring url, jlong generation, jstring user_agent, jstring referrer, jboolean buffering_enabled) {
     const char *u = (*env)->GetStringUTFChars(env, url, NULL);
     const char *ua = (*env)->GetStringUTFChars(env, user_agent, NULL);
     const char *ref = (*env)->GetStringUTFChars(env, referrer, NULL);
-    int result = (u && ua && ref) ? bolo_mpv_load_live(PLAYER(handle)->core, u, generation, ua, ref) : -2;
+    int result = (u && ua && ref) ? bolo_mpv_load_live(PLAYER(handle)->core, u, generation, ua, ref, buffering_enabled) : -2;
     if (ref) (*env)->ReleaseStringUTFChars(env, referrer, ref);
     if (ua) (*env)->ReleaseStringUTFChars(env, user_agent, ua);
     if (u) (*env)->ReleaseStringUTFChars(env, url, u);

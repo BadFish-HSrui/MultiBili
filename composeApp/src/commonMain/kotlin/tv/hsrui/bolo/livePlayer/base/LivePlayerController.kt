@@ -44,6 +44,11 @@ import kotlin.time.DurationUnit
 class LivePlayerController(
     private val settings: LiveSettings = getKoin().get<BoloSettings>().live,
 ) : BoloPlayerOutputController() {
+    // 播放器生命周期内固定配置，切流和内部重建不重新读取设置。
+    private val configuredLocalReplayEnabled = settings.localReplayEnabled
+    private val optimizePlaybackSourceEnabled = settings.optimizePlaybackSourceEnabled
+    private val playbackBufferDisabled = settings.playbackBufferDisabled
+    private val liveBufferDurationMs = if (playbackBufferDisabled) 0L else 4_000L
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutableState = MutableStateFlow(LivePlayerState())
     val state: StateFlow<LivePlayerState> = mutableState.asStateFlow()
@@ -69,7 +74,7 @@ class LivePlayerController(
     private var streamSession: LiveStreamSession? = null
     private var localReplayEnabled = false
     private var cacheCapacityBytes = 256L * 1024 * 1024
-    private val playbackTimeline = LivePlaybackTimeline()
+    private val playbackTimeline = LivePlaybackTimeline(liveBufferDurationMs = liveBufferDurationMs)
     val timeline = playbackTimeline.state
     private var timelineJob: Job? = null
     private var reader: BoloMpvStreamSource? = null
@@ -122,7 +127,7 @@ class LivePlayerController(
             timelineJob?.cancel()
             playbackTimeline.reset()
             sourceRevision++
-            localReplayEnabled = settings.localReplayEnabled && stream.protocolName == "http_hls" &&
+            localReplayEnabled = configuredLocalReplayEnabled && stream.protocolName == "http_hls" &&
                 stream.formatName in setOf("fmp4", "ts")
             cacheCapacityBytes = settings.cacheSizeMiB.toLong() * 1024 * 1024
         }
@@ -202,8 +207,16 @@ class LivePlayerController(
                 if (streams == null) {
                     val revision = sourceRevision
                     lateinit var collecting: LiveStreamSession
-                    collecting = LiveStreamSession(revision, checkNotNull(stream), roomId, urls[urlIndex],
-                        localReplayEnabled = localReplayEnabled, cacheCapacityBytes = cacheCapacityBytes) { error ->
+                    collecting = LiveStreamSession(
+                        revision,
+                        checkNotNull(stream),
+                        roomId,
+                        urls[urlIndex],
+                        localReplayEnabled = localReplayEnabled,
+                        cacheCapacityBytes = cacheCapacityBytes,
+                        optimizePlaybackSourceEnabled = optimizePlaybackSourceEnabled,
+                        liveBufferDurationMs = liveBufferDurationMs,
+                    ) { error ->
                         scope.launch {
                             if (!disposed && foreground && sourceRevision == revision && streamSession === collecting) {
                                 retrySource("直播媒体读取失败：${error.message ?: "未知错误"}", reload = false)
@@ -260,7 +273,7 @@ class LivePlayerController(
                     check(current.videoEnabled(visible) >= 0) { "视频轨配置失败" }
                     check(current.volume(gain) >= 0) { "音量配置失败" }
                     check(current.speed(1.0) >= 0) { "直播播放速度配置失败" }
-                    current.loadLive(source, uri, expected)
+                    current.loadLive(source, uri, expected, bufferingEnabled = !playbackBufferDisabled)
                 }
                 if (!isCurrent(expected, current)) return@launch
                 if (result < 0) retrySource("直播流打开失败（$result）")

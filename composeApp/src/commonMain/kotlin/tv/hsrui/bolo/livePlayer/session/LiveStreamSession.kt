@@ -49,6 +49,8 @@ internal class LiveStreamSession(
     private val url: String,
     localReplayEnabled: Boolean = false,
     val cacheCapacityBytes: Long = 256L * 1024 * 1024,
+    private val optimizePlaybackSourceEnabled: Boolean = true,
+    private val liveBufferDurationMs: Long = 4_000,
     private val onFailure: (Throwable) -> Unit,
 ) : BoloMpvStreamSource {
     val uri = "bolo-stream://live/$generation/${stream.formatName}"
@@ -74,6 +76,7 @@ internal class LiveStreamSession(
         capacity = if (this.localReplayEnabled) cacheCapacityBytes else 32L * 1024 * 1024,
         mutex = transferMutex,
         retainHistory = this.localReplayEnabled,
+        liveBufferDurationMs = liveBufferDurationMs,
     )
     private val playlistMutex = Mutex()
     private val configurationMutex = Mutex()
@@ -94,7 +97,7 @@ internal class LiveStreamSession(
     private var indexedDiscontinuity: Long? = null
     private var checkedInitialization: LiveHlsResourceData? = null
     private var cdnIndex = stream.urls.indexOf(url).coerceAtLeast(0)
-    private val bodyRequests = Semaphore(3)
+    private val bodyRequests = Semaphore(if (optimizePlaybackSourceEnabled) 3 else 1)
     private val recentDurations = MutableStateFlow<List<Long>>(emptyList())
     internal val requestEvents = MutableSharedFlow<List<Long>>(extraBufferCapacity = 64)
     internal val activeBodyRequests = AtomicLong(0)
@@ -204,7 +207,7 @@ internal class LiveStreamSession(
                 previous = next
             }
         }
-        val verification = launch {
+        val verification = if (!optimizePlaybackSourceEnabled) null else launch {
             while (isActive) {
                 delay(1_000)
                 val resource = configurationMutex.withLock {
@@ -274,7 +277,7 @@ internal class LiveStreamSession(
                         for (i in tail.indices.reversed()) {
                             duration += tail[i].durationMs
                             start = i
-                            if (duration >= 4_000) break
+                            if (duration >= liveBufferDurationMs) break
                         }
                         nextSequence = tail.take(start + 1).lastOrNull {
                             it.startsWithKeyframe == true || current.independentSegments && it.startsWithKeyframe != false
@@ -300,39 +303,51 @@ internal class LiveStreamSession(
                 try {
                     if (stream.formatName == "fmp4") {
                         val initialization = checkNotNull(segment.initialization) { "直播初始化片段缺失" }
-                        val checkInitialization = configurationMutex.withLock {
-                            checkedInitialization != initialization || checkedRoute != revision || checkedDiscontinuity != segment.discontinuity
+                        val (checkInitialization, recheckInitialization) = configurationMutex.withLock {
+                            val changed = checkedInitialization != initialization || checkedRoute != revision ||
+                                checkedDiscontinuity != segment.discontinuity
+                            changed to (!optimizePlaybackSourceEnabled &&
+                                initializationCheckedAt.elapsedNow().inWholeMilliseconds >= 30_000)
                         }
-                        if (checkInitialization) {
+                        if (checkInitialization || recheckInitialization) {
                             // 切配置前释放旧窗口，防止已完成后片占满加载预算而阻塞必要初始化。
                             clearWindow()
-                            val body = downloadResource(initialization, initialization = true)
                             try {
-                                configurationMutex.withLock {
-                                    if (revision == routeRevision.load()) {
-                                        index.initialize(body)
-                                        val (id, changed) = cache.initialize(body)
-                                        initId = id
-                                        checkedInitialization = initialization
-                                        checkedRoute = revision
-                                        checkedDiscontinuity = segment.discontinuity
-                                        initializationCheckedAt = TimeSource.Monotonic.markNow()
-                                        if (changed) {
-                                            identities.clear()
-                                            lastMediaEnd = null
-                                            lastConfiguration = null
-                                            nextSequence = null
+                                val body = downloadResource(initialization, initialization = true)
+                                try {
+                                    configurationMutex.withLock {
+                                        if (revision == routeRevision.load()) {
+                                            index.initialize(body)
+                                            val (id, changed) = cache.initialize(body)
+                                            initId = id
+                                            checkedInitialization = initialization
+                                            checkedRoute = revision
+                                            checkedDiscontinuity = segment.discontinuity
+                                            initializationCheckedAt = TimeSource.Monotonic.markNow()
+                                            if (changed) {
+                                                identities.clear()
+                                                lastMediaEnd = null
+                                                lastConfiguration = null
+                                                nextSequence = null
+                                            }
                                         }
                                     }
+                                } finally {
+                                    withContext(NonCancellable) { cache.discard(body, onlyStaged = true) }
                                 }
-                            } finally {
-                                withContext(NonCancellable) { cache.discard(body, onlyStaged = true) }
+                            } catch (error: Exception) {
+                                currentCoroutineContext().ensureActive()
+                                if (checkInitialization) throw error
+                                // 串行复核在分片之间执行；暂时失败仍沿用已验证的初始化。
+                                configurationMutex.withLock {
+                                    initializationCheckedAt = TimeSource.Monotonic.markNow()
+                                }
                             }
                             if (revision != routeRevision.load() || nextSequence == null) continue
                         }
                     }
                     val epoch = cache.snapshot.value.epoch
-                    val candidates = listOfNotNull(segment, current.segments.firstOrNull {
+                    val candidates = listOfNotNull(segment, if (!optimizePlaybackSourceEnabled) null else current.segments.firstOrNull {
                         it.sequence == segment.sequence + 1 && !it.isGap && it.discontinuity == segment.discontinuity && it.initialization == segment.initialization
                     })
                     for (pending in candidates) {
@@ -440,7 +455,7 @@ internal class LiveStreamSession(
             }
         } finally {
             refresh.cancel()
-            verification.cancel()
+            verification?.cancel()
             clearWindow()
         }
     }
@@ -608,7 +623,8 @@ internal class LiveStreamSession(
                         (rebuffering.load() || ahead <= 0 || network - lastProgress[monitoring].load() >= threshold ||
                             remaining != null && remaining >= ahead - 1_000 || network >= threshold * 2)
                     val isHead = configurationMutex.withLock { nextSequence == segment.sequence }
-                    if (launched < order.size && launched - completed < 2 && (completed == launched || slow && isHead)) startCandidate()
+                    if (launched < order.size && launched - completed < 2 &&
+                        (completed == launched || optimizePlaybackSourceEnabled && slow && isHead)) startCandidate()
                     delay(50)
                 }
                 checkNotNull(winner)

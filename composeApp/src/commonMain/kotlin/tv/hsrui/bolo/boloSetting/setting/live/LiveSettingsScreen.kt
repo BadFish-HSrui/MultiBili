@@ -60,13 +60,16 @@ fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
     val settings = koinInject<BoloSettings>().live
     var showRecordQualitySelectionInfo by remember { mutableStateOf(false) }
     var showPlaybackCacheInfo by remember { mutableStateOf(false) }
-    if (showRecordQualitySelectionInfo || showPlaybackCacheInfo) {
+    var showPlaybackBufferInfo by remember { mutableStateOf(false) }
+    if (showRecordQualitySelectionInfo || showPlaybackCacheInfo || showPlaybackBufferInfo) {
         ShowInfoDialog(onConfirm = {
             showRecordQualitySelectionInfo = false
             showPlaybackCacheInfo = false
+            showPlaybackBufferInfo = false
         }) {
             Text(
                 text = if (showRecordQualitySelectionInfo) "开启后修改音画质会同时修改默认项"
+                    else if (showPlaybackBufferInfo) "默认使用和官方类似的加载缓冲，禁用后会减少3～5秒播放延迟，但可能因网络波动频繁卡顿"
                     else "可用于加载本地回放的空间大小,过大时可能无法获取足够空间。",
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium,
@@ -175,6 +178,36 @@ fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 ) { Icon(Icons.Outlined.Info, contentDescription = "记录画质选择说明", modifier = Modifier.size(16.dp)) }
                                 Spacer(Modifier.weight(1f))
                                 Switch(checked = settings.recordQualitySelectionEnabled, onCheckedChange = null)
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.optimizePlaybackSourceEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.optimizePlaybackSourceEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("优化直播源", style = MaterialTheme.typography.bodyLarge)
+                                Spacer(Modifier.weight(1f))
+                                Switch(checked = settings.optimizePlaybackSourceEnabled, onCheckedChange = null)
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.playbackBufferDisabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.playbackBufferDisabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("关闭播放缓冲", style = MaterialTheme.typography.bodyLarge)
+                                IconButton(
+                                    onClick = { showPlaybackBufferInfo = true },
+                                    modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                ) { Icon(Icons.Outlined.Info, contentDescription = "关闭播放缓冲说明", modifier = Modifier.size(16.dp)) }
+                                Spacer(Modifier.weight(1f))
+                                Switch(checked = settings.playbackBufferDisabled, onCheckedChange = null)
                             }
                             HorizontalDivider()
                             Row(

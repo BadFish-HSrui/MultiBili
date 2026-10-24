@@ -146,7 +146,7 @@ static int flag(mpv_node *node, const char *key) {
     return v && v->format == MPV_FORMAT_FLAG && v->u.flag;
 }
 
-static int load_file(bolo_mpv *p, const char *video, const char *audio, const char *start, int live, int64_t generation, const char *user_agent, const char *referrer) {
+static int load_file(bolo_mpv *p, const char *video, const char *audio, const char *start, int live, int64_t generation, const char *user_agent, const char *referrer, int buffering_enabled) {
     const char *format = "";
     if (live) {
         const char *suffix = strrchr(video, '/');
@@ -163,10 +163,11 @@ static int load_file(bolo_mpv *p, const char *video, const char *audio, const ch
         {"options/rebase-start-time", live ? "no" : "yes"},
         {"options/demuxer-max-back-bytes", live ? "0" : "4194304"},
         {"options/cache-on-disk", "no"},
-        {"options/cache-secs", live ? "5" : "3"},
-        {"options/demuxer-readahead-secs", live ? "5" : "3"},
-        {"options/cache-pause-initial", live ? "yes" : "no"},
-        {"options/cache-pause-wait", live ? "3" : "1"},
+        {"options/cache-secs", live ? (buffering_enabled ? "5" : "0") : "3"},
+        {"options/demuxer-readahead-secs", live ? (buffering_enabled ? "5" : "0") : "3"},
+        {"options/cache-pause", !live || buffering_enabled ? "yes" : "no"},
+        {"options/cache-pause-initial", live && buffering_enabled ? "yes" : "no"},
+        {"options/cache-pause-wait", live ? (buffering_enabled ? "3" : "0") : "1"},
         {"options/network-timeout", live ? "10" : "60"},
     };
     for (unsigned i = 0; i < sizeof(options) / sizeof(options[0]); ++i) {
@@ -218,13 +219,13 @@ int bolo_mpv_load(bolo_mpv *p, const char *video, const char *audio, double star
     char start_text[64];
     snprintf(start_text, sizeof(start_text), "%.3f", start);
     for (char *c = start_text; *c; ++c) if (*c == ',') *c = '.';
-    return load_file(p, video, audio, start_text, 0, generation, user_agent, referrer);
+    return load_file(p, video, audio, start_text, 0, generation, user_agent, referrer, 1);
 }
 
-int bolo_mpv_load_live(bolo_mpv *p, const char *url, int64_t generation, const char *user_agent, const char *referrer) {
+int bolo_mpv_load_live(bolo_mpv *p, const char *url, int64_t generation, const char *user_agent, const char *referrer, int buffering_enabled) {
     // 直播网络与 HLS 调度归应用层；原生只接受已注册的媒体字节流。
     if (!p || !url || strncmp(url, "bolo-stream://", 14) != 0) return MPV_ERROR_INVALID_PARAMETER;
-    return load_file(p, url, NULL, "none", 1, generation, user_agent, referrer);
+    return load_file(p, url, NULL, "none", 1, generation, user_agent, referrer, buffering_enabled);
 }
 
 int bolo_mpv_pause(bolo_mpv *p, int paused) {

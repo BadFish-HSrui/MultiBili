@@ -42,6 +42,26 @@ class LiveSettings(settingsKSafe: KSafePlain) {
             currentRecordQualitySelectionEnabled = value
         }
 
+    private var storedOptimizePlaybackSourceEnabled by settingsKSafe(true, key = "bolo_live_optimize_playback_source_enabled")
+    private var currentOptimizePlaybackSourceEnabled by mutableStateOf(storedOptimizePlaybackSourceEnabled)
+    var optimizePlaybackSourceEnabled: Boolean
+        get() = currentOptimizePlaybackSourceEnabled
+        set(value) {
+            if (currentOptimizePlaybackSourceEnabled == value) return
+            storedOptimizePlaybackSourceEnabled = value
+            currentOptimizePlaybackSourceEnabled = value
+        }
+
+    private var storedPlaybackBufferDisabled by settingsKSafe(false, key = "bolo_live_playback_buffer_disabled")
+    private var currentPlaybackBufferDisabled by mutableStateOf(storedPlaybackBufferDisabled)
+    var playbackBufferDisabled: Boolean
+        get() = currentPlaybackBufferDisabled
+        set(value) {
+            if (currentPlaybackBufferDisabled == value) return
+            storedPlaybackBufferDisabled = value
+            currentPlaybackBufferDisabled = value
+        }
+
     private var storedLocalReplayEnabled by settingsKSafe(false, key = "bolo_live_local_replay_enabled")
     private var currentLocalReplayEnabled by mutableStateOf(storedLocalReplayEnabled)
     var localReplayEnabled: Boolean

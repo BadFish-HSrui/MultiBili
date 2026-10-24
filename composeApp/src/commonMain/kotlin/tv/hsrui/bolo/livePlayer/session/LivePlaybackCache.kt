@@ -49,6 +49,7 @@ internal class LivePlaybackCache(
     private val mutex: Mutex = Mutex(),
     private val retainHistory: Boolean = true,
     private val loadingCapacity: Long = if (retainHistory) 32L * 1024 * 1024 else capacity,
+    private val liveBufferDurationMs: Long = 4_000,
 ) {
     internal class Missing(val targetMs: Long?) : Exception("直播缓存位置已不可用") {
         var candidate: Int? = null
@@ -307,7 +308,7 @@ internal class LivePlaybackCache(
         val starts = value.segments.filter { it.groupId == it.id }
         if (targetMs == null) {
             val end = value.segments.lastOrNull()?.media?.endMs
-            return starts.lastOrNull { end != null && it.media.startMs!! <= end - 4_000 }
+            return starts.lastOrNull { end != null && it.media.startMs!! <= end - liveBufferDurationMs }
                 ?: starts.firstOrNull() ?: value.segments.firstOrNull()
         }
         val range = value.ranges.firstOrNull { targetMs >= it.startMs && targetMs < it.endMs }

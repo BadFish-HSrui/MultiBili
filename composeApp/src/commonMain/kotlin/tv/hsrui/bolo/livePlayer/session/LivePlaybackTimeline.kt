@@ -24,6 +24,7 @@ data class LivePlaybackTimelineState(
 internal class LivePlaybackTimeline(
     private val wallTime: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val monotonicTime: () -> Long = TimeSource.Monotonic.markNow().let { mark -> { mark.elapsedNow().inWholeMilliseconds } },
+    private val liveBufferDurationMs: Long = 4_000,
 ) {
     private var startSeconds: Long? = null
     private var sampledElapsed: Long? = null
@@ -116,7 +117,7 @@ internal class LivePlaybackTimeline(
         tick()
     }
     fun tick() {
-        val latest = rawLatest?.let { (it - if (ended || cache.ended) 0 else 4_000).coerceAtLeast(0) }
+        val latest = rawLatest?.let { (it - if (ended || cache.ended) 0 else liveBufferDurationMs).coerceAtLeast(0) }
         val mapping = anchor
         val mapped = if (mapping != null && position != null) (mapping.elapsedMs + position!! - mapping.mediaMs).coerceAtLeast(0) else null
         val range = cache.ranges.firstOrNull { position != null && position!! >= it.startMs && position!! < it.endMs }
@@ -130,7 +131,7 @@ internal class LivePlaybackTimeline(
             if (position != null && range != null) range.endMs - position!! else 0,
             playingElapsed,
             if (latest != null && mapping != null) (mapping.elapsedMs + latest - mapping.mediaMs).coerceAtLeast(0)
-                else elapsed()?.let { (it - if (ended) 0 else 4_000).coerceAtLeast(0) },
+                else elapsed()?.let { (it - if (ended) 0 else liveBufferDurationMs).coerceAtLeast(0) },
             mapping?.estimated == true,
             live,
             cache.ranges.isNotEmpty(),

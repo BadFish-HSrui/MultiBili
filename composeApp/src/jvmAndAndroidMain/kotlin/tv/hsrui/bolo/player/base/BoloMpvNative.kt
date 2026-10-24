@@ -38,7 +38,7 @@ internal object BoloMpvNative {
     external fun create(platform: String): Long
     external fun setStreamCallbacks(handle: Long, streams: BoloMpvStreamBridge): Int
     external fun load(handle: Long, video: String, audio: String?, start: Double, generation: Long, userAgent: String, referrer: String): Int
-    external fun loadLive(handle: Long, url: String, generation: Long, userAgent: String, referrer: String): Int
+    external fun loadLive(handle: Long, url: String, generation: Long, userAgent: String, referrer: String, bufferingEnabled: Boolean): Int
     external fun videoEnabled(handle: Long, enabled: Boolean): Int
     external fun pause(handle: Long, paused: Boolean): Int
     external fun speed(handle: Long, speed: Double): Int
