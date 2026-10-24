@@ -3,6 +3,7 @@ package tv.hsrui.network.constant
 object LiveApiUrls {
     const val BASE = "https://api.live.bilibili.com/" //B站直播API地址
     const val RECOMMEND = "xlive/web-interface/v1/second/getUserRecommend" //直播推荐
+    const val FOLLOWING = "xlive/web-ucenter/user/following" //关注直播
     const val AREA_LIST = "xlive/web-interface/v1/index/getWebAreaList" //直播分区目录
     const val SUB_AREA_LIST = "room/v1/area/getList" //主分区下的子分区目录
     const val AREA_ROOMS = "xlive/web-interface/v1/second/getList" //分区直播间列表

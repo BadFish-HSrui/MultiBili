@@ -18,6 +18,8 @@ data class LiveCard(
     @SerialName("area_v2_name") val areaName: String = "",
     @SerialName("area_v2_parent_id") val parentAreaId: Int = 0,
     @SerialName("area_v2_parent_name") val parentAreaName: String = "",
+    @SerialName("live_status") val liveStatus: Int = 1,
+    @SerialName("record_live_time") val recordLiveTime: Long = 0,
     @SerialName("online") val popularity: Long = 0,
     @SerialName("watched_show") private val watchedShow: WatchedShow = WatchedShow(),
 ) {
