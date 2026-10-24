@@ -1,6 +1,5 @@
 package tv.hsrui.bolo.view.live
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -19,18 +18,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.navigation.openUserSpace
 import tv.hsrui.bolo.userSpace.ShowUserUploadsSheet
+import tv.hsrui.bolo.view.live.danmaku.LiveDanmakuPage
+import tv.hsrui.bolo.view.live.danmaku.LiveDanmakuViewModel
 import tv.hsrui.bolo.view.live.room.LiveRoomPage
+import tv.hsrui.network.liveFeature.message.LiveMessageManager
 import tv.hsrui.network.liveFeature.room.LiveRoomInfoData
 
 @Composable
 fun LivePlaybackInfo(
     room: LiveRoomInfoData,
+    messageManager: LiveMessageManager,
     isActive: Boolean = true,
+    isDanmakuVisible: Boolean = isActive,
     modifier: Modifier = Modifier,
 ) {
     key(room.roomId) {
@@ -38,6 +43,9 @@ fun LivePlaybackInfo(
         val tabs = listOf("直播间", "弹幕")
         val pagerState = rememberPagerState { tabs.size }
         val coroutineScope = rememberCoroutineScope()
+        val danmakuViewModel: LiveDanmakuViewModel = viewModel(key = "live_danmaku_${room.roomId}") {
+            LiveDanmakuViewModel(room.roomId, messageManager.messages, messageManager::isCurrent)
+        }
         var selectedUpMid by remember(room.upMid) { mutableStateOf<Long?>(null) }
         LaunchedEffect(isActive, settings.general.upRecentUploadsSheetEnabled) {
             if (!isActive || !settings.general.upRecentUploadsSheetEnabled) selectedUpMid = null
@@ -70,7 +78,12 @@ fun LivePlaybackInfo(
                         isActive = isActive,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    1 -> Box(Modifier.fillMaxSize())
+                    1 -> LiveDanmakuPage(
+                        viewModel = danmakuViewModel,
+                        isVisible = isDanmakuVisible && pagerState.settledPage == 1 &&
+                            pagerState.currentPage == 1 && !pagerState.isScrollInProgress,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
         }

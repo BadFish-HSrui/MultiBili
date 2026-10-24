@@ -75,8 +75,14 @@ fun LivePlaybackScreen(
     val uiState by viewModel.uiState.collectAsState()
     val room = viewModel.roomInfo
     val infoContent = remember(viewModel) {
-        movableContentOf<LiveRoomInfoData, Boolean> { info, active ->
-            LivePlaybackInfo(room = info, isActive = active, modifier = Modifier.fillMaxSize())
+        movableContentOf<LiveRoomInfoData, Boolean, Boolean> { info, active, visible ->
+            LivePlaybackInfo(
+                room = info,
+                messageManager = viewModel.messageManager,
+                isActive = active,
+                isDanmakuVisible = visible,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
     val navigator: Navigator = koinInject()
@@ -96,6 +102,8 @@ fun LivePlaybackScreen(
     val isPageReady = uiState is LivePlayerUiState.Success || uiState is LivePlayerUiState.Offline
     if (isPageReady) SideEffect { hasShownPage = true }
     val fullscreenState = rememberPlayerFullscreenState()
+    val danmakuVisible = messagesActive && lifecycle.isAtLeast(Lifecycle.State.RESUMED) &&
+        !fullscreenState.isFullscreen
     if (isActive) PlayerFullscreenEffect(fullscreenState, autoFullscreenOnRotateEnabled = true)
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
@@ -133,7 +141,7 @@ fun LivePlaybackScreen(
                             Row(Modifier.fillMaxSize()) {
                                 Box(Modifier.weight(1F).fillMaxHeight().then(boundsTracker))
                                 Box(Modifier.width(infoWidth).fillMaxHeight()) {
-                                    room?.let { infoContent(it, isActive) }
+                                    room?.let { infoContent(it, isActive, danmakuVisible) }
                                 }
                             }
                         }
@@ -141,7 +149,7 @@ fun LivePlaybackScreen(
                         Column(Modifier.fillMaxSize()) {
                             Box(Modifier.fillMaxWidth().aspectRatio(16F / 9F).then(boundsTracker))
                             Box(Modifier.weight(1F).fillMaxWidth()) {
-                                room?.let { infoContent(it, isActive) }
+                                room?.let { infoContent(it, isActive, danmakuVisible) }
                             }
                         }
                     }
