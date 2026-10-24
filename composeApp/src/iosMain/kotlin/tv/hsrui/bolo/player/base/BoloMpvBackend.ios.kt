@@ -285,6 +285,8 @@ internal actual class BoloMpvBackend actual constructor() {
         bolo_mpv_video_enabled(handle, if (enabled && videoOutputAllowed.value) 1 else 0)
     actual fun pause(paused: Boolean) = if (destroyed) -3 else bolo_mpv_pause(handle, if (paused) 1 else 0)
     actual fun speed(speed: Double) = if (destroyed) -3 else bolo_mpv_speed(handle, speed)
+    actual fun bufferedDurationMs(): Long? = if (destroyed) null else bolo_mpv_buffered_duration(handle)
+        .takeIf { it.isFinite() && it >= 0 }?.let { (it * 1000).toLong() }
     actual fun volume(volume: Double) = if (destroyed) -3 else bolo_mpv_volume(handle, volume)
     actual fun loudness(gainDb: Double, dynamicEnabled: Boolean, targetLufs: Double, rangeLu: Double, truePeakDbtp: Double) = if (destroyed) -3 else bolo_mpv_loudness(handle, gainDb, if (dynamicEnabled) 1 else 0, targetLufs, rangeLu, truePeakDbtp)
     actual fun mergeAudioChannels(enabled: Boolean) = if (destroyed) -3 else bolo_mpv_merge_audio_channels(handle, if (enabled) 1 else 0)

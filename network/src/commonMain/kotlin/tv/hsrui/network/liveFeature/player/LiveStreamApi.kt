@@ -17,6 +17,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.io.Buffer
 import kotlinx.io.readByteArray
 import tv.hsrui.network.constant.BOLO_UA
+import kotlin.time.TimeSource
 
 // 与账号客户端隔离；清单、重定向及媒体正文均不携带账号 Cookie。
 private val liveStreamClient by lazy {
@@ -32,7 +33,8 @@ suspend fun fetchLiveHlsPlaylist(
     url: String,
     roomId: Long,
     stream: LivePlayStreamData? = null,
-): LiveHlsPlaylistData = withTimeout(15_000) {
+    timeoutMillis: Long = 2_000,
+): LiveHlsPlaylistData = withTimeout(timeoutMillis) {
     val pending = ArrayDeque<Triple<String, Int, Boolean>>().apply { add(Triple(url, 0, stream?.independentSegments == true)) }
     val visited = mutableSetOf<String>()
     var failure: Exception? = null
@@ -73,13 +75,20 @@ suspend fun fetchLiveStream(
     receiveLimit: Long? = null,
     onResponse: suspend (LiveStreamResponseData) -> Unit = {},
     onReceived: suspend (Int) -> Unit = {},
+    responseTimeoutMillis: Long = 15_000,
+    readTimeoutMillis: Long = 10_000,
+    networkTimeoutMillis: Long? = null,
+    allowFullResponse: Boolean = false,
+    onProgress: (Long) -> Unit = {},
     write: suspend (ByteArray, Int, Int) -> Unit,
 ): LiveStreamResponseData = coroutineScope {
     require(roomId > 0 && (url.startsWith("https://") || url.startsWith("http://"))) { "直播媒体地址无效" }
     require(range == null || range.first >= 0 && range.last >= range.first && range.last < Long.MAX_VALUE)
     require(receiveLimit == null || receiveLimit > 0)
+    require(responseTimeoutMillis > 0 && readTimeoutMillis > 0 && (networkTimeoutMillis == null || networkTimeoutMillis > 0))
+    val started = TimeSource.Monotonic.markNow()
     val deadline = launch {
-        delay(15_000)
+        delay(minOf(responseTimeoutMillis, networkTimeoutMillis ?: Long.MAX_VALUE))
         error("直播媒体连接超时")
     }
     try {
@@ -90,6 +99,7 @@ suspend fun fetchLiveStream(
             if (range != null) header(HttpHeaders.Range, "bytes=${range.first}-${range.last}")
         }.execute { response ->
             deadline.cancel()
+            var networkElapsed = started.elapsedNow()
             val status = response.status.value
             check(status == 200 || status == 206) { "直播媒体请求失败：HTTP $status" }
             val encoding = response.headers[HttpHeaders.ContentEncoding]
@@ -97,17 +107,20 @@ suspend fun fetchLiveStream(
             val length = response.headers[HttpHeaders.ContentLength]?.let {
                 checkNotNull(it.toLongOrNull()?.takeIf { size -> size >= 0 }) { "直播媒体长度无效" }
             }
-            val expected = if (range != null) {
+            val responseRange = range?.takeUnless { allowFullResponse && status == 200 }
+            var totalLength = length
+            val expected = if (responseRange != null) {
                 val match = response.headers[HttpHeaders.ContentRange]?.let {
                     Regex("bytes (\\d+)-(\\d+)/(\\d+|\\*)").matchEntire(it)
                 }
                 check(status == 206 && match != null &&
-                    match.groupValues[1].toLongOrNull() == range.first &&
-                    match.groupValues[2].toLongOrNull() == range.last &&
-                    (match.groupValues[3] == "*" || (match.groupValues[3].toLongOrNull() ?: 0) > range.last)) {
+                    match.groupValues[1].toLongOrNull() == responseRange.first &&
+                    match.groupValues[2].toLongOrNull() == responseRange.last &&
+                    (match.groupValues[3] == "*" || (match.groupValues[3].toLongOrNull() ?: 0) > responseRange.last)) {
                     "直播媒体范围与请求不一致"
                 }
-                val size = range.last - range.first + 1
+                totalLength = match.groupValues[3].toLongOrNull()
+                val size = responseRange.last - responseRange.first + 1
                 check(length == null || length == size) { "直播媒体范围长度无效" }
                 size
             } else {
@@ -115,8 +128,14 @@ suspend fun fetchLiveStream(
                 length
             }
             check(receiveLimit == null || expected == null || expected <= receiveLimit) { "直播媒体超过接收上限" }
-            val metadata = LiveStreamResponseData(status, response.call.request.url.toString(),
-                range?.first ?: 0, range?.last?.plus(1) ?: length)
+            val metadata = LiveStreamResponseData(
+                status,
+                response.call.request.url.toString(),
+                responseRange?.first ?: 0,
+                responseRange?.last?.plus(1) ?: length,
+                totalLength,
+            )
+            onProgress(networkElapsed.inWholeMilliseconds)
             onResponse(metadata)
             val channel = response.bodyAsChannel()
             val buffer = ByteArray(64 * 1024)
@@ -125,9 +144,14 @@ suspend fun fetchLiveStream(
                 currentCoroutineContext().ensureActive()
                 val remaining = minOf(expected ?: Long.MAX_VALUE, receiveLimit ?: Long.MAX_VALUE) - received
                 // 到达声明长度或上限后只读一个字节以确认 EOF，不能把截断响应算作成功。
-                val count = withTimeout(10_000) {
+                val budget = networkTimeoutMillis?.minus(networkElapsed.inWholeMilliseconds) ?: Long.MAX_VALUE
+                check(budget > 0) { "直播媒体网络等待超时" }
+                val reading = TimeSource.Monotonic.markNow()
+                val count = withTimeout(minOf(readTimeoutMillis, budget)) {
                     channel.readAvailable(buffer, 0, if (remaining <= 0) 1 else minOf(buffer.size.toLong(), remaining).toInt())
                 }
+                networkElapsed += reading.elapsedNow()
+                onProgress(networkElapsed.inWholeMilliseconds)
                 if (count < 0) {
                     check(expected == null || received == expected) { "直播媒体响应提前结束" }
                     break

@@ -159,9 +159,9 @@ fun LivePlayerControls(
     val emptyPlayback = remember { MutableStateFlow(LivePlayerState()) }
     val playback by (viewModel.playbackSession?.controller?.state ?: emptyPlayback).collectAsState()
     var previewPosition by remember(viewModel) { mutableStateOf<Long?>(null) }
-    val displayedElapsed = previewPosition?.let { position ->
-        timeline.playingElapsedMs?.let { it + position - (timeline.positionMs ?: position) }
-    } ?: timeline.playingElapsedMs
+    val displayedOffset = timeline.latestPositionMs?.let { latest ->
+        (previewPosition ?: timeline.positionMs)?.let { (latest - it).coerceAtLeast(0) }
+    }
     var controlsVisible by remember(viewModel) { mutableStateOf(false) }
     val controlsTransition = updateTransition(controlsVisible, label = "livePlayerControls")
     val bottomControlsVisible = controlsTransition.currentState || controlsTransition.targetState
@@ -445,7 +445,7 @@ fun LivePlayerControls(
                                 ) {
                                     Text(
                                         text = (if (playback.localReplayEnabled)
-                                            "${displayedElapsed?.let { (it.coerceAtLeast(0) / 1000).formatToDuration() } ?: "—"} / " else "") +
+                                            "${displayedOffset?.let { "-${(it / 1000).formatToDuration()}" } ?: "—"} / " else "") +
                                             (timeline.latestElapsedMs?.let { (it / 1000).formatToDuration() } ?: "—"),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = Color.White,

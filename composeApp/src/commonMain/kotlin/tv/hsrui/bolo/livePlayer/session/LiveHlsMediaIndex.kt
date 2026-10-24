@@ -10,6 +10,8 @@ internal data class LiveHlsMediaIndexData(
     val programDateTimeMs: Long?,
     val configurationId: Long? = null,
     val dependenciesKnown: Boolean = true,
+    val decodeStartMs: Long? = null,
+    val decodeEndMs: Long? = null,
 ) {
     val endMs: Long? = startMs?.takeIf { it >= 0 && durationMs > 0 && it <= Long.MAX_VALUE - durationMs }?.plus(durationMs)
 }
@@ -20,6 +22,9 @@ internal class LiveHlsMediaIndex(private val format: String) {
     private var videoTrack = -1L
     private var timescale = 0L
     private var defaultFlags: Long? = null
+    private var defaultDuration = 0L
+    private var decodeStartMs: Long? = null
+    private var decodeEndMs: Long? = null
     private var lastTs: Long? = null
     private var lastDate: Pair<Long, Long>? = null
     private var configurationId: Long? = null
@@ -36,6 +41,7 @@ internal class LiveHlsMediaIndex(private val format: String) {
         videoTrack = -1
         timescale = 0
         defaultFlags = null
+        defaultDuration = 0
         val moov = boxes(body, 0, body.size).firstOrNull { it.type == "moov" } ?: return
         for (track in boxes(body, moov.start, moov.end).filter { it.type == "trak" }) {
             val children = boxes(body, track.start, track.end)
@@ -50,14 +56,19 @@ internal class LiveHlsMediaIndex(private val format: String) {
         }
         val mvex = boxes(body, moov.start, moov.end).firstOrNull { it.type == "mvex" } ?: return
         for (trex in boxes(body, mvex.start, mvex.end).filter { it.type == "trex" }) {
-            if (uint(body, trex.start + 4, 4) == videoTrack) defaultFlags = uint(body, trex.start + 20, 4)
+            if (uint(body, trex.start + 4, 4) == videoTrack) {
+                defaultDuration = uint(body, trex.start + 12, 4)
+                defaultFlags = uint(body, trex.start + 20, 4)
+            }
         }
     }
 
     fun inspect(body: LivePlaybackCache.Body, segment: LiveHlsSegmentData, independent: Boolean): LiveHlsMediaIndexData {
         configurationId = null
         transportDependenciesKnown = false
-        val parsed = runCatching { if (format == "fmp4") fragmentedMp4(body) else transportStream(body) }.getOrNull()
+        decodeStartMs = null
+        decodeEndMs = null
+        val parsed = runCatching { if (format == "fmp4") fragmentedMp4(body) else transportStream(body)?.let { Triple(it.first, it.second, segment.durationMs) } }.getOrNull()
         val start = parsed?.first
         val labelMatches = segment.mediaStartTimeMs?.let { start != null && abs(it - start) <= 250 } ?: true
         val keyframe = parsed?.second == true && labelMatches && segment.startsWithKeyframe != false
@@ -69,12 +80,25 @@ internal class LiveHlsMediaIndex(private val format: String) {
             lastDate = start to date
             if (previous == null || abs((date - previous.second) - (start - previous.first)) > 1_000) date = null
         }
-        return LiveHlsMediaIndexData(start, segment.durationMs, canStart, date, configurationId,
-            canStart || labelMatches && if (format == "ts") transportDependenciesKnown else parsed?.second != null)
+        return LiveHlsMediaIndexData(
+            start,
+            parsed?.third ?: segment.durationMs,
+            canStart,
+            date,
+            configurationId,
+            canStart || labelMatches && if (format == "ts") transportDependenciesKnown else parsed?.second != null,
+            decodeStartMs,
+            decodeEndMs,
+        )
     }
 
-    private fun fragmentedMp4(body: LivePlaybackCache.Body): Pair<Long, Boolean?>? {
+    private fun fragmentedMp4(body: LivePlaybackCache.Body): Triple<Long, Boolean?, Long>? {
         if (videoTrack < 0 || timescale <= 0) return null
+        var first: Long? = null
+        var firstDecode: Long? = null
+        var endDecode: Long? = null
+        var sync: Boolean? = null
+        var seenSample = false
         for (moof in boxes(body, 0, body.size).filter { it.type == "moof" }) {
             for (traf in boxes(body, moof.start, moof.end).filter { it.type == "traf" }) {
                 val children = boxes(body, traf.start, traf.end)
@@ -84,31 +108,51 @@ internal class LiveHlsMediaIndex(private val format: String) {
                 var position = tfhd.start + 8
                 if (flags and 1 != 0) position += 8
                 if (flags and 2 != 0) position += 4
-                if (flags and 8 != 0) position += 4
+                val duration = if (flags and 8 != 0) uint(body, position, 4).also { position += 4 } else defaultDuration
                 if (flags and 16 != 0) position += 4
-                var sampleFlags = if (flags and 32 != 0) uint(body, position, 4) else defaultFlags
+                val defaults = if (flags and 32 != 0) uint(body, position, 4) else defaultFlags
                 val tfdt = children.firstOrNull { it.type == "tfdt" } ?: continue
-                val decode = uint(body, tfdt.start + 4, if (body.byteAt(tfdt.start) == 1) 8 else 4)
-                val trun = children.firstOrNull { it.type == "trun" } ?: continue
-                val trunFlags = uint(body, trun.start + 1, 3).toInt()
-                if (uint(body, trun.start + 4, 4) == 0L) continue
-                position = trun.start + 8
-                if (trunFlags and 1 != 0) position += 4
-                if (trunFlags and 4 != 0) { sampleFlags = uint(body, position, 4); position += 4 }
-                if (trunFlags and 0x100 != 0) position += 4
-                if (trunFlags and 0x200 != 0) position += 4
-                if (trunFlags and 0x400 != 0) { sampleFlags = uint(body, position, 4); position += 4 }
-                val composition = if (trunFlags and 0x800 != 0) {
-                    val value = uint(body, position, 4)
-                    if (body.byteAt(trun.start) == 1) value.toInt().toLong() else value
-                } else 0L
-                check(decode <= Long.MAX_VALUE / 1000 && decode + composition >= 0)
-                val pts = (decode + composition) * 1000 / timescale
-                val sync = sampleFlags?.let { it and 0x10000 == 0L && (it shr 24 and 3) != 1L }
-                return pts to sync
+                var decode = uint(body, tfdt.start + 4, if (body.byteAt(tfdt.start) == 1) 8 else 4)
+                for (trun in children.filter { it.type == "trun" }) {
+                    val trunFlags = uint(body, trun.start + 1, 3).toInt()
+                    val count = uint(body, trun.start + 4, 4)
+                    check(count <= 1_000_000)
+                    position = trun.start + 8
+                    if (trunFlags and 1 != 0) position += 4
+                    val firstFlags = if (trunFlags and 4 != 0) uint(body, position, 4).also { position += 4 } else defaults
+                    repeat(count.toInt()) { sample ->
+                        val length = if (trunFlags and 0x100 != 0) uint(body, position, 4).also { position += 4 } else duration
+                        if (trunFlags and 0x200 != 0) position += 4
+                        val sampleFlags = if (trunFlags and 0x400 != 0) uint(body, position, 4).also { position += 4 }
+                            else if (sample == 0) firstFlags else defaults
+                        val composition = if (trunFlags and 0x800 != 0) {
+                            val value = uint(body, position, 4)
+                            position += 4
+                            if (body.byteAt(trun.start) == 1) value.toInt().toLong() else value
+                        } else 0L
+                        check(
+                            position <= trun.end && length > 0 && decode >= 0 &&
+                                decode <= Long.MAX_VALUE / 1000 - length - kotlin.math.abs(composition)
+                        )
+                        val pts = decode + composition
+                        check(pts >= 0)
+                        if (first == null) first = pts
+                        firstDecode = minOf(firstDecode ?: decode, decode)
+                        endDecode = maxOf(endDecode ?: 0, decode + length)
+                        if (!seenSample) {
+                            sync = sampleFlags?.let { it and 0x10000 == 0L && (it shr 24 and 3) != 1L }
+                            seenSample = true
+                        }
+                        decode += length
+                    }
+                }
             }
         }
-        return null
+        val start = first ?: return null
+        // B 帧的呈现时间可跨分片重排，连续性必须使用解码时间，不能把 PTS 重叠当成缺口。
+        decodeStartMs = checkNotNull(firstDecode) * 1000 / timescale
+        decodeEndMs = checkNotNull(endDecode) * 1000 / timescale
+        return Triple(start * 1000 / timescale, sync, decodeEndMs!! - decodeStartMs!!)
     }
 
     private fun transportStream(body: LivePlaybackCache.Body): Pair<Long, Boolean?>? {

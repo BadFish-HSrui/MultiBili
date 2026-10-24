@@ -19,6 +19,7 @@ internal class LiveCachedStreamSource(
 ) : BoloMpvStreamSource {
     val uri = "bolo-stream://live/$generation/$format"
     val startMs = first.media.startMs
+    private val epoch = cache.snapshot.value.epoch
     private val job = Job()
     private val opened = AtomicBoolean(false)
     override suspend fun open(uri: String): BoloMpvStreamReader? {
@@ -37,7 +38,10 @@ internal class LiveCachedStreamSource(
                         if (size > 0) { offset += size; return size }
                         offset = 0
                         if (initialization) initialization = false
-                        else segment = cache.next(segment) ?: return -1
+                        else {
+                            cache.consume(segment.id)
+                            segment = cache.next(segment, epoch) ?: return -1
+                        }
                     }
                 } catch (missing: LivePlaybackCache.Missing) {
                     if (job.isActive) onMissing(missing.targetMs)

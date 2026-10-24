@@ -163,6 +163,10 @@ static int load_file(bolo_mpv *p, const char *video, const char *audio, const ch
         {"options/rebase-start-time", live ? "no" : "yes"},
         {"options/demuxer-max-back-bytes", live ? "0" : "4194304"},
         {"options/cache-on-disk", "no"},
+        {"options/cache-secs", live ? "5" : "3"},
+        {"options/demuxer-readahead-secs", live ? "5" : "3"},
+        {"options/cache-pause-initial", live ? "yes" : "no"},
+        {"options/cache-pause-wait", live ? "3" : "1"},
         {"options/network-timeout", live ? "10" : "60"},
     };
     for (unsigned i = 0; i < sizeof(options) / sizeof(options[0]); ++i) {
@@ -232,6 +236,12 @@ int bolo_mpv_pause(bolo_mpv *p, int paused) {
 }
 int bolo_mpv_speed(bolo_mpv *p, double speed) {
     return mpv_set_property(p->player, "speed", MPV_FORMAT_DOUBLE, &speed);
+}
+double bolo_mpv_buffered_duration(bolo_mpv *p) {
+    double seconds = -1;
+    if (mpv_get_property(p->player, "demuxer-cache-duration", MPV_FORMAT_DOUBLE, &seconds) < 0 ||
+        !isfinite(seconds) || seconds < 0) return -1;
+    return seconds;
 }
 int bolo_mpv_video_enabled(bolo_mpv *p, int enabled) {
     p->video_requested = enabled;

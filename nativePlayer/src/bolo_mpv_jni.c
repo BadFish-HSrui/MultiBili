@@ -161,6 +161,7 @@ JNIEXPORT jint JNICALL JNI(loadLive)(JNIEnv *env, jobject self, jlong handle, js
 }
 JNIEXPORT jint JNICALL JNI(pause)(JNIEnv *env, jobject self, jlong p, jboolean value) { return bolo_mpv_pause(PLAYER(p)->core, value); }
 JNIEXPORT jint JNICALL JNI(speed)(JNIEnv *env, jobject self, jlong p, jdouble value) { return bolo_mpv_speed(PLAYER(p)->core, value); }
+JNIEXPORT jdouble JNICALL JNI(bufferedDuration)(JNIEnv *env, jobject self, jlong p) { return bolo_mpv_buffered_duration(PLAYER(p)->core); }
 JNIEXPORT jint JNICALL JNI(volume)(JNIEnv *env, jobject self, jlong p, jdouble value) { return bolo_mpv_volume(PLAYER(p)->core, value); }
 JNIEXPORT jint JNICALL JNI(loudness)(JNIEnv *env, jobject self, jlong p, jdouble gain, jboolean dynamic, jdouble target, jdouble range, jdouble peak) { return bolo_mpv_loudness(PLAYER(p)->core, gain, dynamic, target, range, peak); }
 JNIEXPORT jint JNICALL JNI(mergeAudioChannels)(JNIEnv *env, jobject self, jlong p, jboolean enabled) { return bolo_mpv_merge_audio_channels(PLAYER(p)->core, enabled); }

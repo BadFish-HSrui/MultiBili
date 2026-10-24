@@ -37,6 +37,7 @@ void bolo_mpv_background(bolo_mpv *, int background);
 double bolo_mpv_retained_position(bolo_mpv *, int64_t generation, double target);
 int bolo_mpv_pause(bolo_mpv *, int paused);
 int bolo_mpv_speed(bolo_mpv *, double speed);
+double bolo_mpv_buffered_duration(bolo_mpv *);
 int bolo_mpv_volume(bolo_mpv *, double volume);
 int bolo_mpv_loudness(bolo_mpv *, double gain_db, int dynamic_enabled, double target_lufs, double range_lu, double true_peak_dbtp);
 int bolo_mpv_merge_audio_channels(bolo_mpv *, int enabled);

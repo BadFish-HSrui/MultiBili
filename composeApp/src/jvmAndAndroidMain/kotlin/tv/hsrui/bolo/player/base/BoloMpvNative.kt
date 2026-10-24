@@ -42,6 +42,7 @@ internal object BoloMpvNative {
     external fun videoEnabled(handle: Long, enabled: Boolean): Int
     external fun pause(handle: Long, paused: Boolean): Int
     external fun speed(handle: Long, speed: Double): Int
+    external fun bufferedDuration(handle: Long): Double
     external fun volume(handle: Long, volume: Double): Int
     external fun loudness(handle: Long, gainDb: Double, dynamicEnabled: Boolean, targetLufs: Double, rangeLu: Double, truePeakDbtp: Double): Int
     external fun mergeAudioChannels(handle: Long, enabled: Boolean): Int

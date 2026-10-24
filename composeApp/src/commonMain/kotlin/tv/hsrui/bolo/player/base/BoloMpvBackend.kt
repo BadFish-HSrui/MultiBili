@@ -38,6 +38,7 @@ internal expect class BoloMpvBackend() {
     fun videoEnabled(enabled: Boolean): Int
     fun pause(paused: Boolean): Int
     fun speed(speed: Double): Int
+    fun bufferedDurationMs(): Long?
     fun volume(volume: Double): Int
     fun loudness(gainDb: Double, dynamicEnabled: Boolean, targetLufs: Double = -14.0, rangeLu: Double = 11.0, truePeakDbtp: Double = -2.0): Int
     fun mergeAudioChannels(enabled: Boolean): Int

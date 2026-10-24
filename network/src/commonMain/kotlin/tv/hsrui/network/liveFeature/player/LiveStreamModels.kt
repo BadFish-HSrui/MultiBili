@@ -5,4 +5,5 @@ data class LiveStreamResponseData(
     val url: String,
     val start: Long,
     val endExclusive: Long?,
+    val totalLength: Long? = null,
 )

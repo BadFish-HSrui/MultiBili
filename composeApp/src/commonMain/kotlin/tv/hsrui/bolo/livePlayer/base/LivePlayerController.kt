@@ -102,6 +102,7 @@ class LivePlayerController(
             while (isActive) {
                 if (!localReplayEnabled) playbackTimeline.observeInstant(state.value.playWhenReady)
                 else playbackTimeline.tick()
+                sampleBuffer()
                 sampleInfo()
                 delay(250)
             }
@@ -212,12 +213,16 @@ class LivePlayerController(
                     streams = collecting
                     streamSession = streams
                     timelineJob?.cancel()
-                    timelineJob = if (!collecting.localReplayEnabled) null else scope.launch {
+                    timelineJob = if (!collecting.isHls) null else scope.launch {
                         collecting.cache.snapshot.collect { snapshot ->
-                            playbackTimeline.update(snapshot)
+                            playbackTimeline.update(
+                                if (collecting.localReplayEnabled) snapshot else snapshot.copy(ranges = emptyList()),
+                                collecting.playlist.value,
+                            )
                             val position = timeline.value.positionMs
                             if (ready && state.value.playWhenReady && snapshot.ranges.isNotEmpty() &&
-                                (snapshot.epoch != readerEpoch || position != null && position < snapshot.ranges.first().startMs)) startLoad()
+                                (snapshot.epoch != readerEpoch || collecting.localReplayEnabled && position != null && position < snapshot.ranges.first().startMs)
+                            ) startLoad()
                         }
                     }
                 }
@@ -225,9 +230,10 @@ class LivePlayerController(
                 if (!isCurrent(expected, current)) return@launch
                 val source: BoloMpvStreamSource
                 val uri: String
-                if (streams.localReplayEnabled) {
+                if (streams.isHls) {
                     streams.cache.awaitSegment()
                     val segment = checkNotNull(streams.cache.select(targetMs))
+                    if (!streams.localReplayEnabled) streams.cache.consume(segment.id - 1)
                     val cached = LiveCachedStreamSource(streams.cache, segment, expected, checkNotNull(stream).formatName) { next ->
                         scope.launch {
                             if (isCurrent(expected, current)) {
@@ -253,6 +259,7 @@ class LivePlayerController(
                     if (!isCurrent(expected, current)) return@withContext 0
                     check(current.videoEnabled(visible) >= 0) { "视频轨配置失败" }
                     check(current.volume(gain) >= 0) { "音量配置失败" }
+                    check(current.speed(1.0) >= 0) { "直播播放速度配置失败" }
                     current.loadLive(source, uri, expected)
                 }
                 if (!isCurrent(expected, current)) return@launch
@@ -319,6 +326,23 @@ class LivePlayerController(
             media = if (clearMedia) BoloPlayerInfo() else info.value.media.withoutDynamicValues(),
             downloadBytesPerSecond = null,
         )
+    }
+
+    private suspend fun sampleBuffer() {
+        val streams = streamSession ?: return
+        val engine = mutableBackend.value
+        val expected = generation
+        val nativeAhead = if (ready && foreground && engine != null) {
+            withContext(boloMpvDispatcher) { if (isCurrent(expected, engine)) engine.bufferedDurationMs() else null }
+        } else null
+        if (!isCurrent(expected, engine) || streamSession !== streams) return
+        // 已进入 demux 的时间与待交付分片可能重叠，只按连续区间终点计算。
+        val position = timeline.value.positionMs
+        val range = if (position != null && nativeAhead != null) streams.cache.snapshot.value.ranges.firstOrNull {
+            it.startMs <= position + nativeAhead + 250 && it.endMs >= position
+        } else null
+        val ahead = if (position != null && range != null) maxOf(nativeAhead ?: 0, range.endMs - position) else nativeAhead
+        streams.updateBuffer(ahead, !ready || state.value.isBuffering || !state.value.playWhenReady)
     }
 
     private suspend fun sampleInfo() {
@@ -428,7 +452,7 @@ class LivePlayerController(
         if (disposed) return
         if (state.value.isBroadcastEnded) { finishReading(); return }
         resetRetriesAfterPlayback()
-        val retainCache = streamSession?.localReplayEnabled == true && streamSession?.cache?.snapshot?.value?.segments?.isNotEmpty() == true
+        val retainCache = streamSession?.isHls == true && (reader != null || streamSession?.cache?.snapshot?.value?.segments?.isNotEmpty() == true)
         if (!retainCache) {
             streamSession?.let { retiringStream = it }
             streamSession?.cancel()
@@ -437,12 +461,12 @@ class LivePlayerController(
         if (!ended && urlRetries < 1) {
             urlRetries++
             streamSession?.retry(urls[urlIndex])
-            if (reload || streamSession?.localReplayEnabled != true) startLoad(timeline.value.positionMs, timeline.value.isLive)
+            if (reload || streamSession?.isHls != true) startLoad(timeline.value.positionMs, timeline.value.isLive)
         } else if (urlIndex + 1 < urls.size) {
             urlIndex++
             urlRetries = 0
             streamSession?.retry(urls[urlIndex])
-            if (reload || streamSession?.localReplayEnabled != true) startLoad(timeline.value.positionMs, timeline.value.isLive)
+            if (reload || streamSession?.isHls != true) startLoad(timeline.value.positionMs, timeline.value.isLive)
         } else fail(message, ended)
     }
 
@@ -461,7 +485,7 @@ class LivePlayerController(
 
     fun seekToMs(positionMs: Long) {
         val streams = streamSession?.takeIf { it.localReplayEnabled } ?: return
-        val latest = timeline.value.latestPositionMs ?: return
+        val latest = streams.cache.snapshot.value.segments.lastOrNull()?.media?.endMs ?: return
         if (timeline.value.ranges.isEmpty()) return
         val live = positionMs >= latest
         val target = if (live) null else streams.cache.select(positionMs)?.media?.startMs
