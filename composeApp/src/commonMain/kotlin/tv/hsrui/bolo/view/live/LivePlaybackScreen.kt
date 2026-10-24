@@ -27,6 +27,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -60,6 +61,7 @@ import tv.hsrui.bolo.ui.common.player.PlayerStatusBarOverlay
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.utils.isExpanded
+import tv.hsrui.network.liveFeature.room.LiveRoomInfoData
 import kotlin.math.roundToInt
 
 @Composable
@@ -70,6 +72,12 @@ fun LivePlaybackScreen(
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val room = viewModel.roomInfo
+    val infoContent = remember(viewModel) {
+        movableContentOf<LiveRoomInfoData, Boolean> { info, active ->
+            LivePlaybackInfo(room = info, isActive = active, modifier = Modifier.fillMaxSize())
+        }
+    }
     val navigator: Navigator = koinInject()
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val session = viewModel.playbackSession
@@ -118,13 +126,17 @@ fun LivePlaybackScreen(
                             val infoWidth = (maxWidth * 0.3F).coerceIn(300.dp, 360.dp)
                             Row(Modifier.fillMaxSize()) {
                                 Box(Modifier.weight(1F).fillMaxHeight().then(boundsTracker))
-                                Box(Modifier.width(infoWidth).fillMaxHeight())
+                                Box(Modifier.width(infoWidth).fillMaxHeight()) {
+                                    room?.let { infoContent(it, isActive) }
+                                }
                             }
                         }
                     } else {
                         Column(Modifier.fillMaxSize()) {
                             Box(Modifier.fillMaxWidth().aspectRatio(16F / 9F).then(boundsTracker))
-                            Box(Modifier.weight(1F).fillMaxWidth())
+                            Box(Modifier.weight(1F).fillMaxWidth()) {
+                                room?.let { infoContent(it, isActive) }
+                            }
                         }
                     }
                 }
