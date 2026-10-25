@@ -22,9 +22,38 @@ suspend fun fetchWebID(): String {
         parameter("parentAreaId", 9)
         parameter("areaId", 0)
     }.bodyAsText()
-    val encoded = Regex("\"access_id\"\\s*:\\s*(\"(?:\\\\.|[^\"\\\\])*\")")
-        .find(html)?.groupValues?.get(1) ?: error("无法获取网页请求标识")
-    return Json.parseToJsonElement(encoded).jsonPrimitive.content.also {
-        check(it.isNotBlank()) { "网页请求标识为空" }
+    return parseWebID(html)
+}
+
+private fun parseWebID(html: String): String {
+    val key = "\"access_id\""
+    var searchIndex = 0
+    while (true) {
+        val keyIndex = html.indexOf(key, searchIndex)
+        if (keyIndex < 0) break
+        searchIndex = keyIndex + key.length
+        var index = searchIndex
+        while (index < html.length && html[index].isWhitespace()) index++
+        if (html.getOrNull(index) != ':') continue
+        index++
+        while (index < html.length && html[index].isWhitespace()) index++
+        if (html.getOrNull(index) != '"') continue
+        val start = index++
+
+        // 迭代定位字符串边界，避免 Native 正则对长标识逐字符递归导致栈溢出。
+        while (index < html.length) {
+            when (html[index]) {
+                '\\' -> index += 2
+                '"' -> {
+                    val encoded = html.substring(start, index + 1)
+                    return Json.parseToJsonElement(encoded).jsonPrimitive.content.also {
+                        check(it.isNotBlank()) { "网页请求标识为空" }
+                    }
+                }
+                else -> index++
+            }
+        }
+        break
     }
+    error("无法获取网页请求标识")
 }
