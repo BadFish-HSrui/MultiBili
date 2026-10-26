@@ -12,6 +12,25 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import tv.hsrui.network.liveFeature.message.LiveMessageData
+import kotlin.time.Clock
+
+internal fun parseLiveDanmakuSendResult(data: JsonObject): LiveDanmakuData? {
+    val info = data["mode_info"].asObject() ?: return null
+    val extra = info["extra"].asObject() ?: return null
+    val id = extra["id_str"].text()?.takeIf { it.isNotBlank() && it != "0" } ?: return null
+    val content = extra["content"].text()?.takeIf { it.isNotBlank() } ?: return null
+    return LiveDanmakuData(
+        id = id,
+        sentAtEpochMillis = Clock.System.now().toEpochMilliseconds(),
+        username = info["user"].asObject()?.get("base").asObject()?.get("name").text()
+            ?.takeIf { it.isNotBlank() } ?: "--",
+        content = content,
+        mode = LiveDanmakuMode.Scroll,
+        fontSize = 25f,
+        colorRgb = (extra["color"] as? JsonPrimitive)?.longOrNull?.and(0xFFFFFF) ?: 0xFFFFFF,
+        inlineEmoticons = extra["emots"].asObject().toEmoticons(),
+    )
+}
 
 fun parseLiveDanmakuMessage(message: LiveMessageData): LiveDanmakuData? {
     if (message.command.substringBefore(':') != "DANMU_MSG") return null

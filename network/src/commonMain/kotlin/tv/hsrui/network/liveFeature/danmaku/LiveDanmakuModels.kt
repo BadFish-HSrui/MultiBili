@@ -1,5 +1,7 @@
 package tv.hsrui.network.liveFeature.danmaku
 
+data class LiveDanmakuSendConfigData(val maxLength: Int)
+
 data class LiveDanmakuData(
     val id: String = "",
     val sentAtEpochMillis: Long? = null,
