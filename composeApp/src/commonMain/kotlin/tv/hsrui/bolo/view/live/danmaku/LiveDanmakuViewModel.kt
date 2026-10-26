@@ -15,8 +15,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatform.getKoin
+import tv.hsrui.network.liveFeature.danmaku.LiveDanmakuBubbleData
 import tv.hsrui.network.liveFeature.danmaku.LiveDanmakuData
+import tv.hsrui.network.liveFeature.danmaku.LiveDanmakuMedalResourcesData
+import tv.hsrui.network.liveFeature.danmaku.fetchLiveDanmakuBubbleResources
 import tv.hsrui.network.liveFeature.danmaku.fetchLiveDanmakuHistory
+import tv.hsrui.network.liveFeature.danmaku.fetchLiveDanmakuMedalResources
 import tv.hsrui.network.liveFeature.danmaku.parseLiveDanmakuMessage
 import tv.hsrui.network.liveFeature.message.LiveMessageData
 import tv.hsrui.network.login.storage.LoginStorage
@@ -30,6 +34,8 @@ data class LiveDanmakuUiState(
     val items: List<LiveDanmakuListItem> = emptyList(),
     val latestSequence: Long = 0,
     val readSequence: Long = 0,
+    val medalResources: LiveDanmakuMedalResourcesData = LiveDanmakuMedalResourcesData(),
+    val bubbleResources: Map<Long, LiveDanmakuBubbleData> = emptyMap(),
 ) {
     val unreadCount: Long get() = latestSequence - readSequence
 }
@@ -41,6 +47,8 @@ class LiveDanmakuViewModel internal constructor(
     private val historyRequest: suspend (Long) -> List<LiveDanmakuData> = ::fetchLiveDanmakuHistory,
     accountChanges: Flow<Long> = getKoin().get<LoginStorage>().currentUserMidFlow,
     sentMessages: Flow<LiveDanmakuData> = emptyFlow(),
+    medalResourcesRequest: suspend () -> LiveDanmakuMedalResourcesData = ::fetchLiveDanmakuMedalResources,
+    bubbleResourcesRequest: suspend () -> Map<Long, LiveDanmakuBubbleData> = ::fetchLiveDanmakuBubbleResources,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(LiveDanmakuUiState())
     val uiState = mutableState.asStateFlow()
@@ -48,9 +56,35 @@ class LiveDanmakuViewModel internal constructor(
 
     init {
         viewModelScope.launch {
+            try {
+                val resources = medalResourcesRequest()
+                ensureActive()
+                mutableState.value = mutableState.value.copy(medalResources = resources)
+            } catch (error: CancellationException) {
+                if (error !is TimeoutCancellationException) throw error
+            } catch (_: Exception) {
+                // 资源不可用时继续显示粉丝勋章文字。
+            }
+        }
+        viewModelScope.launch {
+            try {
+                val resources = bubbleResourcesRequest()
+                ensureActive()
+                mutableState.value = mutableState.value.copy(bubbleResources = resources)
+            } catch (error: CancellationException) {
+                if (error !is TimeoutCancellationException) throw error
+            } catch (_: Exception) {
+                // 气泡资源不影响消息接收。
+            }
+        }
+        viewModelScope.launch {
             accountChanges.distinctUntilChanged().collectLatest {
                 val session = mutableState.value.session + 1
-                mutableState.value = LiveDanmakuUiState(session = session)
+                mutableState.value = LiveDanmakuUiState(
+                    session = session,
+                    medalResources = mutableState.value.medalResources,
+                    bubbleResources = mutableState.value.bubbleResources,
+                )
                 coroutineScope {
                     launch(start = CoroutineStart.UNDISPATCHED) {
                         sentMessages.collect { append(it, session) }
@@ -58,7 +92,7 @@ class LiveDanmakuViewModel internal constructor(
                     launch(start = CoroutineStart.UNDISPATCHED) {
                         messages.collect { message ->
                             if (message.roomId == roomId && isCurrentMessage(roomId, message.generation)) {
-                                parseLiveDanmakuMessage(message)?.let { append(it, session) }
+                                parseLiveDanmakuMessage(message)?.let { append(it, session, updateSnapshot = true) }
                             }
                         }
                     }
@@ -89,9 +123,26 @@ class LiveDanmakuViewModel internal constructor(
         if (sequence > state.readSequence) mutableState.value = state.copy(readSequence = sequence)
     }
 
-    private fun append(data: LiveDanmakuData, session: Long) {
+    private fun append(data: LiveDanmakuData, session: Long, updateSnapshot: Boolean = false) {
         val state = mutableState.value
-        if (state.session != session || data.id.isNotEmpty() && state.items.any { it.data.id == data.id }) return
+        if (state.session != session) return
+        val existing = if (data.id.isNotEmpty()) state.items.indexOfFirst { it.data.id == data.id } else -1
+        if (existing >= 0) {
+            if (!updateSnapshot) return
+            val item = state.items[existing]
+            val updated = item.data.copy(
+                user = data.user,
+                spaceUrl = data.spaceUrl,
+                bubbleColorArgb = data.bubbleColorArgb,
+                bubbleId = data.bubbleId,
+            )
+            if (item.data != updated) {
+                mutableState.value = state.copy(items = state.items.toMutableList().apply {
+                    set(existing, item.copy(data = updated))
+                })
+            }
+            return
+        }
         val sequence = state.latestSequence + 1
         mutableState.value = state.copy(
             items = (state.items + LiveDanmakuListItem(sequence, sequence, data)).takeLast(MAX_DANMAKU_ITEMS),

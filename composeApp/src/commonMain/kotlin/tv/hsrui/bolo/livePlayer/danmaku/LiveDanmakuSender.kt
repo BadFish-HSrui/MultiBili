@@ -90,13 +90,28 @@ class LiveDanmakuSender internal constructor(
         if (!canSend) return
         val targetRoom = roomId() ?: return
         val message = draft
+        val sendConfig = config
+        val sender = sendConfig?.user
         isSending = true
         sendError = null
         sendJob = scope.launch {
             try {
                 val result = sendRequest(targetRoom, message)
                 ensureActive()
-                mutableSentMessages.emit(result)
+                val user = result.user
+                val echo = result.copy(
+                    bubbleColorArgb = result.bubbleColorArgb ?: sendConfig?.bubbleColorArgb,
+                    bubbleId = result.bubbleId ?: sendConfig?.bubbleId,
+                    user = user.copy(
+                        uid = user.uid ?: sender?.uid,
+                        isRoomAdmin = user.isRoomAdmin ?: sender?.isRoomAdmin,
+                        isMystery = user.isMystery ?: sender?.isMystery,
+                        guardLevel = user.guardLevel ?: sender?.guardLevel,
+                        wealthLevel = user.wealthLevel ?: sender?.wealthLevel,
+                        userLevel = user.userLevel ?: sender?.userLevel,
+                    ),
+                )
+                mutableSentMessages.emit(echo)
                 draft = ""
                 isOpen = false
             } catch (error: CancellationException) {
