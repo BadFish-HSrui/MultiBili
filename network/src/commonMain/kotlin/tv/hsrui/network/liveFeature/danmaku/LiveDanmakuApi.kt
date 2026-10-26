@@ -1,28 +1,76 @@
 package tv.hsrui.network.liveFeature.danmaku
 
 import io.ktor.client.call.body
+import io.ktor.client.request.forms.FormDataContent
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
-import io.ktor.client.request.forms.FormDataContent
 import io.ktor.http.Parameters
 import io.ktor.http.isSuccess
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.network.client.ApiClient
 import tv.hsrui.network.constant.LiveApiUrls
-import tv.hsrui.network.wbi.buildWithWbi
 import tv.hsrui.network.login.storage.LoginStorage
-import kotlin.time.Clock
+import tv.hsrui.network.wbi.buildWithWbi
+
+private val medalResourcesMutex = Mutex()
+private var medalResources: LiveDanmakuMedalResourcesData? = null
+private var medalResourcesLoadedAt: TimeSource.Monotonic.ValueTimeMark? = null
+private val bubbleResourcesMutex = Mutex()
+private var bubbleResources: Map<Long, LiveDanmakuBubbleData>? = null
+private var bubbleResourcesLoadedAt: TimeSource.Monotonic.ValueTimeMark? = null
+
+suspend fun fetchLiveDanmakuMedalResources(): LiveDanmakuMedalResourcesData = medalResourcesMutex.withLock {
+    medalResources?.takeIf { medalResourcesLoadedAt?.elapsedNow()?.let { it < 1.hours } == true }
+        ?.let { return@withLock it }
+    withTimeout(15_000) {
+        val response = ApiClient.httpClient.get(LiveApiUrls.BASE + LiveApiUrls.DANMAKU_MEDAL_RESOURCES) {
+            parameter("module", "medal_icon,medal")
+        }
+        check(response.status.isSuccess()) { "勋章资源请求失败：HTTP ${response.status.value}" }
+        val body = response.body<JsonObject>()
+        check((body["code"] as? JsonPrimitive)?.intOrNull == 0) { "勋章资源请求失败" }
+        val data = body["data"] as? JsonObject ?: error("勋章资源数据为空")
+        parseLiveDanmakuMedalResources(data).also {
+            medalResources = it
+            medalResourcesLoadedAt = TimeSource.Monotonic.markNow()
+        }
+    }
+}
+
+suspend fun fetchLiveDanmakuBubbleResources(): Map<Long, LiveDanmakuBubbleData> = bubbleResourcesMutex.withLock {
+    bubbleResources?.takeIf { bubbleResourcesLoadedAt?.elapsedNow()?.let { it < 5.minutes } == true }
+        ?.let { return@withLock it }
+    withTimeout(15_000) {
+        val response = ApiClient.httpClient.get(LiveApiUrls.BASE + LiveApiUrls.DANMAKU_BUBBLE_RESOURCES) {
+            parameter("key", "wealth")
+        }
+        check(response.status.isSuccess()) { "气泡资源请求失败：HTTP ${response.status.value}" }
+        val body = response.body<JsonObject>()
+        check((body["code"] as? JsonPrimitive)?.intOrNull == 0) { "气泡资源请求失败" }
+        val data = body["data"] as? JsonObject ?: error("气泡资源数据为空")
+        parseLiveDanmakuBubbleResources(data).also {
+            bubbleResources = it
+            bubbleResourcesLoadedAt = TimeSource.Monotonic.markNow()
+        }
+    }
+}
 
 suspend fun fetchLiveDanmakuSendConfig(roomId: Long): LiveDanmakuSendConfigData = withTimeout(15_000) {
     require(roomId > 0) { "直播间 ID 无效" }
@@ -38,9 +86,7 @@ suspend fun fetchLiveDanmakuSendConfig(roomId: Long): LiveDanmakuSendConfigData 
     check((body["code"] as? JsonPrimitive)?.intOrNull == 0) {
         (body["message"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() } ?: "发送配置请求失败"
     }
-    val property = (body["data"] as? JsonObject)?.get("property") as? JsonObject
-    val danmaku = property?.get("danmu") as? JsonObject
-    LiveDanmakuSendConfigData((danmaku?.get("length") as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 } ?: 20)
+    parseLiveDanmakuSendConfig(body["data"] as? JsonObject)
 }
 
 suspend fun sendLiveDanmaku(roomId: Long, message: String): LiveDanmakuData {

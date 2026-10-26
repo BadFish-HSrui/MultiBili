@@ -13,5 +13,7 @@ object LiveApiUrls {
     const val DANMAKU_HISTORY = "xlive/web-room/v1/dM/gethistory" //直播间最近历史弹幕
     const val DANMAKU_SEND_CONFIG = "xlive/web-room/v1/index/getInfoByUser" //当前用户的直播弹幕发送配置
     const val DANMAKU_SEND = "msg/send" //发送直播弹幕
+    const val DANMAKU_MEDAL_RESOURCES = "xlive/open-interface/v1/query_resource" //直播粉丝勋章图标资源
+    const val DANMAKU_BUBBLE_RESOURCES = "xlive/general-interface/v1/content/get" //直播弹幕气泡背景资源
     const val AREA_PAGE = "https://live.bilibili.com/p/eden/area-tags" //直播分区网页信息
 }
