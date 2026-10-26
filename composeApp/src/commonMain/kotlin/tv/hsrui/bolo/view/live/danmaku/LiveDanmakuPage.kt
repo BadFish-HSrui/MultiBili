@@ -52,16 +52,20 @@ import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.ui.components.image.ShowImage
 import tv.hsrui.bolo.ui.theme.BiliColor
+import tv.hsrui.network.liveFeature.danmaku.LiveDanmakuBubbleData
 import tv.hsrui.network.liveFeature.danmaku.LiveDanmakuData
 import tv.hsrui.network.liveFeature.danmaku.LiveDanmakuEmoticonData
+import tv.hsrui.network.liveFeature.danmaku.LiveDanmakuMedalResourcesData
 
 @Composable
 fun LiveDanmakuPage(
@@ -70,6 +74,7 @@ fun LiveDanmakuPage(
     modifier: Modifier = Modifier,
     onSend: (() -> Unit)? = null,
     sendEnabled: Boolean = true,
+    anchorUid: Long = 0,
 ) {
     val state by viewModel.uiState.collectAsState()
     val session = state.session
@@ -130,7 +135,13 @@ fun LiveDanmakuPage(
             modifier = Modifier.fillMaxSize().nestedScroll(scrollConnection),
         ) {
             items(state.items, key = { it.key }) { item ->
-                LiveDanmakuCard(item.data, isVisible)
+                LiveDanmakuCard(
+                    data = item.data,
+                    isVisible = isVisible,
+                    anchorUid = anchorUid,
+                    medalResources = state.medalResources,
+                    bubbleResources = state.bubbleResources,
+                )
             }
         }
         Layout(
@@ -200,17 +211,110 @@ private suspend fun LazyListState.scrollToLiveDanmakuEnd(count: Int) {
 }
 
 @Composable
-private fun LiveDanmakuCard(data: LiveDanmakuData, isVisible: Boolean) {
+private fun LiveDanmakuCard(
+    data: LiveDanmakuData,
+    isVisible: Boolean,
+    anchorUid: Long,
+    medalResources: LiveDanmakuMedalResourcesData,
+    bubbleResources: Map<Long, LiveDanmakuBubbleData>,
+) {
     val style = MaterialTheme.typography.bodyMedium
+    val badgeStyle = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp)
+    val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val parts = remember(data) { liveDanmakuContent(data) }
+    val user = data.user
+    val medal = user.fansMedal?.takeIf {
+        user.isMystery != true && it.isLighted && it.level > 0 && it.name.isNotBlank()
+    }
+    val medalPainter = rememberLiveDanmakuImagePainter(medal?.let(medalResources::iconUrl))
+    val spacePainter = rememberLiveDanmakuImagePainter(data.spaceUrl.takeIf { user.isMystery != true })
+    val bubble = bubbleResources[data.bubbleId].takeIf { user.isMystery != true }
+    val bubblePainter = rememberLiveDanmakuImagePainter(bubble?.url)
+    val firstLinePainter = rememberLiveDanmakuImagePainter(bubble?.firstLineUrl?.takeIf { bubble.isFleet })
     Card(Modifier.fillMaxWidth()) {
-        BoxWithConstraints(Modifier.fillMaxWidth().padding(8.dp)) {
+        BoxWithConstraints(
+            Modifier.fillMaxWidth()
+                .liveDanmakuBubble(data.bubbleColorArgb, bubble, bubblePainter, firstLinePainter)
+                .padding(8.dp),
+        ) {
             val maxImageWidth = with(density) { maxWidth.toSp() }
             val imageHeight = with(density) { 56.dp.toSp() }
             val usernameColor = LocalContentColor.current.copy(alpha = 0.75f)
             val inlineContent = mutableMapOf<String, InlineTextContent>()
+            val badgeLabels = linkedMapOf<String, String>()
+            if (user.isMystery != true) {
+                if (spacePainter != null) {
+                    val width = (20.dp * (spacePainter.intrinsicSize.width / spacePainter.intrinsicSize.height) + 4.dp)
+                        .coerceAtMost(maxWidth)
+                    badgeLabels["space"] = "身份标识"
+                    inlineContent["space"] = InlineTextContent(
+                        Placeholder(
+                            width = with(density) { width.toSp() },
+                            height = with(density) { 20.dp.toSp() },
+                            placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                        ),
+                    ) {
+                        LiveDanmakuGuardBadge(
+                            painter = spacePainter,
+                            modifier = Modifier.fillMaxSize().padding(end = 4.dp),
+                        )
+                    }
+                }
+                if (medal != null) {
+                    val medalStyle = badgeStyle.copy(fontWeight = FontWeight.Normal, letterSpacing = 0.sp)
+                    val nameWidth = textMeasurer.measure(medal.name, medalStyle, maxLines = 1).size.width
+                    val levelWidth = textMeasurer.measure(
+                        text = medal.level.toString(),
+                        style = medalStyle.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                    ).size.width
+                    val iconWidth = if (medalPainter != null) 14.dp else 0.dp
+                    val height = if (medalPainter != null) 20.dp else 16.dp
+                    val width = with(density) {
+                        (nameWidth + levelWidth).toDp() + 18.dp + iconWidth
+                    }.coerceAtMost(maxWidth)
+                    badgeLabels["medal"] = "粉丝勋章 ${medal.name} ${medal.level}级"
+                    inlineContent["medal"] = InlineTextContent(
+                        Placeholder(
+                            width = with(density) { width.toSp() },
+                            height = with(density) { height.toSp() },
+                            placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                        ),
+                    ) {
+                        LiveDanmakuFansMedal(
+                            medal = medal,
+                            modifier = Modifier.fillMaxSize().padding(end = 4.dp),
+                            guardPainter = medalPainter,
+                        )
+                    }
+                }
+                val isAnchor = anchorUid > 0 && user.uid == anchorUid
+                if (isAnchor || user.isRoomAdmin == true) {
+                    val label = if (isAnchor) "主播" else "房管"
+                    val width = with(density) {
+                        textMeasurer.measure(label, badgeStyle, maxLines = 1).size.width.toDp() + 10.dp
+                    }.coerceAtMost(maxWidth)
+                    badgeLabels["role"] = label
+                    inlineContent["role"] = InlineTextContent(
+                        Placeholder(
+                            width = with(density) { width.toSp() },
+                            height = with(density) { 16.dp.toSp() },
+                            placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                        ),
+                    ) {
+                        LiveDanmakuRoleBadge(
+                            isAnchor = isAnchor,
+                            modifier = Modifier.fillMaxSize().padding(end = 4.dp),
+                        )
+                    }
+                }
+            }
             val text = buildAnnotatedString {
+                badgeLabels.forEach { (key, label) ->
+                    appendInlineContent(key, label)
+                    append('\u200B')
+                }
                 withStyle(SpanStyle(color = usernameColor)) { append(data.username) }
                 append(": ")
                 if (data.replyUsername.isNotBlank()) append("@${data.replyUsername} ")

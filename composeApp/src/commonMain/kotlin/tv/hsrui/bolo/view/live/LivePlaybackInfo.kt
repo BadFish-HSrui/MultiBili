@@ -85,6 +85,7 @@ fun LivePlaybackInfo(
                     )
                     1 -> LiveDanmakuPage(
                         viewModel = danmakuViewModel,
+                        anchorUid = room.upMid,
                         isVisible = isInteractionVisible && pagerState.settledPage == 1 &&
                             pagerState.currentPage == 1 && !pagerState.isScrollInProgress,
                         modifier = Modifier.fillMaxSize(),
