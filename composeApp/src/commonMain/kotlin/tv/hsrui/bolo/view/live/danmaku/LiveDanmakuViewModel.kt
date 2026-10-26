@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.network.liveFeature.danmaku.LiveDanmakuData
@@ -39,6 +40,7 @@ class LiveDanmakuViewModel internal constructor(
     isCurrentMessage: (Long, Long) -> Boolean,
     private val historyRequest: suspend (Long) -> List<LiveDanmakuData> = ::fetchLiveDanmakuHistory,
     accountChanges: Flow<Long> = getKoin().get<LoginStorage>().currentUserMidFlow,
+    sentMessages: Flow<LiveDanmakuData> = emptyFlow(),
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(LiveDanmakuUiState())
     val uiState = mutableState.asStateFlow()
@@ -50,6 +52,9 @@ class LiveDanmakuViewModel internal constructor(
                 val session = mutableState.value.session + 1
                 mutableState.value = LiveDanmakuUiState(session = session)
                 coroutineScope {
+                    launch(start = CoroutineStart.UNDISPATCHED) {
+                        sentMessages.collect { append(it, session) }
+                    }
                     launch(start = CoroutineStart.UNDISPATCHED) {
                         messages.collect { message ->
                             if (message.roomId == roomId && isCurrentMessage(roomId, message.generation)) {

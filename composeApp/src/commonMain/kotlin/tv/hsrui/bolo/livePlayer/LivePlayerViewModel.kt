@@ -26,6 +26,7 @@ import tv.hsrui.bolo.boloSetting.setting.live.LiveSettings
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.livePlayer.base.LivePlayerController
 import tv.hsrui.bolo.livePlayer.danmaku.LiveDanmakuController
+import tv.hsrui.bolo.livePlayer.danmaku.LiveDanmakuSender
 import tv.hsrui.bolo.livePlayer.session.LivePlaybackSession
 import tv.hsrui.network.liveFeature.message.LiveMessageConnectionStatus
 import tv.hsrui.network.liveFeature.message.LiveMessageManager
@@ -54,7 +55,11 @@ class LivePlayerViewModel internal constructor(
         private set
     var roomInfo by mutableStateOf<LiveRoomInfoData?>(null)
         private set
-    val danmakuController = LiveDanmakuController(viewModelScope, messageManager, settings.danmaku, roomId = { roomInfo?.roomId })
+    val danmakuSender = LiveDanmakuSender(viewModelScope, roomId = { roomInfo?.roomId })
+    val danmakuController = LiveDanmakuController(
+        viewModelScope, messageManager, settings.danmaku, roomId = { roomInfo?.roomId },
+        sentMessages = danmakuSender.sentMessages,
+    )
     var playWhenReady by mutableStateOf(true)
         private set
     var broadcastEnded by mutableStateOf(false)
@@ -414,6 +419,7 @@ class LivePlayerViewModel internal constructor(
         statusJob?.cancel()
         metadataJob?.cancel()
         danmakuController.close()
+        danmakuSender.close()
         messageManager.close()
         playbackSession?.close()
     }

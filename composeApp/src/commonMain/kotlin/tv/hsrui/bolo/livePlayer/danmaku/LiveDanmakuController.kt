@@ -7,10 +7,12 @@ import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.boloSetting.setting.live.LiveDanmakuSettings
 import tv.hsrui.network.liveFeature.danmaku.parseLiveDanmakuMessage
+import tv.hsrui.network.liveFeature.danmaku.LiveDanmakuData
 import tv.hsrui.network.liveFeature.message.LiveMessageManager
 import tv.hsrui.network.login.storage.LoginStorage
 
@@ -20,6 +22,7 @@ class LiveDanmakuController(
     val settings: LiveDanmakuSettings,
     private val roomId: () -> Long?,
     accountChanges: Flow<Long> = getKoin().get<LoginStorage>().currentUserMidFlow,
+    sentMessages: Flow<LiveDanmakuData> = emptyFlow(),
 ) {
     internal val engine = LiveDanmakuEngine()
     private var pageActive by mutableStateOf(false)
@@ -36,10 +39,12 @@ class LiveDanmakuController(
                 clear()
                 generation = message.generation
             }
-            val data = parseLiveDanmakuMessage(message) ?: return@collect
-            if (data.id.isNotEmpty() && !seenIds.add(data.id)) return@collect
-            if (seenIds.size > 1_000) seenIds.remove(seenIds.first())
-            if (settings.allows(data.mode)) engine.enqueue(data)
+            parseLiveDanmakuMessage(message)?.let(::append)
+        }
+    }
+    private val sentMessagesJob = scope.launch {
+        sentMessages.collect { data ->
+            if (isActive) append(data)
         }
     }
     private val settingsJob = scope.launch {
@@ -57,6 +62,12 @@ class LiveDanmakuController(
 
     private val accountJob = scope.launch {
         accountChanges.distinctUntilChanged().collect { clear() }
+    }
+
+    private fun append(data: LiveDanmakuData) {
+        if (data.id.isNotEmpty() && !seenIds.add(data.id)) return
+        if (seenIds.size > 1_000) seenIds.remove(seenIds.first())
+        if (settings.allows(data.mode)) engine.enqueue(data)
     }
 
     fun setActive(value: Boolean) {
@@ -77,6 +88,7 @@ class LiveDanmakuController(
     fun close() {
         closed = true
         messagesJob.cancel()
+        sentMessagesJob.cancel()
         settingsJob.cancel()
         connectionJob.cancel()
         accountJob.cancel()
