@@ -49,6 +49,7 @@ data class VideoListItemData(
     private val type: Int = 0,
     val title: String = "",
     private val attr: Long? = null,
+    val index: Int? = null,
 ) {
     val key get() = "$type:$id"
     val cursorType get() = type

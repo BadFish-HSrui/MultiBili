@@ -40,6 +40,7 @@ import tv.hsrui.bolo.view.video.desc.RelatedViewModel
 import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.video.fetchVideoInfo
 import tv.hsrui.network.feature.video.collection.VideoCollectionEpisodeData
+import tv.hsrui.network.feature.video.list.VideoListType
 import tv.hsrui.network.feature.video.list.fetchVideoListInfo
 import tv.hsrui.network.feature.video.list.fetchVideoListVideos
 import tv.hsrui.network.feature.player.PlayerInfoResponse
@@ -60,6 +61,7 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
     private var nextJob: Job? = null
     private var listGeneration = 0
     private var listState: VideoListUiState? = null
+    private var pendingListReturnToTop: Boolean? = null
     private var hasOpenedVideo = false
     private var hasBoundPlayback = false
     private var recommendationJob: Job? = null
@@ -148,10 +150,17 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
         listJob?.cancel()
         previousJob?.cancel()
         nextJob?.cancel()
-        ++generation
+        val videoVersion = ++generation
         loadJob?.cancel()
         val current = _uiState.value as? VideoUiState.Success
-        val anchor = current?.video?.avid
+        val returnToTop = if (listState?.pendingDescending == descending && pendingListReturnToTop != null) {
+            pendingListReturnToTop == true
+        } else {
+            source.type == VideoListType.Uploads && current != null && listState?.isDescending != descending &&
+                getKoin().get<BoloSettings>().general.uploadListOrderChangeToTopEnabled
+        }
+        pendingListReturnToTop = returnToTop
+        val anchor = current?.video?.avid.takeUnless { returnToTop }
         if (current != null) {
             _uiState.value = current.copy(isSwitchingEpisode = false, switchingEpisodeKey = null, episodeError = null, episodeNavigationPrevious = null)
             updateList { it.copy(isReloading = true, pendingDescending = descending, reloadError = null,
@@ -193,14 +202,22 @@ class VideoViewModel(private val request: VideoPlaybackRequest) : ViewModel() {
                         page = next
                     }
                 }
+                val targetVideo = if (returnToTop && current != null) {
+                    val first = checkNotNull(items.firstOrNull { it.isAvailable }) { "列表暂无可播放视频" }
+                    if (first.id == current.video.avid) null
+                    else loadVideo(Vid.AVid(first.id), version = videoVersion) ?: return@launch
+                } else null
                 if (version != listGeneration) return@launch
                 val updated = VideoListUiState(title = title, total = page.total ?: 0, items = items,
+                    uploadSort = source.sort.takeIf { source.type == VideoListType.Uploads },
                     headCursor = head, tailCursor = tail, hasPrevious = hasPrevious, hasNext = page.hasMore == true,
                     isDescending = descending, revision = (listState?.revision ?: 0) + 1)
                 listState = updated
+                pendingListReturnToTop = null
                 if (current != null) {
                     val latest = _uiState.value as? VideoUiState.Success ?: return@launch
-                    _uiState.value = latest.copy(videoList = updated)
+                    _uiState.value = if (targetVideo != null) VideoUiState.Success(video = targetVideo, videoList = updated)
+                        else latest.copy(videoList = updated)
                 } else {
                     val first = items.firstOrNull { it.isAvailable }
                     if (first == null) _uiState.value = VideoUiState.Empty

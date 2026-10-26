@@ -174,6 +174,19 @@ class GeneralSettings(settingsKSafe: KSafePlain) {
             currentUpRecentUploadsSheetEnabled = value
         }
 
+    private var storedUploadListOrderChangeToTopEnabled by settingsKSafe(
+        true, key = "bolo_general_upload_list_order_change_to_top_enabled",
+    )
+    private var currentUploadListOrderChangeToTopEnabled by mutableStateOf(storedUploadListOrderChangeToTopEnabled)
+
+    var uploadListOrderChangeToTopEnabled: Boolean
+        get() = currentUploadListOrderChangeToTopEnabled
+        set(value) {
+            if (value == currentUploadListOrderChangeToTopEnabled) return
+            storedUploadListOrderChangeToTopEnabled = value
+            currentUploadListOrderChangeToTopEnabled = value
+        }
+
     private var storedCommentOriginalImageEnabled by settingsKSafe(
         false, key = "bolo_general_comment_original_image_enabled",
     )

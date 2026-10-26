@@ -93,6 +93,7 @@ fun ShowPlaybackCollectionSelector(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
     title: String = "选集",
+    subtitle: String? = null,
     isLoading: Boolean = false,
     errorMessage: String? = null,
     playingPartId: String? = null,
@@ -100,7 +101,7 @@ fun ShowPlaybackCollectionSelector(
     selectedItemContentColor: Color = Color.Unspecified,
     serverOrdered: Boolean = false,
     totalCount: Int = items.size,
-    firstItemIndex: Int? = 0,
+    playingItemIndex: Int? = null,
     scrollRevision: Int = 0,
     hasPrevious: Boolean = false,
     hasNext: Boolean = false,
@@ -114,9 +115,8 @@ fun ShowPlaybackCollectionSelector(
     val listState = rememberLazyListState()
     val groupState = rememberLazyListState()
     val playingIndex = displayedItems.indexOfFirst { it.id == playingItemId }
-    val playingNumber = if (playingIndex >= 0 && firstItemIndex != null && firstItemIndex >= 0) {
-        (firstItemIndex.toLong() + playingIndex + 1L).takeIf { it in 1L..totalCount.toLong() }
-    } else null
+    val playingNumber = (if (serverOrdered) playingItemIndex else playingIndex)
+        ?.takeIf { it >= 0 }?.let { it.toLong() + 1L }
     val scrollItemsKey = if (serverOrdered) null else displayedItems
     val playingRowIndex = playingIndex.coerceAtLeast(0) + if (serverOrdered) 1 else 0
     val currentPlayingRowIndex by rememberUpdatedState(playingRowIndex)
@@ -175,7 +175,18 @@ fun ShowPlaybackCollectionSelector(
                 modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleSmall)
+                    subtitle?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.alpha(0.75f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 if (!isLoading && errorMessage == null) {
                     Text(
                         text = playingNumber?.let { "$it / $totalCount" } ?: totalCount.toString(),

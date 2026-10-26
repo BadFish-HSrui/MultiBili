@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Card
@@ -33,6 +34,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -52,6 +54,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -86,6 +89,7 @@ import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.download.DownloadFiles
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
+import tv.hsrui.bolo.ui.components.dialog.ShowInfoDialog
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.ui.theme.DefaultColorSpec
 import tv.hsrui.bolo.ui.theme.DefaultPaletteStyle
@@ -103,6 +107,19 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
     val snackbar: SnackbarManager = koinInject()
     val scope = rememberCoroutineScope()
     var showColorDialog by remember { mutableStateOf(false) }
+    var showUploadListOrderChangeToTopInfo by remember { mutableStateOf(false) }
+
+    if (showUploadListOrderChangeToTopInfo) {
+        ShowInfoDialog(onConfirm = { showUploadListOrderChangeToTopInfo = false }) {
+            Text(
+                text = "开启后，在UP投稿列表播放时调整正倒序，会跳转到目标排序的首个视频，与官方网页版本行为一致",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
+            )
+        }
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = { if (!isExpanded()) ShowTopBarWithNavigationButton(title = { Text("通用设置") }) },
@@ -218,6 +235,37 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
                                 Switch(checked = settings.general.upRecentUploadsSheetEnabled, onCheckedChange = null)
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.general.uploadListOrderChangeToTopEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.general.uploadListOrderChangeToTopEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "投稿列表调整顺序时回到顶部",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier.weight(1f, fill = false),
+                                    )
+                                    IconButton(
+                                        onClick = { showUploadListOrderChangeToTopInfo = true },
+                                        modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Info,
+                                            contentDescription = "投稿列表调整顺序时回到顶部说明",
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                }
+                                Switch(checked = settings.general.uploadListOrderChangeToTopEnabled, onCheckedChange = null)
                             }
                             HorizontalDivider()
                             Row(

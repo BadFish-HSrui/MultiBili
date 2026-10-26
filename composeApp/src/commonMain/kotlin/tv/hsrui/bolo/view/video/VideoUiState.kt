@@ -5,6 +5,7 @@ import tv.hsrui.network.feature.video.VideoInfoData
 import tv.hsrui.network.feature.player.PlayerInfoResponse
 import tv.hsrui.network.feature.video.collection.VideoCollectionEpisodeData
 import tv.hsrui.network.feature.video.list.VideoListItemData
+import tv.hsrui.network.feature.video.list.VideoListSort
 
 sealed class VideoUiState {
     data object Loading : VideoUiState()
@@ -74,6 +75,7 @@ sealed class VideoUiState {
 
 data class VideoListUiState(
     val title: String,
+    val uploadSort: VideoListSort? = null,
     val total: Int = 0,
     val items: List<VideoListItemData> = emptyList(),
     val headCursor: VideoListItemData? = null,
