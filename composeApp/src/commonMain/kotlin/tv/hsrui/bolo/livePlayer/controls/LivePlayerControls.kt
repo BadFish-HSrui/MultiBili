@@ -72,6 +72,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -88,6 +89,8 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -97,6 +100,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -153,6 +158,8 @@ fun LivePlayerControls(
     val showTitle = isFullscreen || isExpanded()
     var settingsOpen by remember(viewModel, navigationOnly) { mutableStateOf(false) }
     val danmakuSettings = viewModel.danmakuController.settings
+    val sender = viewModel.danmakuSender
+    val inputOpen = sender.isOpen
     val pageActive = viewModel.danmakuController.isPageActive
     LaunchedEffect(pageActive) { if (!pageActive) settingsOpen = false }
     var infoOpen by remember(viewModel, isFullscreen, showTitle, navigationOnly) { mutableStateOf(false) }
@@ -182,7 +189,7 @@ fun LivePlayerControls(
     var primaryPress by remember(viewModel) { mutableStateOf(false) }
     var qualityMenuOpen by remember(viewModel, isFullscreen) { mutableStateOf(false) }
     var volumeMenuOpen by remember(viewModel, isFullscreen) { mutableStateOf(false) }
-    val controlsInteractionActive = pointerPressed || previewPosition != null || qualityMenuOpen || volumeMenuOpen || settingsOpen
+    val controlsInteractionActive = pointerPressed || previewPosition != null || qualityMenuOpen || volumeMenuOpen || settingsOpen || inputOpen
     val latestControlsInteractionActive by rememberUpdatedState(controlsInteractionActive)
     val pressedKeys = remember(viewModel) { mutableSetOf<Key>() }
     val cancelledKeys = remember(viewModel) { mutableSetOf<Key>() }
@@ -207,6 +214,7 @@ fun LivePlayerControls(
         pressedKeys.clear()
     }
     fun handleKey(event: KeyEvent, volumeOnly: Boolean = false): Boolean {
+        if (inputOpen) return false
         if (event.type == KeyEventType.KeyUp) {
             val pressed = pressedKeys.remove(event.key)
             return cancelledKeys.remove(event.key) || pressed
@@ -256,6 +264,7 @@ fun LivePlayerControls(
             controlsVisible = false
         }
     }
+    LaunchedEffect(inputOpen) { if (inputOpen) cancelKeyboard() }
     LaunchedEffect(windowFocused) {
         if (!windowFocused) {
             pressedKeys.clear()
@@ -283,7 +292,7 @@ fun LivePlayerControls(
             fullscreenState.hasVisibleControls = true
         }
     }
-    if (isDesktop && !navigationOnly) {
+    if (isDesktop && !navigationOnly && !inputOpen) {
         PlayerKeyboardEffect(shortcutBindings, onKeyEvent, ::cancelKeyboard)
     }
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
@@ -428,16 +437,14 @@ fun LivePlayerControls(
                             )
                             Spacer(Modifier.height(8.dp))
                         }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp).height(32.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                        LivePlayerBottomControlsRow(
+                            playbackControlsPinned = playbackControlsPinned,
+                            controlsSlideOffset = { controlsSlideOffset },
+                        ) { hiddenControls ->
                             IconButton(
                                 onClick = viewModel::togglePlayback,
                                 enabled = !(viewModel.broadcastEnded && playback.isEnded),
-                                modifier = Modifier.size(32.dp).graphicsLayer {
-                                    translationY = if (playbackControlsPinned) 0f else controlsSlideOffset
-                                },
+                                modifier = Modifier.size(32.dp).layoutId("playback"),
                             ) {
                                 Icon(
                                     if (viewModel.playWhenReady) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -447,28 +454,42 @@ fun LivePlayerControls(
                                 )
                             }
                             if (bottomControlsVisible) {
-                                Row(
-                                    modifier = Modifier.weight(1f).graphicsLayer { translationY = controlsSlideOffset },
-                                    verticalAlignment = Alignment.CenterVertically,
+                                Text(
+                                    text = (if (playback.localReplayEnabled)
+                                        "${displayedOffset?.let { "-${(it / 1000).formatToDuration()}" } ?: "—"} / " else "") +
+                                        (timeline.latestElapsedMs?.let { (it / 1000).formatToDuration() } ?: "—"),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.layoutId("time"),
+                                )
+                                TextButton(
+                                    onClick = { danmakuSettings.enabled = !danmakuSettings.enabled; revealControls() },
+                                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+                                    modifier = Modifier.height(32.dp),
                                 ) {
-                                    Text(
-                                        text = (if (playback.localReplayEnabled)
-                                            "${displayedOffset?.let { "-${(it / 1000).formatToDuration()}" } ?: "—"} / " else "") +
-                                            (timeline.latestElapsedMs?.let { (it / 1000).formatToDuration() } ?: "—"),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                    )
-                                    Spacer(Modifier.weight(1f))
-                                    TextButton(
-                                        onClick = { danmakuSettings.enabled = !danmakuSettings.enabled; revealControls() },
-                                        colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
-                                        modifier = Modifier.height(32.dp),
-                                    ) {
-                                        Text(if (danmakuSettings.enabled) "弹幕 - 开" else "弹幕 - 关",
-                                            style = MaterialTheme.typography.labelMedium, maxLines = 1)
-                                    }
-                                    if (isDesktop) {
+                                    Text(if (danmakuSettings.enabled) "弹幕 - 开" else "弹幕 - 关",
+                                        style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                }
+                                TextButton(
+                                    onClick = sender::open,
+                                    enabled = sender.isLoggedIn,
+                                    colors = ButtonDefaults.textButtonColors(
+                                        contentColor = Color.White,
+                                        disabledContentColor = Color.White.copy(alpha = 0.38f),
+                                    ),
+                                    modifier = Modifier.height(32.dp).layoutId("send"),
+                                ) {
+                                    Text(if (sender.isLoggedIn) "发送弹幕" else "登录后发送弹幕",
+                                        style = MaterialTheme.typography.labelMedium, maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis)
+                                }
+                                Spacer(Modifier.layoutId("spacer"))
+                                if (isDesktop) {
+                                    Box(Modifier.layoutId("volume")
+                                        .focusProperties { canFocus = "volume" !in hiddenControls }
+                                        .then(if ("volume" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier)) {
                                         LiveVolumePopup(
                                             volumePercent = viewModel.volumePercent,
                                             muted = viewModel.muted,
@@ -477,9 +498,14 @@ fun LivePlayerControls(
                                             onToggleMuted = { viewModel.toggleMuted(); revealControls() },
                                             onExpandedChange = { volumeMenuOpen = it },
                                             onKeyEvent = onVolumeKeyEvent,
+                                            visible = "volume" !in hiddenControls,
                                         )
                                     }
-                                    if (viewModel.availableQns.isNotEmpty()) {
+                                }
+                                if (viewModel.availableQns.isNotEmpty()) {
+                                    Box(Modifier.layoutId("quality")
+                                        .focusProperties { canFocus = "quality" !in hiddenControls }
+                                        .then(if ("quality" in hiddenControls) Modifier.clearAndSetSemantics {} else Modifier)) {
                                         LiveQualityMenu(
                                             enabled = !viewModel.broadcastEnded,
                                             qns = viewModel.availableQns,
@@ -487,40 +513,41 @@ fun LivePlayerControls(
                                             isFullscreen = isFullscreen,
                                             onQualitySelected = { viewModel.selectQuality(it); revealControls() },
                                             onExpandedChange = { qualityMenuOpen = it },
+                                            visible = "quality" !in hiddenControls,
                                         )
                                     }
-                                    if (isDesktop) {
-                                        IconButton(
-                                            onClick = { fullscreenState.toggleWindowFullscreen(); revealControls() },
-                                            modifier = Modifier.size(32.dp).semantics {
-                                                contentDescription = if (isFullscreen) "退出窗口全屏" else "窗口全屏"
-                                            },
-                                        ) {
-                                            Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                                                Icon(Icons.Rounded.CropSquare, null, tint = Color.White, modifier = Modifier.size(24.dp))
-                                                Icon(
-                                                    if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                                                    null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(16.dp),
-                                                )
-                                            }
-                                        }
-                                    }
-                                    if (!fullscreenState.isManualSystemFullscreen) {
-                                        val fullscreen = if (isDesktop) fullscreenState.isSystemFullscreen else isFullscreen
-                                        IconButton(
-                                            onClick = { toggleFullscreen() },
-                                            enabled = !fullscreenState.isChangingSystemFullscreen,
-                                            modifier = Modifier.size(32.dp),
-                                        ) {
+                                }
+                                if (isDesktop) {
+                                    IconButton(
+                                        onClick = { fullscreenState.toggleWindowFullscreen(); revealControls() },
+                                        modifier = Modifier.size(32.dp).semantics {
+                                            contentDescription = if (isFullscreen) "退出窗口全屏" else "窗口全屏"
+                                        },
+                                    ) {
+                                        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Rounded.CropSquare, null, tint = Color.White, modifier = Modifier.size(24.dp))
                                             Icon(
-                                                if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                                                if (fullscreen) "退出全屏" else "全屏",
+                                                if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                                null,
                                                 tint = Color.White,
-                                                modifier = Modifier.size(24.dp),
+                                                modifier = Modifier.size(16.dp),
                                             )
                                         }
+                                    }
+                                }
+                                if (!fullscreenState.isManualSystemFullscreen) {
+                                    val fullscreen = if (isDesktop) fullscreenState.isSystemFullscreen else isFullscreen
+                                    IconButton(
+                                        onClick = { toggleFullscreen() },
+                                        enabled = !fullscreenState.isChangingSystemFullscreen,
+                                        modifier = Modifier.size(32.dp),
+                                    ) {
+                                        Icon(
+                                            if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                            if (fullscreen) "退出全屏" else "全屏",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(24.dp),
+                                        )
                                     }
                                 }
                             }
@@ -534,6 +561,60 @@ fun LivePlayerControls(
 }
 
 @Composable
+private fun LivePlayerBottomControlsRow(
+    playbackControlsPinned: Boolean,
+    controlsSlideOffset: () -> Float,
+    content: @Composable (Set<String>) -> Unit,
+) {
+    var hiddenControls by remember { mutableStateOf(emptySet<String>()) }
+    Layout(
+        content = { content(hiddenControls) },
+        modifier = Modifier.fillMaxWidth().height(32.dp).padding(horizontal = 8.dp),
+    ) { measurables, constraints ->
+        val timeIndex = measurables.indexOfFirst { it.layoutId == "time" }
+        val sendIndex = measurables.indexOfFirst { it.layoutId == "send" }
+        val naturalTimeWidth = measurables.getOrNull(timeIndex)?.maxIntrinsicWidth(constraints.maxHeight) ?: 0
+        val naturalSendWidth = measurables.getOrNull(sendIndex)?.maxIntrinsicWidth(constraints.maxHeight) ?: 0
+        val fixed = measurables.mapIndexed { index, measurable ->
+            if (index == timeIndex || index == sendIndex) null
+            else measurable.measure(Constraints(maxHeight = constraints.maxHeight))
+        }
+        val hidden = mutableSetOf<String>()
+        var requiredWidth = fixed.sumOf { it?.width ?: 0 } + naturalTimeWidth + naturalSendWidth
+        for (id in listOf("volume", "quality")) {
+            val index = measurables.indexOfFirst { it.layoutId == id }
+            if (requiredWidth > constraints.maxWidth && index >= 0) {
+                hidden.add(id)
+                requiredWidth -= fixed[index]?.width ?: 0
+            }
+        }
+        hiddenControls = hidden
+        val fixedWidth = measurables.indices.sumOf { if (measurables[it].layoutId in hidden) 0 else fixed[it]?.width ?: 0 }
+        val sendWidth = naturalSendWidth.coerceAtMost((constraints.maxWidth - fixedWidth).coerceAtLeast(0))
+        val timeWidth = naturalTimeWidth.coerceAtMost((constraints.maxWidth - fixedWidth - sendWidth).coerceAtLeast(0))
+        val placeables = measurables.mapIndexed { index, measurable ->
+            fixed[index] ?: measurable.measure(Constraints(
+                maxWidth = if (index == timeIndex) timeWidth else sendWidth, maxHeight = constraints.maxHeight,
+            ))
+        }
+        val visible = measurables.indices.filter { measurables[it].layoutId !in hidden }
+        val spacerWidth = (constraints.maxWidth - visible.sumOf { placeables[it].width }).coerceAtLeast(0)
+        val height = constraints.constrainHeight(placeables.maxOfOrNull { it.height } ?: 0)
+        layout(constraints.maxWidth, height) {
+            var x = 0
+            for (index in visible) {
+                val placeable = placeables[index]
+                placeable.placeRelativeWithLayer(x, (height - placeable.height) / 2) {
+                    translationY = if (playbackControlsPinned && measurables[index].layoutId == "playback") 0f else controlsSlideOffset()
+                }
+                x += placeable.width
+                if (measurables[index].layoutId == "spacer") x += spacerWidth
+            }
+        }
+    }
+}
+
+@Composable
 private fun LiveQualityMenu(
     enabled: Boolean,
     qns: List<Int>,
@@ -541,8 +622,9 @@ private fun LiveQualityMenu(
     isFullscreen: Boolean,
     onQualitySelected: (Int) -> Unit,
     onExpandedChange: (Boolean) -> Unit,
+    visible: Boolean = true,
 ) {
-    var expanded by remember(isFullscreen, enabled) { mutableStateOf(false) }
+    var expanded by remember(isFullscreen, enabled, visible) { mutableStateOf(false) }
     val onExpanded by rememberUpdatedState(onExpandedChange)
     DisposableEffect(expanded) {
         onExpanded(expanded)
@@ -587,8 +669,9 @@ private fun LiveVolumePopup(
     onToggleMuted: () -> Unit,
     onExpandedChange: (Boolean) -> Unit,
     onKeyEvent: (KeyEvent) -> Boolean,
+    visible: Boolean = true,
 ) {
-    var expanded by remember(isFullscreen) { mutableStateOf(false) }
+    var expanded by remember(isFullscreen, visible) { mutableStateOf(false) }
     val onExpanded by rememberUpdatedState(onExpandedChange)
     val latestOnKeyEvent by rememberUpdatedState(onKeyEvent)
     val focusRequester = remember { FocusRequester() }

@@ -22,6 +22,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.livePlayer.danmaku.LiveDanmakuSender
 import tv.hsrui.bolo.navigation.openUserSpace
 import tv.hsrui.bolo.userSpace.ShowUserUploadsSheet
 import tv.hsrui.bolo.view.live.danmaku.LiveDanmakuPage
@@ -34,6 +35,7 @@ import tv.hsrui.network.liveFeature.room.LiveRoomInfoData
 fun LivePlaybackInfo(
     room: LiveRoomInfoData,
     messageManager: LiveMessageManager,
+    danmakuSender: LiveDanmakuSender,
     isActive: Boolean = true,
     isInteractionVisible: Boolean = isActive,
     modifier: Modifier = Modifier,
@@ -44,7 +46,10 @@ fun LivePlaybackInfo(
         val pagerState = rememberPagerState { tabs.size }
         val coroutineScope = rememberCoroutineScope()
         val danmakuViewModel: LiveDanmakuViewModel = viewModel(key = "live_danmaku_${room.roomId}") {
-            LiveDanmakuViewModel(room.roomId, messageManager.messages, messageManager::isCurrent)
+            LiveDanmakuViewModel(
+                room.roomId, messageManager.messages, messageManager::isCurrent,
+                sentMessages = danmakuSender.sentMessages,
+            )
         }
         var selectedUpMid by remember(room.upMid) { mutableStateOf<Long?>(null) }
         LaunchedEffect(isActive, settings.general.upRecentUploadsSheetEnabled) {
@@ -83,6 +88,8 @@ fun LivePlaybackInfo(
                         isVisible = isInteractionVisible && pagerState.settledPage == 1 &&
                             pagerState.currentPage == 1 && !pagerState.isScrollInProgress,
                         modifier = Modifier.fillMaxSize(),
+                        onSend = danmakuSender::open,
+                        sendEnabled = danmakuSender.isLoggedIn,
                     )
                 }
             }

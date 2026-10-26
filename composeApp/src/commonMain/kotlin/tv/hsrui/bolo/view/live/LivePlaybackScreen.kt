@@ -60,6 +60,7 @@ import tv.hsrui.bolo.player.PlayerFullscreenEffect
 import tv.hsrui.bolo.player.rememberPlayerFullscreenState
 import tv.hsrui.bolo.ui.common.player.PlayerStatusBarOverlay
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
+import tv.hsrui.bolo.ui.components.live.ShowLiveDanmakuInput
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.network.liveFeature.room.LiveRoomInfoData
@@ -79,6 +80,7 @@ fun LivePlaybackScreen(
             LivePlaybackInfo(
                 room = info,
                 messageManager = viewModel.messageManager,
+                danmakuSender = viewModel.danmakuSender,
                 isActive = active,
                 isInteractionVisible = visible,
                 modifier = Modifier.fillMaxSize(),
@@ -90,13 +92,21 @@ fun LivePlaybackScreen(
     val session = viewModel.playbackSession
     val messagesActive = isActive && navigator.backStack.lastOrNull() == BoloRoute.View.Live(roomId) &&
         (getPlatform().type == PlatformType.Desktop || lifecycle.isAtLeast(Lifecycle.State.RESUMED))
-    LaunchedEffect(viewModel, messagesActive) { viewModel.setMessageActive(messagesActive) }
+    LaunchedEffect(viewModel, messagesActive) {
+        viewModel.setMessageActive(messagesActive)
+        if (!messagesActive) viewModel.danmakuSender.dismiss()
+    }
     val danmakuActive = messagesActive && lifecycle.isAtLeast(Lifecycle.State.RESUMED)
     DisposableEffect(viewModel, danmakuActive) {
         viewModel.danmakuController.setActive(danmakuActive)
         onDispose { viewModel.danmakuController.setActive(false) }
     }
-    DisposableEffect(viewModel) { onDispose { viewModel.setMessageActive(false) } }
+    DisposableEffect(viewModel) {
+        onDispose {
+            viewModel.setMessageActive(false)
+            viewModel.danmakuSender.dismiss()
+        }
+    }
     LaunchedEffect(viewModel, isActive, lifecycle, session) {
         if (isActive && lifecycle.isAtLeast(Lifecycle.State.RESUMED) &&
             navigator.backStack.lastOrNull() == BoloRoute.View.Live(roomId)) {
@@ -192,5 +202,6 @@ fun LivePlaybackScreen(
             LivePlayer(viewModel, fullscreenState, playerModifier.background(Color.Black).zIndex(1f))
         }
         PlayerStatusBarOverlay(isFullscreen = fullscreenState.isFullscreen)
+        if (messagesActive && viewModel.danmakuSender.isOpen) ShowLiveDanmakuInput(viewModel.danmakuSender)
     }
 }

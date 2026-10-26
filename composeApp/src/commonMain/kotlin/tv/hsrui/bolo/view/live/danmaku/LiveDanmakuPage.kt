@@ -13,8 +13,12 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material3.Card
 import androidx.compose.material3.ElevatedButton
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,17 +35,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.ui.components.image.ShowImage
@@ -54,6 +68,8 @@ fun LiveDanmakuPage(
     viewModel: LiveDanmakuViewModel,
     isVisible: Boolean,
     modifier: Modifier = Modifier,
+    onSend: (() -> Unit)? = null,
+    sendEnabled: Boolean = true,
 ) {
     val state by viewModel.uiState.collectAsState()
     val session = state.session
@@ -109,7 +125,7 @@ fun LiveDanmakuPage(
     Box(modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
-            contentPadding = PaddingValues(8.dp),
+            contentPadding = PaddingValues(start = 8.dp, top = 8.dp, end = 8.dp, bottom = if (onSend != null) 88.dp else 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxSize().nestedScroll(scrollConnection),
         ) {
@@ -117,18 +133,57 @@ fun LiveDanmakuPage(
                 LiveDanmakuCard(item.data, isVisible)
             }
         }
-        if (isVisible && !following && listState.canScrollForward) {
-            ElevatedButton(
-                onClick = {
-                    following = true
-                    scope.launch { listState.scrollToLiveDanmakuEnd(state.items.size) }
-                },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(8.dp),
-            ) {
-                Text(
-                    text = if (state.unreadCount > 0) "有 ${state.unreadCount} 条新弹幕" else "回到底部",
-                    color = BiliColor.Blue,
-                )
+        Layout(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp),
+            content = {
+                Box(Modifier.layoutId("unread"), contentAlignment = Alignment.Center) {
+                    if (isVisible && !following && listState.canScrollForward) {
+                        ElevatedButton(
+                            onClick = {
+                                following = true
+                                scope.launch { listState.scrollToLiveDanmakuEnd(state.items.size) }
+                            },
+                        ) {
+                            Text(
+                                text = if (state.unreadCount > 0) "有 ${state.unreadCount} 条新弹幕" else "回到底部",
+                                color = BiliColor.Blue,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+                if (onSend != null) {
+                    val enabled = isVisible && sendEnabled
+                    val label = if (sendEnabled) "发送弹幕" else "登录后发送弹幕"
+                    FloatingActionButton(
+                        onClick = { if (enabled) onSend() },
+                        containerColor = if (enabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (enabled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                        modifier = Modifier.layoutId("send").focusProperties { canFocus = enabled }.then(
+                            if (enabled) Modifier else Modifier.clearAndSetSemantics {
+                                contentDescription = label
+                                role = Role.Button
+                                disabled()
+                            },
+                        ),
+                    ) {
+                        Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = label)
+                    }
+                }
+            },
+        ) { measurables, constraints ->
+            val looseConstraints = constraints.copy(minWidth = 0, minHeight = 0)
+            val send = measurables.firstOrNull { it.layoutId == "send" }?.measure(looseConstraints)
+            val sendX = constraints.maxWidth - (send?.width ?: 0)
+            val unreadRight = (sendX - if (send != null) 8.dp.roundToPx() else 0).coerceAtLeast(0)
+            val unread = measurables.first { it.layoutId == "unread" }
+                .measure(looseConstraints.copy(maxWidth = unreadRight))
+            val unreadX = minOf((constraints.maxWidth - unread.width) / 2, unreadRight - unread.width)
+            val height = constraints.constrainHeight(maxOf(unread.height, send?.height ?: 0))
+            layout(constraints.maxWidth, height) {
+                unread.place(unreadX, (height - unread.height) / 2)
+                send?.place(sendX, (height - send.height) / 2)
             }
         }
     }
