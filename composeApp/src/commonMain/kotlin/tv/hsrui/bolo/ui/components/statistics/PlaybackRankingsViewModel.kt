@@ -14,11 +14,13 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.plus
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.storage.appData.AppDataStorage
+import tv.hsrui.bolo.storage.appData.liveStatistics.LiveRankings
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackRankings
 
 data class PlaybackRankingsUiState(
     val isLoading: Boolean = true,
     val rankings: PlaybackRankings? = null,
+    val liveRankings: LiveRankings? = null,
     val error: String? = null,
     val hasUnsavedPlayback: Boolean = false,
 )
@@ -45,20 +47,20 @@ class PlaybackRankingsViewModel(
             try {
                 var hasUnsavedPlayback = false
                 try {
-                    appData.playbackStatistics.flush()
+                    appData.statistics.flush()
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: Exception) {
                     hasUnsavedPlayback = true
                 }
-                val rankings = appData.playbackStatistics.rankings(
-                    fromDate = dateRange?.start,
-                    untilDateExclusive = dateRange?.endInclusive?.plus(1, DateTimeUnit.DAY),
-                    limit = limit,
-                )
+                val fromDate = dateRange?.start
+                val untilDateExclusive = dateRange?.endInclusive?.plus(1, DateTimeUnit.DAY)
+                val rankings = appData.playbackStatistics.rankings(fromDate, untilDateExclusive, limit)
+                val liveRankings = appData.liveStatistics.rankings(fromDate, untilDateExclusive, limit)
                 currentCoroutineContext().ensureActive()
                 mutableUiState.value = PlaybackRankingsUiState(
-                    isLoading = false, rankings = rankings, hasUnsavedPlayback = hasUnsavedPlayback,
+                    isLoading = false, rankings = rankings, liveRankings = liveRankings,
+                    hasUnsavedPlayback = hasUnsavedPlayback,
                 )
             } catch (error: CancellationException) {
                 throw error

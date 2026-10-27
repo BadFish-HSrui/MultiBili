@@ -1,6 +1,7 @@
 package tv.hsrui.bolo.ui.components.statistics
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.datetime.LocalDate
 import tv.hsrui.bolo.model.Vid
+import tv.hsrui.bolo.ui.components.dialog.ShowLiveRoomInfoDialog
 import tv.hsrui.bolo.ui.components.dialog.ShowUserInfoDialog
 import tv.hsrui.bolo.ui.components.dialog.ShowVideoInfoDialog
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
@@ -64,15 +66,20 @@ fun ShowPlaybackRankings(
         var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
         var selectedVid by remember { mutableStateOf<Vid?>(null) }
         var selectedUpMid by remember { mutableStateOf<Long?>(null) }
+        var selectedRoomId by remember { mutableStateOf<Long?>(null) }
         LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
             selectedVid = null
             selectedUpMid = null
+            selectedRoomId = null
         }
         selectedVid?.let { vid ->
             ShowVideoInfoDialog(vid = vid, onDismissRequest = { selectedVid = null })
         }
         selectedUpMid?.let { mid ->
             ShowUserInfoDialog(mid = mid, onDismissRequest = { selectedUpMid = null })
+        }
+        selectedRoomId?.let { roomId ->
+            ShowLiveRoomInfoDialog(roomId, onDismissRequest = { selectedRoomId = null })
         }
 
         Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -87,12 +94,15 @@ fun ShowPlaybackRankings(
                     textAlign = if (showTitle) TextAlign.Start else TextAlign.Center,
                 )
             }
-            SingleChoiceSegmentedButtonRow(Modifier.widthIn(max = 400.dp).fillMaxWidth().align(segmentedButtonAlignment)) {
-                listOf("UP主", "视频", "番剧影视").forEachIndexed { index, label ->
+            SingleChoiceSegmentedButtonRow(
+                Modifier.widthIn(max = 480.dp).fillMaxWidth().align(segmentedButtonAlignment)
+                    .horizontalScroll(rememberScrollState()),
+            ) {
+                listOf("UP主", "视频", "番剧影视", "直播间").forEachIndexed { index, label ->
                     SegmentedButton(
                         selected = selectedIndex == index, onClick = { selectedIndex = index },
-                        shape = SegmentedButtonDefaults.itemShape(index, 3),
-                    ) { Text(label) }
+                        shape = SegmentedButtonDefaults.itemShape(index, 4),
+                    ) { Text(label, maxLines = 1) }
                 }
             }
             if (state.isLoading && !fillRemainingHeight) {
@@ -115,11 +125,17 @@ fun ShowPlaybackRankings(
                         state.error != null -> ShowErrorContent(message = state.error.orEmpty(), retry = onRetry)
                         else -> state.rankings?.let { rankings ->
                             val videos = if (selectedIndex == 1) rankings.videos else rankings.media
-                            val isEmpty = if (selectedIndex == 0) rankings.ups.isEmpty() else videos.isEmpty()
+                            val rooms = state.liveRankings?.rooms.orEmpty()
+                            val isEmpty = when (selectedIndex) {
+                                0 -> rankings.ups.isEmpty()
+                                3 -> rooms.isEmpty()
+                                else -> videos.isEmpty()
+                            }
                             if (isEmpty) {
                                 val contentLabel = when (selectedIndex) {
                                     0 -> " UP 主"
                                     1 -> "视频"
+                                    3 -> "直播间"
                                     else -> "番剧影视"
                                 }
                                 Box(
@@ -145,7 +161,23 @@ fun ShowPlaybackRankings(
                                             totalPlayedMs = up.totalPlayedMs,
                                             modifier = Modifier.clickable(enabled = up.upMid > 0) {
                                                 selectedVid = null
+                                                selectedRoomId = null
                                                 selectedUpMid = up.upMid
+                                            },
+                                        )
+                                    }
+                                } else if (selectedIndex == 3) {
+                                    rooms.forEachIndexed { index, room ->
+                                        if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                                        StatisticsRankingRow(
+                                            rank = if (showRank) index + 1 else null,
+                                            title = formatLiveStatisticsTitle(room.roomId, room.shortRoomId, room.upName),
+                                            subtitle = "${room.playCount} 次观看",
+                                            totalPlayedMs = room.totalPlayedMs,
+                                            modifier = Modifier.clickable(enabled = room.roomId > 0) {
+                                                selectedVid = null
+                                                selectedUpMid = null
+                                                selectedRoomId = room.roomId
                                             },
                                         )
                                     }
@@ -162,6 +194,7 @@ fun ShowPlaybackRankings(
                                             totalPlayedMs = video.totalPlayedMs,
                                             modifier = Modifier.clickable(enabled = video.avid > 0) {
                                                 selectedUpMid = null
+                                                selectedRoomId = null
                                                 selectedVid = Vid.AVid(video.avid)
                                             },
                                         )

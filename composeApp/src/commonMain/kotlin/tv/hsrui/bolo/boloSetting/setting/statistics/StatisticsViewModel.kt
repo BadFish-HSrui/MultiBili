@@ -20,8 +20,9 @@ import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.storage.appData.AppDataStorage
-import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackDailyStats
+import tv.hsrui.bolo.storage.appData.liveStatistics.LiveStatisticsSnapshot
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackStatisticsSnapshot
+import tv.hsrui.bolo.storage.appData.playbackStatistics.addPlaybackStatistics
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
 import tv.hsrui.bolo.utils.file.LocalFileAccess
 import kotlin.time.Clock
@@ -29,10 +30,22 @@ import kotlin.time.Clock
 data class StatisticsUiState(
     val isLoading: Boolean = true,
     val snapshot: PlaybackStatisticsSnapshot? = null,
-    val days: List<PlaybackDailyStats> = emptyList(),
+    val liveSnapshot: LiveStatisticsSnapshot? = null,
+    val days: List<StatisticsDailyStats> = emptyList(),
     val error: String? = null,
     val hasUnsavedPlayback: Boolean = false,
 )
+
+data class StatisticsDailyStats(
+    val localDate: String,
+    val videoPlayedMs: Long = 0L,
+    val livePlayedMs: Long = 0L,
+    val videoPlayCount: Long = 0L,
+    val livePlayCount: Long = 0L,
+) {
+    val totalPlayedMs: Long = addPlaybackStatistics(videoPlayedMs, livePlayedMs)
+    val hasPlayback: Boolean get() = totalPlayedMs > 0L || videoPlayCount > 0L || livePlayCount > 0L
+}
 
 class StatisticsViewModel(
     private val appData: AppDataStorage = getKoin().get(),
@@ -138,7 +151,7 @@ class StatisticsViewModel(
             try {
                 var hasUnsavedPlayback = false
                 try {
-                    appData.playbackStatistics.flush()
+                    appData.statistics.flush()
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: Exception) {
@@ -148,14 +161,27 @@ class StatisticsViewModel(
                 val end = today().plus(1, DateTimeUnit.DAY)
                 val start = end.minus(dayCount, DateTimeUnit.DAY)
                 val snapshot = appData.playbackStatistics.statistics(start, end, includeRankings = false)
+                val liveSnapshot = appData.liveStatistics.statistics(start, end, includeRankings = false)
+                addPlaybackStatistics(snapshot.summary.totalPlayedMs, liveSnapshot.summary.totalPlayedMs)
                 val byDate = snapshot.dailyStats.associateBy { it.localDate }
+                val liveByDate = liveSnapshot.dailyStats.associateBy { it.localDate }
                 val days = List(dayCount) { offset ->
                     val date = start.plus(offset, DateTimeUnit.DAY).toString()
-                    byDate[date] ?: PlaybackDailyStats(localDate = date)
+                    StatisticsDailyStats(
+                        localDate = date,
+                        videoPlayedMs = byDate[date]?.totalPlayedMs ?: 0L,
+                        livePlayedMs = liveByDate[date]?.totalPlayedMs ?: 0L,
+                        videoPlayCount = byDate[date]?.playCount ?: 0L,
+                        livePlayCount = liveByDate[date]?.playCount ?: 0L,
+                    )
                 }
+                // 在发布 UI 状态前检查整个区间，避免趋势组件中出现溢出。
+                days.fold(0L) { sum, day -> addPlaybackStatistics(sum, day.totalPlayedMs) }
+                days.fold(0L) { sum, day -> addPlaybackStatistics(sum, day.videoPlayCount) }
+                days.fold(0L) { sum, day -> addPlaybackStatistics(sum, day.livePlayCount) }
                 currentCoroutineContext().ensureActive()
                 mutableUiState.value = StatisticsUiState(
-                    isLoading = false, snapshot = snapshot,
+                    isLoading = false, snapshot = snapshot, liveSnapshot = liveSnapshot,
                     days = days, hasUnsavedPlayback = hasUnsavedPlayback,
                 )
             } catch (error: CancellationException) {

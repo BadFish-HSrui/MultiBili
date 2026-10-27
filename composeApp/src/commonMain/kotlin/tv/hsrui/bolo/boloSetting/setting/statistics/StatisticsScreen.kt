@@ -49,16 +49,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.MeasurePolicy
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainHeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.datetime.LocalDate
-import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackDailyStats
-import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistoryType
+import tv.hsrui.bolo.storage.appData.liveStatistics.LiveStatisticsSummary
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackStatisticsSummary
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
@@ -67,7 +71,11 @@ import tv.hsrui.bolo.ui.components.statistics.PlaybackRankingsViewModel
 import tv.hsrui.bolo.ui.components.statistics.ShowPlaybackHistorySheet
 import tv.hsrui.bolo.ui.components.statistics.ShowPlaybackRankings
 import tv.hsrui.bolo.ui.components.statistics.ShowPlaybackRankingsSheet
+import tv.hsrui.bolo.ui.components.statistics.ShowStatisticsDuration
+import tv.hsrui.bolo.ui.components.statistics.StatisticsHistoryType
 import tv.hsrui.bolo.ui.components.statistics.formatStatisticsDuration
+import tv.hsrui.bolo.ui.components.statistics.formatStatisticsDurationBreakdown
+import tv.hsrui.bolo.ui.components.statistics.formatStatisticsPlaybackCounts
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.utils.isExpanded
 
@@ -86,7 +94,7 @@ fun StatisticsScreen(
     var dayCount by rememberSaveable { mutableIntStateOf(7) }
     val days = remember(state.days, dayCount) { state.days.takeLast(dayCount) }
     var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
-    var selectedHistory by remember { mutableStateOf<PlaybackHistoryType?>(null) }
+    var selectedHistory by remember { mutableStateOf<StatisticsHistoryType?>(null) }
     val reloadStatistics: () -> Unit = {
         selectedDay = null
         selectedHistory = null
@@ -182,7 +190,7 @@ fun StatisticsScreen(
                 }
                 state.snapshot?.let { snapshot ->
                     item(key = "overview") {
-                        StatisticsOverview(snapshot.summary, onHistoryClick = {
+                        StatisticsOverview(snapshot.summary, checkNotNull(state.liveSnapshot).summary, onHistoryClick = {
                             selectedDay = null
                             selectedHistory = it
                         })
@@ -234,26 +242,60 @@ fun StatisticsScreen(
 }
 
 @Composable
-private fun StatisticsOverview(summary: PlaybackStatisticsSummary, onHistoryClick: (PlaybackHistoryType) -> Unit) {
+private fun StatisticsOverview(
+    summary: PlaybackStatisticsSummary,
+    liveSummary: LiveStatisticsSummary,
+    onHistoryClick: (StatisticsHistoryType) -> Unit,
+) {
     Card {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("累计观看时长", style = MaterialTheme.typography.labelLarge)
-                Text(formatStatisticsDuration(summary.totalPlayedMs), style = MaterialTheme.typography.headlineMedium)
+                ShowStatisticsDuration(summary.totalPlayedMs, liveSummary.totalPlayedMs)
             }
             HorizontalDivider()
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatisticsMetric("播放次数", summary.playCount.toString(), Modifier.weight(1f))
-                StatisticsMetric("看过的视频", summary.videoCount.toString(), Modifier.weight(1f).clickable {
-                    onHistoryClick(PlaybackHistoryType.Videos)
-                })
-                StatisticsMetric("看过的 UP", summary.upCount.toString(), Modifier.weight(1f).clickable {
-                    onHistoryClick(PlaybackHistoryType.Ups)
-                })
+            Layout(
+                modifier = Modifier.fillMaxWidth(),
+                content = {
+                    StatisticsMetric("视频播放次数", summary.playCount.toString())
+                    StatisticsMetric("看过的视频", summary.videoCount.toString(), Modifier.clickable {
+                        onHistoryClick(StatisticsHistoryType.Videos)
+                    })
+                    StatisticsMetric("看过的 UP", summary.upCount.toString(), Modifier.clickable {
+                        onHistoryClick(StatisticsHistoryType.Ups)
+                    })
+                    StatisticsMetric("直播观看次数", liveSummary.playCount.toString())
+                    StatisticsMetric("看过的直播间", liveSummary.roomCount.toString(), Modifier.clickable {
+                        onHistoryClick(StatisticsHistoryType.LiveRooms)
+                    })
+                },
+                measurePolicy = statisticsMetricsMeasurePolicy,
+            )
+            if (summary.playCount == 0L && summary.totalPlayedMs == 0L &&
+                liveSummary.playCount == 0L && liveSummary.totalPlayedMs == 0L) {
+                Text("还没有观看数据，播放视频或直播后会在这里记录。", style = MaterialTheme.typography.bodySmall)
             }
-            if (summary.playCount == 0L && summary.totalPlayedMs == 0L) {
-                Text("还没有观看数据，播放视频后会在这里记录。", style = MaterialTheme.typography.bodySmall)
-            }
+        }
+    }
+}
+
+internal val statisticsMetricsMeasurePolicy = MeasurePolicy { measurables, constraints ->
+    val gap = 12.dp.roundToPx()
+    val minimumColumnWidth = measurables.maxOf { it.maxIntrinsicWidth(Constraints.Infinity) }
+    val singleRow = minimumColumnWidth * 5 + gap * 4 <= constraints.maxWidth
+    val rows = if (singleRow) listOf(measurables) else listOf(measurables.take(3), measurables.drop(3))
+    val measured = rows.map { row ->
+        val columnWidth = ((constraints.maxWidth - gap * (row.size - 1)) / row.size).coerceAtLeast(0)
+        row.map { it.measure(Constraints.fixedWidth(columnWidth)) }
+    }
+    val rowGap = 16.dp.roundToPx()
+    val height = measured.sumOf { row -> row.maxOf { it.height } } + rowGap * (rows.size - 1)
+    layout(constraints.maxWidth, constraints.constrainHeight(height)) {
+        var y = 0
+        measured.forEach { row ->
+            var x = 0
+            row.forEach { child -> child.placeRelative(x, y); x += child.width + gap }
+            y += row.maxOf { it.height } + rowGap
         }
     }
 }
@@ -267,19 +309,22 @@ private fun StatisticsMetric(label: String, value: String, modifier: Modifier = 
 }
 
 @Composable
-private fun StatisticsTrend(days: List<PlaybackDailyStats>, onDayClick: (LocalDate) -> Unit) {
+private fun StatisticsTrend(days: List<StatisticsDailyStats>, onDayClick: (LocalDate) -> Unit) {
     var selectedIndex by rememberSaveable(days.first().localDate, days.last().localDate) { mutableIntStateOf(days.lastIndex) }
     val selectedDay = days[selectedIndex]
     val totalMs = days.sumOf { it.totalPlayedMs }
-    val totalCount = days.sumOf { it.playCount }
+    val videoMs = days.sumOf { it.videoPlayedMs }
+    val liveMs = days.sumOf { it.livePlayedMs }
+    val videoCount = days.sumOf { it.videoPlayCount }
+    val liveCount = days.sumOf { it.livePlayCount }
     val maximum = days.maxOf { it.totalPlayedMs }.coerceAtLeast(1L)
     Card {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("${days.first().localDate} 至 ${days.last().localDate}",
                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(formatStatisticsDuration(totalMs), style = MaterialTheme.typography.headlineSmall)
-            Text("$totalCount 次播放 · 日均 ${formatStatisticsDuration(totalMs / days.size)} · " +
-                "${days.count { it.totalPlayedMs > 0L || it.playCount > 0L }} 天有观看",
+            ShowStatisticsDuration(videoMs, liveMs, style = MaterialTheme.typography.headlineSmall)
+            Text("${formatStatisticsPlaybackCounts(videoCount, liveCount)} · 日均 ${formatStatisticsDuration(totalMs / days.size)} · " +
+                "${days.count { it.hasPlayback }} 天有观看",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(if (totalMs == 0L) "这段时间还没有观看时长" else "单日最高 ${formatStatisticsDuration(maximum)}",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -297,7 +342,9 @@ private fun StatisticsTrend(days: List<PlaybackDailyStats>, onDayClick: (LocalDa
                                 color = Color.Transparent,
                                 modifier = Modifier.weight(1f).fillMaxHeight().semantics {
                                     selected = isSelected
-                                    contentDescription = "${day.localDate}，${formatStatisticsDuration(day.totalPlayedMs)}，${day.playCount} 次播放"
+                                    contentDescription = "${day.localDate}，${formatStatisticsDuration(day.totalPlayedMs)}，" +
+                                        "${formatStatisticsDurationBreakdown(day.videoPlayedMs, day.livePlayedMs)}，" +
+                                        formatStatisticsPlaybackCounts(day.videoPlayCount, day.livePlayCount)
                                 },
                             ) {
                                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
@@ -335,8 +382,22 @@ private fun StatisticsTrend(days: List<PlaybackDailyStats>, onDayClick: (LocalDa
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(selectedDay.localDate, style = MaterialTheme.typography.labelMedium)
-                        Text("${formatStatisticsDuration(selectedDay.totalPlayedMs)} · ${selectedDay.playCount} 次播放",
-                            style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                        Text(
+                            text = "${formatStatisticsDuration(selectedDay.totalPlayedMs)} · " +
+                                formatStatisticsPlaybackCounts(selectedDay.videoPlayCount, selectedDay.livePlayCount),
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = formatStatisticsDurationBreakdown(selectedDay.videoPlayedMs, selectedDay.livePlayedMs),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                     IconButton(onClick = { selectedIndex = (selectedIndex + 1).coerceAtMost(days.lastIndex) }, enabled = selectedIndex < days.lastIndex, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "后一天", Modifier.size(24.dp))
