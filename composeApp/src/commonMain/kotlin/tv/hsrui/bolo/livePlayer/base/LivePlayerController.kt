@@ -505,14 +505,16 @@ class LivePlayerController(
         startLoad(target, live)
     }
 
-    fun resumePlayback(): Boolean {
+    fun resumePlayback(atLatest: Boolean = false): Boolean {
         val streams = streamSession?.takeIf { it.localReplayEnabled } ?: return false
-        if (disposed || !foreground || state.value.error != null || state.value.isEnded) return false
+        if (disposed || !foreground || state.value.error != null || state.value.isEnded ||
+            atLatest && state.value.isBroadcastEnded
+        ) return false
         playIntentRevision++
         playbackTimeline.setPaused(false)
         mutableState.value = state.value.copy(playWhenReady = true, error = null, isEnded = false)
         val position = timeline.value.positionMs
-        if (streams.cache.snapshot.value.epoch != readerEpoch || !streams.cache.contains(position)) startLoad()
+        if (atLatest || streams.cache.snapshot.value.epoch != readerEpoch || !streams.cache.contains(position)) startLoad()
         else if (!ready) startLoad(position, timeline.value.isLive)
         else applyPlayIntent()
         return true

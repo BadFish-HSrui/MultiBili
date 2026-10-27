@@ -343,8 +343,10 @@ class LivePlayerViewModel internal constructor(
 
     fun resumeLatest() {
         if (closed || broadcastEnded || playbackSession?.isClosed != false) return
+        val controller = playbackSession?.controller ?: return
+        if (!controller.resumePlayback(atLatest = true)) return
         playWhenReady = true
-        loadPlayback()
+        syncPlayback()
     }
 
     fun resumePlayback() {

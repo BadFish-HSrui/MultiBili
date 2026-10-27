@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -453,6 +454,20 @@ fun LivePlayerControls(
                                     modifier = Modifier.size(28.dp),
                                 )
                             }
+                            if (playback.localReplayEnabled) {
+                                IconButton(
+                                    onClick = { viewModel.resumeLatest(); revealControls() },
+                                    enabled = !viewModel.broadcastEnded,
+                                    modifier = Modifier.size(32.dp).layoutId("latest"),
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.SkipNext,
+                                        contentDescription = "快进到最新进度",
+                                        tint = Color.White.copy(alpha = if (viewModel.broadcastEnded) 0.38f else 1f),
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                            }
                             if (bottomControlsVisible) {
                                 Text(
                                     text = (if (playback.localReplayEnabled)
@@ -605,7 +620,9 @@ private fun LivePlayerBottomControlsRow(
             for (index in visible) {
                 val placeable = placeables[index]
                 placeable.placeRelativeWithLayer(x, (height - placeable.height) / 2) {
-                    translationY = if (playbackControlsPinned && measurables[index].layoutId == "playback") 0f else controlsSlideOffset()
+                    translationY = if (playbackControlsPinned &&
+                        (measurables[index].layoutId == "playback" || measurables[index].layoutId == "latest")
+                    ) 0f else controlsSlideOffset()
                 }
                 x += placeable.width
                 if (measurables[index].layoutId == "spacer") x += spacerWidth
