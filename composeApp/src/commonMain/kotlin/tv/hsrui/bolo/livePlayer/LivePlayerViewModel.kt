@@ -129,7 +129,7 @@ class LivePlayerViewModel internal constructor(
         if (closed || pageActive == active) return
         pageActive = active
         if (active) roomInfo?.let {
-            messageManager.start(it.roomId)
+            messageManager.start(it.roomId, it.upMid)
             if (streamRetryPending && it.isLive) loadPlayback(it, false, false)
         }
         else {
@@ -220,7 +220,7 @@ class LivePlayerViewModel internal constructor(
                 var room = knownRoom ?: roomInfoRequest(roomId)
                 if (!isCurrent(session, revision)) return@launch
                 roomInfo = room
-                if (pageActive) messageManager.start(room.roomId)
+                if (pageActive) messageManager.start(room.roomId, room.upMid)
                 if (!room.isLive) { acceptRoomStatus(room); return@launch }
                 observedLive = true
                 observedStartTime = room.liveStartTimeEpochSeconds

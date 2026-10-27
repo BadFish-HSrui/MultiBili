@@ -39,6 +39,7 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.network.constant.BOLO_UA
+import tv.hsrui.network.liveFeature.message.fansMedal.LiveFansMedalManager
 import tv.hsrui.network.login.storage.LoginStorage
 import kotlin.concurrent.atomics.AtomicLong
 import kotlin.random.Random
@@ -58,7 +59,8 @@ class LiveMessageManager(
 ) {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + Dispatchers.Default)
     private val serial = AtomicLong(0)
-    private val requested = MutableStateFlow<Pair<Long?, Long>>(null to 0L)
+    private val requested = MutableStateFlow<Triple<Long?, Long, Long>>(Triple(null, 0L, 0L))
+    val fansMedal = LiveFansMedalManager(scope)
     private val mutableConnection = MutableStateFlow(LiveMessageConnectionState())
     val connectionState = mutableConnection.asStateFlow()
     private val mutableRoomStatus = MutableStateFlow<LiveRoomStatusData?>(null)
@@ -71,55 +73,62 @@ class LiveMessageManager(
         require(heartbeatMs > 0 && heartbeatTimeoutMs > heartbeatMs && retryDelaysMs.isNotEmpty())
         scope.launch {
             requested.collectLatest { request ->
-                val roomId = request.first ?: return@collectLatest
+                val (roomId, anchorUid, generation) = request
+                if (roomId == null) return@collectLatest
                 accountChanges.distinctUntilChanged().collectLatest { userId ->
-                    var attempt = 0
-                    while (isActive && requested.value == request) {
-                        try {
-                            publishConnection(LiveMessageConnectionState(
-                                if (attempt == 0) LiveMessageConnectionStatus.CONNECTING else LiveMessageConnectionStatus.RECONNECTING,
-                                roomId, request.second,
-                            ))
-                            val info = infoRequest(roomId)
-                            check(info.userId == userId) { "直播信息流身份已变化" }
-                            for (address in info.urls) {
-                                if (requested.value != request) break
-                                try {
-                                    runConnection(roomId, address, info, request.second) { attempt = 0 }
-                                } catch (error: Exception) {
-                                    if (error is CancellationException && error !is TimeoutCancellationException) throw error
+                    fansMedal.start(roomId, anchorUid, userId, generation)
+                    try {
+                        var attempt = 0
+                        while (isActive && requested.value == request) {
+                            try {
+                                publishConnection(LiveMessageConnectionState(
+                                    if (attempt == 0) LiveMessageConnectionStatus.CONNECTING else LiveMessageConnectionStatus.RECONNECTING,
+                                    roomId, generation,
+                                ))
+                                val info = infoRequest(roomId)
+                                check(info.userId == userId) { "直播信息流身份已变化" }
+                                for (address in info.urls) {
                                     if (requested.value != request) break
-                                    publishConnection(LiveMessageConnectionState(LiveMessageConnectionStatus.RECONNECTING, roomId, request.second))
-                                    delay(retryDelaysMs[attempt.coerceAtMost(retryDelaysMs.lastIndex)] + Random.nextLong(0, 1001))
-                                    attempt++
-                                    if (error is IllegalArgumentException) break
+                                    try {
+                                        runConnection(roomId, address, info, generation) { attempt = 0 }
+                                    } catch (error: Exception) {
+                                        if (error is CancellationException && error !is TimeoutCancellationException) throw error
+                                        if (requested.value != request) break
+                                        publishConnection(LiveMessageConnectionState(LiveMessageConnectionStatus.RECONNECTING, roomId, generation))
+                                        delay(retryDelaysMs[attempt.coerceAtMost(retryDelaysMs.lastIndex)] + Random.nextLong(0, 1001))
+                                        attempt++
+                                        if (error is IllegalArgumentException) break
+                                    }
                                 }
+                                check(info.urls.isNotEmpty()) { "直播信息流节点为空" }
+                            } catch (error: Exception) {
+                                if (error is CancellationException && error !is TimeoutCancellationException) throw error
+                                if (requested.value != request) break
+                                publishConnection(LiveMessageConnectionState(LiveMessageConnectionStatus.RECONNECTING, roomId, generation))
+                                delay(retryDelaysMs[attempt.coerceAtMost(retryDelaysMs.lastIndex)] + Random.nextLong(0, 1001))
+                                attempt++
                             }
-                            check(info.urls.isNotEmpty()) { "直播信息流节点为空" }
-                        } catch (error: Exception) {
-                            if (error is CancellationException && error !is TimeoutCancellationException) throw error
-                            if (requested.value != request) break
-                            publishConnection(LiveMessageConnectionState(LiveMessageConnectionStatus.RECONNECTING, roomId, request.second))
-                            delay(retryDelaysMs[attempt.coerceAtMost(retryDelaysMs.lastIndex)] + Random.nextLong(0, 1001))
-                            attempt++
                         }
+                    } finally {
+                        fansMedal.stop(generation)
                     }
                 }
             }
         }
     }
 
-    fun start(roomId: Long) {
-        require(roomId > 0)
-        if (closed || requested.value.first == roomId) return
+    fun start(roomId: Long, anchorUid: Long) {
+        require(roomId > 0 && anchorUid > 0)
+        if (closed || (requested.value.first == roomId && requested.value.second == anchorUid)) return
         val generation = serial.addAndFetch(1)
-        requested.value = roomId to generation
+        requested.value = Triple(roomId, anchorUid, generation)
         mutableRoomStatus.update { it?.takeIf { status -> status.generation == generation } }
     }
 
     fun stop() {
         if (closed) return
-        requested.value = null to serial.addAndFetch(1)
+        requested.value = Triple(null, 0L, serial.addAndFetch(1))
+        fansMedal.stop()
         mutableRoomStatus.value = null
         mutableConnection.value = LiveMessageConnectionState()
     }
@@ -128,15 +137,17 @@ class LiveMessageManager(
         if (closed) return
         stop()
         closed = true
+        fansMedal.close()
         scope.cancel()
         client.close()
         mutableConnection.value = LiveMessageConnectionState(LiveMessageConnectionStatus.CLOSED)
     }
 
-    fun isCurrent(roomId: Long, generation: Long): Boolean = !closed && requested.value == (roomId to generation)
+    fun isCurrent(roomId: Long, generation: Long): Boolean = !closed &&
+        requested.value.let { it.first == roomId && it.third == generation }
 
     private fun publishConnection(value: LiveMessageConnectionState) {
-        mutableConnection.update { if (requested.value == (value.roomId to value.generation)) value else it }
+        mutableConnection.update { if (value.roomId?.let { roomId -> isCurrent(roomId, value.generation) } == true) value else it }
     }
 
     private suspend fun runConnection(roomId: Long, address: String, info: LiveMessageInfoData, generation: Long, onConnected: () -> Unit) = coroutineScope {
@@ -164,10 +175,10 @@ class LiveMessageManager(
             }.toString())))
             val receiver = launch {
                 for (frame in session.incoming) {
-                    if (requested.value != (roomId to generation)) return@launch
+                    if (!isCurrent(roomId, generation)) return@launch
                     if (frame !is Frame.Binary) continue
                     protocol.receive(frame.data) { operation, body ->
-                        if (requested.value != (roomId to generation)) return@receive
+                        if (!isCurrent(roomId, generation)) return@receive
                         when (operation) {
                             8 -> {
                                 require(body?.get("code")?.jsonPrimitive?.intOrNull == 0) { "直播信息流鉴权失败" }
@@ -193,7 +204,11 @@ class LiveMessageManager(
                                         )
                                     }
                                 }
-                                if (isCurrent(roomId, generation)) mutableMessages.tryEmit(LiveMessageData(roomId, command, body, generation))
+                                if (isCurrent(roomId, generation)) {
+                                    val message = LiveMessageData(roomId, command, body, generation)
+                                    fansMedal.onMessage(message)
+                                    mutableMessages.tryEmit(message)
+                                }
                             }
                         }
                     }
@@ -201,8 +216,9 @@ class LiveMessageManager(
                 error("直播信息流连接已关闭")
             }
             withTimeout(10_000) { authenticated.await() }
-            if (requested.value != (roomId to generation)) return@coroutineScope
+            if (!isCurrent(roomId, generation)) return@coroutineScope
             publishConnection(LiveMessageConnectionState(LiveMessageConnectionStatus.CONNECTED, roomId, generation, connectionId))
+            fansMedal.onConnected(generation)
             onConnected()
             val keepAlive = launch {
                 while (isActive) {
