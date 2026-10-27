@@ -1,5 +1,7 @@
 package tv.hsrui.network.liveFeature.room
 
+import tv.hsrui.network.liveFeature.superChat.LiveSuperChatData
+import tv.hsrui.network.liveFeature.superChat.parseLiveSuperChatList
 import tv.hsrui.network.utils.toHttpsUrl
 
 data class LiveRoomInfoData(
@@ -20,6 +22,7 @@ data class LiveRoomInfoData(
     val parentAreaId: Int? = null,
     val parentAreaName: String = "",
     val announcement: String = "",
+    val superChats: List<LiveSuperChatData> = emptyList(),
 )
 
 internal fun RawLiveRoomInfoResponse.toLiveRoomInfo(): LiveRoomInfoData {
@@ -48,6 +51,7 @@ internal fun RawLiveRoomInfoResponse.toLiveRoomInfo(): LiveRoomInfoData {
         parentAreaId = room.parentAreaId?.takeIf { it > 0 },
         parentAreaName = room.parentAreaName.trim(),
         announcement = info.newsInfo?.content.orEmpty().toLiveRoomDescription(),
+        superChats = parseLiveSuperChatList(info.superChatInfo),
     )
 }
 

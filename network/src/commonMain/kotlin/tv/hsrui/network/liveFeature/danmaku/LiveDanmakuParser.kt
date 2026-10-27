@@ -182,7 +182,7 @@ internal fun parseLiveDanmakuBubbleResources(data: JsonObject): Map<Long, LiveDa
         )
     }?.toMap().orEmpty()
 
-private fun JsonObject?.toLiveDanmakuUser(): LiveDanmakuUserData = LiveDanmakuUserData(
+internal fun JsonObject?.toLiveDanmakuUser(): LiveDanmakuUserData = LiveDanmakuUserData(
     uid = this?.get("uid").positiveLong(),
     isMystery = this?.get("base").asObject()?.get("is_mystery").flag(),
     fansMedal = this?.get("medal").asObject()?.toLiveDanmakuFansMedal(),

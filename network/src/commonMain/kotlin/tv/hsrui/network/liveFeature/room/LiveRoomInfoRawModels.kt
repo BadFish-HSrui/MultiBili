@@ -2,6 +2,7 @@ package tv.hsrui.network.liveFeature.room
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 @Serializable
 internal data class RawLiveRoomInfoResponse(
@@ -16,6 +17,7 @@ internal data class RawLiveRoomInfoData(
     @SerialName("anchor_info") val anchorInfo: RawLiveAnchorInfo? = null,
     @SerialName("watched_show") val watchedShow: RawLiveRoomWatchedShow? = null,
     @SerialName("news_info") val newsInfo: RawLiveRoomNewsInfo? = null,
+    @SerialName("super_chat_info") val superChatInfo: JsonObject? = null,
 )
 
 @Serializable
