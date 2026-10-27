@@ -9,6 +9,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +27,8 @@ import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.boloSetting.setting.live.LiveSettings
 import tv.hsrui.bolo.player.base.BoloMpvBackend
 import tv.hsrui.bolo.player.base.BoloMpvEvent
+import tv.hsrui.bolo.player.base.BoloPlaybackClock
+import tv.hsrui.bolo.player.base.BoloPlaybackObservation
 import tv.hsrui.bolo.player.base.BoloPlayerDiagnosticsSampler
 import tv.hsrui.bolo.player.base.BoloPlayerInfo
 import tv.hsrui.bolo.player.base.BoloPlayerOutputController
@@ -99,6 +102,11 @@ class LivePlayerController(
     private var detachJob: Job? = null
     private val commandJobs = mutableSetOf<Job>()
     private var releaseJob: Job? = null
+    private var playbackClock: BoloPlaybackClock? = null
+    private var playbackObserver: ((BoloPlaybackObservation) -> Unit)? = null
+    private var observationJob: Job? = null
+    internal var onPlaybackObservation: ((BoloPlaybackObservation) -> Unit)? = null
+    internal val playbackObservation get() = playbackClock?.latest?.value?.takeIf { it.generation == generation }
     var playIntentRevision: Long = 0L
         private set
 
@@ -157,6 +165,7 @@ class LivePlayerController(
     private fun startLoad(targetMs: Long? = null, live: Boolean = targetMs == null) {
         if (disposed || !foreground || urls.isEmpty() || !localReplayEnabled && !state.value.playWhenReady) return
         if (state.value.isBroadcastEnded && (streamSession == null || !localReplayEnabled)) return
+        stopPlaybackObservation()
         val expected = ++generation
         resetInfoSampling(clearMedia = true)
         readerInvalidated = false
@@ -182,6 +191,7 @@ class LivePlayerController(
                 retiringStream = null
                 previousCommands.forEach { it.join() }
                 closing?.join()
+                observationJob?.join()
                 if (!isCurrent(expected)) return@launch
                 var engine = mutableBackend.value
                 if (engine == null) {
@@ -193,7 +203,6 @@ class LivePlayerController(
                             null
                         } else {
                             mutableBackend.value = created
-                            startEvents(created)
                             created
                         }
                     } ?: return@launch
@@ -268,16 +277,21 @@ class LivePlayerController(
                 reader = source
                 val gain = volume.toDouble()
                 val visible = foreground && videoOutputActive
+                val clock = BoloPlaybackClock()
+                playbackClock = clock
+                playbackObserver = onPlaybackObservation
                 val result = withContext(boloMpvDispatcher) {
                     if (!isCurrent(expected, current)) return@withContext 0
                     check(current.videoEnabled(visible) >= 0) { "视频轨配置失败" }
                     check(current.volume(gain) >= 0) { "音量配置失败" }
                     check(current.speed(1.0) >= 0) { "直播播放速度配置失败" }
+                    clock.begin(expected, 1.0)
                     current.loadLive(source, uri, expected, bufferingEnabled = !playbackBufferDisabled)
                 }
                 if (!isCurrent(expected, current)) return@launch
                 if (result < 0) retrySource("直播流打开失败（$result）")
                 else {
+                    startEvents(current, clock, playbackObserver)
                     delay(20_000)
                     if (isCurrent(expected, current) && !ready) retrySource("直播流加载超时")
                 }
@@ -294,33 +308,75 @@ class LivePlayerController(
     private fun isCurrent(expected: Long, engine: BoloMpvBackend? = mutableBackend.value): Boolean =
         !disposed && generation == expected && mutableBackend.value === engine
 
-    private fun startEvents(engine: BoloMpvBackend) {
+    private fun startEvents(engine: BoloMpvBackend, clock: BoloPlaybackClock, observer: ((BoloPlaybackObservation) -> Unit)?) {
         eventsJob?.cancel()
         eventsJob = scope.launch {
-            var samples = 0
-            while (isActive && !disposed && mutableBackend.value === engine) {
-                val events = withContext(boloMpvDispatcher) {
-                    buildList {
-                        repeat(128) { add(engine.poll() ?: return@buildList) }
+            val events = Channel<BoloMpvEvent>(Channel.UNLIMITED)
+            val polling = launch(boloMpvDispatcher) {
+                try {
+                    while (isActive && playbackClock === clock && mutableBackend.value === engine) {
+                        for (index in 0 until 128) {
+                            val event = engine.poll() ?: break
+                            clock.observe(event)
+                            events.send(event)
+                        }
+                        clock.sample()
+                        delay(20)
+                    }
+                } finally { events.close() }
+            }
+            val infoSampling = launch {
+                while (isActive && playbackClock === clock && mutableBackend.value === engine) {
+                    delay(1_000)
+                    if (ready && !infoPanelVisible) {
+                        val expected = generation
+                        val snapshot = withContext(boloMpvDispatcher) { engine.info(false) }
+                        if (snapshot != null && snapshot.generation == expected && isCurrent(expected, engine)) {
+                            sourceFrameRate = snapshot.info.video.fps?.takeIf { it.isFinite() && it > 0 }?.toFloat() ?: 0f
+                            updateFrameRate()
+                        }
                     }
                 }
-                if (mutableBackend.value !== engine || disposed) break
+            }
+            try {
                 for (event in events) {
-                    if (event.generation == generation && mutableBackend.value === engine) handleEvent(event)
+                    event.observation?.let { observer?.invoke(it) }
+                    if (!disposed && event.generation == generation && mutableBackend.value === engine) handleEvent(event)
                 }
-                if (++samples >= 50 && ready && !infoPanelVisible && mutableBackend.value === engine) {
-                    samples = 0
-                    val expected = generation
-                    val snapshot = withContext(boloMpvDispatcher) { engine.info(false) }
-                    if (snapshot != null && snapshot.generation == expected && isCurrent(expected, engine)) {
-                        sourceFrameRate = snapshot.info.video.fps?.takeIf { it.isFinite() && it > 0 }
-                            ?.toFloat() ?: 0f
-                        updateFrameRate()
-                    }
+            } finally { polling.cancel(); infoSampling.cancel(); events.cancel() }
+        }
+    }
+
+    /** 先封存旧计时器，再允许新代次采样；最终快照仍交给旧统计会话。 */
+    private fun stopPlaybackObservation() {
+        eventsJob?.cancel()
+        eventsJob = null
+        val clock = playbackClock ?: return
+        val observer = playbackObserver
+        playbackClock = null
+        playbackObserver = null
+        val previous = observationJob
+        observationJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            withContext(NonCancellable) {
+                previous?.join()
+                val snapshot = withContext(boloMpvDispatcher) {
+                    clock.setPaused(true)
+                    clock.latest.value
                 }
-                delay(20)
+                snapshot?.let { observer?.invoke(it) }
             }
         }
+    }
+
+    internal suspend fun awaitPlaybackObservation() { observationJob?.join() }
+
+    internal suspend fun pauseAndObserve() {
+        pause()
+        intentJob?.join()
+        awaitPlaybackObservation()
+        val clock = playbackClock ?: return
+        val snapshot = withContext(boloMpvDispatcher) { clock.sample() }
+        if (playbackClock === clock) playbackObserver?.invoke(snapshot)
     }
 
     internal fun setInfoPanelVisible(visible: Boolean) {
@@ -535,6 +591,7 @@ class LivePlayerController(
     }
 
     private fun finishReading() {
+        stopPlaybackObservation()
         loadJob?.cancel()
         loadJob = null
         ready = false
@@ -558,13 +615,17 @@ class LivePlayerController(
         val engine = mutableBackend.value ?: return
         val expected = generation
         val intent = playIntentRevision
+        val clock = playbackClock
         intentJob = launchCommand {
             val playing = state.value.playWhenReady && foreground
             try {
                 if (!isCurrent(expected, engine) || playIntentRevision != intent) return@launchCommand
                 if (!playing) withContext(boloMpvDispatcher) {
-                    if (isCurrent(expected, engine) && playIntentRevision == intent) engine.pause(true)
+                    if (isCurrent(expected, engine) && playIntentRevision == intent) {
+                        if (engine.pause(true) >= 0) clock?.setPaused(true)
+                    }
                 }
+                if (playbackClock === clock) playbackObservation?.let { playbackObserver?.invoke(it) }
                 if (!isCurrent(expected, engine) || playIntentRevision != intent) return@launchCommand
                 val active = engine.setAudioActive(playing)
                 if (!isCurrent(expected, engine) || playIntentRevision != intent) return@launchCommand
@@ -574,7 +635,8 @@ class LivePlayerController(
                 }
                 if (playing && ready) {
                     val result = withContext(boloMpvDispatcher) {
-                        if (isCurrent(expected, engine) && playIntentRevision == intent) engine.pause(false) else 0
+                        if (isCurrent(expected, engine) && playIntentRevision == intent)
+                            engine.pause(false).also { if (it >= 0) clock?.setPaused(false) } else 0
                     }
                     if (isCurrent(expected, engine) && result < 0) retrySource("直播播放命令失败（$result）")
                 }
@@ -695,6 +757,7 @@ class LivePlayerController(
     }
 
     private fun closeEngine(suspended: Boolean) {
+        stopPlaybackObservation()
         generation++
         if (!localReplayEnabled) {
             streamSession?.let { retiringStream = it }
@@ -731,6 +794,7 @@ class LivePlayerController(
                     commands.forEach { it.join() }
                     detach?.join()
                     closing?.join()
+                    awaitPlaybackObservation()
                     if (engine != null) {
                         try {
                             withContext(boloMpvDispatcher) { engine.stop() }

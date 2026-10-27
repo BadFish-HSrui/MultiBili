@@ -28,6 +28,8 @@ import tv.hsrui.bolo.livePlayer.base.LivePlayerController
 import tv.hsrui.bolo.livePlayer.danmaku.LiveDanmakuController
 import tv.hsrui.bolo.livePlayer.danmaku.LiveDanmakuSender
 import tv.hsrui.bolo.livePlayer.session.LivePlaybackSession
+import tv.hsrui.bolo.storage.appData.AppDataStorage
+import tv.hsrui.bolo.storage.appData.liveStatistics.LiveStatisticsManager
 import tv.hsrui.network.liveFeature.message.LiveMessageConnectionStatus
 import tv.hsrui.network.liveFeature.message.LiveMessageManager
 import tv.hsrui.network.liveFeature.player.LivePlayInfoData
@@ -47,7 +49,9 @@ class LivePlayerViewModel internal constructor(
     private val hlsRequest: suspend (Long, LivePlayStreamData) -> List<LivePlayStreamData> = ::fetchLiveHlsStreams,
     private val settings: LiveSettings = getKoin().get<BoloSettings>().live,
     messageManagerFactory: (CoroutineScope) -> LiveMessageManager = { LiveMessageManager(it) },
+    private val statistics: LiveStatisticsManager = getKoin().get<AppDataStorage>().liveStatistics,
 ) : ViewModel() {
+    private var statisticsSession: LiveStatisticsManager.Session? = null
     private val mutableUiState = MutableStateFlow<LivePlayerUiState>(LivePlayerUiState.Loading)
     val uiState = mutableUiState.asStateFlow()
     val messageManager = messageManagerFactory(viewModelScope)
@@ -160,6 +164,7 @@ class LivePlayerViewModel internal constructor(
             onVolume = ::setVolume,
             onClosed = {
                 if (playbackSession === session) {
+                    closeStatistics(session.controller)
                     requestRevision++
                     loadJob?.cancel()
                     streamRetryJob?.cancel()
@@ -220,6 +225,7 @@ class LivePlayerViewModel internal constructor(
                 var room = knownRoom ?: roomInfoRequest(roomId)
                 if (!isCurrent(session, revision)) return@launch
                 roomInfo = room
+                updateStatistics(room, session.controller)
                 if (pageActive) messageManager.start(room.roomId, room.upMid)
                 if (!room.isLive) { acceptRoomStatus(room); return@launch }
                 observedLive = true
@@ -233,6 +239,7 @@ class LivePlayerViewModel internal constructor(
                             val current = updated.copy(isLive = true,
                                 liveStartTimeEpochSeconds = roomInfo?.liveStartTimeEpochSeconds ?: updated.liveStartTimeEpochSeconds)
                             roomInfo = current
+                            updateStatistics(current, session.controller)
                             (uiState.value as? LivePlayerUiState.Success)?.let {
                                 mutableUiState.value = it.copy(room = current)
                                 session.updateMedia(current)
@@ -327,11 +334,30 @@ class LivePlayerViewModel internal constructor(
             broadcastEnded = false
             playWhenReady = !awaitingForegroundSync
             playbackSession?.controller?.clearMedia()
+            playbackSession?.controller?.let(::closeStatistics)
             loadPlayback(room, true, false)
         } else {
             (uiState.value as? LivePlayerUiState.Success)?.let { mutableUiState.value = it.copy(room = room) }
             if (uiState.value is LivePlayerUiState.Success) playbackSession?.updateMedia(room)
         }
+        playbackSession?.controller?.let { updateStatistics(room, it) }
+    }
+
+    private fun updateStatistics(room: LiveRoomInfoData, controller: LivePlayerController) {
+        if (closed || playbackSession?.controller !== controller) return
+        val session = statistics.open(room) ?: return
+        statisticsSession = session
+        session.bindPlayback { controller.playbackObservation }
+        controller.onPlaybackObservation = { observation ->
+            session.updatePlayback(observation)
+            if (!observation.playing) session.checkpoint()
+        }
+    }
+
+    private fun closeStatistics(controller: LivePlayerController) {
+        statisticsSession?.closeAfter { controller.awaitPlaybackObservation() }
+        statisticsSession = null
+        controller.onPlaybackObservation = null
     }
 
     fun selectQuality(qn: Int) {

@@ -195,7 +195,10 @@ class LivePlaybackSession(
     internal override fun releaseBackgroundResources() = controller.releaseBackgroundResources()
 
     internal override suspend fun pauseAndObserve() {
-        if (!isClosed) onPause()
+        if (!isClosed) {
+            onPause()
+            controller.pauseAndObserve()
+        }
     }
 
     override fun close() {

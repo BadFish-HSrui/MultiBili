@@ -50,7 +50,7 @@ fun main() {
                             withTimeout(10_000) {
                                 BoloSystemMediaOwner.current?.pauseAndObserve()
                                 BoloSystemMediaOwner.current?.close()
-                                getKoin().get<AppDataStorage>().playbackStatistics.flush()
+                                getKoin().get<AppDataStorage>().statistics.flush()
                             }
                             exitApplication()
                         } catch (_: TimeoutCancellationException) {
