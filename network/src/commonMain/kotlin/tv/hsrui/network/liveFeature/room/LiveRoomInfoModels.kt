@@ -23,6 +23,7 @@ data class LiveRoomInfoData(
     val parentAreaName: String = "",
     val announcement: String = "",
     val superChats: List<LiveSuperChatData> = emptyList(),
+    val shortRoomId: Long? = null,
 )
 
 internal fun RawLiveRoomInfoResponse.toLiveRoomInfo(): LiveRoomInfoData {
@@ -35,6 +36,7 @@ internal fun RawLiveRoomInfoResponse.toLiveRoomInfo(): LiveRoomInfoData {
     }
     return LiveRoomInfoData(
         roomId = room.roomId,
+        shortRoomId = room.shortRoomId?.takeIf { it >= 0L },
         title = room.title,
         upMid = room.uid,
         upName = anchor.name,

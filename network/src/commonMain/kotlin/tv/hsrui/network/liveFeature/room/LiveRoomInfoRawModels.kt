@@ -23,6 +23,7 @@ internal data class RawLiveRoomInfoData(
 @Serializable
 internal data class RawLiveRoomInfo(
     @SerialName("room_id") val roomId: Long,
+    @SerialName("short_id") val shortRoomId: Long? = null,
     val uid: Long,
     val title: String = "",
     val cover: String = "",
