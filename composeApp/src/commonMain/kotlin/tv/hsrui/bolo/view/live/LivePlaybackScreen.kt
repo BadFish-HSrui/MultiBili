@@ -202,6 +202,11 @@ fun LivePlaybackScreen(
             LivePlayer(viewModel, fullscreenState, playerModifier.background(Color.Black).zIndex(1f))
         }
         PlayerStatusBarOverlay(isFullscreen = fullscreenState.isFullscreen)
-        if (messagesActive && viewModel.danmakuSender.isOpen) ShowLiveDanmakuInput(viewModel.danmakuSender)
+        if (messagesActive && viewModel.danmakuSender.isOpen) {
+            ShowLiveDanmakuInput(
+                sender = viewModel.danmakuSender,
+                fansMedal = viewModel.messageManager.fansMedal,
+            )
+        }
     }
 }

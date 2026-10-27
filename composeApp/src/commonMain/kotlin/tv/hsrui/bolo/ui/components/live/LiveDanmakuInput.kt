@@ -21,6 +21,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,10 +32,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import tv.hsrui.bolo.livePlayer.danmaku.LiveDanmakuSender
+import tv.hsrui.network.liveFeature.message.fansMedal.LiveFansMedalManager
 
 @Composable
-fun ShowLiveDanmakuInput(sender: LiveDanmakuSender) {
+fun ShowLiveDanmakuInput(sender: LiveDanmakuSender, fansMedal: LiveFansMedalManager) {
     val focusRequester = remember { FocusRequester() }
+    val medalState by fansMedal.state.collectAsState()
     Dialog(onDismissRequest = sender::dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().imePadding()) {
             Box(Modifier.matchParentSize().clickable(interactionSource = null, indication = null, onClick = sender::dismiss))
@@ -71,12 +75,16 @@ fun ShowLiveDanmakuInput(sender: LiveDanmakuSender) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Box(Modifier.weight(1f)) {
+                        Column(Modifier.weight(1f)) {
+                            ShowLiveFansMedalSelector(fansMedal, enabled = !sender.isSending)
                             if (sender.isLoadingConfig) Text("正在加载发送配置…", style = MaterialTheme.typography.bodySmall)
                             else if (sender.configError != null) TextButton(onClick = sender::loadConfig) { Text("重试") }
                         }
                         TextButton(onClick = sender::dismiss) { Text("关闭") }
-                        Button(onClick = sender::send, enabled = sender.canSend) {
+                        Button(
+                            onClick = { if (!fansMedal.state.value.isChanging) sender.send() },
+                            enabled = sender.canSend && !medalState.isChanging,
+                        ) {
                             if (sender.isSending) {
                                 CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                                 Text("发送中", Modifier.padding(start = 8.dp))

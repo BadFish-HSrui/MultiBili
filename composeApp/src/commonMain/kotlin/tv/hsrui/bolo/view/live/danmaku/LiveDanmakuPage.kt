@@ -61,6 +61,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.ui.components.image.ShowImage
+import tv.hsrui.bolo.ui.components.live.ShowLiveFansMedal
+import tv.hsrui.bolo.ui.components.live.rememberLiveDecorationPainter
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.network.liveFeature.danmaku.LiveDanmakuBubbleData
 import tv.hsrui.network.liveFeature.danmaku.LiveDanmakuData
@@ -227,11 +229,11 @@ private fun LiveDanmakuCard(
     val medal = user.fansMedal?.takeIf {
         user.isMystery != true && it.isLighted && it.level > 0 && it.name.isNotBlank()
     }
-    val medalPainter = rememberLiveDanmakuImagePainter(medal?.let(medalResources::iconUrl))
-    val spacePainter = rememberLiveDanmakuImagePainter(data.spaceUrl.takeIf { user.isMystery != true })
+    val medalPainter = rememberLiveDecorationPainter(medal?.let(medalResources::iconUrl))
+    val spacePainter = rememberLiveDecorationPainter(data.spaceUrl.takeIf { user.isMystery != true })
     val bubble = bubbleResources[data.bubbleId].takeIf { user.isMystery != true }
-    val bubblePainter = rememberLiveDanmakuImagePainter(bubble?.url)
-    val firstLinePainter = rememberLiveDanmakuImagePainter(bubble?.firstLineUrl?.takeIf { bubble.isFleet })
+    val bubblePainter = rememberLiveDecorationPainter(bubble?.url)
+    val firstLinePainter = rememberLiveDecorationPainter(bubble?.firstLineUrl?.takeIf { bubble.isFleet })
     Card(Modifier.fillMaxWidth()) {
         BoxWithConstraints(
             Modifier.fillMaxWidth()
@@ -282,7 +284,7 @@ private fun LiveDanmakuCard(
                             placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
                         ),
                     ) {
-                        LiveDanmakuFansMedal(
+                        ShowLiveFansMedal(
                             medal = medal,
                             modifier = Modifier.fillMaxSize().padding(end = 4.dp),
                             guardPainter = medalPainter,
