@@ -1,8 +1,10 @@
 package tv.hsrui.bolo.view.live
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.PrimaryScrollableTabRow
@@ -10,6 +12,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -19,6 +22,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
@@ -28,6 +33,8 @@ import tv.hsrui.bolo.userSpace.ShowUserUploadsSheet
 import tv.hsrui.bolo.view.live.danmaku.LiveDanmakuPage
 import tv.hsrui.bolo.view.live.danmaku.LiveDanmakuViewModel
 import tv.hsrui.bolo.view.live.room.LiveRoomPage
+import tv.hsrui.bolo.view.live.superChat.LiveSuperChatLayer
+import tv.hsrui.bolo.view.live.superChat.LiveSuperChatViewModel
 import tv.hsrui.network.liveFeature.message.LiveMessageManager
 import tv.hsrui.network.liveFeature.room.LiveRoomInfoData
 
@@ -51,6 +58,16 @@ fun LivePlaybackInfo(
                 sentMessages = danmakuSender.sentMessages,
             )
         }
+        val superChatViewModel: LiveSuperChatViewModel = viewModel(key = "live_super_chat_${room.roomId}") {
+            LiveSuperChatViewModel(
+                room.roomId, messageManager.messages, messageManager::isCurrent,
+                initialMessages = room.superChats,
+            )
+        }
+        LaunchedEffect(superChatViewModel, room.superChats) { superChatViewModel.mergeInitial(room.superChats) }
+        val medalResources by remember(danmakuViewModel) {
+            danmakuViewModel.uiState.map { it.medalResources }.distinctUntilChanged()
+        }.collectAsState(initial = danmakuViewModel.uiState.value.medalResources)
         var selectedUpMid by remember(room.upMid) { mutableStateOf<Long?>(null) }
         LaunchedEffect(isActive, settings.general.upRecentUploadsSheetEnabled) {
             if (!isActive || !settings.general.upRecentUploadsSheetEnabled) selectedUpMid = null
@@ -83,15 +100,25 @@ fun LivePlaybackInfo(
                         isActive = isActive,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    1 -> LiveDanmakuPage(
-                        viewModel = danmakuViewModel,
-                        anchorUid = room.upMid,
-                        isVisible = isInteractionVisible && pagerState.settledPage == 1 &&
-                            pagerState.currentPage == 1 && !pagerState.isScrollInProgress,
-                        modifier = Modifier.fillMaxSize(),
-                        onSend = danmakuSender::open,
-                        sendEnabled = danmakuSender.isLoggedIn,
-                    )
+                    1 -> Box(Modifier.fillMaxSize()) {
+                        val visible = isInteractionVisible && pagerState.settledPage == 1 &&
+                            pagerState.currentPage == 1 && !pagerState.isScrollInProgress
+                        LiveDanmakuPage(
+                            viewModel = danmakuViewModel,
+                            anchorUid = room.upMid,
+                            isVisible = visible,
+                            modifier = Modifier.fillMaxSize(),
+                            onSend = danmakuSender::open,
+                            sendEnabled = danmakuSender.isLoggedIn,
+                        )
+                        LiveSuperChatLayer(
+                            viewModel = superChatViewModel,
+                            isVisible = visible,
+                            anchorUid = room.upMid,
+                            medalResources = medalResources,
+                            modifier = Modifier.fillMaxSize().padding(bottom = 88.dp),
+                        )
+                    }
                 }
             }
         }
