@@ -57,7 +57,7 @@ class StatisticsViewModel(
         val name = "multibili-statistics-${now.date}-$time.db"
         val path = files.temporaryPath(name)
         try {
-            appData.playbackStatistics.exportBackup(path)
+            appData.statistics.exportBackup(path)
             val saved = files.saveFile(path, name) ?: return@runDataOperation
             currentCoroutineContext().ensureActive()
             val opened = files.showFileInFolder(saved)
@@ -70,9 +70,9 @@ class StatisticsViewModel(
     fun restoreData(onRestored: () -> Unit) = runDataOperation("数据恢复失败") {
         val path = files.importFile() ?: return@runDataOperation
         try {
-            appData.playbackStatistics.validateBackup(path)
+            appData.statistics.validateBackup(path)
             if (!awaitConfirmation(mutableAwaitingRestoreConfirmation)) return@runDataOperation
-            appData.playbackStatistics.restoreBackup(path)
+            appData.statistics.restoreBackup(path)
             currentCoroutineContext().ensureActive()
             onRestored()
             showSnackbarMessage("数据已恢复")
@@ -83,7 +83,7 @@ class StatisticsViewModel(
 
     fun clearData(onCleared: () -> Unit) = runDataOperation("数据清除失败") {
         if (!awaitConfirmation(mutableAwaitingClearConfirmation)) return@runDataOperation
-        appData.playbackStatistics.clear()
+        appData.statistics.clear()
         currentCoroutineContext().ensureActive()
         onCleared()
         showSnackbarMessage("数据已清除")

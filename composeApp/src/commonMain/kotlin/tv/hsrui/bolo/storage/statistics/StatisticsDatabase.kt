@@ -18,16 +18,22 @@ import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackWatchedRangeEnti
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackStatisticsSourceEntity
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackSourceDailyStatsEntity
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackLegacyTotalsEntity
+import tv.hsrui.bolo.storage.appData.liveStatistics.LiveStatisticsDao
+import tv.hsrui.bolo.storage.appData.liveStatistics.LiveStatisticsRecord
+import tv.hsrui.bolo.storage.appData.liveStatistics.LiveDailyStatsEntity
+import tv.hsrui.bolo.storage.appData.liveStatistics.LiveSourceDailyStatsEntity
 
 @Database(
     entities = [PlaybackStatisticsRecord::class, PlaybackWatchedRangeEntity::class, PlaybackDailyStatsEntity::class,
-        PlaybackStatisticsSourceEntity::class, PlaybackSourceDailyStatsEntity::class, PlaybackLegacyTotalsEntity::class],
-    version = 2,
+        PlaybackStatisticsSourceEntity::class, PlaybackSourceDailyStatsEntity::class, PlaybackLegacyTotalsEntity::class,
+        LiveStatisticsRecord::class, LiveDailyStatsEntity::class, LiveSourceDailyStatsEntity::class],
+    version = 3,
     exportSchema = true,
 )
 @ConstructedBy(StatisticsDatabaseConstructor::class)
 abstract class StatisticsDatabase : RoomDatabase() {
     internal abstract fun playbackStatisticsDao(): PlaybackStatisticsDao
+    internal abstract fun liveStatisticsDao(): LiveStatisticsDao
 }
 
 @Suppress("KotlinNoActualForExpect")
@@ -42,7 +48,7 @@ internal fun createStatisticsDatabase(): StatisticsDatabase = Room.databaseBuild
     factory = StatisticsDatabaseConstructor::initialize,
 ).setDriver(BundledSQLiteDriver())
     .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-    .addMigrations(statisticsMigration1To2)
+    .addMigrations(statisticsMigration1To2, statisticsMigration2To3)
     .build()
 
 internal val statisticsMigration1To2 = object : Migration(1, 2) {
@@ -64,6 +70,31 @@ internal val statisticsMigration1To2 = object : Migration(1, 2) {
         connection.execSQL("INSERT INTO playback_source_daily_stats " +
             "SELECT record_id, (SELECT id FROM playback_source WHERE source_key = '0'), local_date, total_played_ms, play_count FROM playback_daily_stats")
         connection.execSQL(statisticsRebuildTotalsSql())
+        currentCoroutineContext().ensureActive()
+    }
+}
+
+internal val statisticsMigration2To3 = object : Migration(2, 3) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        connection.execSQL("CREATE TABLE IF NOT EXISTS `live_stats` (`room_id` INTEGER NOT NULL, " +
+            "`short_room_id` INTEGER, `up_mid` INTEGER NOT NULL, `up_name` TEXT NOT NULL, " +
+            "`total_played_ms` INTEGER NOT NULL DEFAULT 0, `play_count` INTEGER NOT NULL DEFAULT 0, " +
+            "`first_viewed_at_ms` INTEGER NOT NULL, `last_viewed_at_ms` INTEGER NOT NULL, PRIMARY KEY(`room_id`))")
+        connection.execSQL("CREATE INDEX IF NOT EXISTS `index_live_stats_up_mid` ON `live_stats` (`up_mid`)")
+        connection.execSQL("CREATE INDEX IF NOT EXISTS `index_live_stats_last_viewed_at_ms_room_id` " +
+            "ON `live_stats` (`last_viewed_at_ms` DESC, `room_id` DESC)")
+        connection.execSQL("CREATE TABLE IF NOT EXISTS `live_daily_stats` (`room_id` INTEGER NOT NULL, " +
+            "`local_date` TEXT NOT NULL, `total_played_ms` INTEGER NOT NULL DEFAULT 0, `play_count` INTEGER NOT NULL DEFAULT 0, " +
+            "PRIMARY KEY(`room_id`, `local_date`), FOREIGN KEY(`room_id`) REFERENCES `live_stats`(`room_id`) " +
+            "ON UPDATE NO ACTION ON DELETE CASCADE)")
+        connection.execSQL("CREATE INDEX IF NOT EXISTS `index_live_daily_stats_local_date_room_id` " +
+            "ON `live_daily_stats` (`local_date`, `room_id`)")
+        connection.execSQL("CREATE TABLE IF NOT EXISTS `live_source_daily_stats` (`room_id` INTEGER NOT NULL, " +
+            "`source_id` INTEGER NOT NULL, `local_date` TEXT NOT NULL, `total_played_ms` INTEGER NOT NULL DEFAULT 0, " +
+            "`play_count` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`room_id`, `source_id`, `local_date`), " +
+            "FOREIGN KEY(`room_id`) REFERENCES `live_stats`(`room_id`) ON UPDATE NO ACTION ON DELETE CASCADE, " +
+            "FOREIGN KEY(`source_id`) REFERENCES `playback_source`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
+        connection.execSQL("CREATE INDEX IF NOT EXISTS `index_live_source_daily_stats_source_id` ON `live_source_daily_stats` (`source_id`)")
         currentCoroutineContext().ensureActive()
     }
 }

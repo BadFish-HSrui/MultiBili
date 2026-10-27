@@ -11,35 +11,6 @@ import kotlin.uuid.Uuid
 
 @Dao
 internal abstract class PlaybackStatisticsDao {
-    @Query("DELETE FROM playback_watched_range")
-    protected abstract suspend fun deleteWatchedRanges()
-
-    @Query("DELETE FROM playback_daily_stats")
-    protected abstract suspend fun deleteDailyStats()
-
-    @Query("DELETE FROM playback_stats")
-    protected abstract suspend fun deleteRecords()
-
-    @Query("DELETE FROM playback_source_daily_stats")
-    protected abstract suspend fun deleteSourceDailyStats()
-
-    @Query("DELETE FROM playback_legacy_totals")
-    protected abstract suspend fun deleteLegacyTotals()
-
-    @Query("DELETE FROM playback_source")
-    protected abstract suspend fun deleteSources()
-
-    @Transaction
-    open suspend fun clear() {
-        deleteWatchedRanges()
-        deleteDailyStats()
-        deleteSourceDailyStats()
-        deleteLegacyTotals()
-        deleteRecords()
-        deleteSources()
-        currentCoroutineContext().ensureActive()
-    }
-
     @Query("SELECT * FROM playback_source WHERE is_active = 1")
     protected abstract suspend fun activeSource(): PlaybackStatisticsSourceEntity?
 
