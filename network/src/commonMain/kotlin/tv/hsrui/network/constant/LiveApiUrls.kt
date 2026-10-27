@@ -15,5 +15,9 @@ object LiveApiUrls {
     const val DANMAKU_SEND = "msg/send" //发送直播弹幕
     const val DANMAKU_MEDAL_RESOURCES = "xlive/open-interface/v1/query_resource" //直播粉丝勋章图标资源
     const val DANMAKU_BUBBLE_RESOURCES = "xlive/general-interface/v1/content/get" //直播弹幕气泡背景资源
+    const val FANS_MEDAL_PANEL = "xlive/app-ucenter/v1/fansMedal/panel" //当前用户的粉丝勋章分页列表
+    const val FANS_MEDAL_CURRENT = "xlive/app-ucenter/v1/fansMedal/user_medal_info" //当前直播间显示的粉丝勋章
+    const val FANS_MEDAL_WEAR = "xlive/app-ucenter/v1/fansMedal/wear" //佩戴粉丝勋章
+    const val FANS_MEDAL_TAKE_OFF = "xlive/app-ucenter/v1/fansMedal/take_off" //摘下粉丝勋章
     const val AREA_PAGE = "https://live.bilibili.com/p/eden/area-tags" //直播分区网页信息
 }

@@ -190,7 +190,7 @@ private fun JsonObject?.toLiveDanmakuUser(): LiveDanmakuUserData = LiveDanmakuUs
     wealthLevel = this?.get("wealth").asObject()?.get("level").nonNegativeInt(),
 )
 
-private fun JsonObject.toLiveDanmakuFansMedal(): LiveDanmakuFansMedalData? {
+internal fun JsonObject.toLiveDanmakuFansMedal(): LiveDanmakuFansMedalData? {
     val name = get("name").text()?.takeIf { it.isNotBlank() } ?: return null
     val level = get("level").nonNegativeInt()?.takeIf { it > 0 } ?: return null
     val color = get("color").rgbColor()
