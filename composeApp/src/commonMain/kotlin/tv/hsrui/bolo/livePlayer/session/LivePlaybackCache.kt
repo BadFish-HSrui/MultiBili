@@ -39,7 +39,48 @@ internal data class LiveCacheSnapshot(
     val loadingCapacityBytes: Long = 32L * 1024 * 1024,
     val historyBytes: Long = 0,
     val historyCapacityBytes: Long = 0,
+    val lastReceivedSegment: LiveCachedSegment? = null,
+    val receivedRange: LiveCacheRange? = null,
+    val receivedLastPresentationMs: Long? = null,
 )
+
+/** 最新目标属于最后一个有效连续区间，末端只使用已解析的呈现时间。 */
+internal fun LiveCacheSnapshot.latestPlaybackPositionMs(liveBufferDurationMs: Long): Long? {
+    val range = if (historyCapacityBytes > 0) ranges.lastOrNull() else receivedRange ?: ranges.lastOrNull()
+    range ?: return null
+    val last = receivedLastPresentationMs?.takeIf { receivedRange != null && it >= range.startMs && it < range.endMs }
+        ?: lastPresentationPositionMs(range) ?: return null
+    val reserve = if (ended) 0 else liveBufferDurationMs.coerceAtLeast(0)
+    return (range.endMs - reserve).coerceIn(range.startMs, last)
+}
+
+private fun LiveCacheSnapshot.lastPresentationPositionMs(range: LiveCacheRange): Long? =
+    segments.asSequence().filter {
+        it.groupId != null && it.media.startMs?.let { start -> start >= range.startMs && start < range.endMs } == true
+    }.mapNotNull {
+        it.media.lastPresentationMs?.takeIf { time -> time >= range.startMs && time < range.endMs }
+            ?: it.media.startMs
+    }.maxOrNull()
+
+private fun LiveCacheSnapshot.resolvePlaybackTarget(positionMs: Long?, liveBufferDurationMs: Long): Long? {
+    val latest = latestPlaybackPositionMs(liveBufferDurationMs) ?: return null
+    val first = ranges.firstOrNull() ?: return null
+    val last = ranges.last()
+    val requested = when {
+        positionMs == null || positionMs < first.startMs || positionMs > last.endMs -> latest
+        positionMs == last.endMs -> lastPresentationPositionMs(last) ?: return null
+        else -> positionMs
+    }
+    val range = ranges.firstOrNull { requested < it.endMs } ?: return null
+    val target = requested.coerceIn(range.startMs, lastPresentationPositionMs(range) ?: return null)
+    val starts = segments.filter {
+        it.groupId == it.id && it.media.startMs?.let { time -> time >= range.startMs && time < range.endMs } == true
+    }
+    if (starts.any { it.media.startMs!! <= target }) return target
+    // 即时模式可能已交付并移除旧关键帧；重新打开时必须有仍留存的解码起点。
+    return starts.firstOrNull()?.media?.startMs
+        ?: if (positionMs != null) resolvePlaybackTarget(null, liveBufferDurationMs) else null
+}
 
 /** 加载与历史分别计费，发布时只转移块所有权；读游标不阻止历史淘汰。 */
 internal class LivePlaybackCache(
@@ -112,6 +153,8 @@ internal class LivePlaybackCache(
     private var closed = false
     private var ended = false
     private var lastAppended: LiveCachedSegment? = null
+    private var receivedRange: LiveCacheRange? = null
+    private var receivedLastPresentationMs: Long? = null
     private val mutableSnapshot = MutableStateFlow(
         LiveCacheSnapshot(
             capacityBytes = capacity,
@@ -283,6 +326,22 @@ internal class LivePlaybackCache(
         }
         staging.remove(body)
         val segment = LiveCachedSegment(id, sequence, continuity, init, media, group, body.size)
+        val presentationStart = media.startMs
+        val presentationEnd = media.presentationEndMs()
+        val previousRange = receivedRange
+        if (group != null && presentationStart != null && presentationEnd != null) {
+            val lastPresentation = media.lastPresentationMs ?: presentationStart
+            if (contiguous && previousRange != null) {
+                receivedRange = previousRange.copy(endMs = maxOf(previousRange.endMs, presentationEnd))
+                receivedLastPresentationMs = maxOf(receivedLastPresentationMs ?: lastPresentation, lastPresentation)
+            } else {
+                receivedRange = LiveCacheRange(presentationStart, presentationEnd)
+                receivedLastPresentationMs = lastPresentation
+            }
+        } else {
+            receivedRange = null
+            receivedLastPresentationMs = null
+        }
         body.owner = null
         entries.addLast(Entry(segment, body))
         lastAppended = segment
@@ -303,23 +362,21 @@ internal class LivePlaybackCache(
         publish()
     }
 
+    fun resolveTarget(positionMs: Long?): Long? = snapshot.value.resolvePlaybackTarget(positionMs, liveBufferDurationMs)
+
     fun select(targetMs: Long?): LiveCachedSegment? {
         val value = snapshot.value
-        val starts = value.segments.filter { it.groupId == it.id }
-        if (targetMs == null) {
-            val end = value.segments.lastOrNull()?.media?.endMs
-            return starts.lastOrNull { end != null && it.media.startMs!! <= end - liveBufferDurationMs }
-                ?: starts.firstOrNull() ?: value.segments.firstOrNull()
+        val target = value.resolvePlaybackTarget(targetMs, liveBufferDurationMs) ?: return null
+        val range = value.ranges.firstOrNull { target >= it.startMs && target < it.endMs } ?: return null
+        return value.segments.lastOrNull {
+            it.groupId == it.id && it.media.startMs?.let { start -> start <= target && start >= range.startMs } == true
         }
-        val range = value.ranges.firstOrNull { targetMs >= it.startMs && targetMs < it.endMs }
-        return if (range != null) starts.lastOrNull { it.media.startMs!! <= targetMs && it.media.startMs >= range.startMs }
-        else starts.firstOrNull { it.media.startMs!! >= targetMs } ?: starts.lastOrNull()
     }
 
     fun contains(position: Long?): Boolean = position != null && snapshot.value.ranges.any { position >= it.startMs && position < it.endMs }
 
     suspend fun awaitSegment(): LiveCachedSegment {
-        snapshot.first { it.segments.isNotEmpty() || it.ended || closed }
+        snapshot.first { it.resolvePlaybackTarget(null, liveBufferDurationMs) != null || it.ended || closed }
         return select(null) ?: error("直播媒体为空")
     }
 
@@ -371,6 +428,8 @@ internal class LivePlaybackCache(
         staging.filter { it.sequence != null }.forEach { it.owner?.cancel() }
         epoch++
         lastAppended = null
+        receivedRange = null
+        receivedLastPresentationMs = null
         entries.forEach { free(it.body) }
         entries.clear()
         ended = false
@@ -400,7 +459,7 @@ internal class LivePlaybackCache(
         var preceding: LiveCachedSegment? = null
         for (segment in segments) {
             val start = segment.media.startMs
-            val end = segment.media.endMs
+            val end = segment.media.presentationEndMs()
             if (segment.groupId == null || start == null || end == null) { preceding = null; continue }
             val previous = preceding
             if (previous != null && previous.continuity == segment.continuity && previous.sequence + 1 == segment.sequence &&
@@ -422,7 +481,13 @@ internal class LivePlaybackCache(
             loadingCapacity,
             history,
             if (retainHistory) capacity else 0,
+            lastAppended,
+            receivedRange,
+            receivedLastPresentationMs,
         )
+    }
+    private fun LiveHlsMediaIndexData.presentationEndMs(): Long? = endMs?.let { durationEnd ->
+        lastPresentationMs?.takeIf { it >= 0 && it < Long.MAX_VALUE }?.let { maxOf(durationEnd, it + 1) } ?: durationEnd
     }
     private companion object {
         const val BLOCK = 64 * 1024

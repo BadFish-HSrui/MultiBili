@@ -52,18 +52,18 @@ fun LiveProgressBar(
     }
     val shown = window ?: timeline
     val start = shown.ranges.firstOrNull()?.startMs ?: 0
-    val end = shown.ranges.lastOrNull()?.endMs ?: start
+    val end = (shown.latestPositionMs ?: start).coerceAtLeast(start)
     val length = (end - start).coerceAtLeast(1)
     val colors = SliderDefaults.colors(activeTrackColor = BiliColor.ThemeColor, thumbColor = Color.White,
         inactiveTrackColor = Color.White.copy(alpha = 0.5f))
     Slider(
-        value = fraction ?: if (shown.isLive) 1f else (((shown.positionMs ?: start) - start).toDouble() / length).toFloat().coerceIn(0f, 1f),
+        value = fraction ?: (((shown.pendingPositionMs ?: shown.positionMs ?: start) - start).toDouble() / length).toFloat().coerceIn(0f, 1f),
         onValueChange = {
             if (window == null) window = timeline
             fraction = it
             val fixed = checkNotNull(window)
             val left = fixed.ranges.firstOrNull()?.startMs ?: 0
-            val right = fixed.ranges.lastOrNull()?.endMs ?: left
+            val right = (fixed.latestPositionMs ?: left).coerceAtLeast(left)
             preview(left + ((right - left) * it.toDouble()).roundToLong())
         },
         onValueChangeFinished = {

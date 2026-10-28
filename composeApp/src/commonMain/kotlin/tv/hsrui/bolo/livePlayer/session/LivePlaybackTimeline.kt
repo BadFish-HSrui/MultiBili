@@ -18,6 +18,7 @@ data class LivePlaybackTimelineState(
     val estimated: Boolean = false,
     val isLive: Boolean = true,
     val canSeek: Boolean = false,
+    val pendingPositionMs: Long? = null,
 )
 
 /** 墙钟仅在开播时间确定时采样；之后由单调时钟推进。 */
@@ -32,7 +33,9 @@ internal class LivePlaybackTimeline(
     private var anchor: LivePlaybackTimeAnchor? = null
     private var cache = LiveCacheSnapshot()
     private var position: Long? = null
-    private var rawLatest: Long? = null
+    private var pendingPosition: Long? = null
+    private var exposeRanges = true
+    private var hasMediaTimeline = false
     private var playlistTailMs = 0L
     private var live = true
     private var instantElapsed: Long? = null
@@ -50,7 +53,7 @@ internal class LivePlaybackTimeline(
         sampledElapsed = valid?.let { (wallTime() - it * 1000).coerceAtLeast(0) }
         sampledAt = monotonicTime()
         anchor = null
-        update(cache)
+        update(cache, exposeRanges = exposeRanges)
     }
 
     fun reset() {
@@ -60,7 +63,9 @@ internal class LivePlaybackTimeline(
         instantElapsed = null
         frozenElapsed = null
         position = null
-        rawLatest = null
+        pendingPosition = null
+        exposeRanges = true
+        hasMediaTimeline = false
         playlistTailMs = 0
         anchor = null
         live = true
@@ -75,18 +80,24 @@ internal class LivePlaybackTimeline(
         tick()
     }
 
-    fun update(value: LiveCacheSnapshot, playlist: tv.hsrui.network.liveFeature.player.LiveHlsPlaylistData? = null) {
-        val last = value.segments.lastOrNull()
+    fun update(
+        value: LiveCacheSnapshot,
+        playlist: tv.hsrui.network.liveFeature.player.LiveHlsPlaylistData? = null,
+        exposeRanges: Boolean = true,
+    ) {
+        val last = value.lastReceivedSegment ?: value.segments.lastOrNull()
         playlistTailMs = if (last == null) 0 else playlist?.segments
             ?.filter { it.sequence > last.sequence && it.discontinuity == last.continuity }?.sumOf { it.durationMs } ?: 0
         if (value.epoch != cache.epoch) {
             anchor = null
-            rawLatest = null
+            position = null
+            pendingPosition = null
         }
         cache = value
-        val latest = value.segments.lastOrNull()
+        this.exposeRanges = exposeRanges
+        hasMediaTimeline = hasMediaTimeline || playlist != null || last != null
+        val latest = last
         val media = latest?.media
-        media?.endMs?.let { rawLatest = it }
         if (media?.endMs != null && sampledElapsed != null) {
             val absolute = media.programDateTimeMs
             if (absolute != null && startSeconds != null && anchor?.estimated != false) {
@@ -107,17 +118,29 @@ internal class LivePlaybackTimeline(
     }
     fun seek(positionMs: Long?, live: Boolean) {
         position = positionMs
+        pendingPosition = null
         this.live = live && !paused && !ended
         frozenElapsed = null
         tick()
     }
-    fun observe(positionMs: Long) { position = positionMs; tick() }
+    fun prepareSeek(targetMs: Long, live: Boolean) {
+        pendingPosition = targetMs
+        this.live = live && !paused && !ended
+        tick()
+    }
+    fun confirmSeek(positionMs: Long, live: Boolean) = seek(positionMs, live)
+    fun cancelSeek() { pendingPosition = null; tick() }
+    fun observe(positionMs: Long) {
+        if (pendingPosition != null) return
+        position = positionMs
+        tick()
+    }
     fun observeInstant(playing: Boolean) {
-        if (playing) instantElapsed = elapsed()
+        if (playing && !hasMediaTimeline) instantElapsed = elapsed()
         tick()
     }
     fun tick() {
-        val latest = rawLatest?.let { (it - if (ended || cache.ended) 0 else liveBufferDurationMs).coerceAtLeast(0) }
+        val latest = cache.latestPlaybackPositionMs(if (ended) 0 else liveBufferDurationMs)
         val mapping = anchor
         val mapped = if (mapping != null && position != null) (mapping.elapsedMs + position!! - mapping.mediaMs).coerceAtLeast(0) else null
         val range = cache.ranges.firstOrNull { position != null && position!! >= it.startMs && position!! < it.endMs }
@@ -126,15 +149,17 @@ internal class LivePlaybackTimeline(
         mutableState.value = LivePlaybackTimelineState(
             position,
             latest,
-            cache.ranges,
+            if (exposeRanges) cache.ranges else emptyList(),
             cache.cachedBytes,
             if (position != null && range != null) range.endMs - position!! else 0,
             playingElapsed,
             if (latest != null && mapping != null) (mapping.elapsedMs + latest - mapping.mediaMs).coerceAtLeast(0)
-                else elapsed()?.let { (it - if (ended) 0 else liveBufferDurationMs).coerceAtLeast(0) },
+                else if (!hasMediaTimeline) elapsed()?.let { (it - if (ended) 0 else liveBufferDurationMs).coerceAtLeast(0) }
+                else null,
             mapping?.estimated == true,
             live,
-            cache.ranges.isNotEmpty(),
+            exposeRanges && cache.ranges.isNotEmpty() && latest != null,
+            pendingPosition,
         )
     }
     private fun elapsed(): Long? = if (ended) endedElapsed else sampledElapsed?.plus((monotonicTime() - sampledAt).coerceAtLeast(0))

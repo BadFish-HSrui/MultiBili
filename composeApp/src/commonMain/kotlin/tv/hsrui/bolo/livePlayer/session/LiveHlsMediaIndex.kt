@@ -12,6 +12,7 @@ internal data class LiveHlsMediaIndexData(
     val dependenciesKnown: Boolean = true,
     val decodeStartMs: Long? = null,
     val decodeEndMs: Long? = null,
+    val lastPresentationMs: Long? = null,
 ) {
     val endMs: Long? = startMs?.takeIf { it >= 0 && durationMs > 0 && it <= Long.MAX_VALUE - durationMs }?.plus(durationMs)
 }
@@ -25,6 +26,7 @@ internal class LiveHlsMediaIndex(private val format: String) {
     private var defaultDuration = 0L
     private var decodeStartMs: Long? = null
     private var decodeEndMs: Long? = null
+    private var lastPresentationMs: Long? = null
     private var lastTs: Long? = null
     private var lastDate: Pair<Long, Long>? = null
     private var configurationId: Long? = null
@@ -68,6 +70,7 @@ internal class LiveHlsMediaIndex(private val format: String) {
         transportDependenciesKnown = false
         decodeStartMs = null
         decodeEndMs = null
+        lastPresentationMs = null
         val parsed = runCatching { if (format == "fmp4") fragmentedMp4(body) else transportStream(body)?.let { Triple(it.first, it.second, segment.durationMs) } }.getOrNull()
         val start = parsed?.first
         val labelMatches = segment.mediaStartTimeMs?.let { start != null && abs(it - start) <= 250 } ?: true
@@ -89,12 +92,14 @@ internal class LiveHlsMediaIndex(private val format: String) {
             canStart || labelMatches && if (format == "ts") transportDependenciesKnown else parsed?.second != null,
             decodeStartMs,
             decodeEndMs,
+            lastPresentationMs.takeIf { parsed != null },
         )
     }
 
     private fun fragmentedMp4(body: LivePlaybackCache.Body): Triple<Long, Boolean?, Long>? {
         if (videoTrack < 0 || timescale <= 0) return null
         var first: Long? = null
+        var lastPresentation: Long? = null
         var firstDecode: Long? = null
         var endDecode: Long? = null
         var sync: Boolean? = null
@@ -137,6 +142,7 @@ internal class LiveHlsMediaIndex(private val format: String) {
                         val pts = decode + composition
                         check(pts >= 0)
                         if (first == null) first = pts
+                        lastPresentation = maxOf(lastPresentation ?: pts, pts)
                         firstDecode = minOf(firstDecode ?: decode, decode)
                         endDecode = maxOf(endDecode ?: 0, decode + length)
                         if (!seenSample) {
@@ -152,6 +158,7 @@ internal class LiveHlsMediaIndex(private val format: String) {
         // B 帧的呈现时间可跨分片重排，连续性必须使用解码时间，不能把 PTS 重叠当成缺口。
         decodeStartMs = checkNotNull(firstDecode) * 1000 / timescale
         decodeEndMs = checkNotNull(endDecode) * 1000 / timescale
+        lastPresentationMs = checkNotNull(lastPresentation) * 1000 / timescale
         return Triple(start * 1000 / timescale, sync, decodeEndMs!! - decodeStartMs!!)
     }
 
@@ -160,6 +167,7 @@ internal class LiveHlsMediaIndex(private val format: String) {
         var video = -1
         var codec = -1
         var timestamp: Long? = null
+        var lastPresentation: Long? = null
         var patSeen = false
         var pmtSeen = false
         var parametersAtStart = false
@@ -228,12 +236,14 @@ internal class LiveHlsMediaIndex(private val format: String) {
                 }
                 if (pid == video) {
                     if (begins && start + 14 <= end && uint(body, start, 3) == 1L) {
-                        if (byteAt(start + 7) and 0x80 != 0 && timestamp == null) {
+                        if (byteAt(start + 7) and 0x80 != 0) {
                             val p = start + 9
                             val pts = ((byteAt(p).toLong() shr 1 and 7) shl 30) or
                                 (byteAt(p + 1).toLong() shl 22) or ((byteAt(p + 2).toLong() shr 1) shl 15) or
                                 (byteAt(p + 3).toLong() shl 7) or (byteAt(p + 4).toLong() shr 1)
-                            timestamp = unwrap(pts)
+                            val unwrapped = unwrap(pts)
+                            if (timestamp == null) timestamp = unwrapped
+                            lastPresentation = maxOf(lastPresentation ?: unwrapped, unwrapped)
                         }
                         start += 9 + byteAt(start + 8)
                     }
@@ -288,6 +298,7 @@ internal class LiveHlsMediaIndex(private val format: String) {
         transportDependenciesKnown = patSeen && pmtSeen && firstVcl != null &&
             (transportCodec == null || transportCodec == codec || configuration != null)
         transportCodec = codec.takeIf { it >= 0 }
+        lastPresentationMs = lastPresentation?.div(90)
         return timestamp?.let { it / 90 to (patSeen && pmtSeen && parametersAtStart && firstVcl == true) }
     }
 
