@@ -21,11 +21,23 @@ data class UserInfoData(
     @SerialName("level") private val levelValue: Int = 0,
     @SerialName("is_senior_member") private val isSeniorMember: Int = 0,
     private val vip: UserVipData = UserVipData(),
+    @SerialName("live_room") private val liveRoom: UserLiveRoomData? = null,
 ) {
     val level get() = if (isSeniorMember == 1) 7 else levelValue
     val levelString get() = if (isSeniorMember == 1) "Lv.6+" else "Lv.$levelValue"
     val isVip get() = vip.isVip
     val vipTypeString get() = vip.typeString
+    val isLive get() = liveRoom?.isLive == true
+    val liveRoomId get() = liveRoom?.liveRoomId
+}
+
+@Serializable
+data class UserLiveRoomData(
+    @SerialName("liveStatus") private val statusCode: Int? = null,
+    @SerialName("roomid") private val roomId: Long? = null,
+) {
+    val isLive get() = statusCode == 1
+    val liveRoomId get() = roomId?.takeIf { it > 0 }
 }
 
 @Serializable

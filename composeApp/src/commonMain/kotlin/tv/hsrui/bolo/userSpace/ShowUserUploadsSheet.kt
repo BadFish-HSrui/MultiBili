@@ -66,6 +66,7 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.navigation.openLive
 import tv.hsrui.bolo.navigation.openUserSpace
 import tv.hsrui.bolo.navigation.openVideo
 import tv.hsrui.bolo.ui.common.videosPage.VideosUiState
@@ -142,6 +143,7 @@ fun ShowUserUploadsSheet(mid: Long, onDismissRequest: () -> Unit) {
                     onLoadMore = model::loadMoreVideos,
                     onOpenVideo = { avid -> navigateAfterDismiss { openVideo(avid) } },
                     onOpenUser = { uid -> navigateAfterDismiss { openUserSpace(uid) } },
+                    onOpenLive = { roomId -> navigateAfterDismiss { openLive(roomId) } },
                     modifier = modifier,
                 )
             }
@@ -214,6 +216,7 @@ private fun UserUploadsSheetContent(
     onLoadMore: () -> Unit,
     onOpenVideo: (Long) -> Unit,
     onOpenUser: (Long) -> Unit,
+    onOpenLive: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier) {
@@ -226,6 +229,7 @@ private fun UserUploadsSheetContent(
                     mid = mid,
                     refreshKey = state.refreshGeneration,
                     onUserClick = { onOpenUser(mid) },
+                    onLiveClick = onOpenLive,
                 )
             }
             PullToRefreshBox(

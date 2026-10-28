@@ -152,11 +152,15 @@ data class SearchUserData(
     val level: Int = 0,
     @SerialName("fans") val followerCount: Long? = null,
     @SerialName("videos") val videoCount: Long? = null,
+    @SerialName("is_live") private val liveStatus: Int? = null,
+    @SerialName("room_id") private val roomId: Long? = null,
 ) {
     val name: String get() = rawName.replace("<em class=\"keyword\">", "").replace("</em>", "")
     val sign: String get() = rawSign.replace("<em class=\"keyword\">", "").replace("</em>", "")
     val avatarUrl: String get() = face.toHttpsUrl()
     val levelString: String get() = "Lv.$level"
+    val isLive get() = liveStatus == 1
+    val liveRoomId get() = roomId?.takeIf { it > 0 }
 }
 
 

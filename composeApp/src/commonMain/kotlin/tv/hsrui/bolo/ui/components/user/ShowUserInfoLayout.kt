@@ -28,10 +28,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.theme.BoloShapes
@@ -53,6 +55,7 @@ internal fun ShowUserInfoLayout(
     onUserClick: (() -> Unit)? = null,
     onAvatarClick: (() -> Unit)? = onUserClick,
     avatarBadgeText: String? = if (isVip) vipTypeString else null,
+    isLive: Boolean = false,
     showLevel: Boolean = true,
     showStatistics: Boolean = true,
     descriptionContent: (@Composable ColumnScope.() -> Unit)? = null,
@@ -69,6 +72,30 @@ internal fun ShowUserInfoLayout(
                 .padding(top = 8.dp, bottom = 4.dp, start = 8.dp, end = 8.dp),
         ) {
             Column(modifier = Modifier.width(64.dp)) {
+                if (isLive) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.Red,
+                        modifier = Modifier
+                            .width(64.dp)
+                            .zIndex(1F)
+                            .layout { measurable, constraints ->
+                                val placeable = measurable.measure(constraints)
+                                // 只为上半部分占位，让标签中心与头像顶部对齐。
+                                layout(placeable.width, placeable.height / 2) {
+                                    placeable.placeRelative(0, 0)
+                                }
+                            },
+                    ) {
+                        Text(
+                            text = "直播中",
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
                 AsyncImage(
                     model = face,
                     contentDescription = "个人头像",

@@ -205,7 +205,7 @@ fun SearchResultsPage(
                                     shape = CardDefaults.shape,
                                     showLevel = false,
                                     showStatistics = false,
-                                    avatarBadgeText = if (anchor.isLive) "直播中" else null,
+                                    isLive = anchor.isLive,
                                     onClick = { openUserSpace(anchor.mid) },
                                     onUserClick = { openUserSpace(anchor.mid) },
                                     onAvatarClick = {
@@ -258,6 +258,12 @@ fun SearchResultsPage(
                                     shape = CardDefaults.shape,
                                     signMinLines = 2,
                                     onClick = { openUserSpace(user.mid) },
+                                    isLive = user.isLive,
+                                    onAvatarClick = {
+                                        val roomId = user.liveRoomId
+                                        if (user.isLive && roomId != null) openLive(roomId)
+                                        else openUserSpace(user.mid)
+                                    },
                                 ) {
                                     Text(
                                         text = "粉丝数: ${user.followerCount?.formatCountToString() ?: "--"}",

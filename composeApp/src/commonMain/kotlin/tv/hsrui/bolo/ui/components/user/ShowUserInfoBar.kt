@@ -35,6 +35,7 @@ fun ShowUserInfoBar(
     modifier: Modifier = Modifier,
     refreshKey: Int = 0,
     onUserClick: (() -> Unit)? = null,
+    onLiveClick: ((Long) -> Unit)? = null,
 ) {
     val loginStorage: LoginStorage = koinInject()
     val currentUserMid by loginStorage.currentUserMidFlow.collectAsStateWithLifecycle(
@@ -71,6 +72,12 @@ fun ShowUserInfoBar(
             modifier = modifier,
             shape = CardDefaults.shape,
             onUserClick = onUserClick,
+            isLive = state.info.isLive,
+            onAvatarClick = if (state.info.isLive && onLiveClick != null) {
+                state.info.liveRoomId?.let { roomId -> { onLiveClick(roomId) } } ?: onUserClick
+            } else {
+                onUserClick
+            },
             nameTrailingContent = {
                 if (mid > 0 && mid != currentUserMid) {
                     key(mid, currentUserMid, refreshKey) {

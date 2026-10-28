@@ -16,6 +16,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import tv.hsrui.bolo.navigation.openLive
 import tv.hsrui.bolo.navigation.openUserSpace
 import tv.hsrui.bolo.ui.components.user.ShowUserInfoBar
 
@@ -41,6 +42,10 @@ fun ShowUserInfoDialog(mid: Long, onDismissRequest: () -> Unit) {
                     mid = mid,
                     modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(),
                     onUserClick = { openUserSpace(mid) },
+                    onLiveClick = { roomId ->
+                        onDismissRequest()
+                        openLive(roomId)
+                    },
                 )
             }
         }

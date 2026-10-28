@@ -66,6 +66,7 @@ import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.favorite.FavoriteFoldersContent
 import tv.hsrui.bolo.favorite.FavoriteFoldersUiState
+import tv.hsrui.bolo.navigation.openLive
 import tv.hsrui.bolo.ui.common.videosPage.VideosGridPage
 import tv.hsrui.bolo.ui.common.videosPage.VideosUiState
 import tv.hsrui.bolo.ui.components.scroll.containScroll
@@ -157,7 +158,7 @@ private fun UserSpaceContent(
                 modifier = Modifier.fillMaxWidth().heightIn(max = maxHeaderHeight)
                     .clipToBounds().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
             ) {
-                ShowUserInfoBar(mid = mid, refreshKey = state.refreshGeneration)
+                ShowUserInfoBar(mid = mid, refreshKey = state.refreshGeneration, onLiveClick = ::openLive)
             }
             Surface(modifier = Modifier.weight(1f).fillMaxWidth(), tonalElevation = 1.dp) {
                 PullToRefreshBox(
