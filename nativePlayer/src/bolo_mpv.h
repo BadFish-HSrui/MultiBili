@@ -31,7 +31,7 @@ enum {
 bolo_mpv *bolo_mpv_create(const char *platform);
 int bolo_mpv_set_stream_callbacks(bolo_mpv *, const bolo_mpv_stream_callbacks *, void *context);
 int bolo_mpv_load(bolo_mpv *, const char *video, const char *audio, double start, int64_t generation, const char *user_agent, const char *referrer);
-int bolo_mpv_load_live(bolo_mpv *, const char *url, int64_t generation, const char *user_agent, const char *referrer, int buffering_enabled);
+int bolo_mpv_load_live(bolo_mpv *, const char *url, int64_t generation, const char *user_agent, const char *referrer, int buffering_enabled, double target_seconds, int64_t request);
 int bolo_mpv_video_enabled(bolo_mpv *player, int enabled);
 void bolo_mpv_background(bolo_mpv *, int background);
 double bolo_mpv_retained_position(bolo_mpv *, int64_t generation, double target);

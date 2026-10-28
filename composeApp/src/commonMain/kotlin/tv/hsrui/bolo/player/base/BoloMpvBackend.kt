@@ -34,7 +34,14 @@ internal expect class BoloMpvBackend() {
     suspend fun unbind()
     suspend fun awaitOutput()
     fun load(streams: BoloPlaybackStreamSession, startSeconds: Double, generation: Long): Int
-    fun loadLive(streams: BoloMpvStreamSource, uri: String, generation: Long, bufferingEnabled: Boolean = true): Int
+    fun loadLive(
+        streams: BoloMpvStreamSource,
+        uri: String,
+        generation: Long,
+        bufferingEnabled: Boolean = true,
+        targetSeconds: Double? = null,
+        request: Long = 0,
+    ): Int
     fun videoEnabled(enabled: Boolean): Int
     fun pause(paused: Boolean): Int
     fun speed(speed: Double): Int

@@ -9,4 +9,7 @@ data class LivePlayerState(
     val isEnded: Boolean = false,
     val isBroadcastEnded: Boolean = false,
     val error: String? = null,
-)
+    val pendingSeekPositionMs: Long? = null,
+) {
+    val isSeeking: Boolean get() = pendingSeekPositionMs != null
+}

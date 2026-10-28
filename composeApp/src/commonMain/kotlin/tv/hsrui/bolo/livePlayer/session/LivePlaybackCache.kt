@@ -100,6 +100,8 @@ internal class LivePlaybackCache(
         val blocks = mutableListOf<BoloPlaybackBuffer>()
         var size = 0
         var released = false
+        var references = 0
+        var retired = false
         var history = false
         var sequence: Long? = null
         var redundant = false
@@ -144,6 +146,9 @@ internal class LivePlaybackCache(
     private val staging = mutableSetOf<Body>()
     private var initializationId: Long? = null
     private var serial = 0L
+    private var leaseSerial = 0L
+    private val seekLeases = mutableMapOf<Long, Long>()
+    private var consumedThrough = -1L
     private var epoch = 0L
     private var allocated = 0L
     private var cached = 0L
@@ -237,12 +242,12 @@ internal class LivePlaybackCache(
                     try {
                         // 物理内存紧张先回收历史，不改变任何逻辑预算或用户设置。
                         if (availableMemory()?.let { it < MEMORY_RESERVE + BLOCK } == true && retainHistory) {
-                            while (entries.isNotEmpty() && recycled == null) recycled = evictGroup(recycle = true)
+                            while (canEvictGroup() && recycled == null) recycled = evictGroup(recycle = true)
                         }
                         if (recycled == null && availableMemory()?.let { it < MEMORY_RESERVE + BLOCK } != true) {
                             recycled = try { allocate(BLOCK) } catch (_: OutOfMemoryError) { null }
                         }
-                        while (recycled == null && retainHistory && entries.isNotEmpty()) recycled = evictGroup(recycle = true)
+                        while (recycled == null && retainHistory && canEvictGroup()) recycled = evictGroup(recycle = true)
                         if (recycled == null) {
                             val victims = staging.filter {
                                 it !== body && it !== head && (it.redundant || it.sequence != null && it.sequence != headSequence)
@@ -315,7 +320,7 @@ internal class LivePlaybackCache(
             val required = body.blocks.size.toLong() * BLOCK +
                 (initialization?.takeUnless { it.history }?.blocks?.size ?: 0).toLong() * BLOCK
             check(required <= capacity) { "直播分片及初始化超过本地缓存容量" }
-            while (history + required > capacity && entries.isNotEmpty()) evictGroup()
+            while (history + required > capacity && canEvictGroup()) evictGroup()
             check(history + required <= capacity) { "直播本地缓存容量不足" }
             for (owned in listOfNotNull(body, initialization).filter { !it.history }) {
                 val size = owned.blocks.size.toLong() * BLOCK
@@ -380,40 +385,56 @@ internal class LivePlaybackCache(
         return select(null) ?: error("直播媒体为空")
     }
 
+    /** 定位完成前保留读取起点及后续分片；租约不另占缓存预算。 */
+    suspend fun retainSeek(id: Long, expectedEpoch: Long): Long = mutex.withLock {
+        check(!closed && epoch == expectedEpoch && entries.any { it.segment.id == id }) { "直播定位缓存已失效" }
+        (++leaseSerial).also { seekLeases[it] = id }
+    }
+
+    suspend fun releaseSeek(lease: Long) = mutex.withLock {
+        seekLeases.remove(lease)
+        discardConsumed()
+        publish()
+    }
+
+    suspend fun acquire(id: Long, init: Boolean, expectedEpoch: Long): Body = mutex.withLock {
+        if (closed || epoch != expectedEpoch) throw Missing(null)
+        val body = if (init) initializations[id] else entries.firstOrNull { it.segment.id == id }?.body
+        if (body == null) throw Missing(null)
+        body.also { check(!it.released); it.references++ }
+    }
+
+    suspend fun read(body: Body, offset: Int, bytes: ByteArray): Int = mutex.withLock {
+        check(!body.released && body.references > 0)
+        body.copy(offset, bytes, bytes.size)
+    }
+
+    suspend fun release(body: Body) = mutex.withLock {
+        check(body.references > 0)
+        body.references--
+        if (body.references == 0 && body.retired) free(body)
+        publish()
+    }
+
     suspend fun consume(id: Long) = mutex.withLock {
-        if (!retainHistory) {
-            while (entries.firstOrNull()?.segment?.id?.let { it <= id } == true) free(entries.removeFirst().body)
-            pruneInitializations()
-            publish()
-        }
+        consumedThrough = maxOf(consumedThrough, id)
+        discardConsumed()
+        publish()
     }
 
-    suspend fun read(id: Long, init: Boolean, offset: Int, bytes: ByteArray): Int = mutex.withLock {
-        check(!closed) { "直播缓存已关闭" }
-        val entry = entries.firstOrNull { it.segment.id == id } ?: throw Missing(select(null)?.media?.startMs)
-        val body = if (init) entry.segment.initializationId?.let(initializations::get) else entry.body
-        body?.copy(offset, bytes, bytes.size) ?: 0
+    private fun discardConsumed() {
+        if (retainHistory) return
+        val protected = seekLeases.values.minOrNull() ?: Long.MAX_VALUE
+        while (entries.firstOrNull()?.segment?.id?.let { it <= consumedThrough && it < protected } == true)
+            free(entries.removeFirst().body)
+        pruneInitializations()
     }
 
-    suspend fun next(segment: LiveCachedSegment, expectedEpoch: Long = snapshot.value.epoch): LiveCachedSegment? {
-        while (true) {
-            currentCoroutineContext().ensureActive()
-            val value = snapshot.value
-            check(!closed) { "直播缓存已关闭" }
-            if (value.epoch != expectedEpoch) throw Missing(null)
-            val next = value.segments.firstOrNull { it.id > segment.id }
-            if (next != null) {
-                val start = next.media.decodeStartMs ?: next.media.startMs
-                val end = segment.media.decodeEndMs ?: segment.media.endMs
-                val continuous = next.sequence == segment.sequence + 1 && next.continuity == segment.continuity &&
-                    next.initializationId == segment.initializationId &&
-                    (start == null || end == null || kotlin.math.abs(start - end) <= 250)
-                if (!continuous) throw Missing(null)
-                return next
-            }
-            if (value.ended) return null
-            snapshot.first { it.revision != value.revision }
-        }
+    private fun canEvictGroup(): Boolean {
+        val first = entries.firstOrNull() ?: return false
+        val protected = seekLeases.values.minOrNull() ?: return true
+        return entries.takeWhile { it.segment.groupId == first.segment.groupId || it.segment.groupId == null }
+            .all { it.segment.id < protected }
     }
 
     private fun evictGroup(recycle: Boolean = false): BoloPlaybackBuffer? {
@@ -427,6 +448,8 @@ internal class LivePlaybackCache(
     private fun clearEntries() {
         staging.filter { it.sequence != null }.forEach { it.owner?.cancel() }
         epoch++
+        seekLeases.clear()
+        consumedThrough = -1L
         lastAppended = null
         receivedRange = null
         receivedLastPresentationMs = null
@@ -441,6 +464,7 @@ internal class LivePlaybackCache(
     }
     private fun free(body: Body, recycle: Boolean = false): BoloPlaybackBuffer? {
         if (body.released) return null
+        if (body.references > 0) { body.retired = true; return null }
         body.released = true
         body.owner = null
         body.sourcePlaylist = null

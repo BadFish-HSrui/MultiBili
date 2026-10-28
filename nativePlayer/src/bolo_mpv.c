@@ -15,9 +15,10 @@ struct bolo_mpv {
     int64_t generation, expected_entry, playing_entry, seek_request;
     int64_t seek_reply;
     int64_t seek_started_ns;
-    double seek_target;
+    double seek_target, live_origin;
     int report_eof;
     int loaded, needs_audio;
+    int live;
     atomic_int video_enabled;
     int video_requested;
     atomic_int video_frame_ready;
@@ -82,6 +83,7 @@ bolo_mpv *bolo_mpv_create(const char *platform) {
         if (ios && option(p, "ao", "audiounit") < 0) goto fail;
     }
     if (mpv_initialize(p->player) < 0) goto fail;
+    if (mpv_hook_add(p->player, 0, "on_preloaded", 0) < 0) goto fail;
     return p;
 fail:
     mpv_terminate_destroy(p->player);
@@ -146,21 +148,14 @@ static int flag(mpv_node *node, const char *key) {
     return v && v->format == MPV_FORMAT_FLAG && v->u.flag;
 }
 
-static int load_file(bolo_mpv *p, const char *video, const char *audio, const char *start, int live, int64_t generation, const char *user_agent, const char *referrer, int buffering_enabled) {
-    const char *format = "";
-    if (live) {
-        const char *suffix = strrchr(video, '/');
-        if (suffix && strcmp(suffix, "/fmp4") == 0) format = "mov";
-        else if (suffix && strcmp(suffix, "/ts") == 0) format = "mpegts";
-        else if (suffix && strcmp(suffix, "/flv") == 0) format = "flv";
-        else return MPV_ERROR_INVALID_PARAMETER;
-    }
+static int load_file(bolo_mpv *p, const char *video, const char *audio, const char *start, int live, int64_t generation, const char *user_agent, const char *referrer, int buffering_enabled, double live_target, int64_t live_request) {
+    int hls = live && strncmp(video, "http://127.0.0.1:", 17) == 0;
+    const char *format = hls ? "hls" : live ? "flv" : "";
     // 每次打开都显式配置，避免同一个核心从直播切回点播后残留直播选项。
     const char *options[][2] = {
         {"options/demuxer-lavf-format", format},
-        {"options/demuxer-lavf-o", live ? "protocol_whitelist=none" : ""},
         {"options/demuxer-seekable-cache", live ? "no" : "auto"},
-        {"options/rebase-start-time", live ? "no" : "yes"},
+        {"options/rebase-start-time", live && !hls ? "no" : "yes"},
         {"options/demuxer-max-back-bytes", live ? "0" : "4194304"},
         {"options/cache-on-disk", "no"},
         {"options/cache-secs", live ? (buffering_enabled ? "5" : "0") : "3"},
@@ -174,6 +169,25 @@ static int load_file(bolo_mpv *p, const char *video, const char *audio, const ch
         int result = mpv_set_property_string(p->player, options[i][0], options[i][1]);
         if (result < 0) return result;
     }
+    // HLS 的准确起点在 on_preloaded 中按实际解封装时间原点换算。
+    double demux_offset = 0;
+    int configured = mpv_set_property(p->player, "options/hr-seek-demuxer-offset", MPV_FORMAT_DOUBLE, &demux_offset);
+    if (configured < 0) return configured;
+    if (hls) {
+        char *keys[] = {"live_start_index", "http_persistent", "protocol_whitelist", "seg_format_options"};
+        mpv_node values[] = {
+            {.format = MPV_FORMAT_STRING, .u.string = "0"},
+            {.format = MPV_FORMAT_STRING, .u.string = "0"},
+            {.format = MPV_FORMAT_STRING, .u.string = "http,tcp"},
+            {.format = MPV_FORMAT_STRING, .u.string = "ignore_editlist=1"},
+        };
+        mpv_node_list list = {.num = 4, .keys = keys, .values = values};
+        mpv_node node = {.format = MPV_FORMAT_NODE_MAP, .u.list = &list};
+        configured = mpv_set_property(p->player, "options/demuxer-lavf-o", MPV_FORMAT_NODE, &node);
+    } else {
+        configured = mpv_set_property_string(p->player, "options/demuxer-lavf-o", live ? "protocol_whitelist=none" : "");
+    }
+    if (configured < 0) return configured;
     atomic_store(&p->video_frame_ready, 0);
     for (int i = BOLO_POSITION; i <= BOLO_EOF; ++i)
         mpv_unobserve_property(p->player, ((uint64_t)p->generation << 8) | i);
@@ -184,6 +198,9 @@ static int load_file(bolo_mpv *p, const char *video, const char *audio, const ch
     p->seek_request = 0;
     p->seek_reply = 0;
     p->report_eof = 0;
+    p->live = live;
+    p->live_origin = 0;
+    if (hls) { p->seek_request = live_request; p->seek_target = live_target; }
     int paused = 1;
     int r = mpv_set_property(p->player, "pause", MPV_FORMAT_FLAG, &paused);
     if (r < 0) return r;
@@ -219,13 +236,21 @@ int bolo_mpv_load(bolo_mpv *p, const char *video, const char *audio, double star
     char start_text[64];
     snprintf(start_text, sizeof(start_text), "%.3f", start);
     for (char *c = start_text; *c; ++c) if (*c == ',') *c = '.';
-    return load_file(p, video, audio, start_text, 0, generation, user_agent, referrer, 1);
+    return load_file(p, video, audio, start_text, 0, generation, user_agent, referrer, 1, -1, 0);
 }
 
-int bolo_mpv_load_live(bolo_mpv *p, const char *url, int64_t generation, const char *user_agent, const char *referrer, int buffering_enabled) {
-    // 直播网络与 HLS 调度归应用层；原生只接受已注册的媒体字节流。
-    if (!p || !url || strncmp(url, "bolo-stream://", 14) != 0) return MPV_ERROR_INVALID_PARAMETER;
-    return load_file(p, url, NULL, "none", 1, generation, user_agent, referrer, buffering_enabled);
+int bolo_mpv_load_live(bolo_mpv *p, const char *url, int64_t generation, const char *user_agent, const char *referrer, int buffering_enabled, double target_seconds, int64_t request) {
+    if (!p || !url || !isfinite(target_seconds)) return MPV_ERROR_INVALID_PARAMETER;
+    int hls = strncmp(url, "http://127.0.0.1:", 17) == 0;
+    if (hls) {
+        char *end = NULL;
+        long port = strtol(url + 17, &end, 10);
+        if (port <= 0 || port > 65535 || !end || strncmp(end, "/live/", 6) || target_seconds < 0 || request <= 0)
+            return MPV_ERROR_INVALID_PARAMETER;
+    } else if (strncmp(url, "bolo-stream://", 14) || target_seconds != -1 || request != 0) {
+        return MPV_ERROR_INVALID_PARAMETER;
+    }
+    return load_file(p, url, NULL, "none", 1, generation, user_agent, referrer, buffering_enabled, target_seconds, request);
 }
 
 int bolo_mpv_pause(bolo_mpv *p, int paused) {
@@ -402,6 +427,7 @@ int bolo_mpv_stop(bolo_mpv *p) {
     atomic_store(&p->video_frame_ready, 0);
     p->loaded = 0;
     p->expected_entry = -1;
+    p->live = 0;
     const char *args[] = {"stop", NULL};
     return mpv_command(p->player, args);
 }
@@ -448,6 +474,29 @@ int bolo_mpv_poll(bolo_mpv *p, bolo_mpv_event *out) {
         }
         *out = (bolo_mpv_event){.generation = p->generation};
         switch (e->event_id) {
+        case MPV_EVENT_HOOK: {
+            mpv_event_hook *hook = e->data;
+            int result = 0;
+            if (p->live && p->seek_request > 0 && p->playing_entry == p->expected_entry) {
+                double origin = 0;
+                result = mpv_get_property(p->player, "demuxer-start-time", MPV_FORMAT_DOUBLE, &origin);
+                if (result >= 0 && isfinite(origin)) {
+                    // TS 的 33 位时间戳可能已回绕；映射到缓存目标所在的同一周期。
+                    const double wrap = 8589934592.0 / 90000.0;
+                    p->live_origin = origin + round((p->seek_target - origin) / wrap) * wrap;
+                    double target = fmax(0, p->seek_target - p->live_origin);
+                    char start[64];
+                    snprintf(start, sizeof(start), "%.9f", target);
+                    for (char *c = start; *c; ++c) if (*c == ',') *c = '.';
+                    result = mpv_set_property_string(p->player, "options/start", start);
+                    // 从清单首个关键帧组解码，不让 HLS 按目标挑到不独立的分片。
+                    if (result >= 0) result = mpv_set_property(p->player, "options/hr-seek-demuxer-offset", MPV_FORMAT_DOUBLE, &target);
+                } else if (result >= 0) result = MPV_ERROR_PROPERTY_ERROR;
+            }
+            mpv_hook_continue(p->player, hook->id);
+            if (result < 0) { out->type = BOLO_ERROR; out->error = result; return 1; }
+            break;
+        }
         case MPV_EVENT_START_FILE:
             p->playing_entry = ((mpv_event_start_file *)e->data)->playlist_entry_id;
             break;
@@ -488,6 +537,8 @@ int bolo_mpv_poll(bolo_mpv *p, bolo_mpv_event *out) {
             if (prop->format == MPV_FORMAT_DOUBLE) out->value = *(double *)prop->data;
             else if (prop->format == MPV_FORMAT_FLAG) out->value = *(int *)prop->data;
             else break;
+            if (out->generation == p->generation && out->type == BOLO_POSITION && p->live)
+                out->value += p->live_origin;
             if (out->generation == p->generation && out->type == BOLO_PAUSED)
                 atomic_store(&p->paused, out->value != 0);
             return 1;
@@ -505,6 +556,14 @@ int bolo_mpv_poll(bolo_mpv *p, bolo_mpv_event *out) {
             out->request = p->seek_request;
             out->value = -1;
             mpv_get_property(p->player, "time-pos", MPV_FORMAT_DOUBLE, &out->value);
+            if (p->live) out->value += p->live_origin;
+            if (p->live && p->seek_request > 0) {
+                int seeking = 1;
+                if (mpv_get_property(p->player, "seeking", MPV_FORMAT_FLAG, &seeking) < 0 || seeking ||
+                    !isfinite(out->value) || fabs(out->value - p->seek_target) > 0.25) break;
+                // 后续普通补缓冲的 restart 不再受本次定位目标约束。
+                p->seek_request = 0;
+            }
             return 1;
         case MPV_EVENT_END_FILE: {
             mpv_event_end_file *end = e->data;
