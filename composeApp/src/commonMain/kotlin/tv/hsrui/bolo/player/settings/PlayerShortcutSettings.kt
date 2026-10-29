@@ -82,9 +82,14 @@ internal fun Map<String, List<PlayerShortcutBinding?>>.shortcutAction(event: Key
     return PlayerShortcutAction.entries.firstOrNull { this[it.id]?.contains(binding) == true }
 }
 
-class PlayerShortcutSettings(settingsKSafe: KSafePlain) {
+class PlayerShortcutSettings(
+    settingsKSafe: KSafePlain,
+    storageKey: String = "player_shortcuts_desktop_bindings",
+    actions: List<PlayerShortcutAction> = PlayerShortcutAction.entries,
+) {
+    val actions: List<PlayerShortcutAction> = actions.toList()
     private val json = Json { ignoreUnknownKeys = true }
-    private var storedDesktopBindings by settingsKSafe("", key = "player_shortcuts_desktop_bindings")
+    private var storedDesktopBindings by settingsKSafe("", key = storageKey)
     var desktopBindings: Map<String, List<PlayerShortcutBinding?>> by mutableStateOf(readBindings())
         private set
 
@@ -93,17 +98,17 @@ class PlayerShortcutSettings(settingsKSafe: KSafePlain) {
             json.decodeFromString<Map<String, List<PlayerShortcutBinding?>>>(storedDesktopBindings)
         }.getOrNull().orEmpty()
         val used = mutableSetOf<PlayerShortcutBinding>()
-        return PlayerShortcutAction.entries.associate { action ->
+        return actions.associate { action ->
             val bindings = stored[action.id] ?: action.defaultBindings
             action.id to List(2) { index -> bindings.getOrNull(index)?.takeIf { it.isValid && used.add(it) } }
         }
     }
 
     fun bind(action: PlayerShortcutAction, slot: Int, binding: PlayerShortcutBinding?): Set<PlayerShortcutAction> {
-        require(slot in 0..1 && (binding == null || binding.isValid))
+        require(action in actions && slot in 0..1 && (binding == null || binding.isValid))
         val updated = desktopBindings.mapValues { it.value.toMutableList() }
         val replaced = mutableSetOf<PlayerShortcutAction>()
-        if (binding != null) for (other in PlayerShortcutAction.entries) {
+        if (binding != null) for (other in actions) {
             updated.getValue(other.id).forEachIndexed { index, value ->
                 if (value == binding && (other != action || index != slot)) {
                     updated.getValue(other.id)[index] = null
@@ -117,12 +122,13 @@ class PlayerShortcutSettings(settingsKSafe: KSafePlain) {
     }
 
     fun reset(action: PlayerShortcutAction): Set<PlayerShortcutAction> {
+        require(action in actions)
         val defaults = action.defaultBindings
         val replaced = mutableSetOf<PlayerShortcutAction>()
         val updated = desktopBindings.mapValues { (id, bindings) ->
             if (id == action.id) defaults else bindings.map { binding ->
                 if (binding != null && binding in defaults) {
-                    PlayerShortcutAction.entries.firstOrNull { it.id == id }?.let(replaced::add)
+                    actions.firstOrNull { it.id == id }?.let(replaced::add)
                     null
                 } else binding
             }

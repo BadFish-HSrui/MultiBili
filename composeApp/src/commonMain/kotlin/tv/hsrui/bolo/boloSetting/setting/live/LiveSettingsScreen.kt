@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.boloSetting.BoloSettings
+import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.ui.components.dialog.ShowInfoDialog
 import tv.hsrui.bolo.ui.components.slider.ShowSlider
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
@@ -58,19 +59,11 @@ import kotlin.math.roundToInt
 @Composable
 fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
     val settings = koinInject<BoloSettings>().live
-    var showRecordQualitySelectionInfo by remember { mutableStateOf(false) }
-    var showPlaybackCacheInfo by remember { mutableStateOf(false) }
-    var showPlaybackBufferInfo by remember { mutableStateOf(false) }
-    if (showRecordQualitySelectionInfo || showPlaybackCacheInfo || showPlaybackBufferInfo) {
-        ShowInfoDialog(onConfirm = {
-            showRecordQualitySelectionInfo = false
-            showPlaybackCacheInfo = false
-            showPlaybackBufferInfo = false
-        }) {
+    var infoMessage by remember { mutableStateOf<String?>(null) }
+    infoMessage?.let { message ->
+        ShowInfoDialog(onConfirm = { infoMessage = null }) {
             Text(
-                text = if (showRecordQualitySelectionInfo) "开启后修改音画质会同时修改默认项"
-                    else if (showPlaybackBufferInfo) "默认使用和官方类似的加载缓冲，禁用后会减少3～5秒播放延迟，但可能因网络波动频繁卡顿"
-                    else "可用于加载本地回放的空间大小,过大时可能无法获取足够空间。",
+                text = message,
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
@@ -93,6 +86,24 @@ fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
             ) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (getPlatform().isPhone) {
+                            Text("播放习惯", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))
+                            Card(Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().height(64.dp)
+                                        .toggleable(
+                                            value = settings.autoFullscreenOnRotateEnabled,
+                                            role = Role.Switch,
+                                            onValueChange = { settings.autoFullscreenOnRotateEnabled = it },
+                                        ).padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("旋转自动全屏", style = MaterialTheme.typography.bodyLarge)
+                                    Spacer(Modifier.weight(1f))
+                                    Switch(checked = settings.autoFullscreenOnRotateEnabled, onCheckedChange = null)
+                                }
+                            }
+                        }
                         Text("音画设置", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Row(
@@ -173,7 +184,7 @@ fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                             ) {
                                 Text("记录画质选择", style = MaterialTheme.typography.bodyLarge)
                                 IconButton(
-                                    onClick = { showRecordQualitySelectionInfo = true },
+                                    onClick = { infoMessage = "开启后修改音画质会同时修改默认项" },
                                     modifier = Modifier.padding(start = 4.dp).size(16.dp),
                                 ) { Icon(Icons.Outlined.Info, contentDescription = "记录画质选择说明", modifier = Modifier.size(16.dp)) }
                                 Spacer(Modifier.weight(1f))
@@ -203,7 +214,7 @@ fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                             ) {
                                 Text("关闭播放缓冲", style = MaterialTheme.typography.bodyLarge)
                                 IconButton(
-                                    onClick = { showPlaybackBufferInfo = true },
+                                    onClick = { infoMessage = "默认使用和官方类似的加载缓冲，禁用后会减少3～5秒播放延迟，但可能因网络波动频繁卡顿" },
                                     modifier = Modifier.padding(start = 4.dp).size(16.dp),
                                 ) { Icon(Icons.Outlined.Info, contentDescription = "关闭播放缓冲说明", modifier = Modifier.size(16.dp)) }
                                 Spacer(Modifier.weight(1f))
@@ -236,7 +247,7 @@ fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 ) {
                                     Text("播放缓存", style = MaterialTheme.typography.bodyLarge, maxLines = 1)
                                     IconButton(
-                                        onClick = { showPlaybackCacheInfo = true },
+                                        onClick = { infoMessage = "可用于加载本地回放的空间大小,过大时可能无法获取足够空间。" },
                                         modifier = Modifier.padding(start = 4.dp).size(16.dp),
                                     ) { Icon(Icons.Outlined.Info, contentDescription = "播放缓存说明", modifier = Modifier.size(16.dp)) }
                                     Spacer(Modifier.weight(1f))

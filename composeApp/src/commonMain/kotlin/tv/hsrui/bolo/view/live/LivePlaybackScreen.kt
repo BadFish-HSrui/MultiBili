@@ -50,6 +50,7 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.PlatformType
+import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.livePlayer.LivePlayer
 import tv.hsrui.bolo.livePlayer.LivePlayerUiState
@@ -88,6 +89,7 @@ fun LivePlaybackScreen(
         }
     }
     val navigator: Navigator = koinInject()
+    val settings = koinInject<BoloSettings>().live
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val session = viewModel.playbackSession
     val messagesActive = isActive && navigator.backStack.lastOrNull() == BoloRoute.View.Live(roomId) &&
@@ -119,7 +121,7 @@ fun LivePlaybackScreen(
     val fullscreenState = rememberPlayerFullscreenState()
     val interactionVisible = messagesActive && lifecycle.isAtLeast(Lifecycle.State.RESUMED) &&
         !fullscreenState.isFullscreen
-    if (isActive) PlayerFullscreenEffect(fullscreenState, autoFullscreenOnRotateEnabled = true)
+    if (isActive) PlayerFullscreenEffect(fullscreenState, settings.autoFullscreenOnRotateEnabled)
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
         isBackEnabled = isActive && fullscreenState.shouldHandleFullscreenBack,

@@ -8,6 +8,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +37,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Brightness6
 import androidx.compose.material.icons.rounded.CropSquare
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
@@ -75,6 +78,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.translate
@@ -88,8 +92,10 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.onSizeChanged
@@ -114,11 +120,13 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.PlatformType
+import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.livePlayer.LivePlayerViewModel
 import tv.hsrui.bolo.livePlayer.base.LivePlayerInfo
@@ -127,6 +135,7 @@ import tv.hsrui.bolo.livePlayer.session.LivePlaybackTimelineState
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.player.PlayerKeyboardEffect
+import tv.hsrui.bolo.player.controls.rememberPlayerDeviceControls
 import tv.hsrui.bolo.player.settings.PlayerShortcutAction
 import tv.hsrui.bolo.player.settings.shortcutAction
 import tv.hsrui.bolo.ui.components.slider.ShowSlider
@@ -143,6 +152,12 @@ fun LivePlayerControls(
     navigationOnly: Boolean = false,
 ) {
     val navigator: Navigator = koinInject()
+    val liveSettings = koinInject<BoloSettings>().live
+    val pauseGestureEnabled = liveSettings.pauseGestureEnabled
+    val desktopDoubleClickPauseEnabled = liveSettings.desktopDoubleClickPauseEnabled
+    val brightnessGestureEnabled = liveSettings.brightnessGestureEnabled
+    val volumeGestureEnabled = liveSettings.volumeGestureEnabled
+    val deviceControls = rememberPlayerDeviceControls()
     val platform = getPlatform()
     val isDesktop = fullscreenState.isDesktop
     val isFullscreen = fullscreenState.isFullscreen
@@ -168,10 +183,16 @@ fun LivePlayerControls(
     val emptyInfo = remember { MutableStateFlow(LivePlayerInfo()) }
     val playerInfo by (controller?.info ?: emptyInfo).collectAsState()
     val emptyTimeline = remember { MutableStateFlow(LivePlaybackTimelineState()) }
-    val timeline by (viewModel.playbackSession?.controller?.timeline ?: emptyTimeline).collectAsState()
+    val timeline by (controller?.timeline ?: emptyTimeline).collectAsState()
     val emptyPlayback = remember { MutableStateFlow(LivePlayerState()) }
-    val playback by (viewModel.playbackSession?.controller?.state ?: emptyPlayback).collectAsState()
+    val playback by (controller?.state ?: emptyPlayback).collectAsState()
     var previewPosition by remember(viewModel) { mutableStateOf<Long?>(null) }
+    var brightnessPreview by remember(viewModel, isFullscreen, showTitle, settingsOpen, navigationOnly) {
+        mutableStateOf<Float?>(null)
+    }
+    var volumePreview by remember(viewModel, isFullscreen, showTitle, settingsOpen, navigationOnly) {
+        mutableStateOf<Float?>(null)
+    }
     val displayedOffset = timeline.latestPositionMs?.let { latest ->
         (previewPosition ?: timeline.positionMs)?.let { (latest - it).coerceAtLeast(0) }
     }
@@ -194,21 +215,16 @@ fun LivePlayerControls(
     val latestControlsInteractionActive by rememberUpdatedState(controlsInteractionActive)
     val pressedKeys = remember(viewModel) { mutableSetOf<Key>() }
     val cancelledKeys = remember(viewModel) { mutableSetOf<Key>() }
-    val shortcutBindings = remember {
-        listOf(
-            PlayerShortcutAction.TogglePlayback,
-            PlayerShortcutAction.ToggleFullscreen,
-            PlayerShortcutAction.VolumeUp,
-            PlayerShortcutAction.VolumeDown,
-            PlayerShortcutAction.ToggleMuted,
-        ).associate { it.id to it.defaultBindings }
-    }
+    val shortcutBindings = liveSettings.shortcuts.desktopBindings
     fun revealControls() {
         controlsVisible = true
     }
-    fun toggleFullscreen() {
-        if (isDesktop && fullscreenState.isManualSystemFullscreen) fullscreenState.toggleWindowFullscreen()
-        else fullscreenState.toggleFullscreen()
+    fun toggleDesktopFullscreen() {
+        if (fullscreenState.isManualSystemFullscreen || liveSettings.desktopDefaultWindowFullscreenEnabled) {
+            fullscreenState.toggleWindowFullscreen()
+        } else {
+            fullscreenState.toggleFullscreen()
+        }
     }
     fun cancelKeyboard() {
         cancelledKeys.addAll(pressedKeys)
@@ -229,8 +245,12 @@ fun LivePlayerControls(
         val firstDown = pressedKeys.add(event.key)
         when (action) {
             PlayerShortcutAction.TogglePlayback -> if (firstDown) viewModel.togglePlayback()
-            PlayerShortcutAction.ToggleFullscreen -> if (firstDown) toggleFullscreen()
+            PlayerShortcutAction.ToggleFullscreen -> if (firstDown) toggleDesktopFullscreen()
             PlayerShortcutAction.ToggleMuted -> if (firstDown) viewModel.toggleMuted()
+            PlayerShortcutAction.ToggleDanmaku -> if (firstDown) {
+                danmakuSettings.enabled = !danmakuSettings.enabled
+                revealControls()
+            }
             PlayerShortcutAction.VolumeUp -> viewModel.setVolume((viewModel.volumePercent + 10).coerceAtMost(200))
             PlayerShortcutAction.VolumeDown -> viewModel.setVolume((viewModel.volumePercent - 10).coerceAtLeast(0))
             else -> return false
@@ -241,15 +261,18 @@ fun LivePlayerControls(
     val onVolumeKeyEvent by rememberUpdatedState<(KeyEvent) -> Boolean> { handleKey(it, volumeOnly = true) }
     val onTap by rememberUpdatedState {
         if (isDesktop) {
-            if (primaryPress) {
+            if (primaryPress && pauseGestureEnabled && !desktopDoubleClickPauseEnabled) {
                 viewModel.togglePlayback()
             }
         } else controlsVisible = !controlsVisible
     }
     val onDoubleTap by rememberUpdatedState {
         if (isDesktop) {
-            if (primaryPress) toggleFullscreen()
-        } else {
+            if (primaryPress) {
+                if (pauseGestureEnabled && desktopDoubleClickPauseEnabled) viewModel.togglePlayback()
+                else toggleDesktopFullscreen()
+            }
+        } else if (pauseGestureEnabled) {
             viewModel.togglePlayback()
         }
     }
@@ -265,7 +288,7 @@ fun LivePlayerControls(
             controlsVisible = false
         }
     }
-    LaunchedEffect(inputOpen) { if (inputOpen) cancelKeyboard() }
+    LaunchedEffect(shortcutBindings, settingsOpen, inputOpen, navigationOnly) { cancelKeyboard() }
     LaunchedEffect(windowFocused) {
         if (!windowFocused) {
             pressedKeys.clear()
@@ -302,7 +325,8 @@ fun LivePlayerControls(
                 .then(if (isIpad) Modifier.recalculateWindowInsets() else Modifier)
                 .onPreviewKeyEvent { event ->
                     val action = shortcutBindings.shortcutAction(event)
-                    isDesktop && (action?.isVolume == true || action == PlayerShortcutAction.TogglePlayback) && onKeyEvent(event)
+                    isDesktop && (action?.isVolume == true || action == PlayerShortcutAction.TogglePlayback ||
+                        action == PlayerShortcutAction.ToggleDanmaku) && onKeyEvent(event)
                 }
                 .pointerInput(viewModel, navigationOnly) {
                     if (navigationOnly) return@pointerInput
@@ -335,9 +359,67 @@ fun LivePlayerControls(
                 },
         ) {
             if (!navigationOnly) {
-                Box(Modifier.fillMaxSize().pointerInput(viewModel, isDesktop) {
-                    detectTapGestures(onTap = { onTap() }, onDoubleTap = { onDoubleTap() })
-                })
+                Box(
+                    Modifier.fillMaxSize()
+                        .pointerInput(viewModel, isDesktop, settingsOpen, inputOpen, pageActive) {
+                            if (settingsOpen || inputOpen || !pageActive) return@pointerInput
+                            detectTapGestures(onTap = { onTap() }, onDoubleTap = { onDoubleTap() })
+                        }
+                        .pointerInput(
+                            viewModel, controller, viewModel.selectedQn, isDesktop, isFullscreen, showTitle,
+                            windowSize, settingsOpen, inputOpen, pageActive, deviceControls,
+                            brightnessGestureEnabled, volumeGestureEnabled,
+                        ) {
+                            if (isDesktop || settingsOpen || inputOpen || !pageActive || !deviceControls.supportsDeviceGestures)
+                                return@pointerInput
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val leftSide = down.position.x < size.width / 2f
+                                if (if (leftSide) !brightnessGestureEnabled else !volumeGestureEnabled) return@awaitEachGesture
+                                var startValue = if (leftSide) deviceControls.readBrightness() else null
+                                var volumeAdjustmentStarted = false
+                                var adjusting = false
+                                var movement = Offset.Zero
+                                try {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (event.changes.any { it.id != down.id && it.pressed } || change.isConsumed) break
+                                        if (change.changedToUpIgnoreConsumed()) {
+                                            if (adjusting) change.consume()
+                                            break
+                                        }
+                                        if (!change.pressed) break
+                                        movement += change.positionChange()
+                                        if (!adjusting) {
+                                            if (movement.getDistance() <= viewConfiguration.touchSlop) continue
+                                            if (abs(movement.x) >= abs(movement.y)) break
+                                            if (!leftSide) {
+                                                volumeAdjustmentStarted = true
+                                                startValue = deviceControls.beginVolumeAdjustment()
+                                            }
+                                            if (startValue == null) break
+                                            adjusting = true
+                                        }
+                                        change.consume()
+                                        val value = (checkNotNull(startValue) - movement.y / size.height.coerceAtLeast(1))
+                                            .coerceIn(0f, 1f)
+                                        if (leftSide) {
+                                            deviceControls.setBrightness(value)
+                                            brightnessPreview = value
+                                        } else {
+                                            if (!deviceControls.setVolume(value)) break
+                                            volumePreview = value
+                                        }
+                                    }
+                                } finally {
+                                    if (volumeAdjustmentStarted) deviceControls.endVolumeAdjustment()
+                                    brightnessPreview = null
+                                    volumePreview = null
+                                }
+                            }
+                        },
+                )
             }
             if (showTitle && infoOpen) {
                 BoxWithConstraints(
@@ -553,7 +635,7 @@ fun LivePlayerControls(
                                 if (!fullscreenState.isManualSystemFullscreen) {
                                     val fullscreen = if (isDesktop) fullscreenState.isSystemFullscreen else isFullscreen
                                     IconButton(
-                                        onClick = { toggleFullscreen() },
+                                        onClick = fullscreenState::toggleFullscreen,
                                         enabled = !fullscreenState.isChangingSystemFullscreen,
                                         modifier = Modifier.size(32.dp),
                                     ) {
@@ -570,9 +652,50 @@ fun LivePlayerControls(
                     }
                 }
             }
+            val devicePreview = brightnessPreview ?: volumePreview
+            if (devicePreview != null) {
+                Card(
+                    modifier = Modifier.align(Alignment.Center),
+                    shape = RoundedCornerShape(4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.Black.copy(alpha = 0.75f),
+                        contentColor = Color.White,
+                    ),
+                ) {
+                    Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = when {
+                                brightnessPreview != null -> Icons.Rounded.Brightness6
+                                devicePreview <= 0f -> Icons.AutoMirrored.Rounded.VolumeOff
+                                else -> Icons.AutoMirrored.Rounded.VolumeUp
+                            },
+                            contentDescription = if (brightnessPreview != null) "亮度" else "音量",
+                            modifier = Modifier.size(16.dp),
+                            tint = Color.White,
+                        )
+                        Text(
+                            text = "${(devicePreview.coerceIn(0f, 1f) * 100).roundToInt()}%",
+                            modifier = Modifier.padding(start = 4.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
         }
     }
-    LivePlayerSettingsSheet(settingsOpen, danmakuSettings, onDismissRequest = { settingsOpen = false })
+    LivePlayerSettingsSheet(
+        isOpen = settingsOpen,
+        settings = liveSettings,
+        supportsDeviceGestures = deviceControls.supportsDeviceGestures,
+        rebuildEnabled = !navigationOnly && controller != null && !playback.isPlaybackSuspended,
+        onRebuild = {
+            controller?.rebuild()
+            settingsOpen = false
+            revealControls()
+        },
+        onDismissRequest = { settingsOpen = false },
+    )
 }
 
 @Composable

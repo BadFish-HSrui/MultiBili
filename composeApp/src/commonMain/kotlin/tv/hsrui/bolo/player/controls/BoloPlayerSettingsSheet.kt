@@ -861,7 +861,7 @@ fun BoloPlayerSettingsSheet(
 }
 
 @Composable
-private fun PlayerRebuildCard(
+internal fun PlayerRebuildCard(
     enabled: Boolean,
     onRebuild: () -> Unit,
 ) {
@@ -948,7 +948,7 @@ private fun PlayerRebuildCard(
 }
 
 @Composable
-private fun PlayerGestureSwitch(
+internal fun PlayerGestureSwitch(
     label: String,
     checked: Boolean,
     enabled: Boolean,

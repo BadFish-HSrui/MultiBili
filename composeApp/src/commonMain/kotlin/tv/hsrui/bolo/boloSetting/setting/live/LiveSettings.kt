@@ -5,11 +5,89 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import eu.anifantakis.lib.ksafe.KSafePlain
+import tv.hsrui.bolo.player.settings.PlayerShortcutAction
+import tv.hsrui.bolo.player.settings.PlayerShortcutSettings
 import tv.hsrui.network.liveFeature.player.enumModels.LiveVideoCodec
 import tv.hsrui.network.liveFeature.player.enumModels.LiveVideoQuality
+import kotlin.math.roundToInt
 
 class LiveSettings(settingsKSafe: KSafePlain) {
     val danmaku = LiveDanmakuSettings(settingsKSafe)
+    val shortcuts = PlayerShortcutSettings(
+        settingsKSafe,
+        storageKey = "bolo_live_shortcuts_desktop_bindings",
+        actions = listOf(
+            PlayerShortcutAction.TogglePlayback,
+            PlayerShortcutAction.VolumeUp,
+            PlayerShortcutAction.VolumeDown,
+            PlayerShortcutAction.ToggleMuted,
+            PlayerShortcutAction.ToggleDanmaku,
+            PlayerShortcutAction.ToggleFullscreen,
+        ),
+    )
+
+    private var storedAutoFullscreenOnRotateEnabled by settingsKSafe(true, key = "bolo_live_auto_fullscreen_on_rotate_enabled")
+    private var currentAutoFullscreenOnRotateEnabled by mutableStateOf(storedAutoFullscreenOnRotateEnabled)
+    var autoFullscreenOnRotateEnabled: Boolean
+        get() = currentAutoFullscreenOnRotateEnabled
+        set(value) {
+            if (value == currentAutoFullscreenOnRotateEnabled) return
+            storedAutoFullscreenOnRotateEnabled = value
+            currentAutoFullscreenOnRotateEnabled = value
+        }
+
+    private var storedBrightnessGestureEnabled by settingsKSafe(true, key = "bolo_live_brightness_gesture_enabled")
+    private var currentBrightnessGestureEnabled by mutableStateOf(storedBrightnessGestureEnabled)
+    var brightnessGestureEnabled: Boolean
+        get() = currentBrightnessGestureEnabled
+        set(value) {
+            if (value == currentBrightnessGestureEnabled) return
+            storedBrightnessGestureEnabled = value
+            currentBrightnessGestureEnabled = value
+        }
+
+    private var storedVolumeGestureEnabled by settingsKSafe(true, key = "bolo_live_volume_gesture_enabled")
+    private var currentVolumeGestureEnabled by mutableStateOf(storedVolumeGestureEnabled)
+    var volumeGestureEnabled: Boolean
+        get() = currentVolumeGestureEnabled
+        set(value) {
+            if (value == currentVolumeGestureEnabled) return
+            storedVolumeGestureEnabled = value
+            currentVolumeGestureEnabled = value
+        }
+
+    private var storedPauseGestureEnabled by settingsKSafe(false, key = "bolo_live_pause_gesture_enabled")
+    private var currentPauseGestureEnabled by mutableStateOf(storedPauseGestureEnabled)
+    var pauseGestureEnabled: Boolean
+        get() = currentPauseGestureEnabled
+        set(value) {
+            if (value == currentPauseGestureEnabled) return
+            storedPauseGestureEnabled = value
+            currentPauseGestureEnabled = value
+        }
+
+    private var storedDesktopDoubleClickPauseEnabled by settingsKSafe(false, key = "bolo_live_desktop_double_click_pause_enabled")
+    private var currentDesktopDoubleClickPauseEnabled by mutableStateOf(storedDesktopDoubleClickPauseEnabled)
+    var desktopDoubleClickPauseEnabled: Boolean
+        get() = currentDesktopDoubleClickPauseEnabled
+        set(value) {
+            if (value == currentDesktopDoubleClickPauseEnabled) return
+            storedDesktopDoubleClickPauseEnabled = value
+            currentDesktopDoubleClickPauseEnabled = value
+        }
+
+    private var storedDesktopDefaultWindowFullscreenEnabled by settingsKSafe(
+        false,
+        key = "bolo_live_desktop_default_window_fullscreen_enabled",
+    )
+    private var currentDesktopDefaultWindowFullscreenEnabled by mutableStateOf(storedDesktopDefaultWindowFullscreenEnabled)
+    var desktopDefaultWindowFullscreenEnabled: Boolean
+        get() = currentDesktopDefaultWindowFullscreenEnabled
+        set(value) {
+            if (value == currentDesktopDefaultWindowFullscreenEnabled) return
+            storedDesktopDefaultWindowFullscreenEnabled = value
+            currentDesktopDefaultWindowFullscreenEnabled = value
+        }
 
     private var storedDesktopVolumePercent by settingsKSafe(100, key = "bolo_live_desktop_volume_percent")
     private var currentDesktopVolumePercent by mutableIntStateOf(storedDesktopVolumePercent.coerceIn(0, 200))

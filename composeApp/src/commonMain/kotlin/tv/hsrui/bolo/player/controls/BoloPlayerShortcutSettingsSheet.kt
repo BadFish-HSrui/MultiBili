@@ -200,7 +200,7 @@ fun BoloPlayerShortcutSettingsSheet(
             ) {
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
                 Column(Modifier.horizontalScroll(rememberScrollState()).width(rowWidth)) {
-                    PlayerShortcutAction.entries.forEach { action ->
+                    settings.actions.forEach { action ->
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
