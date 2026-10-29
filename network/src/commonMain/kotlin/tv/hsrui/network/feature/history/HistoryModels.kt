@@ -1,22 +1,22 @@
 package tv.hsrui.network.feature.history
 
 import tv.hsrui.network.feature.watchLater.WatchLaterRawResponse
-import tv.hsrui.network.feature.watchLater.toHistoryVideoCard
+import tv.hsrui.network.feature.watchLater.toHistoryItem
 
-data class HistoryVideosResponse(
+data class HistoryResponse(
     val isSuccess: Boolean,
     val message: String,
-    val validData: ValidHistoryVideos
+    val validData: HistoryData
 ) {
-    constructor(raw: HistoryRawResponse,canLoadMore: Boolean): this(
+    constructor(raw: HistoryRawResponse, canLoadMore: Boolean) : this(
         isSuccess = (raw.code == 0),
         message = raw.message,
         validData = raw.data.list
             .filter { it.typeString == "archive" || it.typeString == "pgc" }
-            .map { it.toHistoryVideoCard() }
+            .map { it.toHistoryItem() }
             .let { list ->
-                ValidHistoryVideos(
-                    list = list,
+                HistoryData(
+                    items = list,
                     canLoadMore = canLoadMore,
                     loadParams = HistoryLoadParams(
                         max = raw.data.cursor.max,
@@ -27,14 +27,14 @@ data class HistoryVideosResponse(
             }
     )
 
-    constructor(raw: WatchLaterRawResponse): this(
+    constructor(raw: WatchLaterRawResponse) : this(
         isSuccess = raw.isSuccess,
         message = raw.message,
         validData = raw.data.list
-            .map { it.toHistoryVideoCard() }
+            .map { it.toHistoryItem() }
             .let { list ->
-                ValidHistoryVideos(
-                    list = list,
+                HistoryData(
+                    items = list,
                     canLoadMore = false,
                     loadParams = HistoryLoadParams()
                 )
@@ -42,13 +42,13 @@ data class HistoryVideosResponse(
     )
 }
 
-data class ValidHistoryVideos(
-    val list: List<HistoryVideoCard>,
+data class HistoryData(
+    val items: List<HistoryItem>,
     val canLoadMore: Boolean,
     val loadParams: HistoryLoadParams
 )
 
-data class HistoryVideoCard(
+data class HistoryItem(
     val avid: Long = 0,
     val bvid: String = "",
     val title: String = "",
@@ -77,8 +77,8 @@ data class HistoryVideoCard(
     val isFullyWatched get() = (watchProgress == -1)
 }
 
-internal fun HistoryRawItem.toHistoryVideoCard(): HistoryVideoCard {
-    return HistoryVideoCard(
+internal fun HistoryRawItem.toHistoryItem(): HistoryItem {
+    return HistoryItem(
         avid = id,
         bvid = bvid,
         title = title,
@@ -97,7 +97,7 @@ internal fun HistoryRawItem.toHistoryVideoCard(): HistoryVideoCard {
     )
 }
 
-val HistoryVideoCardExample = HistoryVideoCard(
+val HistoryItemExample = HistoryItem(
     avid = 115327790751441,
     bvid = "BV1gDxEzHE8Z",
     title = "✨“我为你唱一曲如游丝的气息”《青衣DJ》✨/AI東 雪蓮",

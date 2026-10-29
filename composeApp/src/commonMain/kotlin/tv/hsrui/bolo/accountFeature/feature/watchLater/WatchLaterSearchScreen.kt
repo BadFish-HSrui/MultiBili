@@ -36,7 +36,7 @@ import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
-import tv.hsrui.bolo.ui.components.video.ShowHistoryVideoCard
+import tv.hsrui.bolo.ui.components.history.ShowHistoryCard
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -113,8 +113,8 @@ fun WatchLaterSearchScreen(
                             gridState = gridState,
                         ) { video ->
                             val accountMid = state.accountMid
-                            ShowHistoryVideoCard(
-                                videoInfo = video,
+                            ShowHistoryCard(
+                                item = video,
                                 onDelete = {
                                     viewModel.deleteVideo(video.avid, accountMid)?.let { snackbarManager.showMessage(it) }
                                 },

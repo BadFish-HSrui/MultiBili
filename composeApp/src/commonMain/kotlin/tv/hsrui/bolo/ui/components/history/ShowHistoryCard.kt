@@ -1,8 +1,7 @@
-package tv.hsrui.bolo.ui.components.video
+package tv.hsrui.bolo.ui.components.history
 
-import tv.hsrui.bolo.navigation.openUserSpace
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,18 +47,19 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.navigation.openMedia
+import tv.hsrui.bolo.navigation.openUserSpace
 import tv.hsrui.bolo.navigation.openVideo
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.theme.BoloShapes
-import tv.hsrui.network.feature.history.HistoryVideoCard
-import tv.hsrui.network.feature.history.HistoryVideoCardExample
+import tv.hsrui.network.feature.history.HistoryItem
+import tv.hsrui.network.feature.history.HistoryItemExample
 import tv.hsrui.network.utils.formatToDateTime
 import tv.hsrui.network.utils.formatToDuration
 
 @Composable
-fun ShowHistoryVideoCard(
-    videoInfo: HistoryVideoCard,
+fun ShowHistoryCard(
+    item: HistoryItem,
     onDelete: suspend () -> Unit,
     deleteDialogTitle: String,
     modifier: Modifier = Modifier
@@ -69,13 +69,13 @@ fun ShowHistoryVideoCard(
         modifier = modifier
             .widthIn(max = 512.dp)
             .combinedClickable(
-                enabled = if (videoInfo.isMedia) videoInfo.episodeId > 0 || videoInfo.seasonId > 0
-                    else videoInfo.bvid.isNotBlank() || videoInfo.avid > 0,
+                enabled = if (item.isMedia) item.episodeId > 0 || item.seasonId > 0
+                    else item.bvid.isNotBlank() || item.avid > 0,
                 onClick = {
                     when {
-                        videoInfo.isMedia -> openMedia(seasonId = videoInfo.seasonId, episodeId = videoInfo.episodeId)
-                        videoInfo.bvid.isNotBlank() -> openVideo(bvid = videoInfo.bvid)
-                        else -> openVideo(avid = videoInfo.avid)
+                        item.isMedia -> openMedia(seasonId = item.seasonId, episodeId = item.episodeId)
+                        item.bvid.isNotBlank() -> openVideo(bvid = item.bvid)
+                        else -> openVideo(avid = item.avid)
                     }
                 }
             )
@@ -83,8 +83,8 @@ fun ShowHistoryVideoCard(
         Row {
             Box(modifier = Modifier.aspectRatio(16F / 9F)) {
                 AsyncImage(
-                    model = videoInfo.coverUrl + "@320w_180h_1c.webp",
-                    contentDescription = "视频封面",
+                    model = item.coverUrl + "@320w_180h_1c.webp",
+                    contentDescription = "封面",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
@@ -94,12 +94,12 @@ fun ShowHistoryVideoCard(
                 ) {
                     LinearProgressIndicator(
                         progress = {
-                            if (videoInfo.isFullyWatched) 1F
-                            else videoInfo.watchProgress.toFloat() / videoInfo.duration.toFloat()
+                            if (item.isFullyWatched) 1F
+                            else item.watchProgress.toFloat() / item.duration.toFloat()
                         },
                         modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
                         color = BiliColor.ThemeColor,
-                        strokeCap = if (videoInfo.isFullyWatched) StrokeCap.Butt else StrokeCap.Round,
+                        strokeCap = if (item.isFullyWatched) StrokeCap.Butt else StrokeCap.Round,
                         trackColor = Color.Transparent,
                         drawStopIndicator = {}
                     )
@@ -126,8 +126,8 @@ fun ShowHistoryVideoCard(
                             .align(Alignment.TopEnd)
                     ) {
                         Text(
-                            text = if (videoInfo.isFullyWatched) "已看完 ${videoInfo.duration.formatToDuration()}"
-                            else "${videoInfo.watchProgress.formatToDuration()}/${videoInfo.duration.formatToDuration()}",
+                            text = if (item.isFullyWatched) "已看完 ${item.duration.formatToDuration()}"
+                            else "${item.watchProgress.formatToDuration()}/${item.duration.formatToDuration()}",
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -137,15 +137,15 @@ fun ShowHistoryVideoCard(
             Box(Modifier.fillMaxSize().padding(4.dp)) {
                 Column(Modifier.align(Alignment.TopStart)) {
                     Text(
-                        text = videoInfo.title,
+                        text = item.title,
                         fontSize = 13.sp,
                         lineHeight = 16.sp,
-                        maxLines = if (videoInfo.subtitle.isEmpty()) 2 else 1,
+                        maxLines = if (item.subtitle.isEmpty()) 2 else 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (videoInfo.subtitle.isNotEmpty()) {
+                    if (item.subtitle.isNotEmpty()) {
                         Text(
-                            text = videoInfo.subtitle,
+                            text = item.subtitle,
                             fontSize = 12.sp,
                             lineHeight = 14.sp,
                             maxLines = 1,
@@ -159,26 +159,26 @@ fun ShowHistoryVideoCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.align(Alignment.BottomStart).alpha(0.75F)
                 ) {
-                    if (!videoInfo.isMedia) {
+                    if (!item.isMedia) {
                         AsyncImage(
-                            model = videoInfo.upAvatarUrl + "@64w_64h.webp",
+                            model = item.upAvatarUrl + "@64w_64h.webp",
                             contentDescription = null,
                             modifier = Modifier.clip(CircleShape).size(32.dp)
-                                .clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
+                                .clickable(enabled = item.upMid > 0) { openUserSpace(item.upMid) },
                             contentScale = ContentScale.Crop
                         )
                     }
-                    Column(modifier = Modifier.padding(start = if (videoInfo.isMedia) 0.dp else 4.dp)) {
-                        if (!videoInfo.isMedia) {
+                    Column(modifier = Modifier.padding(start = if (item.isMedia) 0.dp else 4.dp)) {
+                        if (!item.isMedia) {
                             Text(
-                                text = videoInfo.upName,
-                                modifier = Modifier.clickable(enabled = videoInfo.upMid > 0) { openUserSpace(videoInfo.upMid) },
+                                text = item.upName,
+                                modifier = Modifier.clickable(enabled = item.upMid > 0) { openUserSpace(item.upMid) },
                                 style = MaterialTheme.typography.labelMedium,
                                 maxLines = 1
                             )
                         }
                         Text(
-                            text = videoInfo.addTime.formatToDateTime(),
+                            text = item.addTime.formatToDateTime(),
                             style = MaterialTheme.typography.labelSmall,
                             maxLines = 1
                         )
@@ -189,7 +189,7 @@ fun ShowHistoryVideoCard(
                 val scope = rememberCoroutineScope()
                 IconButton(
                     onClick = { showDialog = true },
-                    enabled = videoInfo.recordId > 0,
+                    enabled = item.recordId > 0,
                     modifier = Modifier.size(24.dp).align(Alignment.BottomEnd)
                 ) {
                     Icon(
@@ -216,7 +216,7 @@ fun ShowHistoryVideoCard(
                         },
                         text = buildString {
                             appendLine("确认删除:")
-                            appendLine(videoInfo.title)
+                            appendLine(item.title)
                             appendLine()
                             append("*会同时在所有设备上删除*")
                         }
@@ -229,6 +229,6 @@ fun ShowHistoryVideoCard(
 
 @Preview(heightDp = 128)
 @Composable
-fun PreviewHistoryVideoCard() {
-    ShowHistoryVideoCard(HistoryVideoCardExample, onDelete = {}, deleteDialogTitle = "")
+fun PreviewHistoryCard() {
+    ShowHistoryCard(HistoryItemExample, onDelete = {}, deleteDialogTitle = "")
 }

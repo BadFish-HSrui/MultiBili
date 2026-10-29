@@ -34,14 +34,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
-import tv.hsrui.bolo.accountFeature.feature.history.HistoryVideosUiState
+import tv.hsrui.bolo.accountFeature.feature.history.HistoryUiState
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
-import tv.hsrui.bolo.ui.components.video.ShowHistoryVideoCard
+import tv.hsrui.bolo.ui.components.history.ShowHistoryCard
 import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.network.feature.watchLater.deleteAllViewedFromWatchLater
 import tv.hsrui.network.feature.watchLater.deleteAllWatchLater
@@ -54,7 +54,7 @@ fun WatchLaterScreen(
     isEntryFromList: Boolean = true,
     viewModel: WatchLaterViewModel = viewModel { WatchLaterViewModel() }
 ) {
-    val uiState: HistoryVideosUiState by viewModel.uiState.collectAsState()
+    val uiState: HistoryUiState by viewModel.uiState.collectAsState()
     val watchLaterGridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     val navigator: Navigator = koinInject()
@@ -63,7 +63,7 @@ fun WatchLaterScreen(
     LaunchedEffect(currentRoute, refreshAfterSearch) {
         if (refreshAfterSearch && currentRoute == BoloRoute.AccountFeature.WatchLater) {
             refreshAfterSearch = false
-            viewModel.refreshVideos()
+            viewModel.refreshItems()
         }
     }
 
@@ -79,12 +79,12 @@ fun WatchLaterScreen(
         PullToRefreshBox(
             isRefreshing = false,
             onRefresh = {
-                viewModel.refreshVideos()
+                viewModel.refreshItems()
             },
             modifier = Modifier.padding(innerPadding.calculateWithoutBottom())
         ) {
             when (uiState) {
-                is HistoryVideosUiState.Loading -> {
+                is HistoryUiState.Loading -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -93,23 +93,23 @@ fun WatchLaterScreen(
                     }
                 }
 
-                is HistoryVideosUiState.Error -> {
+                is HistoryUiState.Error -> {
                     ShowErrorContent(
-                        message = (uiState as HistoryVideosUiState.Error).message,
-                        retry = { viewModel.refreshVideos() }
+                        message = (uiState as HistoryUiState.Error).message,
+                        retry = { viewModel.refreshItems() }
                     )
                 }
 
-                is HistoryVideosUiState.Success -> {
+                is HistoryUiState.Success -> {
                     val snackbarManager: SnackbarManager = koinInject()
                     Box {
                         ShowHorizontalCardGrid(
-                            cards = (uiState as HistoryVideosUiState.Success).videos,
+                            cards = (uiState as HistoryUiState.Success).items,
                             keySelector = { it.avid },
                             gridState = watchLaterGridState
                         ) { video ->
-                            ShowHistoryVideoCard(
-                                videoInfo = video,
+                            ShowHistoryCard(
+                                item = video,
                                 onDelete = {
                                     try {
                                         val result = deleteWatchLater(video.avid)
@@ -128,7 +128,7 @@ fun WatchLaterScreen(
                         }
                         ShowGridFABMenu(
                             onBackToTop = { scope.launch { watchLaterGridState.animateScrollToItem(0) } },
-                            onRefresh = { viewModel.refreshVideos() },
+                            onRefresh = { viewModel.refreshItems() },
                             modifier = Modifier.align(Alignment.BottomEnd)
                         ) {
                             FloatingActionButtonMenuItem(
@@ -172,7 +172,7 @@ fun WatchLaterScreen(
                                             try {
                                                 val result = deleteAllWatchLater()
                                                 if (result.isSuccess) {
-                                                    viewModel.refreshVideos()
+                                                    viewModel.refreshItems()
                                                 } else {
                                                     snackbarManager.showMessage(result.message)
                                                 }
@@ -201,7 +201,7 @@ fun WatchLaterScreen(
                                             try {
                                                 val result = deleteAllViewedFromWatchLater()
                                                 if (result.isSuccess) {
-                                                    viewModel.refreshVideos()
+                                                    viewModel.refreshItems()
                                                 } else {
                                                     snackbarManager.showMessage(result.message)
                                                 }

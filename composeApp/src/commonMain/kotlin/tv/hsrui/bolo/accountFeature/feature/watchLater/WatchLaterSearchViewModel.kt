@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.mp.KoinPlatform.getKoin
-import tv.hsrui.network.feature.history.HistoryVideoCard
+import tv.hsrui.network.feature.history.HistoryItem
 import tv.hsrui.network.feature.watchLater.deleteWatchLater
 import tv.hsrui.network.feature.watchLater.fetchWatchLaterVideos
 import tv.hsrui.network.login.storage.LoginStorage
@@ -17,7 +17,7 @@ import tv.hsrui.network.login.storage.LoginStorage
 data class WatchLaterSearchUiState(
     val keyword: String = "",
     val accountMid: Long = 0,
-    val videos: List<HistoryVideoCard> = emptyList(),
+    val videos: List<HistoryItem> = emptyList(),
     val isSearching: Boolean = false,
     val error: String? = null,
     val revision: Int = 0,
@@ -91,7 +91,7 @@ class WatchLaterSearchViewModel(
                 val result = withTimeoutOrNull(15_000) { fetchWatchLaterVideos() } ?: error("搜索请求超时")
                 if (version != requestVersion || identity != readCurrentUserMid()) return@launch
                 check(result.isSuccess) { result.message.ifBlank { "稍后再看搜索失败" } }
-                val videos = result.validData.list.filter { video ->
+                val videos = result.validData.items.filter { video ->
                     video.avid > 0 && video.avid !in removedIds &&
                         (video.title.contains(keyword, ignoreCase = true) || video.upName.contains(keyword, ignoreCase = true))
                 }.distinctBy { it.avid }

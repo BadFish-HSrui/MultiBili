@@ -9,13 +9,13 @@ import io.ktor.http.Parameters
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.network.client.ApiClient
 import tv.hsrui.network.constant.ApiUrls
-import tv.hsrui.network.feature.history.HistoryVideosResponse
+import tv.hsrui.network.feature.history.HistoryResponse
 import tv.hsrui.network.login.storage.LoginStorage
 
-suspend fun fetchWatchLaterVideos(): HistoryVideosResponse {
+suspend fun fetchWatchLaterVideos(): HistoryResponse {
     val response = ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.WatchLater.LIST)
 
-    return HistoryVideosResponse(raw = response.body())
+    return HistoryResponse(raw = response.body())
 }
 
 suspend fun addWatchLater(avid: Long): ModifyWatchLaterResponse {

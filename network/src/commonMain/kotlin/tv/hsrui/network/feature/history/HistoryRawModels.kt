@@ -18,18 +18,18 @@ data class HistorySearchResponse(
     private val data: HistorySearchData? = null,
 ) {
     val isSuccess: Boolean get() = code == 0
-    val videos: List<HistoryVideoCard> get() = data?.videos.orEmpty()
+    val items: List<HistoryItem> get() = data?.items.orEmpty()
     val hasMore: Boolean get() = data?.hasMore == true
 }
 
 @Serializable
 data class HistorySearchData(
-    @SerialName("list") private val items: List<HistoryRawItem>? = null,
+    @SerialName("list") private val rawItems: List<HistoryRawItem>? = null,
     @SerialName("has_more") val hasMore: Boolean = false,
 ) {
-    val videos: List<HistoryVideoCard> get() = items.orEmpty()
+    val items: List<HistoryItem> get() = rawItems.orEmpty()
         .filter { (it.typeString == "archive" && it.id > 0 && it.bvid.isNotBlank()) || it.typeString == "pgc" }
-        .map { it.toHistoryVideoCard() }
+        .map { it.toHistoryItem() }
 }
 
 @Serializable
