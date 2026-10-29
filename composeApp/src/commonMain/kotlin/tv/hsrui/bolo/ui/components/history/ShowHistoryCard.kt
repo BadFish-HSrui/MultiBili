@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
+import tv.hsrui.bolo.navigation.openLive
 import tv.hsrui.bolo.navigation.openMedia
 import tv.hsrui.bolo.navigation.openUserSpace
 import tv.hsrui.bolo.navigation.openVideo
@@ -69,10 +70,14 @@ fun ShowHistoryCard(
         modifier = modifier
             .widthIn(max = 512.dp)
             .combinedClickable(
-                enabled = if (item.isMedia) item.episodeId > 0 || item.seasonId > 0
-                    else item.bvid.isNotBlank() || item.avid > 0,
+                enabled = when {
+                    item.isLiveRoom -> item.roomId > 0
+                    item.isMedia -> item.episodeId > 0 || item.seasonId > 0
+                    else -> item.bvid.isNotBlank() || item.avid > 0
+                },
                 onClick = {
                     when {
+                        item.isLiveRoom -> openLive(item.roomId)
                         item.isMedia -> openMedia(seasonId = item.seasonId, episodeId = item.episodeId)
                         item.bvid.isNotBlank() -> openVideo(bvid = item.bvid)
                         else -> openVideo(avid = item.avid)
@@ -88,49 +93,56 @@ fun ShowHistoryCard(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
-                CompositionLocalProvider(
-                    LocalContentColor provides Color.White,
-                    LocalTextStyle provides TextStyle(fontSize = 10.sp)
-                ) {
-                    LinearProgressIndicator(
-                        progress = {
-                            if (item.isFullyWatched) 1F
-                            else item.watchProgress.toFloat() / item.duration.toFloat()
-                        },
-                        modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
-                        color = BiliColor.ThemeColor,
-                        strokeCap = if (item.isFullyWatched) StrokeCap.Butt else StrokeCap.Round,
-                        trackColor = Color.Transparent,
-                        drawStopIndicator = {}
-                    )
+                if (item.isLiveRoom || item.duration > 0) {
+                    CompositionLocalProvider(
+                        LocalContentColor provides Color.White,
+                        LocalTextStyle provides TextStyle(fontSize = 10.sp)
+                    ) {
+                        if (!item.isLiveRoom) {
+                            LinearProgressIndicator(
+                                progress = {
+                                    if (item.isFullyWatched) 1F
+                                    else item.watchProgress.toFloat() / item.duration.toFloat()
+                                },
+                                modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
+                                color = BiliColor.ThemeColor,
+                                strokeCap = if (item.isFullyWatched) StrokeCap.Butt else StrokeCap.Round,
+                                trackColor = Color.Transparent,
+                                drawStopIndicator = {}
+                            )
+                        }
 
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .fillMaxWidth()
-                            .height(32.dp)
-                            .background(
-                                brush = Brush.verticalGradient(
-                                    listOf(
-                                        Color.Black.copy(alpha = 0.55f),
-                                        Color.Transparent
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .fillMaxWidth()
+                                .height(32.dp)
+                                .background(
+                                    brush = Brush.verticalGradient(
+                                        listOf(
+                                            Color.Black.copy(alpha = 0.55f),
+                                            Color.Transparent
+                                        )
                                     )
                                 )
-                            )
-                    )
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .align(Alignment.TopEnd)
-                    ) {
-                        Text(
-                            text = if (item.isFullyWatched) "已看完 ${item.duration.formatToDuration()}"
-                            else "${item.watchProgress.formatToDuration()}/${item.duration.formatToDuration()}",
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
                         )
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .padding(4.dp)
+                                .align(Alignment.TopEnd)
+                        ) {
+                            Text(
+                                text = when {
+                                    item.isLiveRoom -> item.liveStatusText
+                                    item.isFullyWatched -> "已看完 ${item.duration.formatToDuration()}"
+                                    else -> "${item.watchProgress.formatToDuration()}/${item.duration.formatToDuration()}"
+                                },
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }

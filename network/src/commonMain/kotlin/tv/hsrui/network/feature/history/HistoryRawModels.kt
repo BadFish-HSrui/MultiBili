@@ -28,7 +28,10 @@ data class HistorySearchData(
     @SerialName("has_more") val hasMore: Boolean = false,
 ) {
     val items: List<HistoryItem> get() = rawItems.orEmpty()
-        .filter { (it.typeString == "archive" && it.id > 0 && it.bvid.isNotBlank()) || it.typeString == "pgc" }
+        .filter {
+            (it.typeString == "archive" && it.id > 0 && it.bvid.isNotBlank()) || it.typeString == "pgc" ||
+                (it.typeString == "live" && it.id > 0)
+        }
         .map { it.toHistoryItem() }
 }
 
@@ -60,7 +63,8 @@ data class HistoryRawItem(
     @SerialName("progress") val watchProgress: Int = 0,
     @SerialName("show_title") private val _showTitle: String = "",
     @SerialName("duration") val duration: Int = 0,
-    @SerialName("tag_name") val regionString: String = ""
+    @SerialName("tag_name") val regionString: String = "",
+    @SerialName("live_status") val liveStatus: Int? = null,
 
 ) {
     val id by info::id

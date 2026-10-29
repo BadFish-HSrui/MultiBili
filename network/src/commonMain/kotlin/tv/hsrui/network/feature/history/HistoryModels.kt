@@ -12,7 +12,10 @@ data class HistoryResponse(
         isSuccess = (raw.code == 0),
         message = raw.message,
         validData = raw.data.list
-            .filter { it.typeString == "archive" || it.typeString == "pgc" }
+            .filter {
+                it.typeString == "archive" || it.typeString == "pgc" ||
+                    (it.typeString == "live" && it.id > 0)
+            }
             .map { it.toHistoryItem() }
             .let { list ->
                 HistoryData(
@@ -64,11 +67,26 @@ data class HistoryItem(
     val typeString: String = "",
     val seasonId: Long = 0,
     val episodeId: Long = 0,
+    val roomId: Long = 0,
+    val liveStatus: Int? = null,
 ) {
     val isMedia: Boolean get() = typeString == "pgc"
-    val recordId: Long get() = if (isMedia) seasonId else avid
+    val isLiveRoom: Boolean get() = typeString == "live"
+    val liveStatusText: String
+        get() = when (liveStatus) {
+            1 -> "直播中"
+            0 -> "未开播"
+            else -> "直播"
+        }
+    val recordId: Long
+        get() = when {
+            isLiveRoom -> roomId
+            isMedia -> seasonId
+            else -> avid
+        }
     val recordKey: String
         get() = when {
+            isLiveRoom -> "live_$roomId"
             !isMedia -> "${typeString.ifEmpty { "archive" }}_$avid"
             seasonId > 0 -> "pgc_$seasonId"
             episodeId > 0 -> "pgc_ep_$episodeId"
@@ -79,7 +97,7 @@ data class HistoryItem(
 
 internal fun HistoryRawItem.toHistoryItem(): HistoryItem {
     return HistoryItem(
-        avid = id,
+        avid = if (typeString == "live") 0 else id,
         bvid = bvid,
         title = title,
         subtitle = subtitle,
@@ -94,6 +112,8 @@ internal fun HistoryRawItem.toHistoryItem(): HistoryItem {
         typeString = typeString,
         seasonId = seasonId,
         episodeId = episodeId,
+        roomId = if (typeString == "live") id else 0,
+        liveStatus = liveStatus,
     )
 }
 
