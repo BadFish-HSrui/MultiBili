@@ -14,6 +14,29 @@ import kotlin.math.roundToInt
 
 class LiveSettings(settingsKSafe: KSafePlain) {
     val danmaku = LiveDanmakuSettings(settingsKSafe)
+    private var storedReportHistoryMode by settingsKSafe("on_enter", key = "bolo_live_report_history_mode")
+    private var currentReportHistoryMode by mutableStateOf(
+        LiveHistoryReportMode.entries.firstOrNull { it.storedValue == storedReportHistoryMode }
+            ?: LiveHistoryReportMode.OnEnter,
+    )
+    var reportHistoryMode: LiveHistoryReportMode
+        get() = currentReportHistoryMode
+        set(value) {
+            if (value == currentReportHistoryMode) return
+            storedReportHistoryMode = value.storedValue
+            currentReportHistoryMode = value
+        }
+
+    private var storedReportRoomEntryEnabled by settingsKSafe(true, key = "bolo_live_report_room_entry_enabled")
+    private var currentReportRoomEntryEnabled by mutableStateOf(storedReportRoomEntryEnabled)
+    var reportRoomEntryEnabled: Boolean
+        get() = currentReportRoomEntryEnabled
+        set(value) {
+            if (value == currentReportRoomEntryEnabled) return
+            storedReportRoomEntryEnabled = value
+            currentReportRoomEntryEnabled = value
+        }
+
     val shortcuts = PlayerShortcutSettings(
         settingsKSafe,
         storageKey = "bolo_live_shortcuts_desktop_bindings",

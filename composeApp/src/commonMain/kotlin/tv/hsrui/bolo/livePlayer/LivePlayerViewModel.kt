@@ -50,6 +50,7 @@ class LivePlayerViewModel internal constructor(
     private val settings: LiveSettings = getKoin().get<BoloSettings>().live,
     messageManagerFactory: (CoroutineScope) -> LiveMessageManager = { LiveMessageManager(it) },
     private val statistics: LiveStatisticsManager = getKoin().get<AppDataStorage>().liveStatistics,
+    internal val reportController: LiveReportController = LiveReportController(settings),
 ) : ViewModel() {
     private var statisticsSession: LiveStatisticsManager.Session? = null
     private val mutableUiState = MutableStateFlow<LivePlayerUiState>(LivePlayerUiState.Loading)
@@ -277,6 +278,7 @@ class LivePlayerViewModel internal constructor(
                 var room = knownRoom ?: roomInfoRequest(roomId)
                 if (!isCurrent(session, revision)) return@launch
                 roomInfo = room
+                reportController.setRoom(room.roomId)
                 updateStatistics(room, session.controller)
                 if (pageActive) messageManager.start(room.roomId, room.upMid)
                 if (!room.isLive) { acceptRoomStatus(room); return@launch }
@@ -510,6 +512,7 @@ class LivePlayerViewModel internal constructor(
 
     override fun onCleared() {
         closed = true
+        reportController.close()
         requestRevision++
         loadJob?.cancel()
         streamRetryJob?.cancel()

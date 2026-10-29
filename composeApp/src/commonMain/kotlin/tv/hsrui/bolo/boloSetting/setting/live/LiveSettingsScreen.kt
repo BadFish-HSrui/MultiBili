@@ -444,6 +444,54 @@ fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                         }
                     }
                 }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("信息上报", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))
+                        Card(Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("上报历史记录", style = MaterialTheme.typography.bodyLarge)
+                                IconButton(
+                                    onClick = { infoMessage = "开启后进入的直播间会出现在历史记录中，不影响进入房间播报。" },
+                                    modifier = Modifier.size(16.dp),
+                                ) { Icon(Icons.Outlined.Info, contentDescription = "上报历史记录说明", modifier = Modifier.size(16.dp)) }
+                                Spacer(Modifier.weight(1f))
+                                SingleChoiceSegmentedButtonRow(modifier = Modifier.widthIn(max = 220.dp)) {
+                                    LiveHistoryReportMode.entries.forEachIndexed { index, mode ->
+                                        SegmentedButton(
+                                            selected = mode == settings.reportHistoryMode,
+                                            onClick = { settings.reportHistoryMode = mode },
+                                            shape = SegmentedButtonDefaults.itemShape(index, LiveHistoryReportMode.entries.size),
+                                            modifier = Modifier.padding(vertical = 8.dp),
+                                        ) {
+                                            Text(mode.title, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                        }
+                                    }
+                                }
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.reportRoomEntryEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.reportRoomEntryEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("上报进入房间", style = MaterialTheme.typography.bodyLarge)
+                                IconButton(
+                                    onClick = { infoMessage = "关闭时可以隐藏进入房间信息，不影响历史记录。" },
+                                    modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                ) { Icon(Icons.Outlined.Info, contentDescription = "上报进入房间说明", modifier = Modifier.size(16.dp)) }
+                                Spacer(Modifier.weight(1f))
+                                Switch(checked = settings.reportRoomEntryEnabled, onCheckedChange = null)
+                            }
+                        }
+                    }
+                }
             }
         }
     }

@@ -8,6 +8,8 @@ object LiveApiUrls {
     const val SUB_AREA_LIST = "room/v1/area/getList" //主分区下的子分区目录
     const val AREA_ROOMS = "xlive/web-interface/v1/second/getList" //分区直播间列表
     const val ROOM_INFO = "xlive/web-room/v1/index/getInfoByRoom" //直播间与主播信息
+    const val ROOM_HISTORY_REPORT = "xlive/web-room/v1/index/roomEntryAction" //上报直播观看历史
+    const val ROOM_ENTRY_REPORT = "xlive/web-room/v1/index/getInfoByUser" //上报用户进入直播间
     const val PLAY_INFO = "xlive/web-room/v2/index/getRoomPlayInfo" //直播播放信息与可选画质
     const val MESSAGE_INFO = "xlive/web-room/v1/index/getDanmuInfo" //直播信息流节点与鉴权
     const val DANMAKU_HISTORY = "xlive/web-room/v1/dM/gethistory" //直播间最近历史弹幕

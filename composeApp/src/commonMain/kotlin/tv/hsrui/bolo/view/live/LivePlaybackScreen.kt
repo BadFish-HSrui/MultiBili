@@ -92,7 +92,12 @@ fun LivePlaybackScreen(
     val settings = koinInject<BoloSettings>().live
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val session = viewModel.playbackSession
-    val messagesActive = isActive && navigator.backStack.lastOrNull() == BoloRoute.View.Live(roomId) &&
+    val pageActive = isActive && navigator.backStack.lastOrNull() == BoloRoute.View.Live(roomId)
+    DisposableEffect(viewModel, pageActive) {
+        if (pageActive) viewModel.reportController.enterPage()
+        onDispose { if (pageActive) viewModel.reportController.leavePage() }
+    }
+    val messagesActive = pageActive &&
         (getPlatform().type == PlatformType.Desktop || lifecycle.isAtLeast(Lifecycle.State.RESUMED))
     LaunchedEffect(viewModel, messagesActive) {
         viewModel.setMessageActive(messagesActive)
