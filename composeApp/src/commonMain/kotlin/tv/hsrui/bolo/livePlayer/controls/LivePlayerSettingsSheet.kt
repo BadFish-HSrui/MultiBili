@@ -190,6 +190,16 @@ fun LivePlayerSettingsSheet(
                                                 }
                                             }
                                         }
+                                        Card(Modifier.fillMaxWidth()) {
+                                            Column(Modifier.padding(4.dp)) {
+                                                PlayerGestureSwitch(
+                                                    label = "合并多声道",
+                                                    checked = settings.mergeAudioChannelsEnabled,
+                                                    enabled = isActive,
+                                                    onCheckedChange = { settings.mergeAudioChannelsEnabled = it },
+                                                )
+                                            }
+                                        }
                                         if (isDesktop) {
                                             Card(
                                                 onClick = { showShortcutSettings = true },

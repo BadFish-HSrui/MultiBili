@@ -101,6 +101,16 @@ class LivePlayerController(
     private var videoOutputActive = true
     private var disposed = false
     private var volume = 100
+    private var mergeAudioChannelsEnabled = settings.mergeAudioChannelsEnabled
+    private var mergeAudioRevision = 0L
+    private var mergeAudioJob: Job? = null
+    private var dynamicLoudnessEnabled = settings.dynamicLoudnessEnabled
+    private var dynamicLoudnessTargetLufs = settings.dynamicLoudnessTargetLufs.toDouble()
+    private var dynamicLoudnessRangeLu = settings.dynamicLoudnessRangeLu.toDouble()
+    private var dynamicLoudnessTruePeakDbtp = settings.dynamicLoudnessTruePeakDbtp.toDouble()
+    private var loudnessConfigured: Boolean? = null
+    private var loudnessRevision = 0L
+    private var loudnessJob: Job? = null
     private var sourceFrameRate = 0f
     private var loadJob: Job? = null
     private var eventsJob: Job? = null
@@ -315,6 +325,8 @@ class LivePlayerController(
                         mutableState.value = state.value.copy(pendingSeekPositionMs = null)
                     }
                     reader = source
+                    applyMergeAudioChannels(expected, current)
+                    applyDynamicLoudness(expected, current)
                     val gain = volume.toDouble()
                     val visible = foreground && videoOutputActive
                     val clock = BoloPlaybackClock()
@@ -470,6 +482,7 @@ class LivePlayerController(
         infoRevision++
         lastInfoSample = null
         diagnosticsSampler.reset()
+        if (clearMedia) loudnessConfigured = null
         transferSamples.clear()
         sampledStream = null
         mutableInfo.value = info.value.copy(
@@ -529,7 +542,7 @@ class LivePlayerController(
             diagnosticsSampler.reset()
             info.value.media.withoutDynamicValues()
         }
-        var updated = info.value.copy(media = media)
+        var updated = info.value.copy(media = media.withLoudnessInfo())
         if (streams != null && transfer != null) {
             val (cachedBytes, received) = transfer
             val now = transferOrigin.elapsedNow()
@@ -746,6 +759,112 @@ class LivePlayerController(
         }
     }
 
+    fun setMergeAudioChannelsEnabled(enabled: Boolean) {
+        if (disposed || mergeAudioChannelsEnabled == enabled) return
+        mergeAudioChannelsEnabled = enabled
+        mergeAudioRevision++
+        mergeAudioJob?.cancel()
+        infoRevision++
+        lastInfoSample = null
+        mutableInfo.value = info.value.copy(media = info.value.media.copy(audio = info.value.media.audio?.copy(
+            outputChannelLayout = null, outputChannelCount = null, channelsMerged = null,
+        )))
+        val engine = mutableBackend.value ?: return
+        if (!foreground) return
+        val expected = generation
+        mergeAudioJob = launchCommand { applyMergeAudioChannels(expected, engine) }
+    }
+
+    private suspend fun applyMergeAudioChannels(expected: Long, engine: BoloMpvBackend) {
+        val revision = mergeAudioRevision
+        val enabled = mergeAudioChannelsEnabled
+        try {
+            val result = withContext(boloMpvDispatcher) {
+                if (isCurrent(expected, engine) && revision == mergeAudioRevision && foreground)
+                    engine.mergeAudioChannels(enabled) else null
+            }
+            if (result != null && result < 0 && isCurrent(expected, engine) && revision == mergeAudioRevision)
+                println("合并多声道配置失败（$result）")
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            if (isCurrent(expected, engine) && revision == mergeAudioRevision)
+                println("合并多声道配置失败：${error.message}")
+        } finally {
+            if (isCurrent(expected, engine) && revision == mergeAudioRevision) {
+                infoRevision++
+                lastInfoSample = null
+            }
+        }
+    }
+
+    fun setDynamicLoudnessSettings(enabled: Boolean, targetLufs: Double, rangeLu: Double, truePeakDbtp: Double) {
+        val target = targetLufs.takeIf { it.isFinite() && it in -70.0..-5.0 } ?: -14.0
+        val range = rangeLu.takeIf { it.isFinite() && it in 1.0..50.0 } ?: 11.0
+        val peak = truePeakDbtp.takeIf { it.isFinite() && it in -9.0..0.0 } ?: -2.0
+        if (disposed || dynamicLoudnessEnabled == enabled && dynamicLoudnessTargetLufs == target &&
+            dynamicLoudnessRangeLu == range && dynamicLoudnessTruePeakDbtp == peak) return
+        dynamicLoudnessEnabled = enabled
+        dynamicLoudnessTargetLufs = target
+        dynamicLoudnessRangeLu = range
+        dynamicLoudnessTruePeakDbtp = peak
+        loudnessRevision++
+        loudnessJob?.cancel()
+        updateLoudnessInfo(null)
+        val engine = mutableBackend.value ?: return
+        if (!foreground) return
+        val expected = generation
+        loudnessJob = launchCommand { applyDynamicLoudness(expected, engine) }
+    }
+
+    private fun BoloPlayerInfo.withLoudnessInfo(): BoloPlayerInfo = copy(
+        audio = audio?.copy(
+            dynamicLoudnessEnabled = dynamicLoudnessEnabled,
+            loudnessConfigured = loudnessConfigured,
+            loudnessGainDb = 0.0.takeIf { loudnessConfigured == true },
+            dynamicLoudnessTargetLufs = dynamicLoudnessTargetLufs.takeIf { loudnessConfigured == true && dynamicLoudnessEnabled },
+            dynamicLoudnessRangeLu = dynamicLoudnessRangeLu.takeIf { loudnessConfigured == true && dynamicLoudnessEnabled },
+            dynamicLoudnessTruePeakDbtp = dynamicLoudnessTruePeakDbtp.takeIf { loudnessConfigured == true && dynamicLoudnessEnabled },
+        ),
+    )
+
+    private fun updateLoudnessInfo(configured: Boolean?) {
+        loudnessConfigured = configured
+        infoRevision++
+        lastInfoSample = null
+        mutableInfo.value = info.value.copy(media = info.value.media.withLoudnessInfo())
+    }
+
+    private suspend fun applyDynamicLoudness(expected: Long, engine: BoloMpvBackend) {
+        val revision = loudnessRevision
+        val enabled = dynamicLoudnessEnabled
+        val target = dynamicLoudnessTargetLufs
+        val range = dynamicLoudnessRangeLu
+        val peak = dynamicLoudnessTruePeakDbtp
+        updateLoudnessInfo(null)
+        try {
+            val result = withContext(boloMpvDispatcher) {
+                if (isCurrent(expected, engine) && revision == loudnessRevision && foreground)
+                    engine.loudness(0.0, enabled, target, range, peak) else null
+            }
+            if (result == null || !isCurrent(expected, engine) || revision != loudnessRevision || !foreground) return
+            updateLoudnessInfo(result >= 0)
+            if (result < 0) println("直播音量均衡配置失败（$result），已停用本次均衡")
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            // 可选音效失败不打断播放；回退也必须核对代次，避免覆盖新配置。
+            withContext(NonCancellable + boloMpvDispatcher) {
+                if (isCurrent(expected, engine) && revision == loudnessRevision && foreground)
+                    runCatching { engine.loudness(0.0, false) }
+            }
+            if (isCurrent(expected, engine) && revision == loudnessRevision && foreground) {
+                updateLoudnessInfo(false)
+                println("直播音量均衡配置失败：${error.message}")
+            }
+        }
+    }
+
     fun setForeground(active: Boolean) {
         if (disposed || foreground == active) return
         foreground = active
@@ -757,6 +876,13 @@ class LivePlayerController(
         } else {
             streamSession?.takeIf { it.localReplayEnabled }?.setCollecting(true)
             if (streamSession == null && localReplayEnabled) startLoad()
+            else mutableBackend.value?.let { engine ->
+                mergeAudioJob?.cancel()
+                val expected = generation
+                mergeAudioJob = launchCommand { applyMergeAudioChannels(expected, engine) }
+                loudnessJob?.cancel()
+                loudnessJob = launchCommand { applyDynamicLoudness(expected, engine) }
+            }
         }
         mutableState.value = state.value.copy(isPlaybackSuspended = !active || mutableBackend.value == null)
         updateFrameRate()
@@ -870,6 +996,8 @@ class LivePlayerController(
         commands.forEach { it.cancel() }
         intentJob = null
         volumeJob = null
+        mergeAudioJob = null
+        loudnessJob = null
         outputJob = null
         val detach = detachJob
         detachJob = null

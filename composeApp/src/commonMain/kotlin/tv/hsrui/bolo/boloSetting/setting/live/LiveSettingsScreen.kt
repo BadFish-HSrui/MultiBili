@@ -286,6 +286,118 @@ fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                         }
                     }
                 }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "音量均衡",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                        Card(Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.dynamicLoudnessEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.dynamicLoudnessEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "动态音量均衡（实验性）",
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                IconButton(
+                                    onClick = { infoMessage = "开启后让所有音量向目标音量靠近，能避免过大或过小声音，但会损失动态范围。" },
+                                    modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Info,
+                                        contentDescription = "动态音量均衡（实验性）说明",
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                                Spacer(Modifier.weight(1f))
+                                Switch(
+                                    checked = settings.dynamicLoudnessEnabled,
+                                    onCheckedChange = null
+                                )
+                            }
+                            if (settings.dynamicLoudnessEnabled) {
+                                HorizontalDivider()
+                                listOf(
+                                    Triple("目标音量", -20f..-8f, 1f),
+                                    Triple("动态范围", 6f..16f, 1f),
+                                    Triple("峰值音量", -4f..0f, 0.5f),
+                                ).forEachIndexed { index, (title, range, step) ->
+                                    val savedValue = when (index) {
+                                        0 -> settings.dynamicLoudnessTargetLufs
+                                        1 -> settings.dynamicLoudnessRangeLu
+                                        else -> settings.dynamicLoudnessTruePeakDbtp
+                                    }
+                                    val defaultValue = (range.start + range.endInclusive) / 2f
+                                    var previewValue by remember(index, savedValue) { mutableStateOf<Float?>(null) }
+                                    val saveValue: (Float) -> Unit = { value ->
+                                        when (index) {
+                                            0 -> settings.dynamicLoudnessTargetLufs = value
+                                            1 -> settings.dynamicLoudnessRangeLu = value
+                                            else -> settings.dynamicLoudnessTruePeakDbtp = value
+                                        }
+                                    }
+                                    val displayedValue = previewValue ?: savedValue
+                                    val valueText = when (index) {
+                                        0 -> "${displayedValue.roundToInt()} LUFS"
+                                        1 -> "${displayedValue.roundToInt()} LU"
+                                        else -> "$displayedValue dBTP"
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                        Spacer(Modifier.weight(1f))
+                                        Row(
+                                            modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            Text(valueText, modifier = Modifier.width(80.dp), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End, maxLines = 1)
+                                            ShowSlider(
+                                                value = displayedValue,
+                                                onValueChange = { previewValue = ((it / step).roundToInt() * step).coerceIn(range) },
+                                                onValueChangeFinished = {
+                                                    if (settings.dynamicLoudnessEnabled) {
+                                                        previewValue?.let(saveValue)
+                                                    }
+                                                    previewValue = null
+                                                },
+                                                valueRange = range,
+                                                steps = ((range.endInclusive - range.start) / step).roundToInt() - 1,
+                                                centered = true,
+                                                showStops = false,
+                                                showTicks = false,
+                                                modifier = Modifier.weight(1f).widthIn(max = 200.dp).semantics {
+                                                    contentDescription = title
+                                                    stateDescription = valueText
+                                                },
+                                            )
+                                            IconButton(
+                                                onClick = {
+                                                    previewValue = null
+                                                    saveValue(defaultValue)
+                                                },
+                                                enabled = displayedValue != defaultValue,
+                                                modifier = Modifier.size(24.dp),
+                                            ) {
+                                                Icon(Icons.Rounded.RestartAlt, contentDescription = "重置$title")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

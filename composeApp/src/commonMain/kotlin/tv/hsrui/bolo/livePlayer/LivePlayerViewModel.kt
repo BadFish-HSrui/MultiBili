@@ -100,6 +100,24 @@ class LivePlayerViewModel internal constructor(
 
     init {
         require(roomId > 0)
+        viewModelScope.launch {
+            snapshotFlow { settings.mergeAudioChannelsEnabled }.collect { enabled ->
+                playbackSession?.controller?.setMergeAudioChannelsEnabled(enabled)
+            }
+        }
+        viewModelScope.launch {
+            snapshotFlow {
+                settings.dynamicLoudnessEnabled to Triple(
+                    settings.dynamicLoudnessTargetLufs,
+                    settings.dynamicLoudnessRangeLu,
+                    settings.dynamicLoudnessTruePeakDbtp,
+                )
+            }.collect { (enabled, parameters) ->
+                playbackSession?.controller?.setDynamicLoudnessSettings(
+                    enabled, parameters.first.toDouble(), parameters.second.toDouble(), parameters.third.toDouble(),
+                )
+            }
+        }
         if (isDesktop) viewModelScope.launch {
             snapshotFlow { settings.desktopVolumePercent to settings.desktopMuted }.collect { (volume, muted) ->
                 playbackSession?.controller?.setVolume(if (muted) 0 else volume)
@@ -177,6 +195,13 @@ class LivePlayerViewModel internal constructor(
             },
         )
         playbackSession = session
+        session.controller.setMergeAudioChannelsEnabled(settings.mergeAudioChannelsEnabled)
+        session.controller.setDynamicLoudnessSettings(
+            settings.dynamicLoudnessEnabled,
+            settings.dynamicLoudnessTargetLufs.toDouble(),
+            settings.dynamicLoudnessRangeLu.toDouble(),
+            settings.dynamicLoudnessTruePeakDbtp.toDouble(),
+        )
         session.controller.setVolume(if (muted) 0 else volumePercent)
         session.activate()
         playbackStateJob = viewModelScope.launch {

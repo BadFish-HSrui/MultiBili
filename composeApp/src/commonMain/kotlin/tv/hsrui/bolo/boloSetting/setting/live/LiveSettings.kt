@@ -1,6 +1,7 @@
 package tv.hsrui.bolo.boloSetting.setting.live
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -34,6 +35,72 @@ class LiveSettings(settingsKSafe: KSafePlain) {
             if (value == currentAutoFullscreenOnRotateEnabled) return
             storedAutoFullscreenOnRotateEnabled = value
             currentAutoFullscreenOnRotateEnabled = value
+        }
+
+    private var storedDynamicLoudnessEnabled by settingsKSafe(true, key = "bolo_live_dynamic_loudness_enabled")
+    private var currentDynamicLoudnessEnabled by mutableStateOf(storedDynamicLoudnessEnabled)
+
+    var dynamicLoudnessEnabled: Boolean
+        get() = currentDynamicLoudnessEnabled
+        set(value) {
+            if (value == currentDynamicLoudnessEnabled) return
+            storedDynamicLoudnessEnabled = value
+            currentDynamicLoudnessEnabled = value
+        }
+
+    private var storedDynamicLoudnessTargetLufs by settingsKSafe(-14f, key = "bolo_live_dynamic_loudness_target_lufs")
+    private var currentDynamicLoudnessTargetLufs by mutableFloatStateOf(normalizeDynamicLoudnessTargetLufs(storedDynamicLoudnessTargetLufs))
+
+    var dynamicLoudnessTargetLufs: Float
+        get() = currentDynamicLoudnessTargetLufs
+        set(value) {
+            val normalized = normalizeDynamicLoudnessTargetLufs(value)
+            if (normalized == currentDynamicLoudnessTargetLufs) return
+            storedDynamicLoudnessTargetLufs = normalized
+            currentDynamicLoudnessTargetLufs = normalized
+        }
+
+    private fun normalizeDynamicLoudnessTargetLufs(value: Float): Float =
+        (value.takeIf { it.isFinite() } ?: -14f).coerceIn(-20f, -8f).roundToInt().toFloat()
+
+    private var storedDynamicLoudnessRangeLu by settingsKSafe(11f, key = "bolo_live_dynamic_loudness_range_lu")
+    private var currentDynamicLoudnessRangeLu by mutableFloatStateOf(normalizeDynamicLoudnessRangeLu(storedDynamicLoudnessRangeLu))
+
+    var dynamicLoudnessRangeLu: Float
+        get() = currentDynamicLoudnessRangeLu
+        set(value) {
+            val normalized = normalizeDynamicLoudnessRangeLu(value)
+            if (normalized == currentDynamicLoudnessRangeLu) return
+            storedDynamicLoudnessRangeLu = normalized
+            currentDynamicLoudnessRangeLu = normalized
+        }
+
+    private fun normalizeDynamicLoudnessRangeLu(value: Float): Float =
+        (value.takeIf { it.isFinite() } ?: 11f).coerceIn(6f, 16f).roundToInt().toFloat()
+
+    private var storedDynamicLoudnessTruePeakDbtp by settingsKSafe(-2f, key = "bolo_live_dynamic_loudness_true_peak_dbtp")
+    private var currentDynamicLoudnessTruePeakDbtp by mutableFloatStateOf(normalizeDynamicLoudnessTruePeakDbtp(storedDynamicLoudnessTruePeakDbtp))
+
+    var dynamicLoudnessTruePeakDbtp: Float
+        get() = currentDynamicLoudnessTruePeakDbtp
+        set(value) {
+            val normalized = normalizeDynamicLoudnessTruePeakDbtp(value)
+            if (normalized == currentDynamicLoudnessTruePeakDbtp) return
+            storedDynamicLoudnessTruePeakDbtp = normalized
+            currentDynamicLoudnessTruePeakDbtp = normalized
+        }
+
+    private fun normalizeDynamicLoudnessTruePeakDbtp(value: Float): Float =
+        ((value.takeIf { it.isFinite() } ?: -2f).coerceIn(-4f, 0f) * 2f).roundToInt() / 2f
+
+    private var storedMergeAudioChannelsEnabled by settingsKSafe(false, key = "bolo_live_merge_audio_channels_enabled")
+    private var currentMergeAudioChannelsEnabled by mutableStateOf(storedMergeAudioChannelsEnabled)
+    var mergeAudioChannelsEnabled: Boolean
+        get() = currentMergeAudioChannelsEnabled
+        set(value) {
+            if (currentMergeAudioChannelsEnabled == value) return
+            storedMergeAudioChannelsEnabled = value
+            currentMergeAudioChannelsEnabled = value
         }
 
     private var storedBrightnessGestureEnabled by settingsKSafe(true, key = "bolo_live_brightness_gesture_enabled")
