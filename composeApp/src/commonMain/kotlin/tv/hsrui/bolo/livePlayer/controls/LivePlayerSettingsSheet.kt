@@ -144,6 +144,19 @@ fun LivePlayerSettingsSheet(
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     if (page == 0) {
+                                        if (!isDesktop) {
+                                            Card(Modifier.fillMaxWidth()) {
+                                                Column(Modifier.padding(4.dp)) {
+                                                    PlayerGestureSwitch(
+                                                        label = "恢复后继续播放",
+                                                        checked = settings.resumeAfterBackgroundEnabled,
+                                                        enabled = isActive,
+                                                        onCheckedChange = { settings.resumeAfterBackgroundEnabled = it },
+                                                        onInfoClick = { infoMessage = "当播放状态下切出应用，恢复后自动继续播放" },
+                                                    )
+                                                }
+                                            }
+                                        }
                                         Card(Modifier.fillMaxWidth()) {
                                             Column(Modifier.padding(4.dp).animateContentSize()) {
                                                 PlayerGestureSwitch(

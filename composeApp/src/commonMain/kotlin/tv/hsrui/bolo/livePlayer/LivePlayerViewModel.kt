@@ -64,7 +64,7 @@ class LivePlayerViewModel internal constructor(
         viewModelScope, messageManager, settings.danmaku, roomId = { roomInfo?.roomId },
         sentMessages = danmakuSender.sentMessages,
     )
-    var playWhenReady by mutableStateOf(true)
+    var playWhenReady by mutableStateOf(settings.autoPlayOnOpenEnabled)
         private set
     var broadcastEnded by mutableStateOf(false)
         private set
@@ -93,6 +93,9 @@ class LivePlayerViewModel internal constructor(
     private var messageBroadcastRevision = 0L
     private var pageActive = false
     private var awaitingForegroundSync = false
+    private var userPaused = false
+    private val autoPlayAllowed: Boolean
+        get() = settings.autoPlayOnOpenEnabled && !userPaused && !awaitingForegroundSync
     private var observedLive: Boolean? = null
     private var observedStartTime: Long? = null
     private var hasSeenLive = false
@@ -100,6 +103,12 @@ class LivePlayerViewModel internal constructor(
 
     init {
         require(roomId > 0)
+        if (settings.autoEnableDanmakuOnOpenEnabled) settings.danmaku.enabled = true
+        viewModelScope.launch {
+            snapshotFlow { settings.backgroundPlaybackEnabled }.collect { enabled ->
+                playbackSession?.setBackgroundPlaybackEnabled(enabled)
+            }
+        }
         viewModelScope.launch {
             snapshotFlow { settings.mergeAudioChannelsEnabled }.collect { enabled ->
                 playbackSession?.controller?.setMergeAudioChannelsEnabled(enabled)
@@ -160,15 +169,25 @@ class LivePlayerViewModel internal constructor(
             statusCheckRevision++
             statusJob?.cancel()
             metadataJob?.cancel()
-            streamRetryJob?.cancel()
-            streamRetryJob = null
-            if (observedLive == true && loadJob?.isActive == true) {
-                streamRetryPending = true
-                requestRevision++
-                loadJob?.cancel()
-                loadJob = null
-            }
+            if (!playbackRequestedInBackground()) cancelInactivePlaybackRequest()
             messageManager.stop()
+        }
+    }
+
+    private fun playbackRequestedInBackground(): Boolean =
+        !closed && playbackSession?.isCurrent == true && playWhenReady
+
+    private fun cancelInactivePlaybackRequest() {
+        streamRetryJob?.cancel()
+        streamRetryJob = null
+        if (loadJob?.isActive == true) {
+            streamRetryPending = roomInfo?.isLive == true
+            requestRevision++
+            loadJob?.cancel()
+            loadJob = null
+            (uiState.value as? LivePlayerUiState.Success)?.let {
+                mutableUiState.value = it.copy(isPreparing = false)
+            }
         }
     }
 
@@ -179,7 +198,9 @@ class LivePlayerViewModel internal constructor(
             controller = LivePlayerController(settings),
             onPlay = ::resumePlayback,
             onPause = ::pause,
+            onAutomaticPause = ::pauseAutomatically,
             onVolume = ::setVolume,
+            resumeAfterBackgroundEnabled = { settings.resumeAfterBackgroundEnabled },
             onClosed = {
                 if (playbackSession === session) {
                     closeStatistics(session.controller)
@@ -195,6 +216,7 @@ class LivePlayerViewModel internal constructor(
             },
         )
         playbackSession = session
+        session.setBackgroundPlaybackEnabled(settings.backgroundPlaybackEnabled)
         session.controller.setMergeAudioChannelsEnabled(settings.mergeAudioChannelsEnabled)
         session.controller.setDynamicLoudnessSettings(
             settings.dynamicLoudnessEnabled,
@@ -218,7 +240,12 @@ class LivePlayerViewModel internal constructor(
 
     fun loadPlayback() { loadPlayback(null, false, false) }
 
-    private fun loadPlayback(knownRoom: LiveRoomInfoData?, opening: Boolean, statusOnly: Boolean) {
+    private fun loadPlayback(
+        knownRoom: LiveRoomInfoData?,
+        opening: Boolean,
+        statusOnly: Boolean,
+        preservePlayIntent: Boolean = false,
+    ) {
         val session = playbackSession?.takeUnless { it.isClosed } ?: return
         if (statusOnly) {
             statusJob?.cancel()
@@ -253,10 +280,17 @@ class LivePlayerViewModel internal constructor(
                 updateStatistics(room, session.controller)
                 if (pageActive) messageManager.start(room.roomId, room.upMid)
                 if (!room.isLive) { acceptRoomStatus(room); return@launch }
+                val nextStart = room.liveStartTimeEpochSeconds
+                if (!preservePlayIntent &&
+                    (observedLive == false || nextStart != null && observedStartTime?.let { nextStart > it } == true)
+                ) {
+                    playWhenReady = autoPlayAllowed
+                }
                 observedLive = true
                 observedStartTime = room.liveStartTimeEpochSeconds
                 hasSeenLive = true
                 broadcastEnded = false
+                session.updateMedia(room)
                 if (opening) metadataJob = viewModelScope.launch {
                     try {
                         val updated = roomInfoRequest(roomId)
@@ -306,9 +340,9 @@ class LivePlayerViewModel internal constructor(
                     val message = if (error is TimeoutCancellationException) "直播加载超时，请重试" else error.message ?: "直播加载失败，请重试"
                     mutableUiState.value = previous?.copy(isPreparing = false, error = message) ?: LivePlayerUiState.Error(message)
                     streamRetryPending = roomInfo?.isLive == true
-                    if (streamRetryPending && pageActive) streamRetryJob = viewModelScope.launch {
+                    if (streamRetryPending && (pageActive || playbackRequestedInBackground())) streamRetryJob = viewModelScope.launch {
                         delay(5_000)
-                        if (pageActive && isCurrent(session, revision) && roomInfo?.isLive == true) {
+                        if ((pageActive || playbackRequestedInBackground()) && isCurrent(session, revision) && roomInfo?.isLive == true) {
                             loadPlayback(roomInfo, false, false)
                         }
                     }
@@ -357,7 +391,7 @@ class LivePlayerViewModel internal constructor(
             observedLive = true
             hasSeenLive = true
             broadcastEnded = false
-            playWhenReady = !awaitingForegroundSync
+            playWhenReady = autoPlayAllowed
             playbackSession?.controller?.clearMedia()
             playbackSession?.controller?.let(::closeStatistics)
             loadPlayback(room, true, false)
@@ -396,6 +430,7 @@ class LivePlayerViewModel internal constructor(
         if (closed || broadcastEnded || playbackSession?.isClosed != false) return
         val controller = playbackSession?.controller ?: return
         if (!controller.resumePlayback(atLatest = true)) return
+        userPaused = false
         playWhenReady = true
         syncPlayback()
     }
@@ -404,16 +439,25 @@ class LivePlayerViewModel internal constructor(
         if (closed || playbackSession?.isClosed != false) return
         val controller = playbackSession?.controller ?: return
         if (broadcastEnded && (controller.state.value.isEnded || !controller.timeline.value.canSeek)) return
+        userPaused = false
         playWhenReady = true
-        if (!controller.resumePlayback() && !broadcastEnded) loadPlayback()
+        if (!controller.resumePlayback() && !broadcastEnded) {
+            loadPlayback(null, false, false, preservePlayIntent = true)
+        }
         syncPlayback()
     }
 
     fun seekToMs(positionMs: Long) { playbackSession?.controller?.seekToMs(positionMs) }
 
     fun pause() {
+        userPaused = true
+        pauseAutomatically()
+    }
+
+    private fun pauseAutomatically() {
         playWhenReady = false
         playbackSession?.controller?.pause()
+        if (!pageActive) cancelInactivePlaybackRequest()
         syncPlayback()
     }
 

@@ -27,6 +27,16 @@ class LiveSettings(settingsKSafe: KSafePlain) {
         ),
     )
 
+    private var storedBackgroundPlaybackEnabled by settingsKSafe(true, key = "bolo_live_background_playback_enabled")
+    private var currentBackgroundPlaybackEnabled by mutableStateOf(storedBackgroundPlaybackEnabled)
+    var backgroundPlaybackEnabled: Boolean
+        get() = currentBackgroundPlaybackEnabled
+        set(value) {
+            if (value == currentBackgroundPlaybackEnabled) return
+            storedBackgroundPlaybackEnabled = value
+            currentBackgroundPlaybackEnabled = value
+        }
+
     private var storedAutoFullscreenOnRotateEnabled by settingsKSafe(true, key = "bolo_live_auto_fullscreen_on_rotate_enabled")
     private var currentAutoFullscreenOnRotateEnabled by mutableStateOf(storedAutoFullscreenOnRotateEnabled)
     var autoFullscreenOnRotateEnabled: Boolean
@@ -35,6 +45,26 @@ class LiveSettings(settingsKSafe: KSafePlain) {
             if (value == currentAutoFullscreenOnRotateEnabled) return
             storedAutoFullscreenOnRotateEnabled = value
             currentAutoFullscreenOnRotateEnabled = value
+        }
+
+    private var storedAutoPlayOnOpenEnabled by settingsKSafe(true, key = "bolo_live_auto_play_on_open_enabled")
+    private var currentAutoPlayOnOpenEnabled by mutableStateOf(storedAutoPlayOnOpenEnabled)
+    var autoPlayOnOpenEnabled: Boolean
+        get() = currentAutoPlayOnOpenEnabled
+        set(value) {
+            if (value == currentAutoPlayOnOpenEnabled) return
+            storedAutoPlayOnOpenEnabled = value
+            currentAutoPlayOnOpenEnabled = value
+        }
+
+    private var storedAutoEnableDanmakuOnOpenEnabled by settingsKSafe(false, key = "bolo_live_auto_enable_danmaku_on_open_enabled")
+    private var currentAutoEnableDanmakuOnOpenEnabled by mutableStateOf(storedAutoEnableDanmakuOnOpenEnabled)
+    var autoEnableDanmakuOnOpenEnabled: Boolean
+        get() = currentAutoEnableDanmakuOnOpenEnabled
+        set(value) {
+            if (value == currentAutoEnableDanmakuOnOpenEnabled) return
+            storedAutoEnableDanmakuOnOpenEnabled = value
+            currentAutoEnableDanmakuOnOpenEnabled = value
         }
 
     private var storedDynamicLoudnessEnabled by settingsKSafe(true, key = "bolo_live_dynamic_loudness_enabled")
@@ -92,6 +122,16 @@ class LiveSettings(settingsKSafe: KSafePlain) {
 
     private fun normalizeDynamicLoudnessTruePeakDbtp(value: Float): Float =
         ((value.takeIf { it.isFinite() } ?: -2f).coerceIn(-4f, 0f) * 2f).roundToInt() / 2f
+
+    private var storedResumeAfterBackgroundEnabled by settingsKSafe(false, key = "bolo_live_resume_after_background_enabled")
+    private var currentResumeAfterBackgroundEnabled by mutableStateOf(storedResumeAfterBackgroundEnabled)
+    var resumeAfterBackgroundEnabled: Boolean
+        get() = currentResumeAfterBackgroundEnabled
+        set(value) {
+            if (value == currentResumeAfterBackgroundEnabled) return
+            storedResumeAfterBackgroundEnabled = value
+            currentResumeAfterBackgroundEnabled = value
+        }
 
     private var storedMergeAudioChannelsEnabled by settingsKSafe(false, key = "bolo_live_merge_audio_channels_enabled")
     private var currentMergeAudioChannelsEnabled by mutableStateOf(storedMergeAudioChannelsEnabled)

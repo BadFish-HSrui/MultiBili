@@ -30,6 +30,8 @@ class LivePlaybackSession(
     private val onPause: () -> Unit,
     private val onVolume: (Int) -> Unit,
     private val onClosed: () -> Unit,
+    private val resumeAfterBackgroundEnabled: () -> Boolean = { false },
+    private val onAutomaticPause: () -> Unit = onPause,
 ) : BoloSystemMediaOwner() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutableState = MutableStateFlow(BoloSystemMediaState(isLive = true, canSetRate = false))
@@ -48,8 +50,11 @@ class LivePlaybackSession(
     private var volume = 100
     private var muted = false
     private var foreground = true
+    private var backgroundPlaybackEnabled = true
     private var interruptionRevision: Long? = null
     private var interruptionMedia = ""
+    private var backgroundResumeRevision: Long? = null
+    private var backgroundResumeMedia = ""
 
     init {
         scope.launch { controller.state.collect { publish() } }
@@ -72,7 +77,10 @@ class LivePlaybackSession(
             artworkUrl = info.coverUrl,
         )
         val artworkChanged = value.mediaId != metadata.mediaId || value.artworkUrl != metadata.artworkUrl
-        if (value.mediaId != metadata.mediaId) interruptionRevision = null
+        if (value.mediaId != metadata.mediaId) {
+            interruptionRevision = null
+            backgroundResumeRevision = null
+        }
         metadata = value
         roomIsLive = info.isLive
         if (artworkChanged) {
@@ -99,12 +107,16 @@ class LivePlaybackSession(
         metadata = BoloSystemMediaMetadata()
         roomIsLive = false
         interruptionRevision = null
+        backgroundResumeRevision = null
         publish()
     }
 
     fun updatePlayback(playWhenReady: Boolean, loading: Boolean, volume: Int, muted: Boolean, error: String? = null) {
         if (isClosed) return
-        if (requested != playWhenReady) interruptionRevision = null
+        if (requested != playWhenReady) {
+            interruptionRevision = null
+            backgroundResumeRevision = null
+        }
         requested = playWhenReady
         this.loading = loading
         requestError = error
@@ -113,22 +125,46 @@ class LivePlaybackSession(
         publish()
     }
 
+    fun setBackgroundPlaybackEnabled(enabled: Boolean) {
+        if (isClosed || backgroundPlaybackEnabled == enabled) return
+        backgroundPlaybackEnabled = enabled
+        if (isCurrent && !foreground && !enabled) {
+            pauseForBackground()
+            publish()
+        }
+    }
+
+    private fun pauseForBackground() {
+        val resume = requested && !controller.state.value.isEnded
+        onAutomaticPause()
+        // 自动暂停后的版本用于识别后续手动播放／暂停；开关不会持续禁止播放。
+        backgroundResumeRevision = controller.playIntentRevision.takeIf { resume }
+        backgroundResumeMedia = metadata.mediaId
+    }
+
     override fun setForeground(active: Boolean) {
         if (!isCurrent) return
         try { adapter?.setForeground(active) }
         catch (error: Exception) { println("系统媒体控件恢复失败：${error.message}") }
         if (getPlatform().type == PlatformType.Desktop || foreground == active) return
         foreground = active
-        interruptionRevision = null
-        if (!active) onPause()
-        controller.setForeground(active)
+        if (!active) {
+            backgroundResumeRevision = null
+            if (!backgroundPlaybackEnabled) pauseForBackground()
+            controller.setForeground(false)
+        } else {
+            val revision = backgroundResumeRevision
+            backgroundResumeRevision = null
+            controller.setForeground(true)
+            if (resumeAfterBackgroundEnabled() && canResumePlayback(revision, backgroundResumeMedia)) onPlay()
+        }
         publish()
     }
 
     override fun interruptAudio(mayResume: Boolean) {
         if (!isCurrent) return
-        val resume = mayResume && requested && foreground
-        onPause()
+        val resume = mayResume && requested
+        onAutomaticPause()
         interruptionRevision = controller.playIntentRevision.takeIf { resume }
         interruptionMedia = metadata.mediaId
         publish()
@@ -137,19 +173,22 @@ class LivePlaybackSession(
     override fun resumeAudioAfterInterruption(allowed: Boolean) {
         val revision = interruptionRevision
         interruptionRevision = null
-        if (allowed && foreground && isCurrent && revision != null && interruptionMedia == metadata.mediaId &&
-            controller.playIntentRevision == revision) onPlay()
+        if (allowed && isCurrent && canResumePlayback(revision, interruptionMedia)) onPlay()
     }
+
+    private fun canResumePlayback(revision: Long?, mediaId: String): Boolean =
+        revision != null && revision == controller.playIntentRevision &&
+            mediaId == metadata.mediaId && !controller.state.value.isEnded
 
     override fun dispatch(command: BoloSystemMediaCommand) {
         scope.launch {
             val value = state.value
             if (!isCurrent || value.metadata.mediaId.isEmpty() || command.mediaId != value.metadata.mediaId) return@launch
             when (command.action) {
-                BoloSystemMediaAction.Play -> if (value.canPlay && foreground &&
+                BoloSystemMediaAction.Play -> if (value.canPlay &&
                     !(requested && (loading || controller.state.value.isPlaying || controller.state.value.isBuffering))) onPlay()
                 BoloSystemMediaAction.Pause -> if (value.canPause) onPause()
-                BoloSystemMediaAction.TogglePlayPause -> if (requested) onPause() else if (value.canPlay && foreground) onPlay()
+                BoloSystemMediaAction.TogglePlayPause -> if (requested) onPause() else if (value.canPlay) onPlay()
                 BoloSystemMediaAction.Stop -> onPause()
                 BoloSystemMediaAction.SetVolume -> if (command.value.isFinite())
                     onVolume((command.value.coerceIn(0.0, 2.0) * 100).toInt())
@@ -179,7 +218,7 @@ class LivePlaybackSession(
             status = status,
             playWhenReady = hasMedia && playable && requested && !playback.isEnded,
             volume = if (muted) 0.0 else volume / 100.0,
-            canPlay = hasMedia && playable && foreground && !playback.isEnded,
+            canPlay = hasMedia && playable && !playback.isEnded,
             canPause = hasMedia && playable && !playback.isEnded,
             artwork = artwork,
             isLive = true,
@@ -196,7 +235,7 @@ class LivePlaybackSession(
 
     internal override suspend fun pauseAndObserve() {
         if (!isClosed) {
-            onPause()
+            onAutomaticPause()
             controller.pauseAndObserve()
         }
     }
@@ -204,6 +243,7 @@ class LivePlaybackSession(
     override fun close() {
         if (isClosed) return
         isClosed = true
+        backgroundResumeRevision = null
         BoloSystemMediaOwner.release(this)
         try { adapter?.close() } catch (error: Exception) { println("系统媒体会话释放失败：${error.message}") }
         adapter = null

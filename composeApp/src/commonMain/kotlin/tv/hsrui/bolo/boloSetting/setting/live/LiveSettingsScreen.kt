@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.PlatformType
 import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.getPlatform
 import tv.hsrui.bolo.ui.components.dialog.ShowInfoDialog
@@ -86,9 +87,24 @@ fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
             ) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (getPlatform().isPhone) {
-                            Text("播放习惯", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))
-                            Card(Modifier.fillMaxWidth()) {
+                        Text("播放习惯", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))
+                        Card(Modifier.fillMaxWidth()) {
+                            if (getPlatform().type != PlatformType.Desktop) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                        value = settings.backgroundPlaybackEnabled,
+                                        role = Role.Switch,
+                                        onValueChange = { settings.backgroundPlaybackEnabled = it },
+                                    ).padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("后台播放", style = MaterialTheme.typography.bodyLarge)
+                                    Spacer(Modifier.weight(1f))
+                                    Switch(checked = settings.backgroundPlaybackEnabled, onCheckedChange = null)
+                                }
+                                HorizontalDivider()
+                            }
+                            if (getPlatform().isPhone) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth().height(64.dp)
                                         .toggleable(
@@ -102,6 +118,36 @@ fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                     Spacer(Modifier.weight(1f))
                                     Switch(checked = settings.autoFullscreenOnRotateEnabled, onCheckedChange = null)
                                 }
+                                HorizontalDivider()
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.autoPlayOnOpenEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.autoPlayOnOpenEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("打开直播自动播放", style = MaterialTheme.typography.bodyLarge)
+                                Spacer(Modifier.weight(1f))
+                                Switch(checked = settings.autoPlayOnOpenEnabled, onCheckedChange = null)
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.autoEnableDanmakuOnOpenEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.autoEnableDanmakuOnOpenEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("打开直播自动开启弹幕", style = MaterialTheme.typography.bodyLarge)
+                                IconButton(
+                                    onClick = { infoMessage = "关闭后，沿用上次开关状态" },
+                                    modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                ) { Icon(Icons.Outlined.Info, contentDescription = "打开直播自动开启弹幕说明", modifier = Modifier.size(16.dp)) }
+                                Spacer(Modifier.weight(1f))
+                                Switch(checked = settings.autoEnableDanmakuOnOpenEnabled, onCheckedChange = null)
                             }
                         }
                         Text("音画设置", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(8.dp))

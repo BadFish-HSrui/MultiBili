@@ -8,9 +8,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.koin.mp.KoinPlatform.getKoin
@@ -98,7 +101,11 @@ class LivePlayerController(
     private var seekConfirmationJob: Job? = null
     private var ready = false
     private var foreground = true
+    private val outputVisible = MutableStateFlow(true)
+    private var collectionPaused = false
+    private val canRunPlayback: Boolean get() = foreground || state.value.playWhenReady
     private var videoOutputActive = true
+    private val isVideoOutputVisible: Boolean get() = foreground && videoOutputActive
     private var disposed = false
     private var volume = 100
     private var mergeAudioChannelsEnabled = settings.mergeAudioChannelsEnabled
@@ -167,22 +174,27 @@ class LivePlayerController(
         urls = stream.urls.filter { it.isNotBlank() }.distinct()
         urlIndex = 0
         urlRetries = 0
-        mutableState.value = LivePlayerState(localReplayEnabled = localReplayEnabled, playWhenReady = playWhenReady && foreground)
+        mutableState.value = LivePlayerState(localReplayEnabled = localReplayEnabled, playWhenReady = playWhenReady)
         if (roomId <= 0L || urls.isEmpty()) {
             fail("直播播放地址为空")
             return
         }
-        if (!foreground || !localReplayEnabled && !playWhenReady) {
+        if (!playWhenReady && (!foreground || !localReplayEnabled)) {
+            if (!foreground) pauseCollection()
             closeEngine(suspended = true)
             return
         }
-        if (keepCache) streamSession?.retry(urls.first())
+        if (keepCache) {
+            streamSession?.retry(urls.first())
+            collectionPaused = false
+        }
         startLoad()
     }
 
     private fun startLoad(targetMs: Long? = null, live: Boolean = targetMs == null) {
-        if (disposed || !foreground || urls.isEmpty() || !localReplayEnabled && !state.value.playWhenReady) return
+        if (disposed || !canRunPlayback || urls.isEmpty() || !localReplayEnabled && !state.value.playWhenReady) return
         if (state.value.isBroadcastEnded && (streamSession == null || !localReplayEnabled)) return
+        resumeCollection()
         stopPlaybackObservation()
         val expected = ++generation
         activeSeekRequest = 0
@@ -204,7 +216,7 @@ class LivePlayerController(
         sourceFrameRate = 0f
         mutableFrameRate.value = 0f
         mutableState.value = state.value.copy(isPlaying = false, isBuffering = true,
-            isPlaybackSuspended = !foreground, isEnded = false, error = null,
+            isPlaybackSuspended = false, isEnded = false, error = null,
             pendingSeekPositionMs = targetMs)
         val closing = releaseJob
         val detaching = detachJob
@@ -238,7 +250,7 @@ class LivePlayerController(
                     withContext(boloMpvDispatcher) {
                         if (isCurrent(expected, current)) check(current.pause(true) >= 0) { "直播定位暂停失败" }
                     }
-                    if (foreground && videoOutputActive) withTimeout(8_000) { current.awaitOutput() }
+                    awaitVideoOutput(current)
                     if (!isCurrent(expected, current)) return@withTimeout
                     check(current.setAudioActive(state.value.playWhenReady)) { "音频会话激活失败" }
                     if (!isCurrent(expected, current)) return@withTimeout
@@ -257,13 +269,14 @@ class LivePlayerController(
                             liveBufferDurationMs = liveBufferDurationMs,
                         ) { error ->
                             scope.launch {
-                                if (!disposed && foreground && sourceRevision == revision && streamSession === collecting) {
+                                if (!disposed && canRunPlayback && sourceRevision == revision && streamSession === collecting) {
                                     retrySource("直播媒体读取失败：${error.message ?: "未知错误"}", reload = false)
                                 }
                             }
                         }
                         streams = collecting
                         streamSession = streams
+                        collectionPaused = false
                         timelineJob?.cancel()
                         timelineJob = if (!collecting.isHls) null else scope.launch {
                             collecting.cache.snapshot.collect { snapshot ->
@@ -328,7 +341,7 @@ class LivePlayerController(
                     applyMergeAudioChannels(expected, current)
                     applyDynamicLoudness(expected, current)
                     val gain = volume.toDouble()
-                    val visible = foreground && videoOutputActive
+                    val visible = isVideoOutputVisible
                     val clock = BoloPlaybackClock()
                     playbackClock = clock
                     playbackObserver = onPlaybackObservation
@@ -380,7 +393,7 @@ class LivePlayerController(
         val input = reader as? LiveHlsInput ?: return
         seekConfirmationJob = launchCommand {
             input.confirm()
-            if (!isCurrent(expected, engine) || activeSeekRequest != request || !foreground) return@launchCommand
+            if (!isCurrent(expected, engine) || activeSeekRequest != request || state.value.isPlaybackSuspended) return@launchCommand
             playbackTimeline.confirmSeek(position, seekingLatest)
             loadJob?.cancel()
             loadJob = null
@@ -421,7 +434,7 @@ class LivePlayerController(
             val infoSampling = launch {
                 while (isActive && playbackClock === clock && mutableBackend.value === engine) {
                     delay(1_000)
-                    if (ready && !infoPanelVisible) {
+                    if (ready && foreground && !infoPanelVisible) {
                         val expected = generation
                         val snapshot = withContext(boloMpvDispatcher) { engine.info(false) }
                         if (snapshot != null && snapshot.generation == expected && isCurrent(expected, engine)) {
@@ -495,7 +508,7 @@ class LivePlayerController(
         val streams = streamSession ?: return
         val engine = mutableBackend.value
         val expected = generation
-        val nativeAhead = if (ready && foreground && engine != null) {
+        val nativeAhead = if (ready && canRunPlayback && engine != null) {
             withContext(boloMpvDispatcher) { if (isCurrent(expected, engine)) engine.bufferedDurationMs() else null }
         } else null
         if (!isCurrent(expected, engine) || streamSession !== streams) return
@@ -599,11 +612,11 @@ class LivePlayerController(
                         isPlaying = !state.value.isPlaybackSuspended)
                 }
             }
-            BoloMpvEvent.Eof -> if (foreground && !state.value.isSeeking && event.value != 0.0) {
+            BoloMpvEvent.Eof -> if (canRunPlayback && !state.value.isSeeking && event.value != 0.0) {
                 if (state.value.isBroadcastEnded) finishReading()
                 else if (ready) retrySource("直播流已结束", ended = true)
             }
-            BoloMpvEvent.Error -> if (foreground && !readerInvalidated) retrySource("直播流播放失败（${event.error}）")
+            BoloMpvEvent.Error -> if (canRunPlayback && !readerInvalidated) retrySource("直播流播放失败（${event.error}）")
             BoloMpvEvent.Overflow -> fail("播放器事件队列溢出，请重新加载")
         }
         updateFrameRate()
@@ -639,6 +652,7 @@ class LivePlayerController(
     }
 
     private fun fail(message: String, ended: Boolean = false) {
+        if (!foreground) pauseCollection()
         playbackTimeline.cancelSeek()
         mutableState.value = state.value.copy(playWhenReady = false, isPlaying = false,
             isBuffering = false, isEnded = ended, error = message, pendingSeekPositionMs = null)
@@ -656,12 +670,14 @@ class LivePlayerController(
 
     fun resumePlayback(atLatest: Boolean = false): Boolean {
         val streams = streamSession?.takeIf { it.localReplayEnabled } ?: return false
-        if (disposed || !foreground || state.value.error != null || state.value.isEnded ||
+        if (disposed || state.value.error != null || state.value.isEnded ||
             atLatest && state.value.isBroadcastEnded
         ) return false
         playIntentRevision++
         playbackTimeline.setPaused(false)
-        mutableState.value = state.value.copy(playWhenReady = true, error = null, isEnded = false)
+        mutableState.value = state.value.copy(playWhenReady = true, error = null, isEnded = false, isPlaybackSuspended = false)
+        resumeCollection()
+        applyAudioSettings()
         val position = state.value.pendingSeekPositionMs ?: timeline.value.positionMs
         if (atLatest) startLoad()
         else if (loadJob?.isActive == true && state.value.isSeeking) applyPlayIntent()
@@ -706,7 +722,8 @@ class LivePlayerController(
         playbackTimeline.setPaused(true)
         mutableState.value = state.value.copy(playWhenReady = false, isPlaying = false, isBuffering = state.value.isSeeking)
         updateFrameRate()
-        if (localReplayEnabled) applyPlayIntent() else closeEngine(suspended = true)
+        if (!foreground) suspendBackgroundPlayback()
+        else if (localReplayEnabled) applyPlayIntent() else closeEngine(suspended = true)
     }
 
     private fun applyPlayIntent() {
@@ -716,7 +733,7 @@ class LivePlayerController(
         val intent = playIntentRevision
         val clock = playbackClock
         intentJob = launchCommand {
-            val playing = state.value.playWhenReady && foreground && ready && !state.value.isSeeking
+            val playing = state.value.playWhenReady && ready && !state.value.isSeeking && !state.value.isPlaybackSuspended
             try {
                 if (!isCurrent(expected, engine) || playIntentRevision != intent) return@launchCommand
                 if (!playing) withContext(boloMpvDispatcher) {
@@ -770,7 +787,7 @@ class LivePlayerController(
             outputChannelLayout = null, outputChannelCount = null, channelsMerged = null,
         )))
         val engine = mutableBackend.value ?: return
-        if (!foreground) return
+        if (!canRunPlayback) return
         val expected = generation
         mergeAudioJob = launchCommand { applyMergeAudioChannels(expected, engine) }
     }
@@ -780,7 +797,7 @@ class LivePlayerController(
         val enabled = mergeAudioChannelsEnabled
         try {
             val result = withContext(boloMpvDispatcher) {
-                if (isCurrent(expected, engine) && revision == mergeAudioRevision && foreground)
+                if (isCurrent(expected, engine) && revision == mergeAudioRevision && canRunPlayback)
                     engine.mergeAudioChannels(enabled) else null
             }
             if (result != null && result < 0 && isCurrent(expected, engine) && revision == mergeAudioRevision)
@@ -812,7 +829,7 @@ class LivePlayerController(
         loudnessJob?.cancel()
         updateLoudnessInfo(null)
         val engine = mutableBackend.value ?: return
-        if (!foreground) return
+        if (!canRunPlayback) return
         val expected = generation
         loudnessJob = launchCommand { applyDynamicLoudness(expected, engine) }
     }
@@ -844,10 +861,10 @@ class LivePlayerController(
         updateLoudnessInfo(null)
         try {
             val result = withContext(boloMpvDispatcher) {
-                if (isCurrent(expected, engine) && revision == loudnessRevision && foreground)
+                if (isCurrent(expected, engine) && revision == loudnessRevision && canRunPlayback)
                     engine.loudness(0.0, enabled, target, range, peak) else null
             }
-            if (result == null || !isCurrent(expected, engine) || revision != loudnessRevision || !foreground) return
+            if (result == null || !isCurrent(expected, engine) || revision != loudnessRevision || !canRunPlayback) return
             updateLoudnessInfo(result >= 0)
             if (result < 0) println("直播音量均衡配置失败（$result），已停用本次均衡")
         } catch (error: CancellationException) {
@@ -855,38 +872,79 @@ class LivePlayerController(
         } catch (error: Exception) {
             // 可选音效失败不打断播放；回退也必须核对代次，避免覆盖新配置。
             withContext(NonCancellable + boloMpvDispatcher) {
-                if (isCurrent(expected, engine) && revision == loudnessRevision && foreground)
+                if (isCurrent(expected, engine) && revision == loudnessRevision && canRunPlayback)
                     runCatching { engine.loudness(0.0, false) }
             }
-            if (isCurrent(expected, engine) && revision == loudnessRevision && foreground) {
+            if (isCurrent(expected, engine) && revision == loudnessRevision && canRunPlayback) {
                 updateLoudnessInfo(false)
                 println("直播音量均衡配置失败：${error.message}")
             }
         }
     }
 
+    private fun resumeCollection() {
+        if (!collectionPaused) return
+        collectionPaused = false
+        streamSession?.setCollecting(true)
+    }
+
+    private fun pauseCollection() {
+        if (collectionPaused) return
+        collectionPaused = true
+        streamSession?.setCollecting(false)
+    }
+
+    private fun suspendBackgroundPlayback() {
+        pauseCollection()
+        mergeAudioJob?.cancel()
+        loudnessJob?.cancel()
+        mutableState.value = state.value.copy(isPlaybackSuspended = true)
+        if (!localReplayEnabled || !ready || state.value.isSeeking) closeEngine(suspended = true)
+        else applyPlayIntent()
+    }
+
+    private fun applyAudioSettings() {
+        if (!canRunPlayback) return
+        val engine = mutableBackend.value ?: return
+        val expected = generation
+        mergeAudioJob?.cancel()
+        mergeAudioJob = launchCommand { applyMergeAudioChannels(expected, engine) }
+        loudnessJob?.cancel()
+        loudnessJob = launchCommand { applyDynamicLoudness(expected, engine) }
+    }
+
     fun setForeground(active: Boolean) {
         if (disposed || foreground == active) return
         foreground = active
         resetInfoSampling()
-        if (!active) {
-            pause()
-            streamSession?.setCollecting(false)
-            if (!ready || state.value.isSeeking) closeEngine(suspended = true)
-        } else {
-            streamSession?.takeIf { it.localReplayEnabled }?.setCollecting(true)
+        if (!active && !state.value.playWhenReady) suspendBackgroundPlayback()
+        else if (active) {
+            resumeCollection()
+            mutableState.value = state.value.copy(isPlaybackSuspended = mutableBackend.value == null && loadJob?.isActive != true)
             if (streamSession == null && localReplayEnabled) startLoad()
-            else mutableBackend.value?.let { engine ->
-                mergeAudioJob?.cancel()
-                val expected = generation
-                mergeAudioJob = launchCommand { applyMergeAudioChannels(expected, engine) }
-                loudnessJob?.cancel()
-                loudnessJob = launchCommand { applyDynamicLoudness(expected, engine) }
-            }
+            else applyAudioSettings()
         }
-        mutableState.value = state.value.copy(isPlaybackSuspended = !active || mutableBackend.value == null)
         updateFrameRate()
         applyVideoOutput()
+    }
+
+    private suspend fun awaitVideoOutput(engine: BoloMpvBackend) {
+        if (!isVideoOutputVisible) return
+        withTimeout(8_000) {
+            coroutineScope {
+                val output = async { engine.awaitOutput() }
+                val hidden = async { outputVisible.first { !it } }
+                try {
+                    select<Unit> {
+                        output.onAwait { }
+                        hidden.onAwait { }
+                    }
+                } finally {
+                    output.cancel()
+                    hidden.cancel()
+                }
+            }
+        }
     }
 
     fun setVideoOutputActive(active: Boolean) {
@@ -897,14 +955,15 @@ class LivePlayerController(
     }
 
     private fun applyVideoOutput() {
+        outputVisible.value = isVideoOutputVisible
         outputJob?.cancel()
         val engine = mutableBackend.value ?: return
         val expected = generation
         outputJob = launchCommand {
             try {
-                if (foreground && videoOutputActive) withTimeout(8_000) { engine.awaitOutput() }
+                awaitVideoOutput(engine)
                 withContext(boloMpvDispatcher) {
-                    if (isCurrent(expected, engine)) engine.videoEnabled(foreground && videoOutputActive)
+                    if (isCurrent(expected, engine)) engine.videoEnabled(isVideoOutputVisible)
                 }
             } catch (error: CancellationException) { throw error }
             catch (_: Exception) { /* 输出错误由加载或平台宿主报告。 */ }
@@ -914,7 +973,7 @@ class LivePlayerController(
     private fun updateFrameRate() {
         mutableFrameRate.value = sourceFrameRate.takeIf {
             state.value.playWhenReady && !state.value.isEnded && !state.value.isPlaybackSuspended &&
-                foreground && videoOutputActive
+                isVideoOutputVisible
         } ?: 0f
     }
 
@@ -941,7 +1000,7 @@ class LivePlayerController(
         if (disposed || stream == null) return
         val target = restoreTarget()
         closeEngine(suspended = true)
-        if (foreground) startLoad(target, timeline.value.isLive)
+        if (canRunPlayback) startLoad(target, timeline.value.isLive)
     }
 
     fun releaseBackgroundResources() {
