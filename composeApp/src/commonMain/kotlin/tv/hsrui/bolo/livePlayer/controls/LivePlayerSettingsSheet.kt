@@ -206,6 +206,10 @@ fun LivePlayerSettingsSheet(
                                         LiveDanmakuSettingsContent(
                                             settings = settings.danmaku,
                                             isActive = isActive,
+                                            onTopBottomScrollInfoClick = {
+                                                infoMessage = "当开启此选项，并设置弹幕显示区域小于50%时，会同时在上下显示滚动弹幕，中间留空。\n" +
+                                                    "通过调整设置，可以在折叠屏或平板上将所有弹幕控制在黑边中，不阻挡显示内容"
+                                            },
                                         )
                                     }
                                 }

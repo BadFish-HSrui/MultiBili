@@ -42,11 +42,17 @@ import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import tv.hsrui.bolo.player.controls.PlayerGestureSwitch
 import tv.hsrui.bolo.ui.components.slider.ShowSlider
 import kotlin.math.roundToInt
 
 @Composable
-fun LiveDanmakuSettingsContent(settings: LiveDanmakuSettings, isActive: Boolean, modifier: Modifier = Modifier) {
+fun LiveDanmakuSettingsContent(
+    settings: LiveDanmakuSettings,
+    isActive: Boolean,
+    onTopBottomScrollInfoClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Card(Modifier.fillMaxWidth()) {
             Row(
@@ -69,31 +75,45 @@ fun LiveDanmakuSettingsContent(settings: LiveDanmakuSettings, isActive: Boolean,
                 HorizontalDivider()
                 LiveDanmakuPercentageSlider("弹幕显示区域", settings.displayAreaRatio, isActive,
                     { settings.displayAreaRatio = it }, range = 20..100, step = 5)
+                HorizontalDivider()
+                PlayerGestureSwitch(
+                    label = "上下显示滚动弹幕",
+                    checked = settings.topBottomScrollEnabled,
+                    enabled = isActive,
+                    onCheckedChange = { settings.topBottomScrollEnabled = it },
+                    onInfoClick = onTopBottomScrollInfoClick,
+                )
+                HorizontalDivider()
+                PlayerGestureSwitch(
+                    label = "增大弹幕行距",
+                    checked = settings.extraLineSpacingEnabled,
+                    enabled = isActive,
+                    onCheckedChange = { settings.extraLineSpacingEnabled = it },
+                )
             }
         }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(4.dp)) {
-                listOf("滚动弹幕", "顶部弹幕", "底部弹幕").forEachIndexed { index, label ->
-                    if (index > 0) HorizontalDivider()
-                    val checked = when (index) {
-                        0 -> settings.scrollEnabled
-                        1 -> settings.topEnabled
-                        else -> settings.bottomEnabled
-                    }
-                    Row(
-                        Modifier.fillMaxWidth().toggleable(checked, enabled = isActive, role = Role.Switch, onValueChange = {
-                            when (index) {
-                                0 -> settings.scrollEnabled = it
-                                1 -> settings.topEnabled = it
-                                else -> settings.bottomEnabled = it
-                            }
-                        }).height(32.dp).padding(horizontal = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(label, style = MaterialTheme.typography.bodyMedium)
-                        Switch(checked, null, enabled = isActive, modifier = Modifier.size(39.dp, 24.dp).scale(.75f))
-                    }
-                }
+                PlayerGestureSwitch(
+                    label = "滚动弹幕",
+                    checked = settings.scrollEnabled,
+                    enabled = isActive,
+                    onCheckedChange = { settings.scrollEnabled = it },
+                )
+                HorizontalDivider()
+                PlayerGestureSwitch(
+                    label = "顶部弹幕",
+                    checked = settings.topEnabled,
+                    enabled = isActive,
+                    onCheckedChange = { settings.topEnabled = it },
+                )
+                HorizontalDivider()
+                PlayerGestureSwitch(
+                    label = "底部弹幕",
+                    checked = settings.bottomEnabled,
+                    enabled = isActive,
+                    onCheckedChange = { settings.bottomEnabled = it },
+                )
             }
         }
     }

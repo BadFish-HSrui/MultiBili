@@ -62,6 +62,26 @@ class LiveDanmakuSettings(settingsKSafe: KSafePlain) {
             currentDisplayAreaRatio = next
         }
 
+    private var storedTopBottomScrollEnabled by settingsKSafe(false, key = "bolo_live_danmaku_top_bottom_scroll_enabled")
+    private var currentTopBottomScrollEnabled by mutableStateOf(storedTopBottomScrollEnabled)
+    var topBottomScrollEnabled: Boolean
+        get() = currentTopBottomScrollEnabled
+        set(value) {
+            if (currentTopBottomScrollEnabled == value) return
+            storedTopBottomScrollEnabled = value
+            currentTopBottomScrollEnabled = value
+        }
+
+    private var storedExtraLineSpacingEnabled by settingsKSafe(false, key = "bolo_live_danmaku_extra_line_spacing_enabled")
+    private var currentExtraLineSpacingEnabled by mutableStateOf(storedExtraLineSpacingEnabled)
+    var extraLineSpacingEnabled: Boolean
+        get() = currentExtraLineSpacingEnabled
+        set(value) {
+            if (currentExtraLineSpacingEnabled == value) return
+            storedExtraLineSpacingEnabled = value
+            currentExtraLineSpacingEnabled = value
+        }
+
     private var storedScrollEnabled by settingsKSafe(true, key = "bolo_live_danmaku_scroll_enabled")
     private var currentScrollEnabled by mutableStateOf(storedScrollEnabled)
     var scrollEnabled: Boolean

@@ -109,17 +109,19 @@ fun LiveDanmakuLayer(controller: LiveDanmakuController, modifier: Modifier = Mod
     val running = controller.isActive
     val area = settings.displayAreaRatio
     val speed = settings.speed
+    val verticalGap = if (settings.extraLineSpacingEnabled) 4 * density.density else 0f
+    val topBottomScroll = settings.topBottomScrollEnabled
     val scroll = settings.scrollEnabled
     val top = settings.topEnabled
     val bottom = settings.bottomEnabled
-    LaunchedEffect(controller, running, size, cache, area, speed, scroll, top, bottom) {
+    LaunchedEffect(controller, running, size, cache, area, speed, verticalGap, topBottomScroll, scroll, top, bottom) {
         if (!running) { entries = emptyList(); return@LaunchedEffect }
         while (isActive) {
             withFrameNanos {
                 entries = controller.engine.frame(
                     clock.elapsedNow().inWholeNanoseconds / 1_000_000.0,
                     size.width.toFloat(), size.height.toFloat(), density.density,
-                    scale * density.fontScale, area, speed, settings::allows,
+                    scale * density.fontScale, area, speed, verticalGap, topBottomScroll, settings::allows,
                 ) { data ->
                     val result = layout(data).text
                     (result.size.width + 4 * density.density) to (result.size.height + 4 * density.density)

@@ -27,6 +27,8 @@ internal class LiveDanmakuEngine {
     private var previousArea = 0f
     private var previousDensity = 0f
     private var previousSpeed = 0f
+    private var previousVerticalGap = 0f
+    private var previousTopBottomScroll = false
     val pendingCount: Int get() = pending.size
     val activeCount: Int get() = active.size
     var admittedCount = 0L
@@ -56,6 +58,8 @@ internal class LiveDanmakuEngine {
         scale: Float,
         area: Float,
         speedFactor: Float,
+        verticalGap: Float,
+        topBottomScrollEnabled: Boolean,
         allows: (LiveDanmakuMode?) -> Boolean,
         measure: (LiveDanmakuData) -> Pair<Float, Float>,
     ): List<Entry> {
@@ -67,7 +71,8 @@ internal class LiveDanmakuEngine {
         }
         val elapsed = (now - lastTime).coerceAtLeast(0.0)
         val reflow = width != previousWidth || height != previousHeight || scale != previousScale ||
-            area != previousArea || density != previousDensity
+            area != previousArea || density != previousDensity || verticalGap != previousVerticalGap ||
+            topBottomScrollEnabled != previousTopBottomScroll
         val survivors = active.toList()
         active.clear()
         for (entry in survivors) {
@@ -82,7 +87,7 @@ internal class LiveDanmakuEngine {
                 entry.x = if (entry.data.mode == LiveDanmakuMode.Scroll) progress * (width + entry.width) - entry.width
                     else (width - entry.width) / 2
                 if (entry.data.mode == LiveDanmakuMode.Scroll) entry.speed = ((entry.x + entry.width) * 1_000 / remaining).toFloat()
-                if (!place(entry, height, area, density * 4)) continue
+                if (!place(entry, height, area, density * 4, verticalGap, topBottomScrollEnabled)) continue
             } else if (entry.data.mode == LiveDanmakuMode.Scroll && speedFactor != previousSpeed) {
                 val nextSpeed = scrollSpeed(width / density, entry.width / density) * density * speedFactor
                 if (entry.speed != nextSpeed) {
@@ -104,7 +109,7 @@ internal class LiveDanmakuEngine {
                 entry.speed = scrollSpeed(width / density, entry.width / density) * density * speedFactor
                 entry.expires = now + (width + entry.width) / entry.speed * 1_000
             }
-            if (place(entry, height, area, density * 4)) {
+            if (place(entry, height, area, density * 4, verticalGap, topBottomScrollEnabled)) {
                 active.add(entry)
                 admittedCount++
             }
@@ -116,34 +121,46 @@ internal class LiveDanmakuEngine {
         previousArea = area
         previousDensity = density
         previousSpeed = speedFactor
+        previousVerticalGap = verticalGap
+        previousTopBottomScroll = topBottomScrollEnabled
         return active.toList()
     }
 
-    private fun place(entry: Entry, height: Float, area: Float, gap: Float): Boolean {
+    private fun place(
+        entry: Entry,
+        height: Float,
+        area: Float,
+        horizontalGap: Float,
+        verticalGap: Float,
+        topBottomScrollEnabled: Boolean,
+    ): Boolean {
         if (!entry.width.isFinite() || !entry.height.isFinite() || entry.width <= 0 || entry.height <= 0) return false
         val scrolling = entry.data.mode == LiveDanmakuMode.Scroll
-        val bottom = entry.data.mode == LiveDanmakuMode.Bottom
         val areaHeight = height * if (scrolling) area else min(area, .5f)
-        val lower = if (bottom) height - areaHeight else 0f
-        val upper = if (bottom) height else areaHeight
         val peers = active.filter { (it.data.mode == LiveDanmakuMode.Scroll) == scrolling }
-        val lanes = mutableListOf(if (bottom) height - entry.height else 0f)
-        peers.forEach { lanes.add(if (bottom) it.y - entry.height else it.y + it.height) }
-        if (bottom) lanes.sortDescending() else lanes.sort()
-        for (y in lanes) {
-            if (y < lower || y + entry.height > upper) continue
-            val collision = peers.any { other ->
-                if (y >= other.y + other.height || y + entry.height <= other.y) false
-                else if (!scrolling) true
-                else {
-                    val left = if (entry.x < other.x) entry else other
-                    val right = if (left === entry) other else entry
-                    val clearance = right.x - left.x - left.width - gap
-                    val lifetime = min((left.x + left.width) / left.speed, (right.x + right.width) / right.speed)
-                    clearance < 0 || right.speed > left.speed && clearance < (right.speed - left.speed) * lifetime
+        val regions = if (scrolling && topBottomScrollEnabled && area < .5f) listOf(false, true)
+            else listOf(entry.data.mode == LiveDanmakuMode.Bottom)
+        for (bottom in regions) {
+            val lower = if (bottom) height - areaHeight else 0f
+            val upper = if (bottom) height else areaHeight
+            val lanes = mutableListOf(if (bottom) height - entry.height else 0f)
+            peers.forEach { lanes.add(if (bottom) it.y - verticalGap - entry.height else it.y + it.height + verticalGap) }
+            if (bottom) lanes.sortDescending() else lanes.sort()
+            for (y in lanes) {
+                if (y < lower || y + entry.height > upper) continue
+                val collision = peers.any { other ->
+                    if (y >= other.y + other.height + verticalGap || y + entry.height + verticalGap <= other.y) false
+                    else if (!scrolling) true
+                    else {
+                        val left = if (entry.x < other.x) entry else other
+                        val right = if (left === entry) other else entry
+                        val clearance = right.x - left.x - left.width - horizontalGap
+                        val lifetime = min((left.x + left.width) / left.speed, (right.x + right.width) / right.speed)
+                        clearance < 0 || right.speed > left.speed && clearance < (right.speed - left.speed) * lifetime
+                    }
                 }
+                if (!collision) { entry.y = y; return true }
             }
-            if (!collision) { entry.y = y; return true }
         }
         return false
     }
