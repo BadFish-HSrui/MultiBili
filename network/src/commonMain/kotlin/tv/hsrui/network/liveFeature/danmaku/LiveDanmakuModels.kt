@@ -2,7 +2,6 @@ package tv.hsrui.network.liveFeature.danmaku
 
 data class LiveDanmakuSendConfigData(
     val maxLength: Int,
-    val user: LiveDanmakuUserData = LiveDanmakuUserData(),
     val bubbleColorArgb: Long? = null,
     val bubbleId: Long? = null,
 )

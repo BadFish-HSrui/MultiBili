@@ -11,7 +11,7 @@ object LiveApiUrls {
     const val PLAY_INFO = "xlive/web-room/v2/index/getRoomPlayInfo" //直播播放信息与可选画质
     const val MESSAGE_INFO = "xlive/web-room/v1/index/getDanmuInfo" //直播信息流节点与鉴权
     const val DANMAKU_HISTORY = "xlive/web-room/v1/dM/gethistory" //直播间最近历史弹幕
-    const val DANMAKU_SEND_CONFIG = "xlive/web-room/v1/index/getInfoByUser" //当前用户的直播弹幕发送配置
+    const val DANMAKU_SEND_CONFIG = "xlive/app-room/v1/index/GetUserExtraInfo" //当前用户的直播弹幕发送配置
     const val DANMAKU_SEND = "msg/send" //发送直播弹幕
     const val DANMAKU_MEDAL_RESOURCES = "xlive/open-interface/v1/query_resource" //直播粉丝勋章图标资源
     const val DANMAKU_BUBBLE_RESOURCES = "xlive/general-interface/v1/content/get" //直播弹幕气泡背景资源

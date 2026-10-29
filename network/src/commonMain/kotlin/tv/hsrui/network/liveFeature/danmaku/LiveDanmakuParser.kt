@@ -17,24 +17,11 @@ import kotlin.math.roundToLong
 import kotlin.time.Clock
 
 internal fun parseLiveDanmakuSendConfig(data: JsonObject?): LiveDanmakuSendConfigData {
-    val info = data?.get("info").asObject()
-    val userInfo = data?.get("uinfo").asObject()
-    val user = userInfo.toLiveDanmakuUser()
-    val bubble = userInfo?.get("bubble_box").asObject()
-    val property = data?.get("property").asObject()
     return LiveDanmakuSendConfigData(
-        maxLength = property?.get("danmu").asObject()?.get("length")
+        maxLength = data?.get("danmu").asObject()?.get("length")
             .nonNegativeInt()?.takeIf { it > 0 } ?: 20,
-        user = user.copy(
-            uid = user.uid ?: info?.get("uid").positiveLong(),
-            isRoomAdmin = data?.get("badge").asObject()?.get("is_room_admin").flag(),
-            guardLevel = data?.get("privilege").asObject()?.get("privilege_type").guardLevel()
-                ?: user.guardLevel,
-            wealthLevel = user.wealthLevel ?: data?.get("wealth").asObject()?.get("level").nonNegativeInt(),
-            userLevel = data?.get("user_level").asObject()?.get("level").nonNegativeInt(),
-        ),
-        bubbleColorArgb = bubble?.get("color").bubbleColor() ?: property?.get("bubble_color").bubbleColor(),
-        bubbleId = bubble?.get("id").nonNegativeLong() ?: property?.get("bubble_id").nonNegativeLong(),
+        bubbleColorArgb = data?.get("bubble_color").bubbleColor(),
+        bubbleId = data?.get("bubble_id").nonNegativeLong(),
     )
 }
 

@@ -75,10 +75,7 @@ suspend fun fetchLiveDanmakuBubbleResources(): Map<Long, LiveDanmakuBubbleData> 
 suspend fun fetchLiveDanmakuSendConfig(roomId: Long): LiveDanmakuSendConfigData = withTimeout(15_000) {
     require(roomId > 0) { "直播间 ID 无效" }
     val response = ApiClient.httpClient.get(LiveApiUrls.BASE + LiveApiUrls.DANMAKU_SEND_CONFIG) {
-        buildWithWbi {
-            parameter("room_id", roomId)
-            parameter("web_location", "444.8")
-        }
+        parameter("room_id", roomId)
         header("Referer", "https://live.bilibili.com/$roomId")
     }
     check(response.status.isSuccess()) { "发送配置请求失败：HTTP ${response.status.value}" }
