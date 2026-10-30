@@ -15,10 +15,10 @@ struct bolo_mpv {
     int64_t generation, expected_entry, playing_entry, seek_request;
     int64_t seek_reply;
     int64_t seek_started_ns;
-    double seek_target, live_origin;
+    double seek_target, live_origin, live_demux_origin;
     int report_eof;
     int loaded, needs_audio;
-    int live;
+    int live, live_hls;
     atomic_int video_enabled;
     int video_requested;
     atomic_int video_frame_ready;
@@ -148,7 +148,7 @@ static int flag(mpv_node *node, const char *key) {
     return v && v->format == MPV_FORMAT_FLAG && v->u.flag;
 }
 
-static int load_file(bolo_mpv *p, const char *video, const char *audio, const char *start, int live, int64_t generation, const char *user_agent, const char *referrer, int buffering_enabled, double live_target, int64_t live_request) {
+static int load_file(bolo_mpv *p, const char *video, const char *audio, const char *start, int live, int64_t generation, const char *user_agent, const char *referrer, int prefetch_enabled, double live_target, int64_t live_request) {
     int hls = live && strncmp(video, "http://127.0.0.1:", 17) == 0;
     const char *format = hls ? "hls" : live ? "flv" : "";
     // 每次打开都显式配置，避免同一个核心从直播切回点播后残留直播选项。
@@ -158,11 +158,11 @@ static int load_file(bolo_mpv *p, const char *video, const char *audio, const ch
         {"options/rebase-start-time", live && !hls ? "no" : "yes"},
         {"options/demuxer-max-back-bytes", live ? "0" : "4194304"},
         {"options/cache-on-disk", "no"},
-        {"options/cache-secs", live ? (buffering_enabled ? "5" : "0") : "3"},
-        {"options/demuxer-readahead-secs", live ? (buffering_enabled ? "5" : "0") : "3"},
-        {"options/cache-pause", !live || buffering_enabled ? "yes" : "no"},
-        {"options/cache-pause-initial", live && buffering_enabled ? "yes" : "no"},
-        {"options/cache-pause-wait", live ? (buffering_enabled ? "3" : "0") : "1"},
+        {"options/cache-secs", live ? (prefetch_enabled ? "5" : "0") : "3"},
+        {"options/demuxer-readahead-secs", live ? (prefetch_enabled ? "5" : "0") : "3"},
+        {"options/cache-pause", live ? "no" : "yes"},
+        {"options/cache-pause-initial", "no"},
+        {"options/cache-pause-wait", live ? "0" : "1"},
         {"options/network-timeout", live ? "10" : "60"},
     };
     for (unsigned i = 0; i < sizeof(options) / sizeof(options[0]); ++i) {
@@ -199,7 +199,9 @@ static int load_file(bolo_mpv *p, const char *video, const char *audio, const ch
     p->seek_reply = 0;
     p->report_eof = 0;
     p->live = live;
+    p->live_hls = hls;
     p->live_origin = 0;
+    p->live_demux_origin = 0;
     if (hls) { p->seek_request = live_request; p->seek_target = live_target; }
     int paused = 1;
     int r = mpv_set_property(p->player, "pause", MPV_FORMAT_FLAG, &paused);
@@ -239,7 +241,7 @@ int bolo_mpv_load(bolo_mpv *p, const char *video, const char *audio, double star
     return load_file(p, video, audio, start_text, 0, generation, user_agent, referrer, 1, -1, 0);
 }
 
-int bolo_mpv_load_live(bolo_mpv *p, const char *url, int64_t generation, const char *user_agent, const char *referrer, int buffering_enabled, double target_seconds, int64_t request) {
+int bolo_mpv_load_live(bolo_mpv *p, const char *url, int64_t generation, const char *user_agent, const char *referrer, int prefetch_enabled, double target_seconds, int64_t request) {
     if (!p || !url || !isfinite(target_seconds)) return MPV_ERROR_INVALID_PARAMETER;
     int hls = strncmp(url, "http://127.0.0.1:", 17) == 0;
     if (hls) {
@@ -250,7 +252,7 @@ int bolo_mpv_load_live(bolo_mpv *p, const char *url, int64_t generation, const c
     } else if (strncmp(url, "bolo-stream://", 14) || target_seconds != -1 || request != 0) {
         return MPV_ERROR_INVALID_PARAMETER;
     }
-    return load_file(p, url, NULL, "none", 1, generation, user_agent, referrer, buffering_enabled, target_seconds, request);
+    return load_file(p, url, NULL, "none", 1, generation, user_agent, referrer, prefetch_enabled, target_seconds, request);
 }
 
 int bolo_mpv_pause(bolo_mpv *p, int paused) {
@@ -268,6 +270,64 @@ double bolo_mpv_buffered_duration(bolo_mpv *p) {
     if (mpv_get_property(p->player, "demuxer-cache-duration", MPV_FORMAT_DOUBLE, &seconds) < 0 ||
         !isfinite(seconds) || seconds < 0) return -1;
     return seconds;
+}
+static double node_number(mpv_node *node, const char *key) {
+    mpv_node *value = field(node, key);
+    if (value && value->format == MPV_FORMAT_DOUBLE) return value->u.double_;
+    if (value && value->format == MPV_FORMAT_INT64) return (double)value->u.int64;
+    return NAN;
+}
+static int64_t milliseconds(double seconds) {
+    double value = seconds * 1000.0;
+    if (!isfinite(value) || value <= (double)INT64_MIN || value >= (double)INT64_MAX) return INT64_MIN;
+    return (int64_t)llround(value);
+}
+int bolo_mpv_read_buffer_snapshot(bolo_mpv *p, bolo_mpv_buffer_snapshot *out) {
+    if (!p || !out || !p->live || !p->loaded || p->expected_entry != p->playing_entry) return 0;
+    mpv_node tracks = {0}, cache = {0};
+    int result = 0;
+    if (mpv_get_property(p->player, "track-list", MPV_FORMAT_NODE, &tracks) < 0 ||
+        tracks.format != MPV_FORMAT_NODE_ARRAY ||
+        mpv_get_property(p->player, "demuxer-cache-state", MPV_FORMAT_NODE, &cache) < 0 ||
+        cache.format != MPV_FORMAT_NODE_MAP) goto done;
+    *out = (bolo_mpv_buffer_snapshot){.generation = p->generation,
+        .position_ms = INT64_MIN, .buffered_end_ms = INT64_MIN, .buffered_duration_ms = INT64_MIN,
+        .underrun = flag(&cache, "underrun"), .idle = flag(&cache, "idle"), .demux_eof = flag(&cache, "eof")};
+    double position;
+    if (mpv_get_property(p->player, "time-pos", MPV_FORMAT_DOUBLE, &position) >= 0)
+        out->position_ms = milliseconds(position + p->live_origin);
+    double duration = node_number(&cache, "cache-duration");
+    if (duration >= 0) out->buffered_duration_ms = milliseconds(duration);
+    int required = 0, received = 0;
+    for (int i = 0; i < tracks.u.list->num; ++i) {
+        mpv_node *track = &tracks.u.list->values[i];
+        mpv_node *type = field(track, "type");
+        if (!flag(track, "selected") || !type || type->format != MPV_FORMAT_STRING) continue;
+        if (!strcmp(type->u.string, "audio")) required |= 1;
+        if (!strcmp(type->u.string, "video")) required |= 2;
+    }
+    double end = INFINITY;
+    mpv_node *streams = field(&cache, "ts-per-stream");
+    if (streams && streams->format == MPV_FORMAT_NODE_ARRAY) {
+        for (int i = 0; i < streams->u.list->num; ++i) {
+            mpv_node *stream = &streams->u.list->values[i];
+            mpv_node *type = field(stream, "type");
+            if (!type || type->format != MPV_FORMAT_STRING) continue;
+            int track = !strcmp(type->u.string, "audio") ? 1 : !strcmp(type->u.string, "video") ? 2 : 0;
+            double tail = node_number(stream, "cache-end");
+            if (!(required & track) || !isfinite(tail)) continue;
+            end = fmin(end, tail);
+            received |= track;
+        }
+    }
+    // 分轨时间尚未重基；保留实际解封装原点与 TS 回绕后的直播原点之差。
+    if (required && received == required)
+        out->buffered_end_ms = milliseconds(end + (p->live_hls ? p->live_origin - p->live_demux_origin : 0));
+    result = 1;
+done:
+    mpv_free_node_contents(&cache);
+    mpv_free_node_contents(&tracks);
+    return result;
 }
 int bolo_mpv_video_enabled(bolo_mpv *p, int enabled) {
     p->video_requested = enabled;
@@ -483,6 +543,7 @@ int bolo_mpv_poll(bolo_mpv *p, bolo_mpv_event *out) {
                 if (result >= 0 && isfinite(origin)) {
                     // TS 的 33 位时间戳可能已回绕；映射到缓存目标所在的同一周期。
                     const double wrap = 8589934592.0 / 90000.0;
+                    p->live_demux_origin = origin;
                     p->live_origin = origin + round((p->seek_target - origin) / wrap) * wrap;
                     double target = fmax(0, p->seek_target - p->live_origin);
                     char start[64];

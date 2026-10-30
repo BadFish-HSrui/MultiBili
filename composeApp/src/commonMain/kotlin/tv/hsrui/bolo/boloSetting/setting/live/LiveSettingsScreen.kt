@@ -250,21 +250,50 @@ fun LiveSettingsScreen(modifier: Modifier = Modifier) = LookaheadScope {
                                 Switch(checked = settings.optimizePlaybackSourceEnabled, onCheckedChange = null)
                             }
                             HorizontalDivider()
+                            val savedBufferDuration = settings.playbackBufferDurationSeconds
+                            var previewBufferDuration by remember(savedBufferDuration) { mutableStateOf<Int?>(null) }
+                            val displayedBufferDuration = previewBufferDuration ?: savedBufferDuration
+                            val bufferDurationText = if (displayedBufferDuration == 0) "关闭" else "$displayedBufferDuration 秒"
                             Row(
-                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
-                                    value = settings.playbackBufferDisabled,
-                                    role = Role.Switch,
-                                    onValueChange = { settings.playbackBufferDisabled = it },
-                                ).padding(horizontal = 16.dp),
+                                modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("关闭播放缓冲", style = MaterialTheme.typography.bodyLarge)
+                                Text("直播缓冲时长", style = MaterialTheme.typography.bodyLarge, maxLines = 1)
                                 IconButton(
-                                    onClick = { infoMessage = "默认使用和官方类似的加载缓冲，禁用后会减少3～5秒播放延迟，但可能因网络波动频繁卡顿" },
+                                    onClick = { infoMessage = "用于规避网络波动的缓冲时长，低于3时开启动态音量均衡可能导致加载时间变长" },
                                     modifier = Modifier.padding(start = 4.dp).size(16.dp),
-                                ) { Icon(Icons.Outlined.Info, contentDescription = "关闭播放缓冲说明", modifier = Modifier.size(16.dp)) }
+                                ) { Icon(Icons.Outlined.Info, contentDescription = "直播缓冲时长说明", modifier = Modifier.size(16.dp)) }
                                 Spacer(Modifier.weight(1f))
-                                Switch(checked = settings.playbackBufferDisabled, onCheckedChange = null)
+                                Row(
+                                    modifier = Modifier.widthIn(max = 304.dp).fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(bufferDurationText, modifier = Modifier.width(64.dp), style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.End, maxLines = 1)
+                                    ShowSlider(
+                                        value = displayedBufferDuration.toFloat(),
+                                        onValueChange = { previewBufferDuration = it.roundToInt().coerceIn(0, 5) },
+                                        onValueChangeFinished = {
+                                            previewBufferDuration?.let { settings.playbackBufferDurationSeconds = it }
+                                            previewBufferDuration = null
+                                        },
+                                        valueRange = 0f..5f,
+                                        steps = 4,
+                                        centered = false,
+                                        showStops = true,
+                                        showTicks = true,
+                                        modifier = Modifier.weight(1f).widthIn(max = 200.dp).semantics {
+                                            contentDescription = "直播缓冲时长"
+                                            stateDescription = bufferDurationText
+                                        },
+                                    )
+                                    IconButton(
+                                        onClick = { previewBufferDuration = null; settings.playbackBufferDurationSeconds = 3 },
+                                        enabled = displayedBufferDuration != 3,
+                                        modifier = Modifier.size(24.dp),
+                                    ) { Icon(Icons.Rounded.RestartAlt, contentDescription = "重置直播缓冲时长") }
+                                }
                             }
                             HorizontalDivider()
                             Row(

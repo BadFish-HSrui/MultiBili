@@ -32,6 +32,7 @@ import tv.hsrui.bolo.livePlayer.session.LivePlaybackTimeline
 import tv.hsrui.bolo.livePlayer.session.LiveStreamSession
 import tv.hsrui.bolo.livePlayer.session.latestPlaybackPositionMs
 import tv.hsrui.bolo.player.base.BoloMpvBackend
+import tv.hsrui.bolo.player.base.BoloMpvBufferSnapshot
 import tv.hsrui.bolo.player.base.BoloMpvEvent
 import tv.hsrui.bolo.player.base.BoloMpvStreamSource
 import tv.hsrui.bolo.player.base.BoloPlaybackClock
@@ -57,8 +58,7 @@ class LivePlayerController(
     // 播放器生命周期内固定配置，切流和内部重建不重新读取设置。
     private val configuredLocalReplayEnabled = settings.localReplayEnabled
     private val optimizePlaybackSourceEnabled = settings.optimizePlaybackSourceEnabled
-    private val playbackBufferDisabled = settings.playbackBufferDisabled
-    private val liveBufferDurationMs = if (playbackBufferDisabled) 0L else 4_000L
+    private val liveBufferDurationMs = settings.playbackBufferDurationSeconds.toLong() * 1_000
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutableState = MutableStateFlow(LivePlayerState())
     val state: StateFlow<LivePlayerState> = mutableState.asStateFlow()
@@ -100,6 +100,16 @@ class LivePlayerController(
     private var seekingLatest = false
     private var seekConfirmationJob: Job? = null
     private var ready = false
+    private var mediaReady = false
+    private var outputPaused = true
+    private var bufferWaiting = false
+    private var naturalStall = false
+    private var lowBufferSamples = 0
+    private var lastBufferPositionMs: Long? = null
+    private var lastBufferProgress: TimeMark? = null
+    private var underrunStarted: TimeMark? = null
+    private var waitingForSupply = false
+    private var waitingSupplyEndMs: Long? = null
     private var foreground = true
     private val outputVisible = MutableStateFlow(true)
     private var collectionPaused = false
@@ -142,7 +152,7 @@ class LivePlayerController(
                 else playbackTimeline.tick()
                 sampleBuffer()
                 sampleInfo()
-                delay(250)
+                delay(100)
             }
         }
     }
@@ -212,6 +222,7 @@ class LivePlayerController(
         previousCommands.forEach { it.cancel() }
         intentJob = null
         ready = false
+        resetBufferState(waiting = liveBufferDurationMs > 0)
         loadedAt = null
         sourceFrameRate = 0f
         mutableFrameRate.value = 0f
@@ -353,15 +364,16 @@ class LivePlayerController(
                         check(current.volume(gain) >= 0) { "音量配置失败" }
                         check(current.speed(1.0) >= 0) { "直播播放速度配置失败" }
                         clock.begin(expected, 1.0)
+                        clock.setBlocked(true)
                         if (targetSeconds != null) clock.beginSeek()
-                        current.loadLive(source, uri, expected, bufferingEnabled = !playbackBufferDisabled,
+                        current.loadLive(source, uri, expected, prefetchEnabled = liveBufferDurationMs > 0,
                             targetSeconds = targetSeconds, request = request)
                     }
                     if (!isCurrent(expected, current)) return@withTimeout
                     if (result < 0) retrySource("直播流打开失败（$result）")
                     else {
                         startEvents(current, clock, playbackObserver)
-                        // 确认定位后取消此任务；准备与定位共用外层加载期限。
+                        // 首帧、定位和首次补缓冲共用加载期限。
                         awaitCancellation()
                     }
                 }
@@ -395,9 +407,10 @@ class LivePlayerController(
             input.confirm()
             if (!isCurrent(expected, engine) || activeSeekRequest != request || state.value.isPlaybackSuspended) return@launchCommand
             playbackTimeline.confirmSeek(position, seekingLatest)
-            loadJob?.cancel()
-            loadJob = null
-            mutableState.value = state.value.copy(pendingSeekPositionMs = null, isBuffering = false, isPlaying = false)
+            mediaReady = true
+            mutableState.value = state.value.copy(pendingSeekPositionMs = null)
+            updatePlaybackState()
+            completeLoading()
             applyPlayIntent()
         }
     }
@@ -504,20 +517,118 @@ class LivePlayerController(
         )
     }
 
+    private fun resetBufferState(waiting: Boolean = false) {
+        mediaReady = false
+        outputPaused = true
+        bufferWaiting = waiting
+        naturalStall = false
+        lowBufferSamples = 0
+        lastBufferPositionMs = null
+        lastBufferProgress = null
+        underrunStarted = null
+        waitingForSupply = false
+        waitingSupplyEndMs = null
+    }
+
+    private fun updatePlaybackState() {
+        val value = state.value
+        val buffering = value.isSeeking || value.playWhenReady &&
+            (!ready || !mediaReady || bufferWaiting || naturalStall)
+        mutableState.value = value.copy(
+            isBuffering = buffering && !value.isPlaybackSuspended,
+            isPlaying = value.playWhenReady && ready && mediaReady && !outputPaused &&
+                !buffering && !value.isPlaybackSuspended && !value.isEnded,
+        )
+    }
+
+    private fun completeLoading() {
+        if (ready && mediaReady && !state.value.isSeeking && (!bufferWaiting || !state.value.playWhenReady)) {
+            loadJob?.cancel()
+            loadJob = null
+        }
+    }
+
     private suspend fun sampleBuffer() {
         val streams = streamSession ?: return
         val engine = mutableBackend.value
         val expected = generation
-        val nativeAhead = if (ready && canRunPlayback && engine != null) {
-            withContext(boloMpvDispatcher) { if (isCurrent(expected, engine)) engine.bufferedDurationMs() else null }
+        val snapshot = if (ready && canRunPlayback && engine != null && !state.value.isPlaybackSuspended) {
+            withContext(boloMpvDispatcher) { if (isCurrent(expected, engine)) engine.bufferSnapshot() else null }
         } else null
         if (!isCurrent(expected, engine) || streamSession !== streams) return
-        // 已进入 demux 的时间与待交付分片可能重叠，只按连续区间终点计算。
-        val position = timeline.value.positionMs
-        val range = if (position != null && nativeAhead != null) streams.cache.snapshot.value.ranges.firstOrNull {
-            it.startMs <= position + nativeAhead + 250 && it.endMs >= position
-        } else null
-        val ahead = if (position != null && range != null) maxOf(nativeAhead ?: 0, range.endMs - position) else nativeAhead
+        if (snapshot != null && snapshot.generation != expected) return
+        if (snapshot == null) {
+            streams.updateBuffer(null, !ready || state.value.isBuffering || !state.value.playWhenReady)
+            return
+        }
+        updateBuffer(snapshot, streams, engine ?: return)
+    }
+
+    private fun updateBuffer(snapshot: BoloMpvBufferSnapshot, streams: LiveStreamSession, engine: BoloMpvBackend) {
+        if (!isCurrent(snapshot.generation, engine) || streamSession !== streams) return
+        val position = snapshot.positionMs
+        val nativeEnd = snapshot.bufferedEndMs
+        var end = nativeEnd
+        val cached = streams.cache.snapshot.value
+        if (position != null && nativeEnd != null && nativeEnd >= position && !snapshot.underrun &&
+            streams.isHls && cached.epoch == readerEpoch) {
+            // 只合并与播放位置或原生已读范围相接的完整分片，不累加重叠或跨越缺口。
+            // 必需轨缺包或时间未知时以原生供数为准，视频分片索引不能证明音频已就绪。
+            for (range in cached.ranges) {
+                if (range.endMs < position) continue
+                if (range.startMs > maxOf(position, end ?: position)) break
+                end = maxOf(end ?: position, range.endMs)
+            }
+        }
+        val ahead = if (position != null && end != null) (end - position).coerceAtLeast(0) else null
+        val previousWaiting = bufferWaiting
+        val previousStall = naturalStall
+        val progressed = position != null && lastBufferPositionMs?.let { position > it } == true
+        if (position == null || lastBufferPositionMs == null || progressed || lastBufferProgress == null)
+            lastBufferProgress = TimeSource.Monotonic.markNow()
+        lastBufferPositionMs = position
+        val observing = state.value.playWhenReady && mediaReady && !state.value.isSeeking &&
+            !state.value.isPlaybackSuspended
+        if (observing && !bufferWaiting && snapshot.underrun) {
+            if (underrunStarted == null) underrunStarted = TimeSource.Monotonic.markNow()
+        } else underrunStarted = null
+        // 缺包不等于停播：解码器及音频滤镜仍可能有输出。低帧率至少观察两个帧周期。
+        val stallWindowMs = maxOf(500L, sourceFrameRate.takeIf { it > 0 }?.let {
+            kotlin.math.ceil(2_000.0 / it).toLong()
+        } ?: 0L)
+        val stalled = observing && !bufferWaiting && position != null && snapshot.underrun &&
+            underrunStarted?.elapsedNow()?.inWholeMilliseconds?.let { it >= stallWindowMs } == true &&
+            lastBufferProgress?.elapsedNow()?.inWholeMilliseconds?.let { it >= stallWindowMs } == true
+        if (!observing || progressed || position == null) naturalStall = false
+        if (stalled) naturalStall = true
+        val inputEnded = snapshot.demuxEof || streams.isHls && cached.ended
+        if (observing && liveBufferDurationMs > 0) {
+            if (bufferWaiting) {
+                val supplyResumed = !waitingForSupply || !snapshot.underrun ||
+                    nativeEnd != null && waitingSupplyEndMs?.let { nativeEnd > it } == true
+                val capacityLimited = snapshot.idle && !snapshot.underrun && ahead != null && ahead > 0
+                // 缺失时间戳时降级为必要读取，不把未知当成零，也不等待无法测量的秒数。
+                if (ahead == null || inputEnded || (ahead >= liveBufferDurationMs || capacityLimited) && supplyResumed) {
+                    bufferWaiting = false
+                    waitingForSupply = false
+                    waitingSupplyEndMs = null
+                    lowBufferSamples = 0
+                    underrunStarted = null
+                    lastBufferProgress = TimeSource.Monotonic.markNow()
+                    if (!snapshot.underrun) naturalStall = false
+                }
+            } else {
+                lowBufferSamples = if (!inputEnded && ahead != null && ahead <= 200) lowBufferSamples + 1 else 0
+                if (!inputEnded && (lowBufferSamples >= 2 || stalled && ahead != null)) {
+                    bufferWaiting = true
+                    waitingForSupply = stalled
+                    waitingSupplyEndMs = nativeEnd
+                }
+            }
+        } else lowBufferSamples = 0
+        updatePlaybackState()
+        completeLoading()
+        if (bufferWaiting != previousWaiting || naturalStall != previousStall) applyPlayIntent()
         streams.updateBuffer(ahead, !ready || state.value.isBuffering || !state.value.playWhenReady)
     }
 
@@ -591,25 +702,25 @@ class LivePlayerController(
             BoloMpvEvent.Loaded -> {
                 ready = true
                 loadedAt = TimeSource.Monotonic.markNow()
-                if (!state.value.isSeeking) { loadJob?.cancel(); loadJob = null }
-                mutableState.value = state.value.copy(isBuffering = state.value.isSeeking || state.value.playWhenReady)
+                updatePlaybackState()
                 applyPlayIntent()
             }
             BoloMpvEvent.Paused -> if (ready) {
-                mutableState.value = state.value.copy(isPlaying = event.value == 0.0 && state.value.playWhenReady &&
-                    !state.value.isSeeking && !state.value.isBuffering && !state.value.isPlaybackSuspended)
+                outputPaused = event.value != 0.0
+                updatePlaybackState()
             }
             BoloMpvEvent.Buffering -> if (ready) {
-                val buffering = state.value.isSeeking || event.value != 0.0 && state.value.playWhenReady
-                mutableState.value = state.value.copy(isBuffering = buffering,
-                    isPlaying = state.value.playWhenReady && !buffering && !state.value.isPlaybackSuspended)
+                // 直播恢复由 Kotlin 决定，原生通知不得覆盖独立等待状态。
+                updatePlaybackState()
             }
             BoloMpvEvent.Restart -> if (ready) {
                 if (state.value.isSeeking) {
                     mediaPosition(event.value)?.let { confirmSeek(it, event.request) }
-                } else if (state.value.playWhenReady) {
-                    mutableState.value = state.value.copy(isBuffering = false,
-                        isPlaying = !state.value.isPlaybackSuspended)
+                } else {
+                    mediaReady = true
+                    updatePlaybackState()
+                    completeLoading()
+                    applyPlayIntent()
                 }
             }
             BoloMpvEvent.Eof -> if (canRunPlayback && !state.value.isSeeking && event.value != 0.0) {
@@ -706,6 +817,7 @@ class LivePlayerController(
         loadJob?.cancel()
         loadJob = null
         ready = false
+        resetBufferState()
         seekConfirmationJob?.cancel()
         seekConfirmationJob = null
         activeSeekRequest = 0
@@ -720,7 +832,12 @@ class LivePlayerController(
         if (disposed) return
         playIntentRevision++
         playbackTimeline.setPaused(true)
+        naturalStall = false
+        lowBufferSamples = 0
+        lastBufferProgress = null
+        underrunStarted = null
         mutableState.value = state.value.copy(playWhenReady = false, isPlaying = false, isBuffering = state.value.isSeeking)
+        completeLoading()
         updateFrameRate()
         if (!foreground) suspendBackgroundPlayback()
         else if (localReplayEnabled) applyPlayIntent() else closeEngine(suspended = true)
@@ -729,21 +846,24 @@ class LivePlayerController(
     private fun applyPlayIntent() {
         intentJob?.cancel()
         val engine = mutableBackend.value ?: return
+        updatePlaybackState()
         val expected = generation
         val intent = playIntentRevision
         val clock = playbackClock
         intentJob = launchCommand {
-            val playing = state.value.playWhenReady && ready && !state.value.isSeeking && !state.value.isPlaybackSuspended
+            val activeIntent = state.value.playWhenReady && !state.value.isPlaybackSuspended
+            val playing = activeIntent && ready && mediaReady && !state.value.isSeeking && !bufferWaiting
             try {
                 if (!isCurrent(expected, engine) || playIntentRevision != intent) return@launchCommand
-                if (!playing) withContext(boloMpvDispatcher) {
+                withContext(boloMpvDispatcher) {
                     if (isCurrent(expected, engine) && playIntentRevision == intent) {
-                        if (engine.pause(true) >= 0) clock?.setPaused(true)
+                        clock?.setBlocked(!mediaReady || bufferWaiting || naturalStall)
+                        if (!playing && engine.pause(true) >= 0) clock?.setPaused(true)
                     }
                 }
                 if (playbackClock === clock) playbackObservation?.let { playbackObserver?.invoke(it) }
                 if (!isCurrent(expected, engine) || playIntentRevision != intent) return@launchCommand
-                val active = engine.setAudioActive(playing)
+                val active = engine.setAudioActive(activeIntent)
                 if (!isCurrent(expected, engine) || playIntentRevision != intent) return@launchCommand
                 if (!active) {
                     fail("音频会话激活失败")
@@ -1044,6 +1164,7 @@ class LivePlayerController(
         reader?.cancel()
         reader = null
         ready = false
+        resetBufferState()
         mutableFrameRate.value = 0f
         val loading = loadJob
         loadJob = null

@@ -38,7 +38,7 @@ internal expect class BoloMpvBackend() {
         streams: BoloMpvStreamSource,
         uri: String,
         generation: Long,
-        bufferingEnabled: Boolean = true,
+        prefetchEnabled: Boolean = true,
         targetSeconds: Double? = null,
         request: Long = 0,
     ): Int
@@ -46,6 +46,7 @@ internal expect class BoloMpvBackend() {
     fun pause(paused: Boolean): Int
     fun speed(speed: Double): Int
     fun bufferedDurationMs(): Long?
+    fun bufferSnapshot(): BoloMpvBufferSnapshot?
     fun volume(volume: Double): Int
     fun loudness(gainDb: Double, dynamicEnabled: Boolean, targetLufs: Double = -14.0, rangeLu: Double = 11.0, truePeakDbtp: Double = -2.0): Int
     fun mergeAudioChannels(enabled: Boolean): Int
@@ -56,6 +57,17 @@ internal expect class BoloMpvBackend() {
     fun destroy()
     suspend fun setAudioActive(active: Boolean): Boolean
 }
+
+/** 当前直播代次的供数状态；终点是已启用音视频轨的共同终点，EOF 只表示输入读完。 */
+internal data class BoloMpvBufferSnapshot(
+    val generation: Long,
+    val positionMs: Long?,
+    val bufferedEndMs: Long?,
+    val bufferedDurationMs: Long?,
+    val underrun: Boolean,
+    val idle: Boolean,
+    val demuxEof: Boolean,
+)
 
 internal class BoloMpvEvent(
     val type: Int,
@@ -122,6 +134,7 @@ internal class BoloPlaybackClock(
     private var loaded = false
     private var paused = true
     private var buffering = false
+    private var blocked = false
     private var seeking = false
     private var ended = false
     private var startedPlayCount = 0L
@@ -131,7 +144,7 @@ internal class BoloPlaybackClock(
     private var firstStartedLocalDate: String? = null
     private var durationMs = 0L
     private var viewedAtMs = wallTime()
-    private val playing get() = loaded && !paused && !buffering && !seeking && !ended
+    private val playing get() = loaded && !paused && !buffering && !blocked && !seeking && !ended
 
     fun begin(value: Long, rate: Double) {
         generation = value
@@ -144,6 +157,7 @@ internal class BoloPlaybackClock(
         loaded = false
         paused = true
         buffering = false
+        blocked = false
         seeking = false
         ended = false
         startedPlayCount = 0L
@@ -164,6 +178,14 @@ internal class BoloPlaybackClock(
         sample()
         val resuming = paused && !value
         paused = value
+        sample(refreshTimeZone = resuming)
+    }
+
+    fun setBlocked(value: Boolean) {
+        if (blocked == value) return
+        sample()
+        val resuming = blocked && !value
+        blocked = value
         sample(refreshTimeZone = resuming)
     }
 

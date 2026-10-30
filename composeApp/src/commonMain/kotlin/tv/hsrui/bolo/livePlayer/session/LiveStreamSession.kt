@@ -50,7 +50,7 @@ internal class LiveStreamSession(
     localReplayEnabled: Boolean = false,
     val cacheCapacityBytes: Long = 256L * 1024 * 1024,
     private val optimizePlaybackSourceEnabled: Boolean = true,
-    private val liveBufferDurationMs: Long = 4_000,
+    private val liveBufferDurationMs: Long = 3_000,
     private val onFailure: (Throwable) -> Unit,
 ) : BoloMpvStreamSource {
     val uri = "bolo-stream://live/$generation/${stream.formatName}"

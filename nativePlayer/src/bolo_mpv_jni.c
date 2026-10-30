@@ -149,11 +149,11 @@ JNIEXPORT jint JNICALL JNI(load)(JNIEnv *env, jobject self, jlong handle, jstrin
 JNIEXPORT jint JNICALL JNI(videoEnabled)(JNIEnv *env, jobject self, jlong handle, jboolean enabled) {
     return bolo_mpv_video_enabled(PLAYER(handle)->core, enabled);
 }
-JNIEXPORT jint JNICALL JNI(loadLive)(JNIEnv *env, jobject self, jlong handle, jstring url, jlong generation, jstring user_agent, jstring referrer, jboolean buffering_enabled, jdouble target_seconds, jlong request) {
+JNIEXPORT jint JNICALL JNI(loadLive)(JNIEnv *env, jobject self, jlong handle, jstring url, jlong generation, jstring user_agent, jstring referrer, jboolean prefetch_enabled, jdouble target_seconds, jlong request) {
     const char *u = (*env)->GetStringUTFChars(env, url, NULL);
     const char *ua = (*env)->GetStringUTFChars(env, user_agent, NULL);
     const char *ref = (*env)->GetStringUTFChars(env, referrer, NULL);
-    int result = (u && ua && ref) ? bolo_mpv_load_live(PLAYER(handle)->core, u, generation, ua, ref, buffering_enabled, target_seconds, request) : -2;
+    int result = (u && ua && ref) ? bolo_mpv_load_live(PLAYER(handle)->core, u, generation, ua, ref, prefetch_enabled, target_seconds, request) : -2;
     if (ref) (*env)->ReleaseStringUTFChars(env, referrer, ref);
     if (ua) (*env)->ReleaseStringUTFChars(env, user_agent, ua);
     if (u) (*env)->ReleaseStringUTFChars(env, url, u);
@@ -162,6 +162,15 @@ JNIEXPORT jint JNICALL JNI(loadLive)(JNIEnv *env, jobject self, jlong handle, js
 JNIEXPORT jint JNICALL JNI(pause)(JNIEnv *env, jobject self, jlong p, jboolean value) { return bolo_mpv_pause(PLAYER(p)->core, value); }
 JNIEXPORT jint JNICALL JNI(speed)(JNIEnv *env, jobject self, jlong p, jdouble value) { return bolo_mpv_speed(PLAYER(p)->core, value); }
 JNIEXPORT jdouble JNICALL JNI(bufferedDuration)(JNIEnv *env, jobject self, jlong p) { return bolo_mpv_buffered_duration(PLAYER(p)->core); }
+JNIEXPORT jlongArray JNICALL JNI(bufferSnapshot)(JNIEnv *env, jobject self, jlong p) {
+    bolo_mpv_buffer_snapshot snapshot;
+    if (!bolo_mpv_read_buffer_snapshot(PLAYER(p)->core, &snapshot)) return NULL;
+    jlong values[] = {snapshot.generation, snapshot.position_ms, snapshot.buffered_end_ms, snapshot.buffered_duration_ms,
+        snapshot.underrun, snapshot.idle, snapshot.demux_eof};
+    jlongArray result = (*env)->NewLongArray(env, 7);
+    if (result) (*env)->SetLongArrayRegion(env, result, 0, 7, values);
+    return result;
+}
 JNIEXPORT jint JNICALL JNI(volume)(JNIEnv *env, jobject self, jlong p, jdouble value) { return bolo_mpv_volume(PLAYER(p)->core, value); }
 JNIEXPORT jint JNICALL JNI(loudness)(JNIEnv *env, jobject self, jlong p, jdouble gain, jboolean dynamic, jdouble target, jdouble range, jdouble peak) { return bolo_mpv_loudness(PLAYER(p)->core, gain, dynamic, target, range, peak); }
 JNIEXPORT jint JNICALL JNI(mergeAudioChannels)(JNIEnv *env, jobject self, jlong p, jboolean enabled) { return bolo_mpv_merge_audio_channels(PLAYER(p)->core, enabled); }

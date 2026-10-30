@@ -278,10 +278,10 @@ internal actual class BoloMpvBackend actual constructor() {
         return BoloMpvNative.load(handle, streams.videoUri, streams.audioUri, startSeconds, generation,
             videoPlayHeaders.getValue("User-Agent"), videoPlayHeaders.getValue("Referer"))
     }
-    actual fun loadLive(streams: BoloMpvStreamSource, uri: String, generation: Long, bufferingEnabled: Boolean, targetSeconds: Double?, request: Long): Int {
+    actual fun loadLive(streams: BoloMpvStreamSource, uri: String, generation: Long, prefetchEnabled: Boolean, targetSeconds: Double?, request: Long): Int {
         if (destroyed) return -3
         streamBridge.bind(streams)
-        return BoloMpvNative.loadLive(handle, uri, generation, "", "", bufferingEnabled, targetSeconds ?: -1.0, request)
+        return BoloMpvNative.loadLive(handle, uri, generation, "", "", prefetchEnabled, targetSeconds ?: -1.0, request)
     }
     actual fun videoEnabled(enabled: Boolean): Int {
         if (destroyed) return -3
@@ -292,6 +292,8 @@ internal actual class BoloMpvBackend actual constructor() {
     actual fun speed(speed: Double) = if (destroyed) -3 else BoloMpvNative.speed(handle, speed)
     actual fun bufferedDurationMs(): Long? = if (destroyed) null else BoloMpvNative.bufferedDuration(handle)
         .takeIf { it.isFinite() && it >= 0 }?.let { (it * 1000).toLong() }
+    actual fun bufferSnapshot(): BoloMpvBufferSnapshot? = if (destroyed) null else
+        BoloMpvNative.bufferSnapshot(handle)?.toMpvBufferSnapshot()
     actual fun volume(volume: Double) = if (destroyed) -3 else BoloMpvNative.volume(handle, volume)
     actual fun loudness(gainDb: Double, dynamicEnabled: Boolean, targetLufs: Double, rangeLu: Double, truePeakDbtp: Double) = if (destroyed) -3 else BoloMpvNative.loudness(handle, gainDb, dynamicEnabled, targetLufs, rangeLu, truePeakDbtp)
     actual fun mergeAudioChannels(enabled: Boolean) = if (destroyed) -3 else BoloMpvNative.mergeAudioChannels(handle, enabled)

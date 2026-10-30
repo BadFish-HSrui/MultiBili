@@ -284,14 +284,15 @@ class LiveSettings(settingsKSafe: KSafePlain) {
             currentOptimizePlaybackSourceEnabled = value
         }
 
-    private var storedPlaybackBufferDisabled by settingsKSafe(false, key = "bolo_live_playback_buffer_disabled")
-    private var currentPlaybackBufferDisabled by mutableStateOf(storedPlaybackBufferDisabled)
-    var playbackBufferDisabled: Boolean
-        get() = currentPlaybackBufferDisabled
+    private var storedPlaybackBufferDurationSeconds by settingsKSafe(3, key = "bolo_live_playback_buffer_duration_seconds")
+    private var currentPlaybackBufferDurationSeconds by mutableIntStateOf(storedPlaybackBufferDurationSeconds.coerceIn(0, 5))
+    var playbackBufferDurationSeconds: Int
+        get() = currentPlaybackBufferDurationSeconds
         set(value) {
-            if (currentPlaybackBufferDisabled == value) return
-            storedPlaybackBufferDisabled = value
-            currentPlaybackBufferDisabled = value
+            val normalized = value.coerceIn(0, 5)
+            if (storedPlaybackBufferDurationSeconds == normalized) return
+            storedPlaybackBufferDurationSeconds = normalized
+            currentPlaybackBufferDurationSeconds = normalized
         }
 
     private var storedLocalReplayEnabled by settingsKSafe(false, key = "bolo_live_local_replay_enabled")

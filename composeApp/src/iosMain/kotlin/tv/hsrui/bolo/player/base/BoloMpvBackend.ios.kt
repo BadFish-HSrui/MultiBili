@@ -276,10 +276,10 @@ internal actual class BoloMpvBackend actual constructor() {
         return bolo_mpv_load(handle, streams.videoUri, streams.audioUri, startSeconds, generation,
             videoPlayHeaders.getValue("User-Agent"), videoPlayHeaders.getValue("Referer"))
     }
-    actual fun loadLive(streams: BoloMpvStreamSource, uri: String, generation: Long, bufferingEnabled: Boolean, targetSeconds: Double?, request: Long): Int {
+    actual fun loadLive(streams: BoloMpvStreamSource, uri: String, generation: Long, prefetchEnabled: Boolean, targetSeconds: Double?, request: Long): Int {
         if (destroyed) return -3
         streamBridge.bind(streams)
-        return bolo_mpv_load_live(handle, uri, generation, "", "", if (bufferingEnabled) 1 else 0, targetSeconds ?: -1.0, request)
+        return bolo_mpv_load_live(handle, uri, generation, "", "", if (prefetchEnabled) 1 else 0, targetSeconds ?: -1.0, request)
     }
     actual fun videoEnabled(enabled: Boolean) = if (destroyed) -3 else
         bolo_mpv_video_enabled(handle, if (enabled && videoOutputAllowed.value) 1 else 0)
@@ -287,6 +287,18 @@ internal actual class BoloMpvBackend actual constructor() {
     actual fun speed(speed: Double) = if (destroyed) -3 else bolo_mpv_speed(handle, speed)
     actual fun bufferedDurationMs(): Long? = if (destroyed) null else bolo_mpv_buffered_duration(handle)
         .takeIf { it.isFinite() && it >= 0 }?.let { (it * 1000).toLong() }
+    actual fun bufferSnapshot(): BoloMpvBufferSnapshot? = if (destroyed) null else memScoped {
+        val snapshot = alloc<bolo_mpv_buffer_snapshot>()
+        if (bolo_mpv_read_buffer_snapshot(handle, snapshot.ptr) == 0) null else BoloMpvBufferSnapshot(
+            generation = snapshot.generation,
+            positionMs = snapshot.position_ms.takeUnless { it == Long.MIN_VALUE },
+            bufferedEndMs = snapshot.buffered_end_ms.takeUnless { it == Long.MIN_VALUE },
+            bufferedDurationMs = snapshot.buffered_duration_ms.takeUnless { it == Long.MIN_VALUE },
+            underrun = snapshot.underrun != 0,
+            idle = snapshot.idle != 0,
+            demuxEof = snapshot.demux_eof != 0,
+        )
+    }
     actual fun volume(volume: Double) = if (destroyed) -3 else bolo_mpv_volume(handle, volume)
     actual fun loudness(gainDb: Double, dynamicEnabled: Boolean, targetLufs: Double, rangeLu: Double, truePeakDbtp: Double) = if (destroyed) -3 else bolo_mpv_loudness(handle, gainDb, if (dynamicEnabled) 1 else 0, targetLufs, rangeLu, truePeakDbtp)
     actual fun mergeAudioChannels(enabled: Boolean) = if (destroyed) -3 else bolo_mpv_merge_audio_channels(handle, if (enabled) 1 else 0)

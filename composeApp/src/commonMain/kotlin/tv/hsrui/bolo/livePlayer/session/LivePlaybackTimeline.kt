@@ -25,7 +25,7 @@ data class LivePlaybackTimelineState(
 internal class LivePlaybackTimeline(
     private val wallTime: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val monotonicTime: () -> Long = TimeSource.Monotonic.markNow().let { mark -> { mark.elapsedNow().inWholeMilliseconds } },
-    private val liveBufferDurationMs: Long = 4_000,
+    private val liveBufferDurationMs: Long = 3_000,
 ) {
     private var startSeconds: Long? = null
     private var sampledElapsed: Long? = null

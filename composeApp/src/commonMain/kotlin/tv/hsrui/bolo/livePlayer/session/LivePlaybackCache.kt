@@ -90,7 +90,7 @@ internal class LivePlaybackCache(
     private val mutex: Mutex = Mutex(),
     private val retainHistory: Boolean = true,
     private val loadingCapacity: Long = if (retainHistory) 32L * 1024 * 1024 else capacity,
-    private val liveBufferDurationMs: Long = 4_000,
+    private val liveBufferDurationMs: Long = 3_000,
 ) {
     internal class Missing(val targetMs: Long?) : Exception("直播缓存位置已不可用") {
         var candidate: Int? = null
