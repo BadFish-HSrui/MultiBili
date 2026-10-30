@@ -60,6 +60,7 @@ fun ShowLiveCard(
     showStatistics: Boolean = true,
     showOfflineStatus: Boolean = false,
     currentTime: Instant = Clock.System.now(),
+    showArea: Boolean = true,
 ) {
     val navigator: Navigator = koinInject()
     val compact = isCompact()
@@ -164,18 +165,20 @@ fun ShowLiveCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Text(
-                    text = liveInfo.areaDisplayName,
-                    modifier = Modifier.fillMaxWidth().clickable(enabled = liveInfo.parentAreaId > 0) {
-                        navigator.navigateTo(
-                            BoloRoute.Live.Area(liveInfo.parentAreaId, liveInfo.areaId.takeIf { it > 0 })
-                        )
-                    },
-                    fontSize = 10.sp,
-                    lineHeight = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (showArea) {
+                    Text(
+                        text = liveInfo.areaDisplayName,
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = liveInfo.parentAreaId > 0) {
+                            navigator.navigateTo(
+                                BoloRoute.Live.Area(liveInfo.parentAreaId, liveInfo.areaId.takeIf { it > 0 })
+                            )
+                        },
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }

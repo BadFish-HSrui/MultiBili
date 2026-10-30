@@ -107,7 +107,19 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
     val snackbar: SnackbarManager = koinInject()
     val scope = rememberCoroutineScope()
     var showColorDialog by remember { mutableStateOf(false) }
+    var showUserSpaceLiveRoomCardInfo by remember { mutableStateOf(false) }
     var showUploadListOrderChangeToTopInfo by remember { mutableStateOf(false) }
+
+    if (showUserSpaceLiveRoomCardInfo) {
+        ShowInfoDialog(onConfirm = { showUserSpaceLiveRoomCardInfo = false }) {
+            Text(
+                text = "仅在非紧凑布局生效",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp).alpha(0.8F),
+            )
+        }
+    }
 
     if (showUploadListOrderChangeToTopInfo) {
         ShowInfoDialog(onConfirm = { showUploadListOrderChangeToTopInfo = false }) {
@@ -235,6 +247,37 @@ fun GeneralSettingsScreen(modifier: Modifier = Modifier) {
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
                                 Switch(checked = settings.general.upRecentUploadsSheetEnabled, onCheckedChange = null)
+                            }
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(64.dp).toggleable(
+                                    value = settings.general.userSpaceLiveRoomCardEnabled,
+                                    role = Role.Switch,
+                                    onValueChange = { settings.general.userSpaceLiveRoomCardEnabled = it },
+                                ).padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "用户空间显示直播间卡片",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier.weight(1f, fill = false),
+                                    )
+                                    IconButton(
+                                        onClick = { showUserSpaceLiveRoomCardInfo = true },
+                                        modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Info,
+                                            contentDescription = "用户空间显示直播间卡片说明",
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                }
+                                Switch(checked = settings.general.userSpaceLiveRoomCardEnabled, onCheckedChange = null)
                             }
                             HorizontalDivider()
                             Row(

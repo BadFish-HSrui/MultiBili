@@ -174,6 +174,19 @@ class GeneralSettings(settingsKSafe: KSafePlain) {
             currentUpRecentUploadsSheetEnabled = value
         }
 
+    private var storedUserSpaceLiveRoomCardEnabled by settingsKSafe(
+        false, key = "bolo_general_user_space_live_room_card_enabled",
+    )
+    private var currentUserSpaceLiveRoomCardEnabled by mutableStateOf(storedUserSpaceLiveRoomCardEnabled)
+
+    var userSpaceLiveRoomCardEnabled: Boolean
+        get() = currentUserSpaceLiveRoomCardEnabled
+        set(value) {
+            if (value == currentUserSpaceLiveRoomCardEnabled) return
+            storedUserSpaceLiveRoomCardEnabled = value
+            currentUserSpaceLiveRoomCardEnabled = value
+        }
+
     private var storedUploadListOrderChangeToTopEnabled by settingsKSafe(
         true, key = "bolo_general_upload_list_order_change_to_top_enabled",
     )
