@@ -24,6 +24,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import kotlinx.io.IOException
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.PlatformType
@@ -150,6 +151,8 @@ class VideoPlayerViewModel(
     val danmakuInputEnabled: Boolean get() = canSendDanmaku && !danmakuSending && !danmakuCoolingDown
     private var danmakuWindow = emptySet<Long>()
     private var currentDanmakuSegment = 0L
+    private var danmakuSeekRevision = 0L
+    private var danmakuSeekSubmissionPending = false
     private var danmakuGeneration = 0L
     private val _danmakuClosed = MutableStateFlow(false)
     val danmakuClosed = _danmakuClosed.asStateFlow()
@@ -209,7 +212,7 @@ class VideoPlayerViewModel(
                     lastConfirmedPositionMs = playback.currentPositionMs
                 }
                 if (playback.isPlaybackSuspended) {
-                    danmakuController.pause()
+                    danmakuController.suspendPlayback()
                     return@collect
                 }
                 synchronizeDanmaku(playback)
@@ -310,7 +313,7 @@ class VideoPlayerViewModel(
         this.episodeId = episodeId
         this.seasonId = seasonId
         this.seasonType = seasonType
-        resetDanmaku()
+        resetDanmaku(clearItems = opensNewMedia)
         if (opensNewMedia) {
             setDanmakuVisible(settings.playback.autoEnableDanmakuOnOpenEnabled || playerSettings.controls.danmakuEnabled)
         }
@@ -489,7 +492,7 @@ class VideoPlayerViewModel(
         _currentAudioQuality.value = audioQuality
 
         awaitingPlaybackReload = true
-        danmakuController.pause()
+        danmakuController.suspendPlayback()
         danmakuMedia = avid to cid
         subtitleController.synchronize(startPositionMs)
         playbackLoadJob?.cancel()
@@ -547,7 +550,7 @@ class VideoPlayerViewModel(
         if (!active) flushPlaybackStatistics()
         if (!active) {
             dismissDanmakuInput(resumePlayback = false)
-            danmakuController.pause()
+            danmakuController.suspendPlayback()
             danmakuRequests.values.toList().forEach { it.cancel() }
             danmakuRequests.clear()
         }
@@ -556,6 +559,7 @@ class VideoPlayerViewModel(
         if (!active && !controller.backgroundPlaybackEnabled && pendingPlayWhenReady != null) pendingPlayWhenReady = false
         controller.setForeground(active, playbackRequested = requested)
         if (active && pendingPlayWhenReady != null) pendingPlayWhenReady = controller.state.value.playWhenReady
+        if (active) synchronizeDanmaku(controller.state.value)
     }
 
     fun switchQuality(newVideoQuality: VideoQuality) {
@@ -763,42 +767,57 @@ class VideoPlayerViewModel(
 
     fun seekToMs(positionMs: Long, autoPlayAfterSeek: Boolean = false) {
         if (playbackClosed) return
-        danmakuController.pause()
-        danmakuController.seekToMs(positionMs)
+        val duration = controller.state.value.durationMs
+        val target = positionMs.coerceAtLeast(0L).let {
+            if (duration > 0L) it.coerceAtMost(duration) else it
+        }
+        danmakuController.seekToMs(target)
+        val revision = ++danmakuSeekRevision
+        danmakuSeekSubmissionPending = true
         awaitingDanmakuSeek = true
-        pendingDanmakuSeek = positionMs
-        subtitleController.synchronize(positionMs)
-        controller.seekToMs(positionMs, autoPlayAfterSeek)
-        // 原生层可能同步拒绝 Seek，仍需以实际位置恢复调度。
-        synchronizeDanmaku(controller.state.value)
-        subtitleController.synchronize(controller.state.value.displayPositionMs)
+        pendingDanmakuSeek = target
+        updateDanmakuWindow(target, duration)
+        subtitleController.synchronize(target)
+        controller.seekToMs(target, autoPlayAfterSeek)
+        // 播放器命令可能仍在主线程队列中；不能把提交前的旧快照当成跳转回执。
+        viewModelScope.launch {
+            yield()
+            if (playbackClosed || revision != danmakuSeekRevision) return@launch
+            danmakuSeekSubmissionPending = false
+            // 被拒绝的请求也按播放器仍可信的实际位置恢复。
+            synchronizeDanmaku(controller.state.value)
+            subtitleController.synchronize(controller.state.value.displayPositionMs)
+        }
     }
 
     private fun synchronizeDanmaku(playback: BoloPlayerState) {
-        if (!playbackForeground) { danmakuController.pause(); return }
+        if (!playbackForeground) { danmakuController.suspendPlayback(); return }
         if (danmakuMedia != (avid to cid)) return
+        if (danmakuSeekSubmissionPending) return
         val pending = playback.pendingSeekPositionMs
-        if (pending != null && (!awaitingPlaybackReload || awaitingDanmakuSeek)) {
+        if (pending != null) {
             if (!awaitingDanmakuSeek || pendingDanmakuSeek != pending) {
-                danmakuController.pause()
                 danmakuController.seekToMs(pending)
             }
             awaitingDanmakuSeek = true
             pendingDanmakuSeek = pending
+            updateDanmakuWindow(pending, playback.durationMs)
+        }
+        if (!playback.hasConfirmedPosition || playback.isRebuilding || playback.isPlaybackSuspended) {
+            danmakuController.suspendPlayback()
+            return
         }
         if (playback.isSeeking || playback.isBuffering) {
             danmakuController.pause()
             return
         }
-        if (awaitingPlaybackReload && playback.durationMs <= 0L) return
-        // 重载期间的暂态零位置不能覆盖清晰度切换前的调度位置。
-        if (awaitingPlaybackReload && !playback.isPlaying && playback.currentPositionMs == 0L) return
+        val restore = awaitingDanmakuSeek || awaitingPlaybackReload
         awaitingPlaybackReload = false
         danmakuController.syncPlayback(
             positionMs = playback.currentPositionMs,
             isPlaying = playback.isPlaying && (playback.durationMs <= 0L || playback.currentPositionMs < playback.durationMs),
             speed = playback.playbackSpeed,
-            discontinuity = awaitingDanmakuSeek,
+            discontinuity = restore,
         )
         awaitingDanmakuSeek = false
         pendingDanmakuSeek = null
@@ -806,8 +825,11 @@ class VideoPlayerViewModel(
     }
 
     private fun updateDanmakuWindow(positionMs: Long, durationMs: Long) {
-        if (_danmakuClosed.value || avid <= 0L || cid <= 0L) return
-        val segment = positionMs.coerceAtLeast(0L) / 360_000L + 1L
+        if (!playbackForeground || _danmakuClosed.value || avid <= 0L || cid <= 0L) return
+        val position = positionMs.coerceAtLeast(0L).let {
+            if (durationMs > 0L) it.coerceAtMost(durationMs - 1L) else it
+        }
+        val segment = position / 360_000L + 1L
         val lastSegment = if (durationMs > 0L) (durationMs - 1L) / 360_000L + 1L else Long.MAX_VALUE
         val window = (maxOf(1L, segment - 1L)..minOf(lastSegment, segment + 1L)).toSet()
         if (segment != currentDanmakuSegment) {
@@ -904,7 +926,7 @@ class VideoPlayerViewModel(
         _loadedDanmaku.value = emptyList()
     }
 
-    private fun resetDanmaku() {
+    private fun resetDanmaku(clearItems: Boolean) {
         dismissDanmakuInput(resumePlayback = false)
         danmakuContextJob?.cancel()
         danmakuSendJob?.cancel()
@@ -916,18 +938,22 @@ class VideoPlayerViewModel(
         subtitleLoadJob?.cancel()
         subtitleController.clear()
         danmakuGeneration += 1
+        danmakuSeekRevision += 1
+        danmakuSeekSubmissionPending = false
         danmakuRequests.values.toList().forEach { it.cancel() }
         danmakuRequests.clear()
-        danmakuSegments.clear()
         failedDanmakuSegments.clear()
-        danmakuWindow = emptySet()
-        currentDanmakuSegment = 0L
+        if (clearItems) {
+            danmakuSegments.clear()
+            danmakuWindow = emptySet()
+            currentDanmakuSegment = 0L
+        }
         _danmakuClosed.value = false
         awaitingPlaybackReload = true
         danmakuMedia = null
         awaitingDanmakuSeek = false
         pendingDanmakuSeek = null
-        danmakuController.clear()
+        if (clearItems) danmakuController.clear() else danmakuController.suspendPlayback()
     }
 
     fun closePlayback() {

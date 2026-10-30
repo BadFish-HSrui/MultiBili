@@ -130,6 +130,7 @@ fun BoloDanmakuLayer(
             scrollEnabled = danmakuScrollEnabled,
             topEnabled = danmakuTopEnabled,
             bottomEnabled = danmakuBottomEnabled,
+            maxScrollDurationMs = maximumBiliDanmakuDurationMs(size.width / density.density),
             isBlocked = isBlocked,
             baseSpeed = { viewportWidth, textWidth ->
                 calculateBiliDanmakuSpeed(viewportWidth / density.density, textWidth / density.density) * density.density
