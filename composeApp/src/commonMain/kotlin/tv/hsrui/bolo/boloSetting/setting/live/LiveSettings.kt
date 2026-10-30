@@ -90,7 +90,7 @@ class LiveSettings(settingsKSafe: KSafePlain) {
             currentAutoEnableDanmakuOnOpenEnabled = value
         }
 
-    private var storedDynamicLoudnessEnabled by settingsKSafe(true, key = "bolo_live_dynamic_loudness_enabled")
+    private var storedDynamicLoudnessEnabled by settingsKSafe(false, key = "bolo_live_dynamic_loudness_enabled")
     private var currentDynamicLoudnessEnabled by mutableStateOf(storedDynamicLoudnessEnabled)
 
     var dynamicLoudnessEnabled: Boolean
