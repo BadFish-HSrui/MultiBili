@@ -29,6 +29,8 @@ data class BoloSystemMediaState(
     val canNext: Boolean = false,
     val artwork: ByteArray? = null,
     val seekRevision: Long = 0L,
+    val isLive: Boolean = false,
+    val canSetRate: Boolean = true,
 )
 
 data class BoloSystemMediaCommand(
@@ -39,8 +41,9 @@ data class BoloSystemMediaCommand(
 )
 
 internal interface BoloSystemMediaSession {
+    fun setForeground(active: Boolean) {}
     fun publish(state: BoloSystemMediaState)
     fun close()
 }
 
-internal expect fun createBoloSystemMediaSession(session: BoloPlaybackSession): BoloSystemMediaSession
+internal expect fun createBoloSystemMediaSession(session: BoloSystemMediaOwner): BoloSystemMediaSession

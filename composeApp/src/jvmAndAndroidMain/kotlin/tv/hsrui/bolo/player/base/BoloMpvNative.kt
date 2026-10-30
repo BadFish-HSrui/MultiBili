@@ -9,13 +9,41 @@ import kotlin.io.encoding.Base64
 
 internal expect fun loadBoloMpvLibrary()
 
+internal actual fun allocatePlaybackBuffer(size: Int): BoloPlaybackBuffer? {
+    require(size > 0)
+    return try {
+        object : BoloPlaybackBuffer {
+            private var bytes: ByteArray? = ByteArray(size)
+
+            override fun copyInto(destination: ByteArray, destinationOffset: Int, startIndex: Int, endIndex: Int) {
+                checkNotNull(bytes).copyInto(destination, destinationOffset, startIndex, endIndex)
+            }
+
+            override fun copyFrom(source: ByteArray, sourceOffset: Int, destinationOffset: Int, length: Int) {
+                require(length >= 0 && sourceOffset >= 0 && sourceOffset <= source.size - length)
+                source.copyInto(checkNotNull(bytes), destinationOffset, sourceOffset, sourceOffset + length)
+            }
+
+            override fun close() {
+                bytes = null
+            }
+        }
+    } catch (_: OutOfMemoryError) {
+        null
+    }
+}
+
 internal object BoloMpvNative {
     init { loadBoloMpvLibrary() }
     external fun create(platform: String): Long
+    external fun setStreamCallbacks(handle: Long, streams: BoloMpvStreamBridge): Int
     external fun load(handle: Long, video: String, audio: String?, start: Double, generation: Long, userAgent: String, referrer: String): Int
+    external fun loadLive(handle: Long, url: String, generation: Long, userAgent: String, referrer: String, prefetchEnabled: Boolean, targetSeconds: Double, request: Long): Int
     external fun videoEnabled(handle: Long, enabled: Boolean): Int
     external fun pause(handle: Long, paused: Boolean): Int
     external fun speed(handle: Long, speed: Double): Int
+    external fun bufferedDuration(handle: Long): Double
+    external fun bufferSnapshot(handle: Long): LongArray?
     external fun volume(handle: Long, volume: Double): Int
     external fun loudness(handle: Long, gainDb: Double, dynamicEnabled: Boolean, targetLufs: Double, rangeLu: Double, truePeakDbtp: Double): Int
     external fun mergeAudioChannels(handle: Long, enabled: Boolean): Int
@@ -35,6 +63,19 @@ internal object BoloMpvNative {
 }
 
 internal fun DoubleArray.toMpvEvent() = BoloMpvEvent(this[0].toInt(), this[1].toLong(), this[2].toLong(), this[3].toInt(), this[4])
+
+internal fun LongArray.toMpvBufferSnapshot(): BoloMpvBufferSnapshot? {
+    if (size != 7) return null
+    return BoloMpvBufferSnapshot(
+        generation = this[0],
+        positionMs = this[1].takeUnless { it == Long.MIN_VALUE },
+        bufferedEndMs = this[2].takeUnless { it == Long.MIN_VALUE },
+        bufferedDurationMs = this[3].takeUnless { it == Long.MIN_VALUE },
+        underrun = this[4] != 0L,
+        idle = this[5] != 0L,
+        demuxEof = this[6] != 0L,
+    )
+}
 
 /** mbedTLS 使用宿主信任管理器导出的 CA；保留证书验证，不绑定过时的内置 CA 包。 */
 internal fun configureBoloMpvCertificates(handle: Long, directory: File) {

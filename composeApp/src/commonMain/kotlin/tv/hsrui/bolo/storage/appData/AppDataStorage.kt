@@ -4,13 +4,15 @@ import eu.anifantakis.lib.ksafe.KSafePlain
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackStatisticsManager
 import tv.hsrui.bolo.storage.statistics.StatisticsDatabase
+import tv.hsrui.bolo.storage.statistics.StatisticsManager
 
 class AppDataStorage(appDataKSafe: KSafePlain, statisticsDatabase: () -> StatisticsDatabase) {
     val searchHistory = SearchHistory(appDataKSafe)
     val oneTimeWarnings = OneTimeWarnings(appDataKSafe)
-    val playbackStatistics = PlaybackStatisticsManager(statisticsDatabase)
+    val statistics = StatisticsManager(statisticsDatabase)
+    val playbackStatistics get() = statistics.playback
+    val liveStatistics get() = statistics.live
 }
 
 class SearchHistory internal constructor(

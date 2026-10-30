@@ -11,6 +11,11 @@ sealed interface BoloRoute {
     @Serializable data object Main : BoloRoute
 
     @Serializable
+    sealed interface Live : BoloRoute {
+        @Serializable data class Area(val parentAreaId: Int, val areaId: Int? = null) : Live
+    }
+
+    @Serializable
     sealed interface User : BoloRoute {
         @Serializable data class Space(val mid: Long) : User
         @Serializable data class UploadsSearch(val mid: Long) : User
@@ -53,12 +58,14 @@ sealed interface BoloRoute {
         @Serializable data object List : BoloSetting
         @Serializable data object General : BoloSetting
         @Serializable data object Playback : BoloSetting
+        @Serializable data object Live : BoloSetting
         @Serializable data object Statistics : BoloSetting
         @Serializable data object About : BoloSetting
     }
 
     @Serializable
     sealed interface View : BoloRoute {
+        @Serializable data class Live(val roomId: Long) : View
         @Serializable data class Video(val vid: Vid) : View
         @Serializable data class VideoList(val request: VideoPlaybackRequest.VideoList) : View
         @Serializable data class Media(val seasonId: Long = 0, val episodeId: Long = 0) : View

@@ -23,6 +23,7 @@ import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.movableContentOf
@@ -41,15 +42,19 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import kotlinx.coroutines.launch
 import tv.hsrui.bolo.player.PlayerFullscreenState
+import tv.hsrui.bolo.player.VideoPlayerViewModel
+import tv.hsrui.bolo.ui.common.player.danmaku.PlayerDanmakuPage
 import tv.hsrui.bolo.utils.isExpanded
 import tv.hsrui.network.utils.formatCountToString
 import kotlin.math.roundToInt
 
 private enum class PlayerInfoTab(val title: String) {
     Desc("简介"),
-    Reply("评论")
+    Reply("评论"),
+    Danmaku("弹幕"),
 }
 
 private fun Modifier.playerBounds(
@@ -78,11 +83,17 @@ fun PlayerPageLayout(
     modifier: Modifier = Modifier,
     replyCount: Long? = null,
     videoAspectRatio: Float? = null,
+    playerViewModel: VideoPlayerViewModel? = null,
+    danmakuMediaKey: Pair<Long, Long>? = null,
     playerContent: @Composable () -> Unit,
 ) {
     val currentDescContent by rememberUpdatedState(descContent)
     val currentReplyContent by rememberUpdatedState(replyContent)
     val currentReplyCount by rememberUpdatedState(replyCount)
+    val currentPlayerViewModel by rememberUpdatedState(playerViewModel)
+    val currentDanmakuMediaKey by rememberUpdatedState(danmakuMediaKey)
+    // 在评论的稿件/剧集作用域之外取得播放路由，屏蔽管理随路由存活。
+    val playerViewModelStoreOwner by rememberUpdatedState(checkNotNull(LocalViewModelStoreOwner.current))
     val isFullscreen = fullscreenState.isFullscreen
     var rootOffsetInRoot by remember { mutableStateOf(IntOffset.Zero) }
     var playerBoundsInRoot by remember { mutableStateOf(IntRect.Zero) }
@@ -106,8 +117,20 @@ fun PlayerPageLayout(
                                         selected = (pagerState.currentPage == index),
                                         onClick = { coroutineScope.launch { pagerState.animateScrollToPage(index) } },
                                         text = {
-                                            Text(tab.title + currentReplyCount?.takeIf { tab == PlayerInfoTab.Reply }
-                                                ?.let { "(${it.formatCountToString()})" }.orEmpty())
+                                            val count = when (tab) {
+                                                PlayerInfoTab.Desc -> null
+                                                PlayerInfoTab.Reply -> currentReplyCount
+                                                PlayerInfoTab.Danmaku -> {
+                                                    val player = currentPlayerViewModel
+                                                    val loadedItems = player?.loadedDanmaku?.collectAsState()?.value.orEmpty()
+                                                    if (player != null && (player.avid to player.cid) == currentDanmakuMediaKey) {
+                                                        loadedItems.size.toLong()
+                                                    } else {
+                                                        0L
+                                                    }
+                                                }
+                                            }
+                                            Text(tab.title + count?.let { "(${it.formatCountToString()})" }.orEmpty())
                                         },
                                         modifier = Modifier.height(32.dp)
                                     )
@@ -122,6 +145,11 @@ fun PlayerPageLayout(
                                 when (tabs[page]) {
                                     PlayerInfoTab.Desc -> currentDescContent()
                                     PlayerInfoTab.Reply -> mainContent()
+                                    PlayerInfoTab.Danmaku -> PlayerDanmakuPage(
+                                        viewModelStoreOwner = playerViewModelStoreOwner,
+                                        playerViewModel = currentPlayerViewModel,
+                                        mediaKey = currentDanmakuMediaKey,
+                                    )
                                 }
                             }
                         }

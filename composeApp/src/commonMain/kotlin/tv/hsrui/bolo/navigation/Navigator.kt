@@ -1,6 +1,6 @@
 package tv.hsrui.bolo.navigation
 
-import tv.hsrui.bolo.player.session.BoloPlaybackSession
+import tv.hsrui.bolo.player.session.BoloSystemMediaOwner
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -14,14 +14,14 @@ class Navigator {
         private set
 
     fun navigateTo(route: BoloRoute) {
-        BoloPlaybackSession.current?.close()
+        BoloSystemMediaOwner.current?.close()
         skipForwardTransition = false
         backStack.add(route)
     }
 
     fun switchTo(route: BoloRoute) {
         if (backStack.lastOrNull() == route) return
-        BoloPlaybackSession.current?.close()
+        BoloSystemMediaOwner.current?.close()
         skipForwardTransition = backStack.size > 1
         if (skipForwardTransition) {
             backStack[backStack.lastIndex] = route
@@ -32,7 +32,7 @@ class Navigator {
 
     fun goBack() {
         if (backStack.size > 1) {
-            BoloPlaybackSession.current?.close()
+            BoloSystemMediaOwner.current?.close()
             skipForwardTransition = false
             backStack.removeLast()
         }
@@ -40,14 +40,14 @@ class Navigator {
 
     fun goBackBefore(route: BoloRoute): Boolean {
         if (!backStack.contains(route)) return false
-        BoloPlaybackSession.current?.close()
+        BoloSystemMediaOwner.current?.close()
         skipForwardTransition = false
         backStack.subList(backStack.lastIndexOf(route), backStack.size).clear()
         return true
     }
 
     fun goHome() {
-        BoloPlaybackSession.current?.close()
+        BoloSystemMediaOwner.current?.close()
         skipForwardTransition = false
         backStack.removeRange(1, backStack.size)
     }

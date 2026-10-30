@@ -1,5 +1,6 @@
 package tv.hsrui.bolo.view.media
 
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -67,6 +68,7 @@ import tv.hsrui.bolo.ui.components.media.actionsBar.MediaActionsBar
 import tv.hsrui.bolo.ui.components.player.PlaybackCollectionGroup
 import tv.hsrui.bolo.ui.components.player.PlaybackCollectionItem
 import tv.hsrui.bolo.ui.components.player.ShowPlaybackCollectionSelector
+import tv.hsrui.bolo.ui.components.scroll.containScroll
 import tv.hsrui.network.feature.media.MediaEpisode
 import tv.hsrui.network.feature.media.MediaSeasonData
 import tv.hsrui.network.feature.reply.ReplySectionType
@@ -98,6 +100,8 @@ fun MediaPlaybackPage(
 
     PlayerPageLayout(
         fullscreenState = fullscreenState,
+        playerViewModel = playerViewModel,
+        danmakuMediaKey = episode?.let { it.avid to it.cid },
         descContent = { MediaDescPage(uiState = uiState, viewModel = viewModel, modifier = Modifier.fillMaxSize()) },
         replyContent = { content ->
             key(episode?.episodeId) {
@@ -219,7 +223,7 @@ private fun MediaDescPage(
                 ShowErrorContent(
                     message = uiState.recommendationsError,
                     retry = { viewModel.loadRecommendations(uiState.media.seasonId) },
-                    modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                    modifier = Modifier.heightIn(max = 360.dp).containScroll(Orientation.Vertical).verticalScroll(rememberScrollState()),
                 )
             }
             uiState.recommendations.isEmpty() -> item(key = "recommendations_empty") { Text("暂无相关推荐") }

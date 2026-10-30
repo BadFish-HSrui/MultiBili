@@ -4,6 +4,8 @@ import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.BOOLEAN
 import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.INT
 import com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING
 import tv.hsrui.bolo.buildlogic.ResolvedVersionMetadata
+import tv.hsrui.bolo.buildlogic.MacNativeManifestAction
+import org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask
 
 plugins {
     alias(libs.plugins.ksp)
@@ -109,6 +111,7 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(projects.network)
+            implementation(libs.ktor.network)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.materialKolor)
             implementation(libs.coil.compose)
@@ -159,6 +162,7 @@ compose.desktop {
         buildTypes.release.proguard.configurationFiles.from(project.file("desktop.pro"))
 
         nativeDistributions {
+            modules("jdk.unsupported")
             targetFormats(
                 TargetFormat.Dmg,
                 TargetFormat.Msi,
@@ -191,6 +195,23 @@ compose.desktop {
             }
         }
 
+    }
+}
+
+if (isMacHost) {
+    val signing = compose.desktop.application.nativeDistributions.macOS.signing
+    val configuredIdentity = signing.identity.map { name ->
+        if (name.startsWith("Developer ID Application: ") || name.startsWith("3rd Party Mac Developer Application: ")) name
+        else "Developer ID Application: $name"
+    }
+    val noCertificateIdentity = providers.provider { "-" }
+    val identity = signing.sign.flatMap { if (it) configuredIdentity else noCertificateIdentity }
+    tasks.withType<AbstractJPackageTask>().configureEach {
+        if (targetFormat == TargetFormat.AppImage) {
+            doLast(MacNativeManifestAction(
+                destinationDir.dir(packageName.map { "$it.app" }), identity, signing.keychain,
+            ))
+        }
     }
 }
 

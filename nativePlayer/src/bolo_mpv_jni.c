@@ -2,6 +2,9 @@
 #include <jni.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(__APPLE__) || defined(_WIN32)
+#include "bolo_desktop_video.h"
+#endif
 #ifdef __ANDROID__
 #include <libavcodec/jni.h>
 #elif defined(_WIN32)
@@ -10,15 +13,118 @@
 #include <dlfcn.h>
 #endif
 
-typedef struct { bolo_mpv *core; jobject surface; } java_player;
+typedef struct {
+    bolo_mpv *core;
+    jobject surface, streams;
+    jmethodID stream_open, stream_read, stream_seek, stream_size, stream_cancel, stream_close;
+} java_player;
+static JavaVM *java_vm;
 #define PLAYER(value) ((java_player *)(intptr_t)(value))
 #define JNI(name) Java_tv_hsrui_bolo_player_base_BoloMpvNative_##name
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
+    java_vm = vm;
 #ifdef __ANDROID__
     if (av_jni_set_java_vm(vm, NULL) < 0) return JNI_ERR;
 #endif
     return JNI_VERSION_1_6;
+}
+
+static JNIEnv *stream_env(int *attached) {
+    JNIEnv *env = NULL;
+    *attached = 0;
+    jint result = (*java_vm)->GetEnv(java_vm, (void **)&env, JNI_VERSION_1_6);
+    if (result == JNI_EDETACHED) {
+        if ((*java_vm)->AttachCurrentThread(java_vm, (void **)&env, NULL) != JNI_OK) return NULL;
+        *attached = 1;
+    } else if (result != JNI_OK) return NULL;
+    return env;
+}
+static int stream_exception(JNIEnv *env) {
+    if (!(*env)->ExceptionCheck(env)) return 0;
+    (*env)->ExceptionClear(env);
+    return 1;
+}
+static int64_t java_stream_open(void *context, const char *uri) {
+    java_player *p = context;
+    int attached;
+    JNIEnv *env = stream_env(&attached);
+    if (!env) return 0;
+    jstring text = (*env)->NewStringUTF(env, uri);
+    jlong result = text ? (*env)->CallLongMethod(env, p->streams, p->stream_open, text) : 0;
+    if (stream_exception(env)) result = 0;
+    if (text) (*env)->DeleteLocalRef(env, text);
+    if (attached) (*java_vm)->DetachCurrentThread(java_vm);
+    return result;
+}
+static int64_t java_stream_read(void *context, int64_t id, char *buffer, uint64_t size) {
+    java_player *p = context;
+    int attached;
+    JNIEnv *env = stream_env(&attached);
+    if (!env) return -1;
+    jsize capacity = (jsize)(size < 65536 ? size : 65536);
+    jbyteArray bytes = (*env)->NewByteArray(env, capacity);
+    jint result = bytes ? (*env)->CallIntMethod(env, p->streams, p->stream_read, (jlong)id, bytes) : -1;
+    if (stream_exception(env) || result > capacity) result = -1;
+    if (result > 0) (*env)->GetByteArrayRegion(env, bytes, 0, result, (jbyte *)buffer);
+    if (stream_exception(env)) result = -1;
+    if (bytes) (*env)->DeleteLocalRef(env, bytes);
+    if (attached) (*java_vm)->DetachCurrentThread(java_vm);
+    return result;
+}
+static int64_t java_stream_seek(void *context, int64_t id, int64_t offset) {
+    java_player *p = context;
+    int attached;
+    JNIEnv *env = stream_env(&attached);
+    if (!env) return -1;
+    jlong result = (*env)->CallLongMethod(env, p->streams, p->stream_seek, (jlong)id, (jlong)offset);
+    if (stream_exception(env)) result = -1;
+    if (attached) (*java_vm)->DetachCurrentThread(java_vm);
+    return result;
+}
+static int64_t java_stream_size(void *context, int64_t id) {
+    java_player *p = context;
+    int attached;
+    JNIEnv *env = stream_env(&attached);
+    if (!env) return -1;
+    jlong result = (*env)->CallLongMethod(env, p->streams, p->stream_size, (jlong)id);
+    if (stream_exception(env)) result = -1;
+    if (attached) (*java_vm)->DetachCurrentThread(java_vm);
+    return result;
+}
+static void java_stream_end(void *context, int64_t id, int close) {
+    java_player *p = context;
+    int attached;
+    JNIEnv *env = stream_env(&attached);
+    if (!env) return;
+    (*env)->CallVoidMethod(env, p->streams, close ? p->stream_close : p->stream_cancel, (jlong)id);
+    stream_exception(env);
+    if (attached) (*java_vm)->DetachCurrentThread(java_vm);
+}
+static void java_stream_cancel(void *context, int64_t id) { java_stream_end(context, id, 0); }
+static void java_stream_close(void *context, int64_t id) { java_stream_end(context, id, 1); }
+
+JNIEXPORT jint JNICALL JNI(setStreamCallbacks)(JNIEnv *env, jobject self, jlong handle, jobject streams) {
+    java_player *p = PLAYER(handle);
+    if (p->streams || !streams) return -1;
+    jclass type = (*env)->GetObjectClass(env, streams);
+    if (!type) return -1;
+    p->stream_open = (*env)->GetMethodID(env, type, "open", "(Ljava/lang/String;)J");
+    p->stream_read = (*env)->GetMethodID(env, type, "read", "(J[B)I");
+    p->stream_seek = (*env)->GetMethodID(env, type, "seek", "(JJ)J");
+    p->stream_size = (*env)->GetMethodID(env, type, "size", "(J)J");
+    p->stream_cancel = (*env)->GetMethodID(env, type, "cancel", "(J)V");
+    p->stream_close = (*env)->GetMethodID(env, type, "close", "(J)V");
+    (*env)->DeleteLocalRef(env, type);
+    if (stream_exception(env) || !p->stream_open || !p->stream_read || !p->stream_seek ||
+        !p->stream_size || !p->stream_cancel || !p->stream_close) return -1;
+    p->streams = (*env)->NewGlobalRef(env, streams);
+    if (!p->streams) return -1;
+    const bolo_mpv_stream_callbacks callbacks = {.open = java_stream_open, .read = java_stream_read,
+        .seek = java_stream_seek, .size = java_stream_size, .cancel = java_stream_cancel, .close = java_stream_close};
+    int result = bolo_mpv_set_stream_callbacks(p->core, &callbacks, p);
+    if (result < 0) { (*env)->DeleteGlobalRef(env, p->streams); p->streams = NULL; }
+    return result;
 }
 JNIEXPORT jlong JNICALL JNI(create)(JNIEnv *env, jobject self, jstring platform) {
     const char *name = (*env)->GetStringUTFChars(env, platform, NULL);
@@ -43,8 +149,28 @@ JNIEXPORT jint JNICALL JNI(load)(JNIEnv *env, jobject self, jlong handle, jstrin
 JNIEXPORT jint JNICALL JNI(videoEnabled)(JNIEnv *env, jobject self, jlong handle, jboolean enabled) {
     return bolo_mpv_video_enabled(PLAYER(handle)->core, enabled);
 }
+JNIEXPORT jint JNICALL JNI(loadLive)(JNIEnv *env, jobject self, jlong handle, jstring url, jlong generation, jstring user_agent, jstring referrer, jboolean prefetch_enabled, jdouble target_seconds, jlong request) {
+    const char *u = (*env)->GetStringUTFChars(env, url, NULL);
+    const char *ua = (*env)->GetStringUTFChars(env, user_agent, NULL);
+    const char *ref = (*env)->GetStringUTFChars(env, referrer, NULL);
+    int result = (u && ua && ref) ? bolo_mpv_load_live(PLAYER(handle)->core, u, generation, ua, ref, prefetch_enabled, target_seconds, request) : -2;
+    if (ref) (*env)->ReleaseStringUTFChars(env, referrer, ref);
+    if (ua) (*env)->ReleaseStringUTFChars(env, user_agent, ua);
+    if (u) (*env)->ReleaseStringUTFChars(env, url, u);
+    return result;
+}
 JNIEXPORT jint JNICALL JNI(pause)(JNIEnv *env, jobject self, jlong p, jboolean value) { return bolo_mpv_pause(PLAYER(p)->core, value); }
 JNIEXPORT jint JNICALL JNI(speed)(JNIEnv *env, jobject self, jlong p, jdouble value) { return bolo_mpv_speed(PLAYER(p)->core, value); }
+JNIEXPORT jdouble JNICALL JNI(bufferedDuration)(JNIEnv *env, jobject self, jlong p) { return bolo_mpv_buffered_duration(PLAYER(p)->core); }
+JNIEXPORT jlongArray JNICALL JNI(bufferSnapshot)(JNIEnv *env, jobject self, jlong p) {
+    bolo_mpv_buffer_snapshot snapshot;
+    if (!bolo_mpv_read_buffer_snapshot(PLAYER(p)->core, &snapshot)) return NULL;
+    jlong values[] = {snapshot.generation, snapshot.position_ms, snapshot.buffered_end_ms, snapshot.buffered_duration_ms,
+        snapshot.underrun, snapshot.idle, snapshot.demux_eof};
+    jlongArray result = (*env)->NewLongArray(env, 7);
+    if (result) (*env)->SetLongArrayRegion(env, result, 0, 7, values);
+    return result;
+}
 JNIEXPORT jint JNICALL JNI(volume)(JNIEnv *env, jobject self, jlong p, jdouble value) { return bolo_mpv_volume(PLAYER(p)->core, value); }
 JNIEXPORT jint JNICALL JNI(loudness)(JNIEnv *env, jobject self, jlong p, jdouble gain, jboolean dynamic, jdouble target, jdouble range, jdouble peak) { return bolo_mpv_loudness(PLAYER(p)->core, gain, dynamic, target, range, peak); }
 JNIEXPORT jint JNICALL JNI(mergeAudioChannels)(JNIEnv *env, jobject self, jlong p, jboolean enabled) { return bolo_mpv_merge_audio_channels(PLAYER(p)->core, enabled); }
@@ -115,9 +241,46 @@ JNIEXPORT jint JNICALL JNI(render)(JNIEnv *env, jobject self, jlong p, jint fbo,
     return bolo_mpv_render(PLAYER(p)->core, fbo, w, h, flip);
 }
 JNIEXPORT void JNICALL JNI(renderFree)(JNIEnv *env, jobject self, jlong p) { bolo_mpv_render_free(PLAYER(p)->core); }
+#define VIDEO_JNI(name) Java_tv_hsrui_bolo_player_base_BoloDesktopNativeVideoOutput_##name
+#if defined(__APPLE__)
+JNIEXPORT jlong JNICALL VIDEO_JNI(create)(JNIEnv *env, jobject self, jlong p, jobject window, jstring jawt_path) {
+    if (!p || !window || !jawt_path) return 0;
+    const char *path = (*env)->GetStringUTFChars(env, jawt_path, NULL);
+    if (!path) return 0;
+    void *output = bolo_desktop_video_create(env, self, window, PLAYER(p)->core, path);
+    (*env)->ReleaseStringUTFChars(env, jawt_path, path);
+    return (jlong)(intptr_t)output;
+}
+JNIEXPORT jint JNICALL VIDEO_JNI(update)(JNIEnv *env, jobject self, jlong output, jobject window,
+    jdouble x, jdouble y, jdouble width, jdouble height, jdouble scale, jdouble refresh_rate, jboolean visible) {
+    return output ? bolo_desktop_video_update(env, (void *)(intptr_t)output, window, x, y, width, height, scale, refresh_rate, visible) : -1;
+}
+JNIEXPORT void JNICALL VIDEO_JNI(destroy)(JNIEnv *env, jobject self, jlong output) {
+    if (output) bolo_desktop_video_close(env, (void *)(intptr_t)output);
+}
+#elif defined(_WIN32)
+JNIEXPORT jlong JNICALL VIDEO_JNI(windowsCreate)(JNIEnv *env, jobject self, jlong hwnd) {
+    return (jlong)(intptr_t)bolo_desktop_video_windows_create(env, hwnd);
+}
+JNIEXPORT void JNICALL VIDEO_JNI(windowsUpdate)(JNIEnv *env, jobject self, jlong output,
+    jint x, jint y, jint width, jint height, jboolean visible, jint clip_left, jint clip_top, jint clip_right, jint clip_bottom) {
+    if (output) bolo_desktop_video_windows_update(env, (void *)(intptr_t)output, x, y, width, height, visible,
+        clip_left, clip_top, clip_right, clip_bottom);
+}
+JNIEXPORT jint JNICALL VIDEO_JNI(windowsBegin)(JNIEnv *env, jobject self, jlong output) {
+    return output ? bolo_desktop_video_windows_begin(env, (void *)(intptr_t)output) : 0;
+}
+JNIEXPORT void JNICALL VIDEO_JNI(windowsEnd)(JNIEnv *env, jobject self, jlong output, jboolean present) {
+    if (output) bolo_desktop_video_windows_end(env, (void *)(intptr_t)output, present);
+}
+JNIEXPORT void JNICALL VIDEO_JNI(windowsDestroy)(JNIEnv *env, jobject self, jlong output) {
+    if (output) bolo_desktop_video_windows_close((void *)(intptr_t)output);
+}
+#endif
 JNIEXPORT void JNICALL JNI(destroy)(JNIEnv *env, jobject self, jlong handle) {
     java_player *p = PLAYER(handle);
     bolo_mpv_destroy(p->core);
+    if (p->streams) (*env)->DeleteGlobalRef(env, p->streams);
     if (p->surface) (*env)->DeleteGlobalRef(env, p->surface);
     free(p);
 }

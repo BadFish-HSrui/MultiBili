@@ -27,15 +27,16 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.player.settings.BoloPlayerSettings
 import tv.hsrui.bolo.ui.theme.BiliColor
+import tv.hsrui.network.feature.danmaku.DanmakuFilterType
 
 @Composable
 fun BoloDanmakuLayer(
@@ -53,6 +54,11 @@ fun BoloDanmakuLayer(
     val danmakuScrollEnabled = playerSettings.danmaku.scrollEnabled
     val danmakuTopEnabled = playerSettings.danmaku.topEnabled
     val danmakuBottomEnabled = playerSettings.danmaku.bottomEnabled
+    val activeFilters = playerSettings.danmaku.filterList.mapNotNull {
+        if (it.isOpened && it.content.isNotEmpty()) it.type to it.content else null
+    }
+    // 只以生效规则的类型和原文缓存；云端 ID 变化不重新编译或判断在屏条目。
+    val isBlocked = remember(activeFilters) { buildDanmakuFilterPredicate(activeFilters) }
     val fontFamily = MaterialTheme.typography.bodyLarge.fontFamily
     val measurer = rememberTextMeasurer(cacheSize = 512)
     val density = LocalDensity.current
@@ -124,6 +130,8 @@ fun BoloDanmakuLayer(
             scrollEnabled = danmakuScrollEnabled,
             topEnabled = danmakuTopEnabled,
             bottomEnabled = danmakuBottomEnabled,
+            maxScrollDurationMs = maximumBiliDanmakuDurationMs(size.width / density.density),
+            isBlocked = isBlocked,
             baseSpeed = { viewportWidth, textWidth ->
                 calculateBiliDanmakuSpeed(viewportWidth / density.density, textWidth / density.density) * density.density
             },
@@ -135,6 +143,7 @@ fun BoloDanmakuLayer(
         }
         clipRect {
             for (entry in entries) {
+                if (entry.isBlocked) continue
                 val result = layout(entry.item)
                 val x = entry.x(animationTimeMs, size.width)
                 val inset = padding + if (entry.item.isOwn) borderWidth else 0f
@@ -151,5 +160,26 @@ fun BoloDanmakuLayer(
                 drawText(result, color = Color((entry.item.colorRgb and 0xFFFFFF) or 0xFF000000), topLeft = offset, drawStyle = Fill)
             }
         }
+    }
+}
+
+internal fun buildDanmakuFilterPredicate(
+    filters: List<Pair<DanmakuFilterType, String>>,
+): (BoloDanmakuItem) -> Boolean {
+    val filtersByType = filters.groupBy(keySelector = { it.first }, valueTransform = { it.second })
+    val texts = filtersByType[DanmakuFilterType.Text].orEmpty()
+    val users = filtersByType[DanmakuFilterType.User].orEmpty().toSet()
+    val regexes = filtersByType[DanmakuFilterType.Regex].orEmpty().mapNotNull { content ->
+        try {
+            Regex(content)
+        } catch (_: IllegalArgumentException) {
+            // 云端或旧存储中的非法表达式不参与匹配，保留原规则。
+            null
+        }
+    }
+    return { item ->
+        texts.any { item.content.contains(it, ignoreCase = true) } ||
+            regexes.any { it.containsMatchIn(item.content) } ||
+            item.senderHash in users
     }
 }

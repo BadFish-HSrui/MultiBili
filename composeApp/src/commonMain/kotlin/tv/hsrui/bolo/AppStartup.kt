@@ -33,24 +33,40 @@ import multibili.composeapp.generated.resources.github_repo_url
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.storage.appData.AppDataStorage
+import tv.hsrui.bolo.storage.appData.playbackStatistics.addPlaybackStatistics
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.common.update.CheckAppUpdate
 import tv.hsrui.bolo.ui.components.dialog.ShowInfoDialog
 import tv.hsrui.bolo.utils.url.openUrl
+import tv.hsrui.network.wbi.WbiManager
 
 @Composable
 fun AppStartup() {
     val appDataStorage: AppDataStorage = koinInject()
+    val wbiManager: WbiManager = koinInject()
     val warnings = appDataStorage.oneTimeWarnings
     var isWatchTimeCheckFinished by rememberSaveable { mutableStateOf(false) }
     var showWatchTimePrompt by rememberSaveable { mutableStateOf(false) }
     var isAppUpdateCheckActive by rememberSaveable { mutableStateOf(true) }
 
+    LaunchedEffect(wbiManager) {
+        try {
+            wbiManager.tryUpdate(force = true)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            ensureActive()
+        }
+    }
+
     LaunchedEffect(warnings.dynamicLoudnessPending) {
         if (warnings.dynamicLoudnessPending || isWatchTimeCheckFinished) return@LaunchedEffect
         if (warnings.Check114514) {
             try {
-                val totalPlayedMs = appDataStorage.playbackStatistics.totalPlayedMs()
+                val totalPlayedMs = addPlaybackStatistics(
+                    appDataStorage.playbackStatistics.totalPlayedMs(),
+                    appDataStorage.liveStatistics.totalPlayedMs(),
+                )
                 ensureActive()
                 showWatchTimePrompt = totalPlayedMs >= 114_514_000L
             } catch (error: CancellationException) {

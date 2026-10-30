@@ -19,9 +19,6 @@ import kotlinx.datetime.LocalDate
 import tv.hsrui.bolo.player.base.BoloPlaybackObservation
 import tv.hsrui.bolo.player.withPlaybackReportBackgroundExecution
 import tv.hsrui.bolo.storage.statistics.StatisticsDatabase
-import tv.hsrui.bolo.storage.statistics.exportBackup
-import tv.hsrui.bolo.storage.statistics.restoreBackup
-import tv.hsrui.bolo.storage.statistics.validateBackup
 import tv.hsrui.network.feature.media.MediaEpisode
 import tv.hsrui.network.feature.media.MediaSeasonData
 import tv.hsrui.network.feature.video.VideoInfoData
@@ -32,15 +29,17 @@ import kotlin.time.Duration
 class PlaybackStatisticsManager internal constructor(
     private val database: () -> StatisticsDatabase,
     private val wallTime: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val writeMutex: Mutex = Mutex(),
+    private val canOpen: () -> Boolean = { true },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val writeMutex = Mutex()
     private var writeJob: Job? = null
     private var writeRequested = false
     private val mutableSaveError = MutableStateFlow<String?>(null)
     val saveError = mutableSaveError.asStateFlow()
     private val pendingSessions = mutableSetOf<Session>()
     private var active: Session? = null
+    internal val hasActiveSession get() = active != null
     private val mutableWatchedRanges = MutableStateFlow<List<PlaybackWatchedRange>>(emptyList())
     val watchedRanges = mutableWatchedRanges.asStateFlow()
 
@@ -71,7 +70,7 @@ class PlaybackStatisticsManager internal constructor(
     ))
 
     private fun open(metadata: PlaybackStatisticsMetadata): Session? {
-        if (metadata.avid <= 0L || metadata.cid <= 0L) return null
+        if (!canOpen() || metadata.avid <= 0L || metadata.cid <= 0L) return null
         val current = active
         if (current != null && current.matches(metadata)) {
             current.updateMetadata(metadata)
@@ -94,23 +93,6 @@ class PlaybackStatisticsManager internal constructor(
 
     suspend fun get(avid: Long, cid: Long): PlaybackStatisticsRecord? =
         database().playbackStatisticsDao().get(avid, cid)
-
-    suspend fun exportBackup(destination: String) {
-        flush()
-        writeMutex.withLock { database().exportBackup(destination) }
-    }
-
-    suspend fun validateBackup(path: String) = database().validateBackup(path)
-
-    suspend fun restoreBackup(path: String) {
-        flush()
-        writeMutex.withLock { database().restoreBackup(path) }
-    }
-
-    suspend fun clear() {
-        flush()
-        writeMutex.withLock { database().playbackStatisticsDao().clear() }
-    }
 
     /** 聚合后按指定字段和 AV/UID 同向分页；游标须来自相同排序，默认最近观看时间倒序。 */
     suspend fun historyPage(

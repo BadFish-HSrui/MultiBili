@@ -4,11 +4,31 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.setValue
 import eu.anifantakis.lib.ksafe.KSafePlain
+import tv.hsrui.network.feature.danmaku.DanmakuFilterData
 import kotlin.math.roundToInt
 
 class PlayerDanmakuSettings(settingsKSafe: KSafePlain) {
+    private var storedFilterList by settingsKSafe(
+        emptyList<DanmakuFilterData>(),
+        key = "player_danmaku_filter_list",
+    )
+    private var currentFilterList by mutableStateOf(
+        storedFilterList.map { it.copy() },
+        referentialEqualityPolicy(),
+    )
+
+    // 修改条目的 isOpened 后，需重新赋值列表以保存并通知状态更新。
+    var filterList: List<DanmakuFilterData>
+        get() = currentFilterList
+        set(value) {
+            val snapshot = value.map { it.copy() }
+            storedFilterList = snapshot.map { it.copy() }
+            currentFilterList = snapshot
+        }
+
     private var storedFilterLevel by settingsKSafe(0, key = "player_danmaku_filter_level")
     private var currentFilterLevel by mutableIntStateOf(storedFilterLevel.coerceIn(0, 10))
 

@@ -9,14 +9,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.mp.KoinPlatform.getKoin
-import tv.hsrui.network.feature.history.HistoryVideoCard
-import tv.hsrui.network.feature.history.searchHistoryVideos
+import tv.hsrui.network.feature.history.HistoryItem
+import tv.hsrui.network.feature.history.searchHistory
 import tv.hsrui.network.login.storage.LoginStorage
 
 data class HistorySearchUiState(
     val keyword: String = "",
     val accountMid: Long = 0,
-    val videos: List<HistoryVideoCard> = emptyList(),
+    val items: List<HistoryItem> = emptyList(),
     val isSearching: Boolean = false,
     val isLoadingMore: Boolean = false,
     val error: String? = null,
@@ -72,11 +72,11 @@ class HistorySearchViewModel(private val loginStorage: LoginStorage = getKoin().
         loadPage(append = false)
     }
 
-    fun refreshVideos() {
+    fun refreshItems() {
         search(_uiState.value.keyword)
     }
 
-    fun loadMoreVideos() {
+    fun loadMoreItems() {
         val state = _uiState.value
         if (state.keyword.isEmpty() || state.isSearching || state.isLoadingMore || !state.hasMore || state.error != null) return
         loadPage(append = true)
@@ -97,17 +97,17 @@ class HistorySearchViewModel(private val loginStorage: LoginStorage = getKoin().
                 do {
                     val nextPage = pageNumber + 1
                     val result = withTimeoutOrNull(15_000) {
-                        searchHistoryVideos(keyword = keyword, pageNumber = nextPage)
+                        searchHistory(keyword = keyword, pageNumber = nextPage)
                     } ?: error("搜索请求超时")
                     if (version != requestVersion || identity != readCurrentUserMid()) return@launch
                     check(result.isSuccess) { result.message.ifBlank { "搜索失败" } }
-                    val videos = result.videos.filter { it.recordKey !in removedIds }
+                    val items = result.items.filter { it.recordKey !in removedIds }
                     pageNumber = nextPage
                     _uiState.value = _uiState.value.copy(
-                        videos = (_uiState.value.videos + videos).filter { it.recordKey !in removedIds }.distinctBy { it.recordKey },
+                        items = (_uiState.value.items + items).filter { it.recordKey !in removedIds }.distinctBy { it.recordKey },
                         hasMore = result.hasMore,
                     )
-                } while (videos.isEmpty() && result.hasMore)
+                } while (items.isEmpty() && result.hasMore)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -126,6 +126,6 @@ class HistorySearchViewModel(private val loginStorage: LoginStorage = getKoin().
 
     fun removeItem(recordKey: String) {
         removedIds += recordKey
-        _uiState.value = _uiState.value.copy(videos = _uiState.value.videos.filter { it.recordKey != recordKey })
+        _uiState.value = _uiState.value.copy(items = _uiState.value.items.filter { it.recordKey != recordKey })
     }
 }

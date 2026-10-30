@@ -4,12 +4,15 @@ import kotlin.math.min
 
 internal class BoloDanmakuEngine {
     internal class Entry(
+        val sourceItem: BoloDanmakuItem,
         val item: BoloDanmakuItem,
-        val enteredAtMs: Long,
+        val enteredAtMs: Double,
         var width: Float,
         var height: Float,
         var y: Float,
     ) {
+        var isBlocked = false
+
         private var anchorTimeMs = enteredAtMs
         private var anchorX = 0.0
         private var speed = 0.0
@@ -41,7 +44,7 @@ internal class BoloDanmakuEngine {
             anchorX = if (this.viewportWidth > 0f) {
                 scrollX(animationTimeMs.toDouble()) * viewportWidth / this.viewportWidth
             } else viewportWidth.toDouble()
-            anchorTimeMs = animationTimeMs
+            anchorTimeMs = if (this.viewportWidth > 0f) animationTimeMs.toDouble() else enteredAtMs
             this.viewportWidth = viewportWidth
             speed = newSpeed.toDouble()
         }
@@ -50,11 +53,19 @@ internal class BoloDanmakuEngine {
     private var items = emptyList<BoloDanmakuItem>()
     val itemCount: Int get() = items.size
     private val active = ArrayList<Entry>(500)
-    private val pending = linkedMapOf<Long, BoloDanmakuItem>()
     private val scheduledIds = mutableSetOf<Long>()
-    private val immediateIds = mutableSetOf<Long>()
+    private val immediateItems = linkedMapOf<Long, BoloDanmakuItem>()
+    private val prepared = linkedMapOf<Long, Entry>()
+
     private var cursor = 0
     private var admissionPositionMs = 0L
+    private var sampleAnimationTimeMs = 0L
+    private var playbackSpeed = 1f
+    private var schedulingEnabled = false
+    private var restorePending = true
+    private var backfillPending = true
+    private var preparationPending = true
+
     private var layoutChanged = true
     private var width = 0f
     private var height = 0f
@@ -63,14 +74,20 @@ internal class BoloDanmakuEngine {
     private var verticalGap = 0f
     private var horizontalGap = 0f
     private var appliedSpeedFactor = 1f
+    private var appliedFontScale = Float.NaN
+    private var appliedFilterLevel = -1
+    private var appliedModes = 0
+    private var appliedFilter: ((BoloDanmakuItem) -> Boolean)? = null
 
     fun load(newItems: List<BoloDanmakuItem>) {
         val byId = newItems.asSequence().filter { it.progressMs >= 0 && it.content.isNotBlank() }.associateBy { it.id }
         items = byId.values.sortedWith(compareBy<BoloDanmakuItem> { it.progressMs }.thenBy { it.id })
-        pending.entries.removeAll { byId[it.key] != it.value }
-        immediateIds.retainAll(pending.keys)
-        // 已处理 ID 保留到显式 Seek，避免淘汰后重新加载导致重复入场。
+        prepared.entries.removeAll { byId[it.key] != it.value.sourceItem }
+        // 在屏快照不随分段淘汰；当前缓存内的已处理 ID 保留到下一次恢复。
+        scheduledIds.retainAll(byId.keys + active.map { it.item.id })
         cursor = lowerBound(admissionPositionMs)
+        backfillPending = true
+        preparationPending = true
     }
 
     fun append(newItems: List<BoloDanmakuItem>) = load(items + newItems)
@@ -79,38 +96,50 @@ internal class BoloDanmakuEngine {
         require(item.progressMs >= 0L && item.content.isNotBlank())
         append(listOf(item))
         scheduledIds.add(item.id)
-        if (active.none { it.item.id == item.id }) {
-            pending[item.id] = item
-            immediateIds.add(item.id)
-        }
+        if (active.none { it.item.id == item.id }) immediateItems[item.id] = item
     }
 
-    fun advance(positionMs: Long) {
+    fun advance(positionMs: Long, animationTimeMs: Long, speed: Float) {
         // 普通回退不回拨已处理游标，只有显式 Seek 可以开始新的调度周期。
         if (positionMs < admissionPositionMs) return
         admissionPositionMs = positionMs
-        while (cursor < items.size && items[cursor].progressMs <= positionMs) {
-            val item = items[cursor++]
-            if (scheduledIds.add(item.id)) pending[item.id] = item
-        }
+        sampleAnimationTimeMs = animationTimeMs
+        playbackSpeed = speed
+        schedulingEnabled = true
+        preparationPending = true
     }
 
-    fun seek(positionMs: Long) {
-        active.clear()
-        pending.clear()
+    fun seek(positionMs: Long, animationTimeMs: Long, speed: Float) {
         scheduledIds.clear()
-        immediateIds.clear()
+        immediateItems.clear()
+        prepared.clear()
         admissionPositionMs = positionMs
+        sampleAnimationTimeMs = animationTimeMs
+        playbackSpeed = speed
         cursor = lowerBound(positionMs)
+        restorePending = true
+        backfillPending = true
+        preparationPending = true
+        schedulingEnabled = true
+    }
+
+    fun suspendScheduling() {
+        schedulingEnabled = false
+        immediateItems.clear()
+        prepared.clear()
     }
 
     fun clear() {
         items = emptyList()
-        seek(0)
+        active.clear()
+        seek(0, 0, 1f)
+        suspendScheduling()
     }
 
     fun requestLayout() {
         layoutChanged = true
+        prepared.clear()
+        preparationPending = true
     }
 
     fun resize(
@@ -135,7 +164,7 @@ internal class BoloDanmakuEngine {
         requestLayout()
     }
 
-    /** 只接受内部动画时间，绝不依据媒体位置重建在屏条目。 */
+    /** 普通帧只推进动画；恢复与数据补齐才通过媒体采样锚点计算入场年龄。 */
     fun frame(
         animationTimeMs: Long,
         fontScale: Float,
@@ -144,7 +173,9 @@ internal class BoloDanmakuEngine {
         scrollEnabled: Boolean,
         topEnabled: Boolean,
         bottomEnabled: Boolean,
+        maxScrollDurationMs: Double,
         baseSpeed: (Float, Float) -> Float,
+        isBlocked: (BoloDanmakuItem) -> Boolean = { false },
         measure: (BoloDanmakuItem) -> Pair<Float, Float>,
     ): List<Entry> {
         fun isModeEnabled(mode: BoloDanmakuMode): Boolean = when (mode) {
@@ -152,10 +183,87 @@ internal class BoloDanmakuEngine {
             BoloDanmakuMode.Top -> topEnabled
             BoloDanmakuMode.Bottom -> bottomEnabled
         }
+        if (!width.isFinite() || !height.isFinite() || width <= 0f || height <= 0f) return emptyList()
+        if (!schedulingEnabled) return active
+
+        val modes = (if (scrollEnabled) 1 else 0) or (if (topEnabled) 2 else 0) or (if (bottomEnabled) 4 else 0)
+        if (
+            appliedFontScale != fontScale || appliedSpeedFactor != speedFactor || appliedFilterLevel != filterLevel ||
+            appliedModes != modes || appliedFilter !== isBlocked
+        ) {
+            prepared.clear()
+            preparationPending = true
+        }
+        appliedFontScale = fontScale
+        appliedFilterLevel = filterLevel
+        appliedModes = modes
+
+        fun eligible(item: BoloDanmakuItem): Boolean = item.isOwn ||
+            (item.weight >= filterLevel && isModeEnabled(item.mode) && !isBlocked(item))
+
+        fun measureEntry(item: BoloDanmakuItem, enteredAtMs: Double): Entry? {
+            val displayItem = item.copy(
+                fontSize = (item.fontSize.takeIf { it.isFinite() && it > 0f } ?: 25f) * fontScale,
+            )
+            val cached = prepared.remove(item.id)?.takeIf { it.sourceItem == item && it.item == displayItem }
+            val (textWidth, textHeight) = cached?.let { it.width to it.height } ?: measure(displayItem)
+            if (
+                !textWidth.isFinite() || !textHeight.isFinite() || textWidth <= 0f || textHeight <= 0f ||
+                textHeight > displayHeight(item.mode)
+            ) return null
+            return Entry(item, displayItem, enteredAtMs, textWidth, textHeight, 0f)
+        }
+
+        // 寿命使用动画毫秒，索引查询范围换算为媒体毫秒。
+        val animationPerMedia = danmakuAdvanceFactor(playbackSpeed).toDouble() / playbackSpeed
+        val lookbackMs = maxOf(4_000.0, maxScrollDurationMs / speedFactor) / animationPerMedia
+        val from = (admissionPositionMs.toDouble() - lookbackMs).coerceAtLeast(0.0).toLong()
+        val order = compareByDescending<BoloDanmakuItem> { it.isOwn }.thenBy { it.progressMs }.thenBy { it.id }
+
+        fun admit(item: BoloDanmakuItem, previousY: Float? = null, immediate: Boolean = false) {
+            if (!eligible(item) || active.any { it.item.id == item.id } || (!item.isOwn && active.size >= 500)) return
+            val enteredAt = if (immediate) animationTimeMs.toDouble() else sampleAnimationTimeMs -
+                (admissionPositionMs.toDouble() - item.progressMs) * animationPerMedia
+            if (enteredAt > animationTimeMs) return
+            val entry = measureEntry(item, enteredAt) ?: return
+            val speed = baseSpeed(width, entry.width) * speedFactor
+            if (item.mode == BoloDanmakuMode.Scroll && (!speed.isFinite() || speed <= 0f)) return
+            entry.updateMotion(animationTimeMs, width, speed)
+            if (immediate) entry.revealOnEntry()
+            if (entry.expired(animationTimeMs)) return
+            if (item.isOwn && active.size >= 500) removeOldestEntry()
+            var lane = previousY?.takeIf { canUseLane(entry, it, animationTimeMs) } ?: findLane(entry, animationTimeMs)
+            while (lane == null && item.isOwn && removeOldestEntry(item.mode)) lane = findLane(entry, animationTimeMs)
+            entry.y = lane ?: return
+            active.add(entry)
+        }
+
+        if (restorePending) {
+            val survivors = active.sortedWith(
+                compareByDescending<Entry> { it.item.isOwn }
+                    .thenBy { it.sourceItem.progressMs }
+                    .thenBy { it.item.id },
+            )
+            active.clear()
+            for (entry in survivors) {
+                val item = entry.sourceItem
+                if (item.progressMs <= admissionPositionMs && item.progressMs >= from && scheduledIds.add(item.id)) {
+                    admit(item, entry.y)
+                }
+            }
+            restorePending = false
+            layoutChanged = false
+        }
         active.removeAll {
             it.expired(animationTimeMs) || (!it.item.isOwn && (it.item.weight < filterLevel || !isModeEnabled(it.item.mode)))
         }
-        if (!width.isFinite() || !height.isFinite() || width <= 0f || height <= 0f) return emptyList()
+        if (appliedFilter !== isBlocked) {
+            // 已入场条目仅隐藏绘制，继续运动、占轨和自然过期，避免恢复时重叠。
+            for (entry in active) {
+                entry.isBlocked = !entry.item.isOwn && isBlocked(entry.item)
+            }
+            appliedFilter = isBlocked
+        }
         if (layoutChanged) {
             val survivors = active.sortedByDescending { it.item.isOwn }
             active.clear()
@@ -164,7 +272,7 @@ internal class BoloDanmakuEngine {
                 entry.width = textWidth
                 entry.height = textHeight
                 entry.updateMotion(animationTimeMs, width, baseSpeed(width, textWidth) * speedFactor)
-                entry.y = findLane(entry, animationTimeMs) ?: continue
+                entry.y = entry.y.takeIf { canUseLane(entry, it, animationTimeMs) } ?: findLane(entry, animationTimeMs) ?: continue
                 active.add(entry)
             }
             layoutChanged = false
@@ -175,33 +283,50 @@ internal class BoloDanmakuEngine {
         }
         appliedSpeedFactor = speedFactor
         active.removeAll { it.expired(animationTimeMs) }
-        for (item in pending.values.sortedByDescending { it.isOwn }) {
-            if (!item.isOwn && (item.weight < filterLevel || !isModeEnabled(item.mode))) continue
-            if ((!item.isOwn && active.size >= 500) || active.any { it.item.id == item.id }) continue
-            // 入场时固定显示字号；后续倍率变化不影响在屏条目，也不修改源数据。
-            val displayItem = item.copy(
-                fontSize = (item.fontSize.takeIf { it.isFinite() && it > 0f } ?: 25f) * fontScale,
-            )
-            val (textWidth, textHeight) = measure(displayItem)
-            if (!textWidth.isFinite() || !textHeight.isFinite() || textWidth <= 0f || textHeight <= 0f || textHeight > height) continue
-            if (textHeight > displayHeight(item.mode)) continue
-            val entry = Entry(displayItem, animationTimeMs, textWidth, textHeight, 0f)
-            val speed = baseSpeed(width, textWidth) * speedFactor
-            if (item.mode == BoloDanmakuMode.Scroll && (!speed.isFinite() || speed <= 0f)) continue
-            entry.updateMotion(animationTimeMs, width, speed)
-            if (item.id in immediateIds) entry.revealOnEntry()
-            if (item.isOwn && active.size >= 500) removeOldestEntry()
-            // 单条无法入场不阻塞后续条目，较短弹幕仍可尝试利用剩余轨道。
-            var lane = findLane(entry, animationTimeMs)
-            while (lane == null && item.isOwn && removeOldestEntry(item.mode)) {
-                lane = findLane(entry, animationTimeMs)
-            }
-            entry.y = lane ?: continue
-            active.add(entry)
+        val start = lowerBound(from)
+        cursor = if (backfillPending) start else maxOf(cursor, start)
+        backfillPending = false
+        val due = ArrayList<BoloDanmakuItem>()
+        while (cursor < items.size && items[cursor].progressMs <= admissionPositionMs) {
+            val item = items[cursor++]
+            if (scheduledIds.add(item.id)) due.add(item)
         }
-        pending.clear()
-        immediateIds.clear()
+        for (item in due.sortedWith(order)) admit(item)
+        for (item in immediateItems.values.sortedWith(order)) admit(item, immediate = true)
+        immediateItems.clear()
+
+        if (preparationPending) {
+            val until = admissionPositionMs.toDouble() + 1_000.0 * playbackSpeed
+            prepared.entries.removeAll {
+                it.value.sourceItem.progressMs <= admissionPositionMs || it.value.sourceItem.progressMs > until
+            }
+            val upcoming = ArrayList<BoloDanmakuItem>()
+            var index = cursor
+            while (index < items.size && items[index].progressMs <= until) {
+                val item = items[index++]
+                if (item.progressMs > admissionPositionMs && item.id !in scheduledIds && eligible(item)) upcoming.add(item)
+            }
+            for (item in upcoming.sortedWith(order)) {
+                if (prepared.size >= 500) break
+                if (item.id !in prepared) measureEntry(item, 0.0)?.let { prepared[item.id] = it }
+            }
+            preparationPending = false
+        }
         return active
+    }
+
+    private fun canUseLane(entry: Entry, y: Float, timeMs: Long): Boolean {
+        val areaHeight = displayHeight(entry.item.mode)
+        val top = y >= 0f && y + entry.height <= areaHeight
+        val bottom = y >= height - areaHeight && y + entry.height <= height
+        val inArea = when (entry.item.mode) {
+            BoloDanmakuMode.Top -> top
+            BoloDanmakuMode.Bottom -> bottom
+            BoloDanmakuMode.Scroll -> top || (topBottomScrollEnabled && displayAreaRatio < 0.5f && bottom)
+        }
+        if (!inArea) return false
+        entry.y = y
+        return active.none { overlaps(entry, it, timeMs) }
     }
 
     private fun removeOldestEntry(mode: BoloDanmakuMode? = null): Boolean {
@@ -260,8 +385,12 @@ internal class BoloDanmakuEngine {
             candidate.remainingMs(timeMs),
             other.remainingMs(timeMs),
         )
-        fun distance(t: Double) = candidate.xAt(t, width) - other.xAt(t, width) - other.width
-        return distance(timeMs.toDouble()) < horizontalGap || distance(timeMs + remainingMs) < horizontalGap
+        fun distance(t: Double) = candidate.xAt(t, width) - other.xAt(t, width)
+        val start = distance(timeMs.toDouble())
+        val end = distance(timeMs + remainingMs)
+        val right = other.width + horizontalGap
+        val left = -candidate.width - horizontalGap
+        return !((start >= right && end >= right) || (start <= left && end <= left))
     }
 
     private fun lowerBound(positionMs: Long): Int {

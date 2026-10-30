@@ -4,10 +4,22 @@ package tv.hsrui.bolo.player.base
 
 import tv.hsrui.bolo.player.nativeinterop.*
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.ByteVar
+import kotlinx.cinterop.COpaquePointer
+import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.StableRef
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.asStableRef
+import kotlinx.cinterop.convert
+import kotlinx.cinterop.staticCFunction
+import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.plus
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.rawValue
+import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.toKString
+import kotlinx.cinterop.value
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -24,8 +36,68 @@ import platform.UIKit.UIApplicationState
 import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
 import platform.UIKit.UIViewAutoresizingFlexibleWidth
+import platform.darwin.KERN_SUCCESS
+import platform.darwin.TASK_VM_INFO
+import platform.darwin.TASK_VM_INFO_COUNT
+import platform.darwin.TASK_VM_INFO_REV4_COUNT
+import platform.darwin.mach_msg_type_number_tVar
+import platform.darwin.mach_task_self_
+import platform.darwin.task_info
+import platform.darwin.task_vm_info
+import platform.posix.MAP_ANON
+import platform.posix.MAP_FAILED
+import platform.posix.MAP_PRIVATE
+import platform.posix.PROT_READ
+import platform.posix.PROT_WRITE
+import platform.posix.mmap
+import platform.posix.munmap
+import platform.posix.memcpy
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+
+internal actual fun allocatePlaybackBuffer(size: Int): BoloPlaybackBuffer? {
+    require(size > 0)
+    val buffer = object : BoloPlaybackBuffer {
+        var pointer: CPointer<ByteVar>? = null
+
+        override fun copyInto(destination: ByteArray, destinationOffset: Int, startIndex: Int, endIndex: Int) {
+            require(startIndex >= 0 && endIndex >= startIndex && endIndex <= size)
+            val length = endIndex - startIndex
+            require(destinationOffset >= 0 && destinationOffset <= destination.size - length)
+            val source = checkNotNull(pointer)
+            if (length == 0) return
+            destination.usePinned { memcpy(it.addressOf(destinationOffset), source + startIndex, length.convert()) }
+        }
+
+        override fun copyFrom(source: ByteArray, sourceOffset: Int, destinationOffset: Int, length: Int) {
+            require(length >= 0 && sourceOffset >= 0 && sourceOffset <= source.size - length)
+            require(destinationOffset >= 0 && destinationOffset <= size - length)
+            val destination = checkNotNull(pointer)
+            if (length == 0) return
+            source.usePinned { memcpy(destination + destinationOffset, it.addressOf(sourceOffset), length.convert()) }
+        }
+
+        override fun close() {
+            val allocation = pointer ?: return
+            pointer = null
+            munmap(allocation, size.convert())
+        }
+    }
+    // 独立映射在关闭时直接归还页面，避免 malloc 保留空闲块导致余量迟迟不能恢复。
+    val allocation = mmap(null, size.convert(), PROT_READ or PROT_WRITE, MAP_PRIVATE or MAP_ANON, -1, 0)
+    if (allocation == MAP_FAILED || allocation == null) return null
+    buffer.pointer = allocation.reinterpret()
+    return buffer
+}
+
+internal actual fun playbackAvailableMemoryBytes(): Long? = memScoped {
+    val info = alloc<task_vm_info>()
+    val count = alloc<mach_msg_type_number_tVar>()
+    count.value = TASK_VM_INFO_COUNT
+    val result = task_info(mach_task_self_, TASK_VM_INFO.convert(), info.ptr.reinterpret(), count.ptr)
+    if (result != KERN_SUCCESS || count.value < TASK_VM_INFO_REV4_COUNT) return@memScoped null
+    info.limit_bytes_remaining.takeIf { it <= Long.MAX_VALUE.toULong() }?.toLong()
+}
 
 /** 仅在 Main 使用；播放和手势分别持有会话，互不释放对方的使用权。 */
 internal object IosPlayerAudioSession {
@@ -72,7 +144,26 @@ internal object IosPlayerAudioSession {
 }
 
 internal actual class BoloMpvBackend actual constructor() {
+    private val streamBridge = BoloMpvStreamBridge()
     private val handle = checkNotNull(bolo_mpv_create("ios")) { "libmpv 初始化失败" }
+    private val streamReference = StableRef.create(streamBridge)
+    init {
+        val result = memScoped {
+            val callbacks = alloc<bolo_mpv_stream_callbacks>()
+            callbacks.open = staticCFunction(::iosStreamOpen)
+            callbacks.read = staticCFunction(::iosStreamRead)
+            callbacks.seek = staticCFunction(::iosStreamSeek)
+            callbacks.size = staticCFunction(::iosStreamSize)
+            callbacks.cancel = staticCFunction(::iosStreamCancel)
+            callbacks.close = staticCFunction(::iosStreamClose)
+            bolo_mpv_set_stream_callbacks(handle, callbacks.ptr, streamReference.asCPointer())
+        }
+        if (result < 0) {
+            bolo_mpv_destroy(handle)
+            streamReference.dispose()
+            error("播放数据源注册失败")
+        }
+    }
     private val outputMutex = Mutex()
     private var outputReady = CompletableDeferred<Unit>()
     private var outputGeneration = 0L
@@ -179,11 +270,35 @@ internal actual class BoloMpvBackend actual constructor() {
         }
     }
     actual suspend fun awaitOutput() { outputReady.await() }
-    actual fun load(video: String, audio: String?, startSeconds: Double, generation: Long, userAgent: String, referrer: String) = if (destroyed) -3 else bolo_mpv_load(handle, video, audio, startSeconds, generation, userAgent, referrer)
+    actual fun load(streams: BoloPlaybackStreamSession, startSeconds: Double, generation: Long): Int {
+        if (destroyed) return -3
+        streamBridge.bind(streams)
+        return bolo_mpv_load(handle, streams.videoUri, streams.audioUri, startSeconds, generation,
+            videoPlayHeaders.getValue("User-Agent"), videoPlayHeaders.getValue("Referer"))
+    }
+    actual fun loadLive(streams: BoloMpvStreamSource, uri: String, generation: Long, prefetchEnabled: Boolean, targetSeconds: Double?, request: Long): Int {
+        if (destroyed) return -3
+        streamBridge.bind(streams)
+        return bolo_mpv_load_live(handle, uri, generation, "", "", if (prefetchEnabled) 1 else 0, targetSeconds ?: -1.0, request)
+    }
     actual fun videoEnabled(enabled: Boolean) = if (destroyed) -3 else
         bolo_mpv_video_enabled(handle, if (enabled && videoOutputAllowed.value) 1 else 0)
     actual fun pause(paused: Boolean) = if (destroyed) -3 else bolo_mpv_pause(handle, if (paused) 1 else 0)
     actual fun speed(speed: Double) = if (destroyed) -3 else bolo_mpv_speed(handle, speed)
+    actual fun bufferedDurationMs(): Long? = if (destroyed) null else bolo_mpv_buffered_duration(handle)
+        .takeIf { it.isFinite() && it >= 0 }?.let { (it * 1000).toLong() }
+    actual fun bufferSnapshot(): BoloMpvBufferSnapshot? = if (destroyed) null else memScoped {
+        val snapshot = alloc<bolo_mpv_buffer_snapshot>()
+        if (bolo_mpv_read_buffer_snapshot(handle, snapshot.ptr) == 0) null else BoloMpvBufferSnapshot(
+            generation = snapshot.generation,
+            positionMs = snapshot.position_ms.takeUnless { it == Long.MIN_VALUE },
+            bufferedEndMs = snapshot.buffered_end_ms.takeUnless { it == Long.MIN_VALUE },
+            bufferedDurationMs = snapshot.buffered_duration_ms.takeUnless { it == Long.MIN_VALUE },
+            underrun = snapshot.underrun != 0,
+            idle = snapshot.idle != 0,
+            demuxEof = snapshot.demux_eof != 0,
+        )
+    }
     actual fun volume(volume: Double) = if (destroyed) -3 else bolo_mpv_volume(handle, volume)
     actual fun loudness(gainDb: Double, dynamicEnabled: Boolean, targetLufs: Double, rangeLu: Double, truePeakDbtp: Double) = if (destroyed) -3 else bolo_mpv_loudness(handle, gainDb, if (dynamicEnabled) 1 else 0, targetLufs, rangeLu, truePeakDbtp)
     actual fun mergeAudioChannels(enabled: Boolean) = if (destroyed) -3 else bolo_mpv_merge_audio_channels(handle, if (enabled) 1 else 0)
@@ -193,16 +308,55 @@ internal actual class BoloMpvBackend actual constructor() {
         if (bolo_mpv_poll(handle, event.ptr) == 0) null
         else BoloMpvEvent(event.type, event.generation, event.request, event.error, event.value)
     }
-    actual fun stop() = if (destroyed) -3 else bolo_mpv_stop(handle)
+    actual fun stop(): Int {
+        streamBridge.cancel()
+        return if (destroyed) -3 else bolo_mpv_stop(handle)
+    }
     actual fun info(includeDiagnostics: Boolean): BoloMpvInfoSnapshot? {
         if (destroyed) return null
         val text = bolo_mpv_info(handle, if (includeDiagnostics) 1 else 0) ?: return null
         return try { BoloMpvInfoSnapshot.parse(text.toKString(), this) }
         finally { bolo_mpv_info_free(text) }
     }
-    actual fun destroy() { if (!destroyed) { destroyed = true; bolo_mpv_destroy(handle) } }
+    actual fun destroy() {
+        if (destroyed) return
+        destroyed = true
+        streamBridge.cancel()
+        bolo_mpv_destroy(handle)
+        streamBridge.release()
+        streamReference.dispose()
+    }
     actual suspend fun setAudioActive(active: Boolean): Boolean = withContext(Dispatchers.Main.immediate) {
         if (active && closed) false
         else IosPlayerAudioSession.setPlaybackActive(this@BoloMpvBackend, active)
     }
+}
+
+private fun iosStreamOpen(context: COpaquePointer?, uri: CPointer<ByteVar>?): Long = try {
+    if (context == null || uri == null) 0L else context.asStableRef<BoloMpvStreamBridge>().get().open(uri.toKString())
+} catch (_: Throwable) { 0L }
+
+private fun iosStreamRead(context: COpaquePointer?, id: Long, buffer: CPointer<ByteVar>?, size: ULong): Long = try {
+    if (context == null || buffer == null) -1L else {
+        val bytes = ByteArray(minOf(size, 65536uL).toInt())
+        val count = context.asStableRef<BoloMpvStreamBridge>().get().read(id, bytes)
+        if (count > 0) bytes.usePinned { memcpy(buffer, it.addressOf(0), count.convert()) }
+        count.toLong()
+    }
+} catch (_: Throwable) { -1L }
+
+private fun iosStreamSeek(context: COpaquePointer?, id: Long, offset: Long): Long = try {
+    context?.asStableRef<BoloMpvStreamBridge>()?.get()?.seek(id, offset) ?: -1L
+} catch (_: Throwable) { -1L }
+
+private fun iosStreamSize(context: COpaquePointer?, id: Long): Long = try {
+    context?.asStableRef<BoloMpvStreamBridge>()?.get()?.size(id) ?: -1L
+} catch (_: Throwable) { -1L }
+
+private fun iosStreamCancel(context: COpaquePointer?, id: Long) {
+    try { context?.asStableRef<BoloMpvStreamBridge>()?.get()?.cancel(id) } catch (_: Throwable) { }
+}
+
+private fun iosStreamClose(context: COpaquePointer?, id: Long) {
+    try { context?.asStableRef<BoloMpvStreamBridge>()?.get()?.close(id) } catch (_: Throwable) { }
 }

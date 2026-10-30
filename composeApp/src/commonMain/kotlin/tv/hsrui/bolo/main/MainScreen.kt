@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,6 +43,7 @@ import multibili.composeapp.generated.resources.Res
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.main.home.HomeScreen
+import tv.hsrui.bolo.main.live.LiveScreen
 import tv.hsrui.bolo.main.media.MediaScreen
 import tv.hsrui.bolo.utils.calculateWithoutBottom
 import tv.hsrui.bolo.main.region.RegionsScreen
@@ -83,18 +86,26 @@ fun MainScreen(modifier: Modifier = Modifier) {
             bottomBar = {
                 if (isVerticalLayout) {
                     NavigationBar(windowInsets = WindowInsets(bottom = 24)) {
-                        MainTab.entries.forEach { tab ->
-                            NavigationBarItem(
-                                selected = selectedTab == tab,
-                                onClick = { onClick(tab) },
-                                icon = {
-                                    Icon(
-                                        imageVector = tab.icon,
-                                        contentDescription = tab.title
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            MainTab.entries.forEach { tab ->
+                                Row(modifier = Modifier.width(72.dp)) {
+                                    NavigationBarItem(
+                                        selected = selectedTab == tab,
+                                        onClick = { onClick(tab) },
+                                        icon = {
+                                            Icon(
+                                                imageVector = tab.icon,
+                                                contentDescription = tab.title
+                                            )
+                                        },
+                                        label = { Text(tab.title) }
                                     )
-                                },
-                                label = { Text(tab.title) }
-                            )
+                                }
+                            }
                         }
                     }
                 }
@@ -159,6 +170,7 @@ private fun MainContent(
     when (tab) {
         MainTab.HOME -> HomeScreen(modifier, reselectEvents)
         MainTab.REGION -> RegionsScreen(modifier, reselectEvents)
+        MainTab.LIVE -> LiveScreen(modifier, reselectEvents)
         MainTab.MEDIA -> MediaScreen(modifier, reselectEvents)
     }
 }

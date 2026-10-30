@@ -15,7 +15,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
 import kotlin.time.TimeSource
 
-/** 独立于播放控制状态；null 表示未知，码率为 bit/s，下载速度为 B/s。 */
+/** 独立于播放控制状态；null 表示未知，码率为 bit/s，下载速度为 B/s，缓存量和下载量为字节。 */
 data class BoloPlayerInfo(
     val video: BoloPlayerVideoInfo = BoloPlayerVideoInfo(),
     val audio: BoloPlayerAudioInfo? = null,
@@ -24,6 +24,8 @@ data class BoloPlayerInfo(
     val videoOutput: String? = null,
     val audioOutput: String? = null,
     val downloadBytesPerSecond: Long? = null,
+    val forwardBytes: Long? = null,
+    val backwardBytes: Long? = null,
     val decoderDroppedFrames: Long? = null,
     val outputDroppedFrames: Long? = null,
     val decoderDroppedFramesPerSecond: Double? = null,
@@ -39,11 +41,11 @@ data class BoloPlayerVideoInfo(
     val width: Int? = null,
     val height: Int? = null,
     val fps: Double? = null,
-    val decoder: String? = null,
     val decoderDescription: String? = null,
     val fragmentIndex: Int? = null,
     val fragmentCount: Int? = null,
     val downloadBytesPerSecond: Long? = null,
+    val receivedBytes: Long? = null,
 ) {
     val aspectRatio: Float?
         get() = if (width != null && width > 0 && height != null && height > 0) {
@@ -69,12 +71,11 @@ data class BoloPlayerAudioInfo(
     val dynamicLoudnessTargetLufs: Double? = null,
     val dynamicLoudnessRangeLu: Double? = null,
     val dynamicLoudnessTruePeakDbtp: Double? = null,
-    val sampleFormat: String? = null,
-    val decoder: String? = null,
     val decoderDescription: String? = null,
     val fragmentIndex: Int? = null,
     val fragmentCount: Int? = null,
     val downloadBytesPerSecond: Long? = null,
+    val receivedBytes: Long? = null,
 )
 
 internal data class BoloMpvInfoSnapshot(
@@ -102,11 +103,9 @@ internal data class BoloMpvInfoSnapshot(
                         width = video?.positiveInt("width"),
                         height = video?.positiveInt("height"),
                         fps = video?.decimal("fps"),
-                        decoder = video?.string("decoder"),
                         decoderDescription = video?.string("decoderDescription"),
                         fragmentIndex = video?.positiveInt("fragmentIndex"),
                         fragmentCount = video?.positiveInt("fragmentCount"),
-                        downloadBytesPerSecond = video?.number("downloadBytesPerSecond"),
                     ),
                     audio = audio?.let {
                         BoloPlayerAudioInfo(
@@ -117,19 +116,15 @@ internal data class BoloMpvInfoSnapshot(
                             outputChannelLayout = it.string("outputChannelLayout"),
                             outputChannelCount = it.positiveInt("outputChannelCount"),
                             channelsMerged = (it["channelsMerged"] as? JsonPrimitive)?.booleanOrNull,
-                            sampleFormat = it.string("sampleFormat"),
-                            decoder = it.string("decoder"),
                             decoderDescription = it.string("decoderDescription"),
                             fragmentIndex = it.positiveInt("fragmentIndex"),
                             fragmentCount = it.positiveInt("fragmentCount"),
-                            downloadBytesPerSecond = it.number("downloadBytesPerSecond"),
                         )
                     },
                     hardwareDecoder = source.string("hardwareDecoder"),
                     hardwareInterop = source.string("hardwareInterop"),
                     videoOutput = source.string("videoOutput"),
                     audioOutput = source.string("audioOutput"),
-                    downloadBytesPerSecond = source.number("downloadBytesPerSecond"),
                     decoderDroppedFrames = diagnostics?.number("decoderDroppedFrames"),
                     outputDroppedFrames = diagnostics?.number("outputDroppedFrames"),
                     avSyncDifferenceMs = (diagnostics?.get("avSyncDifferenceMs") as? JsonPrimitive)
@@ -153,9 +148,11 @@ private fun JsonObject.decimal(key: String): Double? =
     (get(key) as? JsonPrimitive)?.doubleOrNull?.takeIf { it.isFinite() && it > 0 }
 
 internal fun BoloPlayerInfo.withoutDynamicValues(): BoloPlayerInfo = copy(
-    video = video.copy(playbackBitrateBps = null, fragmentIndex = null, downloadBytesPerSecond = null),
-    audio = audio?.copy(playbackBitrateBps = null, fragmentIndex = null, downloadBytesPerSecond = null),
+    video = video.copy(playbackBitrateBps = null, fragmentIndex = null, downloadBytesPerSecond = null, receivedBytes = null),
+    audio = audio?.copy(playbackBitrateBps = null, fragmentIndex = null, downloadBytesPerSecond = null, receivedBytes = null),
     downloadBytesPerSecond = null,
+    forwardBytes = null,
+    backwardBytes = null,
     decoderDroppedFrames = null,
     outputDroppedFrames = null,
     decoderDroppedFramesPerSecond = null,

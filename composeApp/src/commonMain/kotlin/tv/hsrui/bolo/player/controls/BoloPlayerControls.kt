@@ -95,6 +95,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -106,10 +107,6 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isAltPressed
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isMetaPressed
-import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -120,6 +117,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
@@ -164,9 +164,14 @@ import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.player.VideoPlayerUiState
 import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.VideoPlayerViewModel
+import tv.hsrui.bolo.player.base.BoloPlaybackTimeRange
 import tv.hsrui.bolo.player.PlayerKeyboardEffect
 import tv.hsrui.bolo.player.PlayerFullscreenState
 import tv.hsrui.bolo.player.settings.BoloPlayerSettings
+import tv.hsrui.bolo.player.settings.PlayerShortcutAction
+import tv.hsrui.bolo.player.settings.PlayerShortcutBinding
+import tv.hsrui.bolo.player.settings.shortcutAction
+import tv.hsrui.bolo.player.settings.shortcutModifiers
 import tv.hsrui.bolo.ui.theme.BiliColor
 import tv.hsrui.bolo.ui.components.reply.ShowReplyInput
 import tv.hsrui.bolo.ui.common.snackbar.showSnackbarMessage
@@ -176,11 +181,32 @@ import tv.hsrui.network.feature.player.enumModels.AudioQuality
 import tv.hsrui.network.feature.player.PlayerChapterData
 import tv.hsrui.network.feature.player.enumModels.VideoQuality
 import tv.hsrui.network.feature.subtitle.SubtitleItem
+import tv.hsrui.network.utils.formatToDuration
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
+
+private fun Modifier.clipBufferedRanges(
+    ranges: List<BoloPlaybackTimeRange>,
+    durationMs: Long,
+    include: Boolean,
+): Modifier = drawWithCache {
+    val path = Path()
+    if (durationMs > 0) for (range in ranges) {
+        val first = (range.startMs.toDouble() / durationMs).coerceIn(0.0, 1.0).toFloat()
+        val last = (range.endMs.toDouble() / durationMs).coerceIn(0.0, 1.0).toFloat()
+        if (last > first) {
+            val left = if (layoutDirection == LayoutDirection.Rtl) 1f - last else first
+            val right = if (layoutDirection == LayoutDirection.Rtl) 1f - first else last
+            path.addRect(Rect(left * size.width, 0f, right * size.width, size.height))
+        }
+    }
+    onDrawWithContent {
+        clipPath(path, if (include) ClipOp.Intersect else ClipOp.Difference) { this@onDrawWithContent.drawContent() }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -194,6 +220,7 @@ fun BoloPlayerControls(
     onPreviousEpisode: (() -> Unit)? = null,
     onNextEpisode: (() -> Unit)? = null,
     episodeNavigationEnabled: Boolean = true,
+    endedContent: (@Composable () -> Unit)? = null,
 ) {
     val isFullscreen = fullscreenState.isFullscreen
     val isDesktop = fullscreenState.isDesktop
@@ -292,6 +319,7 @@ fun BoloPlayerControls(
     val desktopDefaultWindowFullscreenEnabled = playerSettings.playback.desktopDefaultWindowFullscreenEnabled
     val desktopFastForwardHoldSpeedEnabled = playerSettings.playback.desktopFastForwardHoldSpeedEnabled
     val playState by viewModel.controller.state.collectAsState()
+    val bufferedRanges by viewModel.controller.bufferedRanges.collectAsState()
     val playerInfo by viewModel.controller.info.collectAsState()
     val playerUiState by viewModel.uiState.collectAsState()
     val subtitleState by viewModel.subtitleController.state.collectAsState()
@@ -458,18 +486,26 @@ fun BoloPlayerControls(
         }
     }
     val keyboardScope = rememberCoroutineScope()
-    val keyboardPressedKeys = remember(viewModel) { mutableSetOf<Key>() }
+    val shortcutBindings = playerSettings.shortcuts.desktopBindings
+    val keyboardPressedKeys = remember(viewModel) { mutableMapOf<Key, Pair<PlayerShortcutAction, PlayerShortcutBinding>>() }
     val keyboardCancelledKeys = remember(viewModel) { mutableSetOf<Key>() }
     val keyboardSeekTimes = remember(viewModel) { mutableMapOf<Int, TimeMark>() }
     var rightHoldJob by remember(viewModel) { mutableStateOf<Job?>(null) }
     var rightHoldPending by remember(viewModel) { mutableStateOf(false) }
+    var rightHoldKey by remember(viewModel) { mutableStateOf<Key?>(null) }
     var keyboardBaseSpeed by remember(viewModel) { mutableStateOf<Float?>(null) }
     var keyboardSpeedBoost by remember(viewModel) { mutableStateOf<Float?>(null) }
+    var keyboardSpeedFeedback by remember(viewModel) { mutableStateOf<Float?>(null) }
+    var keyboardSpeedFeedbackJob by remember(viewModel) { mutableStateOf<Job?>(null) }
     fun cancelKeyboardInteraction() {
+        keyboardSpeedFeedbackJob?.cancel()
+        keyboardSpeedFeedbackJob = null
+        keyboardSpeedFeedback = null
         rightHoldJob?.cancel()
         rightHoldJob = null
         rightHoldPending = false
-        keyboardCancelledKeys.addAll(keyboardPressedKeys)
+        rightHoldKey = null
+        keyboardCancelledKeys.addAll(keyboardPressedKeys.keys)
         keyboardPressedKeys.clear()
         keyboardSeekTimes.clear()
         keyboardBaseSpeed?.let { viewModel.controller.setPlaybackSpeed(it) }
@@ -502,23 +538,57 @@ fun BoloPlayerControls(
     }
     val keyboardBlocked = settingsOpen || speedMenuOpen || volumeMenuOpen || qualityMenuOpen || audioQualityMenuOpen ||
         subtitleMenuOpen || chapterMenuOpen || danmakuInputOpen || mousePressed || sliderPreviewFraction != null
-    fun onVolumeKeyEvent(event: KeyEvent): Boolean {
-        if (event.key != Key.DirectionUp && event.key != Key.DirectionDown && event.key != Key.M) return false
-        if (event.type == KeyEventType.KeyUp) {
-            val cancelled = keyboardCancelledKeys.remove(event.key)
-            val handled = keyboardPressedKeys.remove(event.key)
-            return cancelled || handled
+    fun releaseKeyboardKey(key: Key, cancelled: Boolean): Boolean {
+        val pressed = keyboardPressedKeys.remove(key) ?: return false
+        if (cancelled) keyboardCancelledKeys.add(key)
+        if (rightHoldKey == key) {
+            val shouldSeek = !cancelled && rightHoldPending && keyboardBaseSpeed == null
+            rightHoldJob?.cancel()
+            rightHoldJob = null
+            rightHoldPending = false
+            rightHoldKey = null
+            keyboardBaseSpeed?.let { viewModel.controller.setPlaybackSpeed(it) }
+            keyboardBaseSpeed = null
+            keyboardSpeedBoost = null
+            if (shouldSeek) seekByKeyboard(1)
         }
-        if (event.type != KeyEventType.KeyDown || event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) return false
+        when (pressed.first) {
+            PlayerShortcutAction.SeekBackward -> keyboardSeekTimes.remove(-1)
+            PlayerShortcutAction.SeekForward -> keyboardSeekTimes.remove(1)
+            else -> Unit
+        }
+        return true
+    }
+    fun releaseKeyboardKeys(event: KeyEvent): Boolean {
+        var handled = false
+        if (event.type == KeyEventType.KeyUp) {
+            handled = keyboardCancelledKeys.remove(event.key)
+            handled = releaseKeyboardKey(event.key, cancelled = false) || handled
+        }
+        // 按下时捕获操作；所需修饰键松开后只取消，主键释放前不重新匹配另一绑定。
+        keyboardPressedKeys.filterValues { it.second.modifiers and event.shortcutModifiers != it.second.modifiers }.keys.toList().forEach {
+            handled = releaseKeyboardKey(it, cancelled = true) || handled
+        }
+        return handled
+    }
+    fun onVolumeKeyEvent(event: KeyEvent): Boolean {
+        if (viewModel.playbackClosed || !windowFocused) return false
+        val released = releaseKeyboardKeys(event)
+        if (event.type == KeyEventType.KeyUp) return released
+        if (event.type != KeyEventType.KeyDown) return false
         if (event.key in keyboardCancelledKeys) return true
-        val firstDown = keyboardPressedKeys.add(event.key)
-        when (event.key) {
-            Key.DirectionUp -> adjustDesktopVolume(10)
-            Key.DirectionDown -> adjustDesktopVolume(-10)
-            Key.M -> if (firstDown) {
+        val action = keyboardPressedKeys[event.key]?.first ?: shortcutBindings.shortcutAction(event)
+        if (action?.isVolume != true) return false
+        val firstDown = event.key !in keyboardPressedKeys
+        if (firstDown) keyboardPressedKeys[event.key] = action to PlayerShortcutBinding(event.key.keyCode, event.shortcutModifiers)
+        when (action) {
+            PlayerShortcutAction.VolumeUp -> adjustDesktopVolume(10)
+            PlayerShortcutAction.VolumeDown -> adjustDesktopVolume(-10)
+            PlayerShortcutAction.ToggleMuted -> if (firstDown) {
                 viewModel.toggleDesktopMuted()
                 showDesktopVolumeFeedback()
             }
+            else -> Unit
         }
         return true
     }
@@ -527,7 +597,7 @@ fun BoloPlayerControls(
     }
     LaunchedEffect(
         viewModel, title, playerUiState, currentVideoQuality, currentAudioQuality, isFullscreen,
-        desktopFastForwardHoldSpeedEnabled, longPressSpeed,
+        desktopFastForwardHoldSpeedEnabled, longPressSpeed, shortcutBindings,
     ) {
         cancelKeyboardInteraction()
     }
@@ -539,117 +609,112 @@ fun BoloPlayerControls(
         // 缓冲时的暂时未播放不取消长按；主动暂停仍须结束临时倍速。
         if (!keyboardPlayWhenReady || playState.isEnded || playState.isPlaybackSuspended || playState.isRebuilding ||
             keyboardBlocked || !windowFocused) cancelKeyboardInteraction()
+        if (!windowFocused) keyboardCancelledKeys.clear()
     }
     val onPlayerKeyEvent: (KeyEvent) -> Boolean = { event ->
+        val released = if (viewModel.playbackClosed) false else releaseKeyboardKeys(event)
         if (viewModel.playbackClosed) {
             cancelKeyboardInteraction()
             false
         } else if (event.type == KeyEventType.KeyUp) {
-            val cancelled = keyboardCancelledKeys.remove(event.key)
-            val handled = keyboardPressedKeys.remove(event.key)
-            if (event.key == Key.DirectionRight && handled) {
-                val shouldSeek = rightHoldPending && keyboardBaseSpeed == null
-                rightHoldJob?.cancel()
-                rightHoldJob = null
-                rightHoldPending = false
-                keyboardBaseSpeed?.let { viewModel.controller.setPlaybackSpeed(it) }
-                keyboardBaseSpeed = null
-                keyboardSpeedBoost = null
-                if (shouldSeek) seekByKeyboard(1)
-            }
-            when (event.key) {
-                Key.DirectionLeft -> keyboardSeekTimes.remove(-1)
-                Key.DirectionRight -> keyboardSeekTimes.remove(1)
-            }
-            cancelled || handled
-        } else if (
-            event.type != KeyEventType.KeyDown || keyboardBlocked || !windowFocused ||
-            event.isCtrlPressed || event.isAltPressed || event.isMetaPressed ||
-            (event.isShiftPressed && (event.key == Key.Zero || event.key == Key.NumPad0))
-        ) {
+            released
+        } else if (event.type != KeyEventType.KeyDown || keyboardBlocked || !windowFocused) {
             false
         } else if (event.key in keyboardCancelledKeys) {
             true
         } else {
-            when (event.key) {
-                Key.Spacebar -> {
-                    if (keyboardPressedKeys.add(Key.Spacebar)) {
-                        togglePlayback()
-                    }
-                    true
-                }
-                Key.F -> {
-                    if (keyboardPressedKeys.add(Key.F)) toggleDesktopFullscreen()
-                    true
-                }
-                Key.DirectionUp, Key.DirectionDown, Key.M -> onVolumeKeyEvent(event)
-                Key.D -> {
-                    if (keyboardPressedKeys.add(Key.D)) {
+            val action = keyboardPressedKeys[event.key]?.first ?: shortcutBindings.shortcutAction(event)
+            if (action?.isVolume == true) {
+                onVolumeKeyEvent(event)
+            } else if (action == null) {
+                false
+            } else {
+                val firstDown = event.key !in keyboardPressedKeys
+                if (firstDown) keyboardPressedKeys[event.key] = action to PlayerShortcutBinding(event.key.keyCode, event.shortcutModifiers)
+                when (action) {
+                    PlayerShortcutAction.TogglePlayback -> if (firstDown) togglePlayback()
+                    PlayerShortcutAction.ToggleFullscreen -> if (firstDown) toggleDesktopFullscreen()
+                    PlayerShortcutAction.ToggleDanmaku -> if (firstDown) {
                         viewModel.setDanmakuVisible(!viewModel.danmakuController.state.value.isVisible)
                     }
-                    true
-                }
-                Key.Zero, Key.NumPad0 -> {
-                    if (keyboardPressedKeys.add(event.key)) {
+                    PlayerShortcutAction.SeekToStart -> if (firstDown) {
                         val playback = viewModel.controller.state.value
                         if (playback.isSeekable && playback.durationMs > 0L && !playback.isPlaybackSuspended) {
-                            viewModel.seekToMs(
-                                0L,
-                                autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled,
-                            )
+                            viewModel.seekToMs(0L, autoPlayAfterSeek = playerSettings.playback.autoPlayAfterSeekEnabled)
                         }
                     }
-                    true
-                }
-                Key.DirectionLeft -> {
-                    val firstDown = keyboardPressedKeys.add(Key.DirectionLeft)
-                    seekByKeyboard(-1, isRepeat = !firstDown)
-                    true
-                }
-                Key.DirectionRight -> {
-                    val firstDown = keyboardPressedKeys.add(Key.DirectionRight)
-                    val playback = viewModel.controller.state.value
-                    if (firstDown && desktopFastForwardHoldSpeedEnabled && !playback.isEnded &&
-                        !playback.isPlaybackSuspended && !playback.isRebuilding) {
-                        rightHoldPending = true
-                        rightHoldJob = keyboardScope.launch {
-                            delay(300)
-                            if (viewModel.playbackClosed) return@launch
-                            val current = viewModel.controller.state.value
-                            if (!current.isEnded && !current.isPlaybackSuspended && !current.isRebuilding) {
-                                keyboardBaseSpeed = current.playbackSpeed
-                                keyboardSpeedBoost = longPressSpeed
-                                viewModel.controller.setPlaybackSpeed(longPressSpeed)
-                                if (!(viewModel.pendingPlayWhenReady ?: current.playWhenReady)) viewModel.play()
+                    PlayerShortcutAction.PreviousEpisode, PlayerShortcutAction.NextEpisode -> if (firstDown && episodeNavigationEnabled) {
+                        if (action == PlayerShortcutAction.PreviousEpisode) onPreviousEpisode?.invoke() else onNextEpisode?.invoke()
+                    }
+                    PlayerShortcutAction.DecreaseSpeed, PlayerShortcutAction.IncreaseSpeed, PlayerShortcutAction.ResetSpeed -> {
+                        // 忽略的按压仍保留，临时倍速结束后必须重新按键。
+                        if (firstDown && !rightHoldPending && keyboardBaseSpeed == null && keyboardSpeedBoost == null) {
+                            val currentSpeed = viewModel.controller.state.value.playbackSpeed
+                            val speed = when (action) {
+                                PlayerShortcutAction.DecreaseSpeed -> currentSpeed - 0.5f
+                                PlayerShortcutAction.IncreaseSpeed -> currentSpeed + 0.5f
+                                else -> 1f
+                            }.coerceIn(0.5f, 3f)
+                            if (speed != currentSpeed) {
+                                viewModel.controller.setPlaybackSpeed(speed)
+                                keyboardSpeedFeedback = speed
+                                keyboardSpeedFeedbackJob?.cancel()
+                                keyboardSpeedFeedbackJob = keyboardScope.launch {
+                                    delay(1_000)
+                                    keyboardSpeedFeedback = null
+                                    keyboardSpeedFeedbackJob = null
+                                }
                             }
                         }
-                    } else if (!rightHoldPending) {
-                        seekByKeyboard(1, isRepeat = !firstDown)
                     }
-                    true
+                    PlayerShortcutAction.SeekBackward -> seekByKeyboard(-1, isRepeat = !firstDown)
+                    PlayerShortcutAction.SeekForward -> {
+                        val playback = viewModel.controller.state.value
+                        if (firstDown && rightHoldKey != null) {
+                            releaseKeyboardKey(event.key, cancelled = true)
+                        } else if (firstDown && desktopFastForwardHoldSpeedEnabled && !playback.isEnded &&
+                            !playback.isPlaybackSuspended && !playback.isRebuilding) {
+                            rightHoldKey = event.key
+                            rightHoldPending = true
+                            rightHoldJob = keyboardScope.launch {
+                                delay(300)
+                                if (viewModel.playbackClosed) return@launch
+                                val current = viewModel.controller.state.value
+                                if (!current.isEnded && !current.isPlaybackSuspended && !current.isRebuilding) {
+                                    keyboardBaseSpeed = current.playbackSpeed
+                                    keyboardSpeedBoost = longPressSpeed
+                                    viewModel.controller.setPlaybackSpeed(longPressSpeed)
+                                    if (!(viewModel.pendingPlayWhenReady ?: current.playWhenReady)) viewModel.play()
+                                }
+                            }
+                        } else if (!rightHoldPending) {
+                            seekByKeyboard(1, isRepeat = !firstDown)
+                        }
+                    }
+                    else -> Unit
                 }
-                else -> false
+                true
             }
         }
     }
     if (isDesktop) {
         PlayerKeyboardEffect(
-            onCancel = {
-                cancelKeyboardInteraction()
-                keyboardCancelledKeys.clear()
-            },
+            bindings = shortcutBindings,
+            onCancel = { cancelKeyboardInteraction() },
             onKeyEvent = onPlayerKeyEvent,
         )
     }
     val devicePreview = brightnessPreview ?: volumePreview
     val deviceFeedbackVisible = devicePreview != null || desktopVolumeFeedbackVisible
     val onDesktopVolumeScroll by rememberUpdatedState<(Float) -> Boolean> { delta ->
-        if (isDesktop && windowFocused && !keyboardBlocked && delta != 0f) {
+        if (isDesktop && isFullscreen && windowFocused && !keyboardBlocked && delta != 0f) {
             adjustDesktopVolume(if (delta < 0f) 2 else -2)
             true
         } else false
     }
     val durationMs = playState.durationMs
+    val bottomProgressHeight = 2.dp
+    val bottomProgressEnabled = playerUiState is VideoPlayerUiState.Success && durationMs > 0L
     val previewPositionMs = gesturePreviewMs ?: sliderPreviewFraction?.let { fraction ->
         (fraction.toDouble() * durationMs.toDouble())
             .roundToLong()
@@ -688,6 +753,14 @@ fun BoloPlayerControls(
             gestureProgressPinned = false
         }
     }
+    val bottomProgressVisible = bottomProgressEnabled && !controlsVisible && !gestureProgressVisible && !gestureProgressPinned
+    val bottomProgressTransition = updateTransition(bottomProgressVisible, label = "bottomProgress")
+    val bottomProgressReveal by bottomProgressTransition.animateFloat(
+        transitionSpec = {
+            // 控制层隐藏共 200ms，细条在最后 50ms 上移；呼出时下移不延迟。
+            tween(durationMillis = 50, delayMillis = if (targetState && controlsTransition.currentState) 150 else 0)
+        }, label = "bottomProgressPosition",
+    ) { if (it) 1f else 0f }
     fun progressSlideOffsetPx(): Float = if (gestureProgressVisible || gestureProgressPinned) 0f else {
         (bottomControlsCoordinates?.size?.height ?: 0) * (1f - controlsReveal)
     }
@@ -707,6 +780,9 @@ fun BoloPlayerControls(
         ?.audioQualities
         .orEmpty()
     val gestureSpeedPreview = keyboardSpeedBoost ?: gestureSpeedBoost
+    val speedFeedback = gestureSpeedPreview ?: keyboardSpeedFeedback
+    val speedFeedbackCentered = keyboardSpeedFeedback != null && gestureSpeedPreview == null &&
+        previewPositionMs == null && !deviceFeedbackVisible && !settingsOpen
     val centerFeedback = when {
         gestureSpeedPreview != null -> Icons.Rounded.FastForward to "长按快进"
         previewPositionMs != null -> if (previewPositionMs < playState.displayPositionMs) {
@@ -725,7 +801,7 @@ fun BoloPlayerControls(
     }
     SideEffect {
         if (centerFeedback != null) retainedFeedback = centerFeedback
-        feedbackVisibility.targetState = centerFeedback != null && !deviceFeedbackVisible && !settingsOpen
+        feedbackVisibility.targetState = centerFeedback != null && !deviceFeedbackVisible && !settingsOpen && !speedFeedbackCentered
     }
 
     Box(
@@ -733,9 +809,10 @@ fun BoloPlayerControls(
             controlsRootCoordinates = it
             updateHighEnergyTrackBounds()
         }.onPreviewKeyEvent { event ->
-            // 播放器内优先接管音量与开关按键，播放器外的输入框仍自行处理。
-            isDesktop && (event.key == Key.Spacebar || event.key == Key.DirectionUp ||
-                event.key == Key.DirectionDown || event.key == Key.M || event.key == Key.D) && onPlayerKeyEvent(event)
+            // 播放器内优先接管音量与开关操作，不依赖其当前绑定的物理键。
+            val action = shortcutBindings.shortcutAction(event)
+            isDesktop && (action?.isVolume == true || action == PlayerShortcutAction.TogglePlayback ||
+                action == PlayerShortcutAction.ToggleDanmaku) && onPlayerKeyEvent(event)
         }.pointerInput(isDesktop, viewModel) {
             if (!isDesktop) return@pointerInput
             try {
@@ -1018,6 +1095,7 @@ fun BoloPlayerControls(
                     !playState.isBuffering && centerFeedback == null &&
                     feedbackVisibility.isIdle && !feedbackVisibility.currentState,
                 modifier = Modifier.matchParentSize(),
+                endedContent = endedContent,
             )
         }
         if (showExtendedControls && infoOpen) {
@@ -1084,10 +1162,11 @@ fun BoloPlayerControls(
             highEnergyProgress != null && durationMs > 0L &&
             (playerSettings.playback.highEnergyProgressAlwaysVisible || controlsTransition.currentState || controlsTransition.targetState)
         ) {
-            // 使用同一套 Insets 消费规则测量可用区域，不叠加控制区内边距。
+            // 固定隐藏态终点，曲线与细条上沿间隔 1.dp，不随细条显隐再次升降。
             Box(
                 Modifier.matchParentSize()
-                    .then(if (applyControlsInsets) Modifier.windowInsetsPadding(controlsInsets) else Modifier),
+                    .then(if (applyControlsInsets) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
+                    .padding(bottom = if (bottomProgressEnabled) bottomProgressHeight + 1.dp else 0.dp),
             ) {
                 Box(Modifier.matchParentSize().onGloballyPositioned { coordinates ->
                     val root = controlsRootCoordinates
@@ -1108,6 +1187,27 @@ fun BoloPlayerControls(
                     alpha = if (playerSettings.playback.highEnergyProgressAlwaysVisible) 1f else controlsReveal
                 },
             )
+        }
+        if (bottomProgressEnabled && (bottomProgressTransition.currentState || bottomProgressTransition.targetState)) {
+            Box(
+                Modifier.matchParentSize()
+                    .then(if (applyControlsInsets) Modifier.windowInsetsPadding(controlsInsets) else Modifier)
+                    .clipToBounds(),
+            ) {
+                Box(
+                    Modifier.align(Alignment.BottomStart).fillMaxWidth().height(bottomProgressHeight)
+                        .graphicsLayer { translationY = size.height * (1f - bottomProgressReveal) },
+                ) {
+                    Box(Modifier.matchParentSize().clipBufferedRanges(bufferedRanges, durationMs, false)
+                        .background(Color.White.copy(alpha = 0.3f)))
+                    Box(Modifier.matchParentSize().clipBufferedRanges(bufferedRanges, durationMs, true)
+                        .background(Color.White.copy(alpha = 0.5f)))
+                    Box(
+                        Modifier.align(Alignment.CenterStart).fillMaxWidth(sliderValue).height(bottomProgressHeight)
+                            .background(BiliColor.ThemeColor),
+                    )
+                }
+            }
         }
         controlsTransition.AnimatedVisibility(
             visible = { it },
@@ -1219,10 +1319,7 @@ fun BoloPlayerControls(
                             }
                         },
                         track = { sliderState ->
-                            SliderDefaults.Track(
-                                colors = sliderColors,
-                                sliderState = sliderState,
-                                thumbTrackGapSize = 0.dp,
+                            Box(
                                 modifier = Modifier.height(4.dp)
                                     .onGloballyPositioned {
                                         progressTrackCoordinates = it
@@ -1244,7 +1341,21 @@ fun BoloPlayerControls(
                                             }
                                         }
                                     },
-                            )
+                            ) {
+                                // 互补裁剪同一个原生轨道，保留圆角和尾标，加载底色不与未加载底色叠加。
+                                SliderDefaults.Track(
+                                    colors = sliderColors,
+                                    sliderState = sliderState,
+                                    thumbTrackGapSize = 0.dp,
+                                    modifier = Modifier.height(4.dp).clipBufferedRanges(bufferedRanges, durationMs, false),
+                                )
+                                SliderDefaults.Track(
+                                    colors = sliderColors.copy(inactiveTrackColor = Color.White.copy(alpha = 0.5f)),
+                                    sliderState = sliderState,
+                                    thumbTrackGapSize = 0.dp,
+                                    modifier = Modifier.height(4.dp).clipBufferedRanges(bufferedRanges, durationMs, true),
+                                )
+                            }
                         }
                     )
 
@@ -1305,8 +1416,8 @@ fun BoloPlayerControls(
 
                                 // 时间显示
                                 Text(
-                                    text = "${displayedPositionMs.formatPlayerDuration()} / " +
-                                        playState.durationMs.formatPlayerDuration(),
+                                    text = "${(displayedPositionMs.coerceAtLeast(0L) / 1_000L).formatToDuration()} / " +
+                                        (playState.durationMs.coerceAtLeast(0L) / 1_000L).formatToDuration(),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White
                                 )
@@ -1487,7 +1598,7 @@ fun BoloPlayerControls(
                 }
             }
         }
-        if (playState.isBuffering && !settingsOpen && !deviceFeedbackVisible &&
+        if (playState.isBuffering && !settingsOpen && !deviceFeedbackVisible && !speedFeedbackCentered &&
             centerFeedback == null && feedbackVisibility.isIdle && !feedbackVisibility.currentState) {
             BoloPlayerBufferingIndicator(
                 downloadBytesPerSecond = playerInfo.downloadBytesPerSecond,
@@ -1500,19 +1611,21 @@ fun BoloPlayerControls(
             exit = fadeOut(tween(200)),
             modifier = Modifier.align(Alignment.Center),
         ) {
-            (centerFeedback ?: retainedFeedback)?.let { feedback ->
-                Icon(
-                    imageVector = feedback.first,
-                    contentDescription = feedback.second,
-                    modifier = Modifier.size(64.dp),
-                    tint = Color.White,
-                )
+            if (!speedFeedbackCentered) {
+                (centerFeedback ?: retainedFeedback)?.let { feedback ->
+                    Icon(
+                        imageVector = feedback.first,
+                        contentDescription = feedback.second,
+                        modifier = Modifier.size(64.dp),
+                        tint = Color.White,
+                    )
+                }
             }
         }
-        if (deviceFeedbackVisible || previewPositionMs != null || gestureSpeedPreview != null) {
+        if (deviceFeedbackVisible || previewPositionMs != null || gestureSpeedPreview != null || speedFeedbackCentered) {
             Card(
                 modifier = Modifier.align(Alignment.Center)
-                    .then(if (!deviceFeedbackVisible) Modifier.offset(y = 52.dp) else Modifier),
+                    .then(if (!deviceFeedbackVisible && !speedFeedbackCentered) Modifier.offset(y = 52.dp) else Modifier),
                 shape = RoundedCornerShape(4.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = Color.Black.copy(alpha = 0.75f),
@@ -1545,14 +1658,15 @@ fun BoloPlayerControls(
                     }
                 } else if (previewPositionMs != null) {
                     Text(
-                        text = "${previewPositionMs.formatPlayerDuration()} / ${playState.durationMs.formatPlayerDuration()}",
+                        text = "${(previewPositionMs.coerceAtLeast(0L) / 1_000L).formatToDuration()} / " +
+                            (playState.durationMs.coerceAtLeast(0L) / 1_000L).formatToDuration(),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelMedium,
                         color = Color.White,
                     )
-                } else if (gestureSpeedPreview != null) {
+                } else if (speedFeedback != null) {
                     Text(
-                        text = speedMultiplierText((gestureSpeedPreview * 100f).roundToInt()),
+                        text = speedMultiplierText((speedFeedback * 100f).roundToInt()),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelLarge,
                         color = Color.White,
@@ -1574,6 +1688,7 @@ fun BoloPlayerControls(
         }
         if (showExtendedControls) {
             BoloPlayerSettingsSheet(
+                shortcutSettings = playerSettings.shortcuts,
                 resumeAfterBackgroundEnabled = playerSettings.playback.resumeAfterBackgroundEnabled,
                 onResumeAfterBackgroundEnabledChange = { playerSettings.playback.resumeAfterBackgroundEnabled = it },
                 autoPlayAfterSeekEnabled = playerSettings.playback.autoPlayAfterSeekEnabled,
@@ -1655,22 +1770,6 @@ fun BoloPlayerControls(
                 },
             )
         }
-    }
-}
-
-private fun Long.formatPlayerDuration(): String {
-    val totalSeconds = coerceAtLeast(0L) / 1_000L
-    val hours = totalSeconds / 3_600L
-    val minutes = totalSeconds % 3_600L / 60L
-    val seconds = totalSeconds % 60L
-    return buildString {
-        if (hours > 0L) {
-            append(hours.toString().padStart(2, '0'))
-            append(':')
-        }
-        append(minutes.toString().padStart(2, '0'))
-        append(':')
-        append(seconds.toString().padStart(2, '0'))
     }
 }
 
@@ -1802,7 +1901,12 @@ private fun ChapterMenu(
                             overflow = TextOverflow.Ellipsis,
                         )
                     },
-                    leadingIcon = { Text(chapter.startMs.formatPlayerDuration(), style = MaterialTheme.typography.labelMedium) },
+                    leadingIcon = {
+                        Text(
+                            (chapter.startMs.coerceAtLeast(0L) / 1_000L).formatToDuration(),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    },
                     trailingIcon = {
                         if (chapter == currentChapter) Icon(Icons.Rounded.Check, contentDescription = "当前章节")
                     },

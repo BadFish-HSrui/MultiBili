@@ -20,6 +20,7 @@ actual fun ShowImage(
     animationEnabled: Boolean,
     zoomState: CoilZoomState?,
     onTap: (() -> Unit)?,
+    fallbackContent: (@Composable () -> Unit)?,
 ) {
     val factory = remember {
         if (Build.VERSION.SDK_INT >= 28) AnimatedImageDecoder.Factory() else GifDecoder.Factory()
@@ -32,6 +33,7 @@ actual fun ShowImage(
         animationEnabled = animationEnabled,
         zoomState = zoomState,
         onTap = onTap,
+        fallbackContent = fallbackContent,
         decoderFactory = factory,
     ) { image, painter, _ ->
         val drawable = (image as? DrawableImage)?.drawable as? Animatable

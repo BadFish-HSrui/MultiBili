@@ -1,6 +1,7 @@
 package tv.hsrui.bolo.ui.components.user
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -18,6 +19,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
@@ -35,11 +37,8 @@ fun ShowUserInfoBar(
     modifier: Modifier = Modifier,
     refreshKey: Int = 0,
     onUserClick: (() -> Unit)? = null,
+    onLiveClick: ((Long) -> Unit)? = null,
 ) {
-    val loginStorage: LoginStorage = koinInject()
-    val currentUserMid by loginStorage.currentUserMidFlow.collectAsStateWithLifecycle(
-        initialValue = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L,
-    )
     val viewModel = viewModel(key = "UserInfoBar:$mid") { UserInfoBarViewModel(mid) }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -47,6 +46,35 @@ fun ShowUserInfoBar(
         viewModel.loadUserInfo()
         onDispose { viewModel.cancelLoading() }
     }
+
+    ShowUserInfoBar(
+        mid = mid,
+        uiState = uiState,
+        onRetry = viewModel::loadUserInfo,
+        modifier = modifier,
+        refreshKey = refreshKey,
+        onUserClick = onUserClick,
+        onLiveClick = onLiveClick,
+    )
+}
+
+@Composable
+internal fun ShowUserInfoBar(
+    mid: Long,
+    uiState: UserInfoBarUiState,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+    refreshKey: Int = 0,
+    onUserClick: (() -> Unit)? = null,
+    onLiveClick: ((Long) -> Unit)? = null,
+    fixedHeight: Dp? = null,
+    adaptiveNameDetails: Boolean = false,
+    nameSuffixContent: @Composable RowScope.() -> Unit = {},
+) {
+    val loginStorage: LoginStorage = koinInject()
+    val currentUserMid by loginStorage.currentUserMidFlow.collectAsStateWithLifecycle(
+        initialValue = if (loginStorage.isLoggedIn) loginStorage.cookies.dedeUserID else 0L,
+    )
 
     when (val state = uiState) {
         UserInfoBarUiState.Loading -> Box(
@@ -57,7 +85,7 @@ fun ShowUserInfoBar(
         }
         is UserInfoBarUiState.Error -> ShowErrorContent(
             message = state.message,
-            retry = viewModel::loadUserInfo,
+            retry = onRetry,
             modifier = modifier,
         )
         is UserInfoBarUiState.Success -> ShowUserInfoLayout(
@@ -70,7 +98,16 @@ fun ShowUserInfoBar(
             vipTypeString = "大会员",
             modifier = modifier,
             shape = CardDefaults.shape,
+            fixedHeight = fixedHeight,
+            adaptiveNameDetails = adaptiveNameDetails,
+            nameSuffixContent = nameSuffixContent,
             onUserClick = onUserClick,
+            isLive = state.info.isLive,
+            onAvatarClick = if (state.info.isLive && onLiveClick != null) {
+                state.info.liveRoomId?.let { roomId -> { onLiveClick(roomId) } } ?: onUserClick
+            } else {
+                onUserClick
+            },
             nameTrailingContent = {
                 if (mid > 0 && mid != currentUserMid) {
                     key(mid, currentUserMid, refreshKey) {

@@ -11,10 +11,22 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import tv.hsrui.bolo.player.DesktopPlayerFullscreenWindow
 
+internal actual fun playbackAvailableMemoryBytes(): Long? {
+    val runtime = Runtime.getRuntime()
+    return (runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())).coerceAtLeast(0L)
+}
+
 internal actual class BoloMpvBackend actual constructor() {
     actual val retainsPausedResources: Boolean get() = false
     actual fun retainedPosition(generation: Long, positionMs: Long): Long? = null
+    private val streamBridge = BoloMpvStreamBridge()
     private val handle = BoloMpvNative.create("desktop").also { check(it != 0L) { "libmpv 初始化失败" } }
+    init {
+        if (BoloMpvNative.setStreamCallbacks(handle, streamBridge) < 0) {
+            BoloMpvNative.destroy(handle)
+            error("播放数据源注册失败")
+        }
+    }
     init {
         if (System.getProperty("os.name").startsWith("Linux")) {
             try { configureBoloMpvCertificates(handle, java.io.File(System.getProperty("java.io.tmpdir"), "bolo-mpv-certificates")) }
@@ -38,13 +50,17 @@ internal actual class BoloMpvBackend actual constructor() {
                 host.supportsDirect(DesktopPlayerFullscreenWindow.window)
             }
             while (!closed) {
-                val next = BoloDesktopMpvRenderer(handle, host, direct) { cause ->
-                    if (!closed) host.failed(this@BoloMpvBackend, cause)
+                val startedAt = System.nanoTime()
+                val mode = if (!direct) "offscreen" else if (System.getProperty("os.name").startsWith("Mac"))
+                    "macos-native-layer" else "windows-dcomp"
+                val next = BoloDesktopMpvRenderer(handle, host, direct) { source, cause ->
+                    if (!closed) host.failed(this@BoloMpvBackend, source, cause)
                 }
                 renderer = next
                 try {
                     next.start()
                     withTimeout(if (direct) 3_000L else 4_000L) { next.ready.await() }
+                    println("Bolo 视频输出：$mode，初始化 ${(System.nanoTime() - startedAt) / 1_000_000} ms")
                     outputReady.complete(Unit)
                     break
                 } catch (error: Throwable) {
@@ -89,10 +105,24 @@ internal actual class BoloMpvBackend actual constructor() {
         }
     }
     actual suspend fun awaitOutput() { outputReady.await() }
-    actual fun load(video: String, audio: String?, startSeconds: Double, generation: Long, userAgent: String, referrer: String) = if (destroyed) -3 else BoloMpvNative.load(handle, video, audio, startSeconds, generation, userAgent, referrer)
+    actual fun load(streams: BoloPlaybackStreamSession, startSeconds: Double, generation: Long): Int {
+        if (destroyed) return -3
+        streamBridge.bind(streams)
+        return BoloMpvNative.load(handle, streams.videoUri, streams.audioUri, startSeconds, generation,
+            videoPlayHeaders.getValue("User-Agent"), videoPlayHeaders.getValue("Referer"))
+    }
+    actual fun loadLive(streams: BoloMpvStreamSource, uri: String, generation: Long, prefetchEnabled: Boolean, targetSeconds: Double?, request: Long): Int {
+        if (destroyed) return -3
+        streamBridge.bind(streams)
+        return BoloMpvNative.loadLive(handle, uri, generation, "", "", prefetchEnabled, targetSeconds ?: -1.0, request)
+    }
     actual fun videoEnabled(enabled: Boolean) = if (destroyed) -3 else BoloMpvNative.videoEnabled(handle, enabled)
     actual fun pause(paused: Boolean) = if (destroyed) -3 else BoloMpvNative.pause(handle, paused)
     actual fun speed(speed: Double) = if (destroyed) -3 else BoloMpvNative.speed(handle, speed)
+    actual fun bufferedDurationMs(): Long? = if (destroyed) null else BoloMpvNative.bufferedDuration(handle)
+        .takeIf { it.isFinite() && it >= 0 }?.let { (it * 1000).toLong() }
+    actual fun bufferSnapshot(): BoloMpvBufferSnapshot? = if (destroyed) null else
+        BoloMpvNative.bufferSnapshot(handle)?.toMpvBufferSnapshot()
     actual fun volume(volume: Double) = if (destroyed) -3 else BoloMpvNative.volume(handle, volume)
     actual fun loudness(gainDb: Double, dynamicEnabled: Boolean, targetLufs: Double, rangeLu: Double, truePeakDbtp: Double) = if (destroyed) -3 else BoloMpvNative.loudness(handle, gainDb, dynamicEnabled, targetLufs, rangeLu, truePeakDbtp)
     actual fun mergeAudioChannels(enabled: Boolean) = if (destroyed) -3 else BoloMpvNative.mergeAudioChannels(handle, enabled)
@@ -101,7 +131,10 @@ internal actual class BoloMpvBackend actual constructor() {
     actual fun info(includeDiagnostics: Boolean) = if (destroyed) null else BoloMpvNative.info(handle, includeDiagnostics)?.let {
         BoloMpvInfoSnapshot.parse(it.decodeToString(), this)
     }
-    actual fun stop() = if (destroyed) -3 else BoloMpvNative.stop(handle)
-    actual fun destroy() { if (!destroyed) { destroyed = true; BoloMpvNative.destroy(handle) } }
+    actual fun stop(): Int {
+        streamBridge.cancel()
+        return if (destroyed) -3 else BoloMpvNative.stop(handle)
+    }
+    actual fun destroy() { if (!destroyed) { destroyed = true; streamBridge.cancel(); BoloMpvNative.destroy(handle); streamBridge.release() } }
     actual suspend fun setAudioActive(active: Boolean) = true
 }

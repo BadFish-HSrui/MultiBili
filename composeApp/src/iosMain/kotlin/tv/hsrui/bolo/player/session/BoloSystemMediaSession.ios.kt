@@ -14,7 +14,7 @@ import platform.MediaPlayer.*
 import platform.UIKit.*
 import platform.darwin.NSObjectProtocol
 
-internal actual fun createBoloSystemMediaSession(session: BoloPlaybackSession): BoloSystemMediaSession =
+internal actual fun createBoloSystemMediaSession(session: BoloSystemMediaOwner): BoloSystemMediaSession =
     object : BoloSystemMediaSession {
         private val center = MPRemoteCommandCenter.sharedCommandCenter()
         private val info = MPNowPlayingInfoCenter.defaultCenter()
@@ -37,18 +37,18 @@ internal actual fun createBoloSystemMediaSession(session: BoloPlaybackSession): 
             center.skipBackwardCommand.enabled = false
             center.skipForwardCommand.enabled = false
             observe(UIApplicationWillResignActiveNotification) {
-                session.player.controller.backend.value?.suspendOutput()
+                session.outputController.backend.value?.suspendOutput()
             }
             observe(UIApplicationDidEnterBackgroundNotification) {
-                session.player.controller.backend.value?.suspendOutput(background = true)
+                session.outputController.backend.value?.suspendOutput(background = true)
                 session.setForeground(false)
             }
             observe(UIApplicationDidBecomeActiveNotification) {
-                session.player.controller.backend.value?.resumeRendering()
+                session.outputController.backend.value?.resumeRendering()
                 session.setForeground(true)
-                session.player.controller.setVideoOutputActive(true)
+                session.setVideoOutputActive(true)
             }
-            observe(UIApplicationDidReceiveMemoryWarningNotification) { session.player.controller.releaseBackgroundResources() }
+            observe(UIApplicationDidReceiveMemoryWarningNotification) { session.releaseBackgroundResources() }
             observe(UIApplicationWillTerminateNotification) { session.close() }
             observers += notifications.addObserverForName(AVAudioSessionInterruptionNotification, null, NSOperationQueue.mainQueue) { note ->
                 val data = note?.userInfo
@@ -64,10 +64,10 @@ internal actual fun createBoloSystemMediaSession(session: BoloPlaybackSession): 
                 if ((note?.userInfo?.get(AVAudioSessionRouteChangeReasonKey) as? NSNumber)?.longValue == 2L)
                     session.interruptAudio(mayResume = false)
             }
-            observe(AVAudioSessionMediaServicesWereResetNotification) { session.player.controller.rebuild() }
+            observe(AVAudioSessionMediaServicesWereResetNotification) { session.outputController.rebuild() }
             // 会话可能在系统面板展开或后台自动切集时创建，先同步当前门禁。
             val applicationState = UIApplication.sharedApplication.applicationState
-            session.player.controller.setVideoOutputActive(applicationState == UIApplicationState.UIApplicationStateActive)
+            session.setVideoOutputActive(applicationState == UIApplicationState.UIApplicationStateActive)
             session.setForeground(applicationState != UIApplicationState.UIApplicationStateBackground)
         }
 
@@ -80,7 +80,7 @@ internal actual fun createBoloSystemMediaSession(session: BoloPlaybackSession): 
             command.enabled = false
             val token = command.addTargetWithHandler { event ->
                 val value = session.state.value
-                if (closed || BoloPlaybackSession.current !== session || value.metadata.mediaId.isEmpty()) {
+                if (closed || BoloSystemMediaOwner.current !== session || value.metadata.mediaId.isEmpty()) {
                     MPRemoteCommandHandlerStatusNoSuchContent
                 } else if (!command.enabled) {
                     MPRemoteCommandHandlerStatusCommandFailed
@@ -95,7 +95,7 @@ internal actual fun createBoloSystemMediaSession(session: BoloPlaybackSession): 
         }
 
         override fun publish(state: BoloSystemMediaState) {
-            if (closed || BoloPlaybackSession.current !== session) return
+            if (closed || BoloSystemMediaOwner.current !== session) return
             snapshot = state
             center.playCommand.enabled = state.canPlay
             center.pauseCommand.enabled = state.canPause
@@ -114,13 +114,16 @@ internal actual fun createBoloSystemMediaSession(session: BoloPlaybackSession): 
             if (state.metadata.mediaId.isEmpty()) { info.nowPlayingInfo = null; return }
             val values = mutableMapOf<Any?, Any?>(
                 MPMediaItemPropertyTitle to state.metadata.title,
-                MPMediaItemPropertyPlaybackDuration to NSNumber(double = state.durationMs / 1000.0),
-                MPNowPlayingInfoPropertyElapsedPlaybackTime to NSNumber(double = state.positionMs / 1000.0),
                 MPNowPlayingInfoPropertyPlaybackRate to NSNumber(double =
                     if (state.status == BoloSystemMediaPlaybackStatus.Playing) state.playbackSpeed else 0.0),
                 MPNowPlayingInfoPropertyDefaultPlaybackRate to NSNumber(double = state.playbackSpeed),
                 MPNowPlayingInfoPropertyExternalContentIdentifier to state.metadata.mediaId,
+                MPNowPlayingInfoPropertyIsLiveStream to NSNumber(bool = state.isLive),
             )
+            if (!state.isLive) {
+                values[MPMediaItemPropertyPlaybackDuration] = NSNumber(double = state.durationMs / 1000.0)
+                values[MPNowPlayingInfoPropertyElapsedPlaybackTime] = NSNumber(double = state.positionMs / 1000.0)
+            }
             state.metadata.artist.takeIf { it.isNotBlank() }?.let { values[MPMediaItemPropertyArtist] = it }
             state.metadata.album.takeIf { it.isNotBlank() }?.let { values[MPMediaItemPropertyAlbumTitle] = it }
             artwork?.let { values[MPMediaItemPropertyArtwork] = it }

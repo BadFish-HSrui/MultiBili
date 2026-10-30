@@ -32,6 +32,7 @@ import tv.hsrui.bolo.navigation.Navigator
 import tv.hsrui.bolo.player.settings.BoloPlayerSettings
 import tv.hsrui.bolo.utils.isMedium
 import tv.hsrui.network.feature.video.VideoInfoData
+import tv.hsrui.network.feature.video.list.VideoListSort
 import tv.hsrui.bolo.view.video.VideoUiState
 import tv.hsrui.bolo.ui.components.player.PlaybackCollectionGroup
 import tv.hsrui.bolo.ui.components.player.PlaybackCollectionItem
@@ -119,14 +120,18 @@ fun VideoDescPage(
                         onGroupSelected = {}, onItemSelected = onListVideoSelected,
                         onDescendingChange = onDescendingChange, onRetry = onRetryList,
                         title = videoList.title,
+                        subtitle = videoList.uploadSort?.let { sort ->
+                            val order = when (sort) {
+                                VideoListSort.Default -> "按时间"
+                                VideoListSort.MostPlayed -> "按播放"
+                                VideoListSort.MostFavorited -> "按收藏"
+                            }
+                            "$order · ${if (videoList.isDescending) "倒序" else "正序"}"
+                        },
                         playingPartId = videoInfo.cid.toString(),
                         onPartSelected = { it.toLongOrNull()?.let(onPartSelected) },
                         serverOrdered = true, totalCount = videoList.total, scrollRevision = videoList.revision,
-                        firstItemIndex = when {
-                            !videoList.hasPrevious -> 0
-                            !videoList.hasNext -> videoList.total - videoList.items.size
-                            else -> null
-                        },
+                        playingItemIndex = videoList.items.firstOrNull { it.isVideo && it.id == videoInfo.avid }?.index,
                         hasPrevious = videoList.hasPrevious && !videoList.isReloading && videoList.reloadError == null,
                         hasNext = videoList.hasNext && !videoList.isReloading && videoList.reloadError == null,
                         isLoadingPrevious = videoList.isLoadingPrevious, isLoadingNext = videoList.isLoadingNext,

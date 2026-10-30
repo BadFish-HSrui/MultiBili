@@ -35,6 +35,7 @@ internal fun BoloPlayerHighEnergyProgress(
     Box(modifier.drawWithCache {
         // 路径使用归一化坐标；显隐动画与进度更新只改变变换和裁切。
         val height = 32.dp.toPx()
+        val trackGap = 2.dp.toPx()
         val positionLineWidth = 1.dp.toPx()
         onDrawBehind {
             if (path == null) return@onDrawBehind
@@ -44,7 +45,8 @@ internal fun BoloPlayerHighEnergyProgress(
             val fraction = controlsFraction().coerceIn(0f, 1f)
             val left = hidden.left + ((shown?.left ?: hidden.left) - hidden.left) * fraction
             val right = hidden.right + ((shown?.right ?: hidden.right) - hidden.right) * fraction
-            val bottom = hidden.bottom + ((shown?.top ?: hidden.bottom) - hidden.bottom) * fraction
+            val shownBottom = shown?.let { it.top - trackGap } ?: hidden.bottom
+            val bottom = hidden.bottom + (shownBottom - hidden.bottom) * fraction
             val width = right - left
             if (width <= 0f) return@onDrawBehind
             val rtl = layoutDirection == LayoutDirection.Rtl
@@ -61,13 +63,13 @@ internal fun BoloPlayerHighEnergyProgress(
                                 val start = (range.startMs.toDouble() / durationMs).coerceIn(0.0, 1.0).toFloat().coerceAtLeast(cursor)
                                 val end = (range.endMs.toDouble() / durationMs).coerceIn(0.0, 1.0).toFloat()
                                 if (end <= start) continue
-                                if (start > cursor) drawRect(Color.White.copy(alpha = 0.5f),
+                                if (start > cursor) drawRect(Color.White.copy(alpha = 0.3f),
                                     topLeft = Offset(cursor, 0f), size = Size(start - cursor, 1f))
                                 drawRect(BiliColor.ThemeColor.copy(alpha = 0.5f),
                                     topLeft = Offset(start, 0f), size = Size(end - start, 1f))
                                 cursor = end
                             }
-                            if (cursor < 1f) drawRect(Color.White.copy(alpha = 0.5f),
+                            if (cursor < 1f) drawRect(Color.White.copy(alpha = 0.3f),
                                 topLeft = Offset(cursor, 0f), size = Size(1f - cursor, 1f))
                             // 标线随曲线变换，控制层隐藏后仍在底部曲线内标记播放位置。
                             val lineWidth = (positionLineWidth / width).coerceAtMost(1f)

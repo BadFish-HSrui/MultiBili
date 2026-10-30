@@ -77,3 +77,56 @@ enum class DanmakuMode {
     Bas,
     Unknown
 }
+
+@Serializable
+data class DanmakuFilterData(
+    val id: Long = 0,
+    @SerialName("type") private val typeCode: Int = 0,
+    @SerialName("filter") val content: String,
+    var isOpened: Boolean = true,
+) {
+    constructor(
+        type: DanmakuFilterType,
+        content: String,
+        id: Long = 0,
+        isOpened: Boolean = true,
+    ) : this(id = id, typeCode = type.code, content = content, isOpened = isOpened)
+
+    val type: DanmakuFilterType
+        get() = when (typeCode) {
+            1 -> DanmakuFilterType.Regex
+            2 -> DanmakuFilterType.User
+            else -> DanmakuFilterType.Text
+        }
+}
+
+enum class DanmakuFilterType(val code: Int) {
+    Text(0),
+    Regex(1),
+    User(2),
+}
+
+@Serializable
+data class DanmakuFilterListResponse(
+    val code: Int = -1,
+    val message: String = "",
+    private val data: DanmakuFilterListData? = null,
+) {
+    val isSuccess: Boolean get() = code == 0
+    val filters: List<DanmakuFilterData> get() = data?.filters.orEmpty()
+}
+
+@Serializable
+data class DanmakuFilterListData(
+    @SerialName("rule") val filters: List<DanmakuFilterData> = emptyList(),
+)
+
+@Serializable
+data class DanmakuFilterAddResponse(
+    val code: Int = -1,
+    val message: String = "",
+    private val data: DanmakuFilterData? = null,
+) {
+    val isSuccess: Boolean get() = code == 0
+    val filter: DanmakuFilterData? get() = data
+}

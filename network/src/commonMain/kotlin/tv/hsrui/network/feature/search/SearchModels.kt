@@ -75,6 +75,7 @@ enum class SearchCategory(val title: String, val apiValue: String) {
     Video("视频", "video"),
     Bangumi("番剧", "media_bangumi"),
     Film("影视", "media_ft"),
+    Live("直播", "live"),
     User("用户", "bili_user"),
 }
 
@@ -151,9 +152,65 @@ data class SearchUserData(
     val level: Int = 0,
     @SerialName("fans") val followerCount: Long? = null,
     @SerialName("videos") val videoCount: Long? = null,
+    @SerialName("is_live") private val liveStatus: Int? = null,
+    @SerialName("room_id") private val roomId: Long? = null,
 ) {
     val name: String get() = rawName.replace("<em class=\"keyword\">", "").replace("</em>", "")
     val sign: String get() = rawSign.replace("<em class=\"keyword\">", "").replace("</em>", "")
     val avatarUrl: String get() = face.toHttpsUrl()
     val levelString: String get() = "Lv.$level"
+    val isLive get() = liveStatus == 1
+    val liveRoomId get() = roomId?.takeIf { it > 0 }
 }
+
+
+enum class SearchLiveType(
+    val title: String,
+    val apiValue: String,
+    val order: String?,
+    val resultTitle: String,
+) {
+    RoomComprehensive("直播间（综合）", "live_room", "online", "直播间"),
+    RoomLatest("直播间（最新开播）", "live_room", "live_time", "直播间"),
+    AnchorRelated("主播（相关）", "live_user", null, "主播"),
+    AnchorOnline("主播（直播中）", "live_user", "online", "主播"),
+}
+
+data class SearchLiveRoomsResponse(private val raw: RawSearchLiveRoomsResponse) {
+    private val hasValidData: Boolean
+        get() = raw.data?.let {
+            (it.numResults ?: -1) >= 0 && it.page > 0 && it.pageCount >= 0 &&
+                (it.numResults == 0 || it.rooms != null)
+        } == true
+    val isSuccess: Boolean get() = raw.code == 0 && hasValidData
+    val message: String
+        get() = if (raw.code == 0 && !hasValidData) "搜索响应缺少结果数据" else raw.message
+    val rooms get() = raw.data?.rooms.orEmpty().filter { it.roomId > 0 }.map { it.toLiveCard() }
+    val pageNumber: Int get() = raw.data?.page ?: 0
+    val hasMore: Boolean get() = raw.data?.let { it.page < it.pageCount } == true
+}
+
+data class SearchLiveUsersResponse(private val raw: RawSearchLiveUsersResponse) {
+    private val hasValidData: Boolean
+        get() = raw.data?.let {
+            (it.numResults ?: -1) >= 0 && it.page > 0 && it.pageCount >= 0 &&
+                (it.numResults == 0 || it.users != null)
+        } == true
+    val isSuccess: Boolean get() = raw.code == 0 && hasValidData
+    val message: String
+        get() = if (raw.code == 0 && !hasValidData) "搜索响应缺少结果数据" else raw.message
+    val users get() = raw.data?.users.orEmpty().filter { it.uid > 0 }.map { it.toSearchLiveUserData() }
+    val pageNumber: Int get() = raw.data?.page ?: 0
+    val hasMore: Boolean get() = raw.data?.let { it.page < it.pageCount } == true
+}
+
+data class SearchLiveUserData(
+    val mid: Long,
+    val name: String,
+    val avatarUrl: String,
+    val roomId: Long,
+    val followerCount: Long?,
+    val areaName: String,
+    val isLive: Boolean,
+    val liveStartTime: Long?,
+)

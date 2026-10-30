@@ -11,13 +11,25 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.bolo.storage.appData.AppDataStorage
+import tv.hsrui.bolo.storage.appData.liveStatistics.LiveHistoryCursor
+import tv.hsrui.bolo.storage.appData.liveStatistics.LiveHistorySort
+import tv.hsrui.bolo.storage.appData.liveStatistics.LiveHistoryType
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistoryCursor
-import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistoryItem
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistorySort
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistoryType
 
+enum class StatisticsHistoryType { Videos, Ups, LiveRooms }
+
+data class StatisticsHistoryItem(
+    val id: Long,
+    val title: String,
+    val totalPlayedMs: Long,
+    val playCount: Long,
+    val lastViewedAtMs: Long,
+)
+
 data class PlaybackHistoryUiState(
-    val items: List<PlaybackHistoryItem> = emptyList(),
+    val items: List<StatisticsHistoryItem> = emptyList(),
     val isLoading: Boolean = true,
     val isLoadingMore: Boolean = false,
     val hasMore: Boolean = true,
@@ -31,7 +43,7 @@ data class PlaybackHistoryUiState(
 }
 
 class PlaybackHistoryViewModel(
-    private val type: PlaybackHistoryType,
+    private val type: StatisticsHistoryType,
     private val appData: AppDataStorage = getKoin().get(),
 ) : ViewModel() {
     private val mutableUiState = MutableStateFlow(PlaybackHistoryUiState())
@@ -76,14 +88,14 @@ class PlaybackHistoryViewModel(
                 var hasUnsavedPlayback = state.hasUnsavedPlayback
                 if (!append) {
                     try {
-                        appData.playbackStatistics.flush()
+                        appData.statistics.flush()
                     } catch (error: CancellationException) {
                         throw error
                     } catch (_: Exception) {
                         hasUnsavedPlayback = true
                     }
                 }
-                val page = appData.playbackStatistics.historyPage(type, pageCursor, pageSize, state.sort, state.descending)
+                val page = readPage(pageCursor, state.sort, state.descending)
                 currentCoroutineContext().ensureActive()
                 if (version != requestVersion) return@launch
                 page.lastOrNull()?.let {
@@ -119,6 +131,51 @@ class PlaybackHistoryViewModel(
         }
     }
 
+    private suspend fun readPage(
+        pageCursor: PlaybackHistoryCursor?,
+        sort: PlaybackHistorySort,
+        descending: Boolean,
+    ): List<StatisticsHistoryItem> {
+        if (type == StatisticsHistoryType.LiveRooms) {
+            return appData.liveStatistics.historyPage(
+                type = LiveHistoryType.Rooms,
+                cursor = pageCursor?.let { LiveHistoryCursor(it.sortValue, it.id) },
+                limit = pageSize,
+                sort = when (sort) {
+                    PlaybackHistorySort.Time -> LiveHistorySort.Time
+                    PlaybackHistorySort.PlayCount -> LiveHistorySort.PlayCount
+                    PlaybackHistorySort.Duration -> LiveHistorySort.Duration
+                },
+                descending = descending,
+            ).map {
+                StatisticsHistoryItem(
+                    id = it.id,
+                    title = formatLiveStatisticsTitle(it.id, it.shortRoomId, it.upName),
+                    totalPlayedMs = it.totalPlayedMs,
+                    playCount = it.playCount,
+                    lastViewedAtMs = it.lastViewedAtMs,
+                )
+            }
+        }
+        return appData.playbackStatistics.historyPage(
+            type = if (type == StatisticsHistoryType.Videos) PlaybackHistoryType.Videos else PlaybackHistoryType.Ups,
+            cursor = pageCursor,
+            limit = pageSize,
+            sort = sort,
+            descending = descending,
+        ).map {
+            val title = it.title?.takeIf(String::isNotBlank)
+                ?: if (type == StatisticsHistoryType.Videos) "av${it.id}" else "UP ${it.id}"
+            StatisticsHistoryItem(
+                id = it.id,
+                title = if (it.partTitle.isNullOrBlank()) title else "$title · ${it.partTitle}",
+                totalPlayedMs = it.totalPlayedMs,
+                playCount = it.playCount,
+                lastViewedAtMs = it.lastViewedAtMs,
+            )
+        }
+    }
+
     fun cancelLoading() {
         requestVersion++
         loadJob?.cancel()
@@ -130,3 +187,6 @@ class PlaybackHistoryViewModel(
         super.onCleared()
     }
 }
+
+internal fun formatLiveStatisticsTitle(roomId: Long, shortRoomId: Long?, upName: String): String =
+    "${shortRoomId?.takeIf { it > 0L } ?: roomId} · $upName"

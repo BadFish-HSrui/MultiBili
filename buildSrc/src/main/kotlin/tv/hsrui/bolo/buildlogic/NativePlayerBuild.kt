@@ -111,14 +111,15 @@ internal class NativePlayerBuild(
         val bundle = cache.resolve("bundles/$target")
         return nativeLock(cache.resolve("locks/bundle-$target")) {
             nativeRecoverSlot(bundle, target, logger)
-            if (nativeValidBundle(bundle, target)) {
+            val bridge = nativeFiles(root.resolve("src")).filter(File::isFile)
+                .associate { it.relativeTo(root).invariantSeparatorsPath to nativeSha(it) }
+            if (nativeValidBundle(bundle, target) &&
+                nativeReadJson(bundle.resolve("build-info.json"))["recipe"] == recipes + bridge) {
                 logger.lifecycle("Native cache hit: {}", target)
                 return@nativeLock bundle
             }
             val chain = NativePlayerToolchain(target, host)
             val source = sourceIdentity()
-            val bridge = nativeFiles(root.resolve("src")).filter(File::isFile)
-                .associate { it.relativeTo(root).invariantSeparatorsPath to nativeSha(it) }
             val identity = mapOf("schema" to 3, "sources" to source, "dependencies" to dependencies, "toolchain" to chain.identity,
                 "recipe" to recipes + bridge)
             val work = buildDirectory.resolve("work/$target")
@@ -182,8 +183,8 @@ internal class NativePlayerBuild(
         val ios = chain.system in listOf("ios", "iossim")
         val sources = if (ios) listOf("bolo_mpv.c", "bolo_download.c", "BoloMpvView.m") else
             listOf("bolo_mpv.c", "bolo_mpv_jni.c", "bolo_download.c", "bolo_download_jni.c") + when (chain.system) {
-                "macos" -> listOf("bolo_system_media_macos.m", "bolo_download_macos.m")
-                "windows" -> listOf("bolo_system_media_windows.cpp")
+                "macos" -> listOf("bolo_system_media_macos.m", "bolo_download_macos.m", "bolo_desktop_video_macos.m")
+                "windows" -> listOf("bolo_system_media_windows.cpp", "bolo_desktop_video_windows.cpp")
                 else -> emptyList()
             }
         val include = mutableListOf("-I${nativePath(libraries.prefix.resolve("include"))}", "-I${nativePath(libraries.work.resolve("bridge"))}")
@@ -236,8 +237,8 @@ internal class NativePlayerBuild(
             val symbolFlags = if (chain.system in listOf("android", "linux"))
                 listOf("-Wl,--exclude-libs,ALL", "-Wl,--no-undefined") else emptyList()
             val systemLibs = when (chain.system) {
-                "macos" -> listOf("-framework", "OpenGL", "-framework", "IOSurface", "-framework", "AppKit", "-framework", "MediaPlayer")
-                "windows" -> listOf("-lopengl32", "-lole32", "-lruntimeobject", "-luuid", "-lshlwapi", "-lshcore", "-lshell32")
+                "macos" -> listOf("-framework", "OpenGL", "-framework", "IOSurface", "-framework", "AppKit", "-framework", "MediaPlayer", "-framework", "QuartzCore")
+                "windows" -> listOf("-lopengl32", "-ld3d11", "-ldxgi", "-ldcomp", "-lole32", "-lruntimeobject", "-luuid", "-lshlwapi", "-lshcore", "-lshell32")
                 "linux" -> listOf("-ldl")
                 else -> emptyList()
             }

@@ -1,15 +1,15 @@
 package tv.hsrui.bolo.accountFeature.feature.watchLater
 
-import tv.hsrui.bolo.accountFeature.feature.history.HistoryVideosViewModel
-import tv.hsrui.network.feature.history.HistoryVideosResponse
+import tv.hsrui.bolo.accountFeature.feature.history.HistoryViewModel
+import tv.hsrui.network.feature.history.HistoryResponse
 import tv.hsrui.network.feature.watchLater.fetchWatchLaterVideos
 
-class WatchLaterViewModel : HistoryVideosViewModel() {
+class WatchLaterViewModel : HistoryViewModel() {
     init {
-        loadVideos()
+        loadItems()
     }
 
-    override suspend fun firstLoad(): HistoryVideosResponse {
+    override suspend fun firstLoad(): HistoryResponse {
         return fetchWatchLaterVideos()
     }
 }

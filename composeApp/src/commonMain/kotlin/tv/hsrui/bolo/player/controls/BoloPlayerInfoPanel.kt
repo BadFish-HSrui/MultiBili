@@ -29,8 +29,9 @@ import androidx.compose.ui.unit.dp
 import tv.hsrui.bolo.boloSetting.PlaybackLoudnessMode
 import tv.hsrui.bolo.player.base.BoloPlayerAudioInfo
 import tv.hsrui.bolo.player.base.BoloPlayerInfo
-import kotlin.math.abs
-import kotlin.math.roundToLong
+import tv.hsrui.network.utils.formatBits
+import tv.hsrui.network.utils.formatBytes
+import tv.hsrui.network.utils.formatDecimal
 
 @Composable
 internal fun BoloPlayerInfoPanel(
@@ -57,17 +58,17 @@ internal fun BoloPlayerInfoPanel(
             ) {
                 val video = info.video
                 BoloPlayerInfoRow("视频编码", video.codec)
-                BoloPlayerInfoRow("标称码率", formatPlayerBitrate(video.nominalBitrateBps))
-                BoloPlayerInfoRow("播放码率", formatPlayerBitrate(video.playbackBitrateBps))
+                BoloPlayerInfoRow("标称码率", video.nominalBitrateBps?.let { "${it.formatBits()}ps" })
+                BoloPlayerInfoRow("播放码率", video.playbackBitrateBps?.let { "${it.formatBits()}ps" })
                 val resolution = if (video.width != null && video.height != null) "${video.width}×${video.height}" else "—"
-                BoloPlayerInfoRow("视频分辨率", "$resolution·${video.fps?.let(::playerInfoDecimal) ?: "—"}fps")
+                BoloPlayerInfoRow("视频分辨率", "$resolution·${video.fps?.formatDecimal() ?: "—"}fps")
                 BoloPlayerInfoRow("播放分片", playerInfoFragment(video.fragmentIndex, video.fragmentCount))
                 BoloPlayerInfoRow("视频解码器", video.decoderDescription)
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Color.White.copy(alpha = 0.2f))
                 val audio = info.audio
                 BoloPlayerInfoRow("音频编码", audio?.codec)
-                BoloPlayerInfoRow("标称码率", formatPlayerBitrate(audio?.nominalBitrateBps))
-                BoloPlayerInfoRow("播放码率", formatPlayerBitrate(audio?.playbackBitrateBps))
+                BoloPlayerInfoRow("标称码率", audio?.nominalBitrateBps?.let { "${it.formatBits()}ps" })
+                BoloPlayerInfoRow("播放码率", audio?.playbackBitrateBps?.let { "${it.formatBits()}ps" })
                 BoloPlayerInfoRow("采样率", audio?.sampleRateHz?.let { "$it Hz" })
                 val originalLayout = audio?.channelLayout
                 val outputLayout = audio?.outputChannelLayout
@@ -92,9 +93,18 @@ internal fun BoloPlayerInfoPanel(
                 BoloPlayerInfoRow("视频输出", info.videoOutput)
                 BoloPlayerInfoRow("音频输出", info.audioOutput)
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Color.White.copy(alpha = 0.2f))
-                BoloPlayerInfoRow("视频下载速度", formatPlayerDownloadSpeed(video.downloadBytesPerSecond))
-                BoloPlayerInfoRow("音频下载速度", formatPlayerDownloadSpeed(audio?.downloadBytesPerSecond))
-                BoloPlayerInfoRow("合计下载速度", formatPlayerDownloadSpeed(info.downloadBytesPerSecond))
+                val audioSpeed = if (audio == null) video.downloadBytesPerSecond?.let { 0L } else audio.downloadBytesPerSecond
+                val audioReceived = if (audio == null) video.receivedBytes?.let { 0L } else audio.receivedBytes
+                val totalSpeedText = info.downloadBytesPerSecond?.let { "${it.formatBytes()}/s" } ?: "—"
+                val videoSpeedText = video.downloadBytesPerSecond?.let { "${it.formatBytes()}/s" } ?: "—"
+                val audioSpeedText = audioSpeed?.let { "${it.formatBytes()}/s" } ?: "—"
+                BoloPlayerInfoRow(
+                    "下载速度",
+                    "$totalSpeedText ($videoSpeedText + $audioSpeedText)",
+                    singleLine = true,
+                )
+                BoloPlayerInfoRow("预载大小", playerInfoByteAmounts(info.forwardBytes, info.backwardBytes), singleLine = true)
+                BoloPlayerInfoRow("下载总量", playerInfoByteAmounts(video.receivedBytes, audioReceived), singleLine = true)
             }
         }
     }
@@ -130,13 +140,13 @@ private fun playerInfoLoudnessStatus(audio: BoloPlayerAudioInfo): String? = when
     !audio.loudnessConfigured -> "未生效（设置失败）"
     audio.dynamicLoudnessEnabled -> if (audio.dynamicLoudnessTargetLufs != null &&
         audio.dynamicLoudnessRangeLu != null && audio.dynamicLoudnessTruePeakDbtp != null) {
-        "loudnorm（I=${playerInfoLoudnessDecimal(audio.dynamicLoudnessTargetLufs)}/" +
-            "LRA=${playerInfoLoudnessDecimal(audio.dynamicLoudnessRangeLu)}/" +
-            "TP=${playerInfoLoudnessDecimal(audio.dynamicLoudnessTruePeakDbtp)}）"
+        "loudnorm（I=${audio.dynamicLoudnessTargetLufs.formatDecimal(3)}/" +
+            "LRA=${audio.dynamicLoudnessRangeLu.formatDecimal(3)}/" +
+            "TP=${audio.dynamicLoudnessTruePeakDbtp.formatDecimal(3)}）"
     } else null
     audio.loudnessMode == PlaybackLoudnessMode.Off -> "未生效（未启用）"
     !audio.hasValidLoudnessGain() || audio.loudnessGainDb == null -> "未生效（数据无效）"
-    else -> "volume-gain（${if (audio.loudnessGainDb > 0) "+" else ""}${playerInfoLoudnessDecimal(audio.loudnessGainDb)} dB）"
+    else -> "volume-gain（${if (audio.loudnessGainDb > 0) "+" else ""}${audio.loudnessGainDb.formatDecimal(3)} dB）"
 }
 
 private fun BoloPlayerAudioInfo.loudnessTarget(): Double? = when (loudnessMode) {
@@ -152,46 +162,22 @@ private fun BoloPlayerAudioInfo.hasValidLoudnessGain(): Boolean {
     return gain.isFinite() && gain in -150.0..150.0
 }
 
-private fun playerInfoLoudnessDecimal(value: Double): String {
-    val scaled = (abs(value) * 1000).roundToLong()
-    val fraction = (scaled % 1000).toString().padStart(3, '0').trimEnd('0')
-    val sign = if (value < 0 && scaled != 0L) "-" else ""
-    return "$sign${scaled / 1000}${if (fraction.isEmpty()) "" else ".$fraction"}"
-}
-
 private fun playerInfoFragment(index: Int?, count: Int?): String =
     if (index == null && count == null) "—" else "${index ?: "—"} / ${count ?: "—"}"
 
 private fun playerInfoDroppedFrames(count: Long?, rate: Double?): String? {
     if (count == null) return null
-    val speed = rate?.let {
-        val scaled = (it * 10).roundToLong()
-        if (scaled % 10 == 0L) "${scaled / 10}" else "${scaled / 10}.${scaled % 10}"
-    } ?: "—"
+    val speed = rate?.formatDecimal(1) ?: "—"
     return "$speed/s（$count）"
 }
 
 private fun playerInfoAvSync(value: Double): String {
     // mpv 返回音频领先量；面板以声音落后为正值。
-    val milliseconds = (-value).roundToLong()
-    return "${if (milliseconds > 0) "+" else ""}${milliseconds}ms"
+    val milliseconds = (-value).formatDecimal(0)
+    return "${if (value < 0 && milliseconds != "0") "+" else ""}${milliseconds}ms"
 }
 
-private fun playerInfoDecimal(value: Double): String {
-    val scaled = (value * 100).roundToLong()
-    val fraction = (scaled % 100).toString().padStart(2, '0').trimEnd('0')
-    return if (fraction.isEmpty()) "${scaled / 100}" else "${scaled / 100}.$fraction"
-}
-
-private fun formatPlayerBitrate(value: Long?): String = when {
-    value == null -> "—"
-    value >= 1_000_000 -> "${playerInfoDecimal(value / 1_000_000.0)} Mbps"
-    else -> "${playerInfoDecimal(value / 1_000.0)} kbps"
-}
-
-internal fun formatPlayerDownloadSpeed(value: Long?): String = when {
-    value == null -> "—"
-    value >= 1_048_576 -> "${playerInfoDecimal(value / 1_048_576.0)} MiB/s"
-    value >= 1_024 -> "${playerInfoDecimal(value / 1_024.0)} KiB/s"
-    else -> "$value B/s"
+private fun playerInfoByteAmounts(first: Long?, second: Long?): String {
+    val total = if (first != null && second != null) first + second else null
+    return "${total?.formatBytes() ?: "—"} (${first?.formatBytes() ?: "—"} + ${second?.formatBytes() ?: "—"})"
 }

@@ -56,14 +56,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import tv.hsrui.bolo.model.Vid
 import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistorySort
-import tv.hsrui.bolo.storage.appData.playbackStatistics.PlaybackHistoryType
+import tv.hsrui.bolo.ui.components.dialog.ShowLiveRoomInfoDialog
 import tv.hsrui.bolo.ui.components.dialog.ShowUserInfoDialog
 import tv.hsrui.bolo.ui.components.dialog.ShowVideoInfoDialog
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ShowPlaybackHistorySheet(type: PlaybackHistoryType, onDismissRequest: () -> Unit) {
+fun ShowPlaybackHistorySheet(type: StatisticsHistoryType, onDismissRequest: () -> Unit) {
     key(type) {
         val owner = remember {
             object : ViewModelStoreOwner {
@@ -94,8 +94,9 @@ fun ShowPlaybackHistorySheet(type: PlaybackHistoryType, onDismissRequest: () -> 
 
         selectedId?.let { id ->
             when (type) {
-                PlaybackHistoryType.Videos -> ShowVideoInfoDialog(Vid.AVid(id), onDismissRequest = { selectedId = null })
-                PlaybackHistoryType.Ups -> ShowUserInfoDialog(id, onDismissRequest = { selectedId = null })
+                StatisticsHistoryType.Videos -> ShowVideoInfoDialog(Vid.AVid(id), onDismissRequest = { selectedId = null })
+                StatisticsHistoryType.Ups -> ShowUserInfoDialog(id, onDismissRequest = { selectedId = null })
+                StatisticsHistoryType.LiveRooms -> ShowLiveRoomInfoDialog(id, onDismissRequest = { selectedId = null })
             }
         }
         ModalBottomSheet(
@@ -152,19 +153,21 @@ fun ShowPlaybackHistorySheet(type: PlaybackHistoryType, onDismissRequest: () -> 
                         state.error != null -> ShowErrorContent(message = state.error.orEmpty(), retry = model::load)
                         state.items.isEmpty() -> Box(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
                             Text(
-                                text = if (type == PlaybackHistoryType.Videos) "还没有看过的视频" else "还没有看过的UP主",
+                                text = when (type) {
+                                    StatisticsHistoryType.Videos -> "还没有看过的视频"
+                                    StatisticsHistoryType.Ups -> "还没有看过的UP主"
+                                    StatisticsHistoryType.LiveRooms -> "还没有看过的直播间"
+                                },
                                 textAlign = TextAlign.Center,
                             )
                         }
                         else -> LazyColumn(Modifier.fillMaxSize(), state = listState) {
                             itemsIndexed(state.items, key = { _, item -> item.id }) { index, item ->
                                 if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                                val title = item.title?.takeIf { it.isNotBlank() }
-                                    ?: if (type == PlaybackHistoryType.Videos) "av${item.id}" else "UP ${item.id}"
                                 StatisticsRankingRow(
                                     rank = null,
-                                    title = if (item.partTitle.isNullOrBlank()) title else "$title · ${item.partTitle}",
-                                    subtitle = "${item.playCount} 次播放",
+                                    title = item.title,
+                                    subtitle = if (type == StatisticsHistoryType.LiveRooms) "${item.playCount} 次观看" else "${item.playCount} 次播放",
                                     totalPlayedMs = item.totalPlayedMs,
                                     modifier = Modifier.clickable(enabled = item.id > 0) { selectedId = item.id },
                                     lastViewedAtMs = item.lastViewedAtMs,

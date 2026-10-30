@@ -42,7 +42,7 @@ import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
-import tv.hsrui.bolo.ui.components.video.ShowHistoryVideoCard
+import tv.hsrui.bolo.ui.components.history.ShowHistoryCard
 import tv.hsrui.network.feature.history.deleteHistory
 import tv.hsrui.network.login.storage.LoginStorage
 
@@ -78,10 +78,10 @@ fun HistorySearchScreen(
             gridState.scrollToItem(0)
         }
     }
-    LaunchedEffect(gridState, state.videos.size, state.isSearching, state.isLoadingMore, state.hasMore, state.loadMoreError) {
+    LaunchedEffect(gridState, state.items.size, state.isSearching, state.isLoadingMore, state.hasMore, state.loadMoreError) {
         if (!state.isSearching && !state.isLoadingMore && state.hasMore && state.loadMoreError == null) {
-            if (state.videos.isEmpty()) {
-                viewModel.loadMoreVideos()
+            if (state.items.isEmpty()) {
+                viewModel.loadMoreItems()
                 return@LaunchedEffect
             }
             snapshotFlow {
@@ -89,7 +89,7 @@ fun HistorySearchScreen(
                 layout.totalItemsCount > 0 &&
                     (layout.visibleItemsInfo.lastOrNull()?.index ?: -1) >= layout.totalItemsCount - 8
             }.distinctUntilChanged().collect { atBottom ->
-                if (atBottom) viewModel.loadMoreVideos()
+                if (atBottom) viewModel.loadMoreItems()
             }
         }
     }
@@ -114,7 +114,7 @@ fun HistorySearchScreen(
     ) { innerPadding ->
         PullToRefreshBox(
             isRefreshing = false,
-            onRefresh = viewModel::refreshVideos,
+            onRefresh = viewModel::refreshItems,
             modifier = Modifier.fillMaxSize().padding(innerPadding),
         ) {
             when {
@@ -123,13 +123,13 @@ fun HistorySearchScreen(
                 }
                 state.error != null -> ShowErrorContent(
                     message = state.error.orEmpty(),
-                    retry = viewModel::refreshVideos,
+                    retry = viewModel::refreshItems,
                 )
                 state.keyword.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("请输入关键词搜索", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 else -> {
-                    if (state.videos.isEmpty()) {
+                    if (state.items.isEmpty()) {
                         Column(
                             modifier = Modifier.align(Alignment.Center).padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -137,14 +137,14 @@ fun HistorySearchScreen(
                             if (state.isLoadingMore) CircularProgressIndicator()
                             else if (state.loadMoreError != null) {
                                 Text(state.loadMoreError.orEmpty())
-                                TextButton(onClick = viewModel::loadMoreVideos) { Text("重试") }
+                                TextButton(onClick = viewModel::loadMoreItems) { Text("重试") }
                             } else if (!state.hasMore) {
-                                Text("未找到相关视频", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("未找到相关内容", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     } else {
                         ShowHorizontalCardGrid(
-                            cards = state.videos,
+                            cards = state.items,
                             keySelector = { it.recordKey },
                             gridState = gridState,
                             bottomContent = if (state.isLoadingMore || state.loadMoreError != null) {
@@ -156,24 +156,24 @@ fun HistorySearchScreen(
                                         if (state.isLoadingMore) CircularProgressIndicator()
                                         state.loadMoreError?.let { message ->
                                             Text(message, style = MaterialTheme.typography.bodyMedium)
-                                            TextButton(onClick = viewModel::loadMoreVideos) { Text("重试") }
+                                            TextButton(onClick = viewModel::loadMoreItems) { Text("重试") }
                                         }
                                     }
                                 }
                             } else null,
-                        ) { video ->
+                        ) { item ->
                             val resultIdentity = state.accountMid
-                            ShowHistoryVideoCard(
-                                videoInfo = video,
+                            ShowHistoryCard(
+                                item = item,
                                 deleteDialogTitle = "删除历史记录",
                                 modifier = Modifier.height(88.dp),
                                 onDelete = action@{
                                     if (!viewModel.canManageNow() || loginStorage.cookies.dedeUserID != resultIdentity) return@action
                                     val identity = resultIdentity
                                     try {
-                                        val result = deleteHistory(video.typeString, video.recordId)
+                                        val result = deleteHistory(item.typeString, item.recordId)
                                         if (!loginStorage.isLoggedIn || loginStorage.cookies.dedeUserID != identity) return@action
-                                        if (result.isSuccess) viewModel.removeItem(video.recordKey)
+                                        if (result.isSuccess) viewModel.removeItem(item.recordKey)
                                         else snackbarManager.showMessage(result.message.ifBlank { "删除历史记录失败" })
                                     } catch (e: CancellationException) {
                                         throw e
@@ -186,9 +186,9 @@ fun HistorySearchScreen(
                     }
                     ShowGridFABMenu(
                         onBackToTop = {
-                            if (state.videos.isNotEmpty()) scope.launch { gridState.animateScrollToItem(0) }
+                            if (state.items.isNotEmpty()) scope.launch { gridState.animateScrollToItem(0) }
                         },
-                        onRefresh = viewModel::refreshVideos,
+                        onRefresh = viewModel::refreshItems,
                         modifier = Modifier.align(Alignment.BottomEnd),
                     )
                 }

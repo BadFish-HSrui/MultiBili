@@ -32,6 +32,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.minutes
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import tv.hsrui.network.utils.formatToDateTime
+import tv.hsrui.network.utils.formatToDurationText
+import androidx.compose.ui.draw.alpha
+import tv.hsrui.bolo.navigation.openLive
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,6 +58,8 @@ import tv.hsrui.bolo.ui.components.media.ShowMediaCard
 import tv.hsrui.bolo.ui.components.user.ShowUserInfoLayout
 import tv.hsrui.bolo.ui.components.video.ShowVideoCard
 import tv.hsrui.bolo.utils.isMedium
+import tv.hsrui.network.feature.search.SearchLiveType
+import tv.hsrui.bolo.ui.components.live.ShowLiveCard
 import tv.hsrui.network.feature.search.SearchCategory
 import tv.hsrui.network.feature.search.SearchUserOrder
 import tv.hsrui.network.feature.search.SearchVideoOrder
@@ -64,6 +76,7 @@ fun SearchResultsPage(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val videoOrder by viewModel.videoOrder.collectAsState()
+    val liveType by viewModel.liveType.collectAsState()
     val userOrder by viewModel.userOrder.collectAsState()
     val success = uiState as? SearchResultsUiState.Success
     val gridState = rememberLazyGridState()
@@ -99,7 +112,7 @@ fun SearchResultsPage(
     }
 
     Column(modifier.fillMaxSize()) {
-        if (category == SearchCategory.Video || category == SearchCategory.User) {
+        if (category == SearchCategory.Video || category == SearchCategory.User || category == SearchCategory.Live) {
             CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
                 Row(
                     modifier = Modifier.fillMaxWidth().height(32.dp).horizontalScroll(rememberScrollState())
@@ -117,7 +130,7 @@ fun SearchResultsPage(
                             },
                             label = { Text(order.title, style = MaterialTheme.typography.labelMedium) },
                         )
-                    } else SearchUserOrder.entries.forEach { order ->
+                    } else if (category == SearchCategory.User) SearchUserOrder.entries.forEach { order ->
                         FilterChip(
                             selected = userOrder == order,
                             onClick = {
@@ -127,6 +140,18 @@ fun SearchResultsPage(
                                 }
                             },
                             label = { Text(order.title, style = MaterialTheme.typography.labelMedium) },
+                        )
+                    }
+                    if (category == SearchCategory.Live) SearchLiveType.entries.forEach { type ->
+                        FilterChip(
+                            selected = liveType == type,
+                            onClick = {
+                                if (liveType != type) {
+                                    viewModel.applyLiveType(type)
+                                    gridState.requestScrollToItem(0)
+                                }
+                            },
+                            label = { Text(type.title, style = MaterialTheme.typography.labelMedium) },
                         )
                     }
                 }
@@ -154,7 +179,7 @@ fun SearchResultsPage(
                             retry = viewModel::refreshResults,
                         )
                         is SearchResultsUiState.Success -> when {
-                            !hasItems -> Text("未找到相关${category.title}")
+                            !hasItems -> Text("未找到相关${if (category == SearchCategory.Live) liveType.resultTitle else category.title}")
                             category == SearchCategory.Video -> ShowVerticalCardGrid(
                                 cards = state.videos,
                                 keySelector = { it.avid },
@@ -163,6 +188,59 @@ fun SearchResultsPage(
                                 ShowVideoCard(videoInfo = video, modifier = Modifier.fillMaxSize()) { onDismiss ->
                                     WatchLaterMenuItem(avid = video.avid, onDismiss = onDismiss)
                                 }
+                            }
+                            category == SearchCategory.Live && liveType.apiValue == SearchLiveType.AnchorRelated.apiValue -> ShowHorizontalCardGrid(
+                                cards = state.anchors,
+                                keySelector = { it.mid },
+                                gridState = gridState,
+                            ) { anchor ->
+                                ShowUserInfoLayout(
+                                    face = anchor.avatarUrl,
+                                    name = anchor.name,
+                                    sign = "",
+                                    level = 0,
+                                    levelString = "",
+                                    isVip = false,
+                                    vipTypeString = "",
+                                    shape = CardDefaults.shape,
+                                    showLevel = false,
+                                    showStatistics = false,
+                                    isLive = anchor.isLive,
+                                    onClick = { openUserSpace(anchor.mid) },
+                                    onUserClick = { openUserSpace(anchor.mid) },
+                                    onAvatarClick = {
+                                        if (anchor.isLive && anchor.roomId > 0) openLive(anchor.roomId)
+                                        else openUserSpace(anchor.mid)
+                                    },
+                                    descriptionContent = {
+                                        Text(
+                                            text = listOfNotNull(
+                                                anchor.areaName.takeIf { it.isNotBlank() },
+                                                anchor.followerCount?.let { "${it.formatCountToString()}人关注" },
+                                            ).joinToString(" · "),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            minLines = 1,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.alpha(0.75F),
+                                        )
+                                        Text(
+                                            text = if (anchor.isLive) formatLiveStartText(anchor.liveStartTime, Clock.System.now()) else "",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            minLines = 1,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.alpha(0.75F),
+                                        )
+                                    },
+                                ) {}
+                            }
+                            category == SearchCategory.Live -> ShowVerticalCardGrid(
+                                cards = state.rooms,
+                                keySelector = { it.roomId },
+                                gridState = gridState,
+                            ) { room ->
+                                ShowLiveCard(liveInfo = room, modifier = Modifier.fillMaxWidth())
                             }
                             category == SearchCategory.User -> ShowHorizontalCardGrid(
                                 cards = state.users,
@@ -178,17 +256,26 @@ fun SearchResultsPage(
                                     isVip = false,
                                     vipTypeString = "",
                                     shape = CardDefaults.shape,
-                                    fixedHeight = 104.dp,
                                     signMinLines = 2,
                                     onClick = { openUserSpace(user.mid) },
+                                    isLive = user.isLive,
+                                    onAvatarClick = {
+                                        val roomId = user.liveRoomId
+                                        if (user.isLive && roomId != null) openLive(roomId)
+                                        else openUserSpace(user.mid)
+                                    },
                                 ) {
                                     Text(
                                         text = "粉丝数: ${user.followerCount?.formatCountToString() ?: "--"}",
                                         modifier = Modifier.weight(1f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
                                     Text(
                                         text = "投稿数: ${user.videoCount?.formatCountToString() ?: "--"}",
                                         modifier = Modifier.weight(1f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
                                 }
                             }
@@ -231,5 +318,28 @@ fun SearchResultsPage(
                 }
             }
         }
+    }
+}
+
+
+private fun formatLiveStartText(startTime: Long?, currentTime: Instant): String {
+    if (startTime == null || startTime <= 0) return ""
+    return try {
+        val start = Instant.fromEpochSeconds(startTime)
+        if (start > currentTime) return ""
+        val elapsed = currentTime - start
+        when {
+            elapsed < 1.minutes -> "刚刚开播"
+            elapsed < 14.days -> "${elapsed.inWholeSeconds.formatToDurationText()}前开播"
+            else -> {
+                val zone = TimeZone.currentSystemDefault()
+                startTime.formatToDateTime(
+                    year = start.toLocalDateTime(zone).year != currentTime.toLocalDateTime(zone).year,
+                    hourMinute = false,
+                ) + "开播"
+            }
+        }
+    } catch (_: IllegalArgumentException) {
+        ""
     }
 }

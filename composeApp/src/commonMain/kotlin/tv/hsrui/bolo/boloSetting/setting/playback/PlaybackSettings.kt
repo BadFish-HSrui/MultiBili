@@ -336,4 +336,21 @@ class PlaybackSettings(settingsKSafe: KSafePlain) {
             storedSubtitleAutoExcludeAi = value
             currentSubtitleAutoExcludeAi = value
         }
+
+    private var storedCacheSizeMiB by settingsKSafe(256, key = "bolo_playback_cache_size_mib")
+    private var currentCacheSizeMiB by mutableStateOf(normalizeCacheSizeMiB(storedCacheSizeMiB))
+
+    var cacheSizeMiB: Int
+        get() = currentCacheSizeMiB
+        set(value) {
+            val normalized = normalizeCacheSizeMiB(value)
+            if (normalized == currentCacheSizeMiB) return
+            storedCacheSizeMiB = normalized
+            currentCacheSizeMiB = normalized
+        }
+
+    private fun normalizeCacheSizeMiB(value: Int): Int = when (value) {
+        64, 128, 256, 512, 1024 -> value
+        else -> 256
+    }
 }

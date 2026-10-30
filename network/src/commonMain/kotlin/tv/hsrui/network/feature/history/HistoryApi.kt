@@ -29,10 +29,10 @@ suspend fun fetchHistoryRaw(
     return result
 }
 
-suspend fun fetchHistoryVideos(
+suspend fun fetchHistory(
     loadParams: HistoryLoadParams = HistoryLoadParams(),
     ps: Int = 30
-): HistoryVideosResponse {
+): HistoryResponse {
     require(ps in 1..30)
     var cursor = loadParams
     val visitedCursors = mutableSetOf<HistoryLoadParams>()
@@ -44,18 +44,18 @@ suspend fun fetchHistoryVideos(
             viewAt = response.data.cursor.viewAt,
             business = response.data.cursor.business,
         )
-        val result = HistoryVideosResponse(
+        val result = HistoryResponse(
             raw = response,
             canLoadMore = response.data.list.size == ps && nextCursor !in visitedCursors,
         )
-        if (!result.isSuccess || result.validData.list.isNotEmpty() || !result.validData.canLoadMore) {
+        if (!result.isSuccess || result.validData.items.isNotEmpty() || !result.validData.canLoadMore) {
             return result
         }
         cursor = nextCursor
     }
 }
 
-suspend fun searchHistoryVideos(keyword: String, pageNumber: Int = 1): HistorySearchResponse {
+suspend fun searchHistory(keyword: String, pageNumber: Int = 1): HistorySearchResponse {
     val response = ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.HISTORY_SEARCH) {
         parameter("keyword", keyword)
         parameter("pn", pageNumber)

@@ -15,6 +15,7 @@ actual fun ShowImage(
     animationEnabled: Boolean,
     zoomState: CoilZoomState?,
     onTap: (() -> Unit)?,
+    fallbackContent: (@Composable () -> Unit)?,
 ) {
     val factory = remember { SkiaAnimatedImageDecoder.Factory() }
     ShowImage(
@@ -25,6 +26,7 @@ actual fun ShowImage(
         animationEnabled = animationEnabled,
         zoomState = zoomState,
         onTap = onTap,
+        fallbackContent = fallbackContent,
         decoderFactory = factory,
     ) { image, _, scope ->
         (image as? SkiaAnimatedImage)?.let { SkiaAnimatedImagePainter(it, scope) }

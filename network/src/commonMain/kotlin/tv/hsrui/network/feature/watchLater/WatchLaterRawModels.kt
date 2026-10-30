@@ -2,7 +2,7 @@ package tv.hsrui.network.feature.watchLater
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import tv.hsrui.network.feature.history.HistoryVideoCard
+import tv.hsrui.network.feature.history.HistoryItem
 import tv.hsrui.network.model.Owner
 import tv.hsrui.network.utils.toHttpsUrl
 
@@ -38,8 +38,8 @@ data class WatchLaterRawResponse(
     }
 }
 
-fun WatchLaterRawResponse.WatchLaterRawItem.toHistoryVideoCard(): HistoryVideoCard {
-    return HistoryVideoCard(
+fun WatchLaterRawResponse.WatchLaterRawItem.toHistoryItem(): HistoryItem {
+    return HistoryItem(
         avid = avid,
         bvid = bvid,
         title = title,

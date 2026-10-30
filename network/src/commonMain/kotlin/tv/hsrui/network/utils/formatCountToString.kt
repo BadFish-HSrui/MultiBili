@@ -1,17 +1,14 @@
 package tv.hsrui.network.utils
 
-fun Int.formatCountToString(): String {
-    return when {
-        this < 10000 -> this.toString()
-        this < 100000000 -> "${(this / 1000) / 10.0F}万"
-        else -> "${(this / 10000000) / 10.0F}亿"
-    }
-}
+fun Int.formatCountToString(): String = toLong().formatCountToString()
 
 fun Long.formatCountToString(): String {
-    return when {
-        this < 10000L -> this.toString()
-        this < 100000000L -> "${(this / 1000L) / 10.0}万"
-        else -> "${(this / 10000000L) / 10.0}亿"
+    if (this < 10_000L) return toString()
+
+    // 固定一位小数时，从 9999.95 万开始进位为亿。
+    return if (this < 99_999_500L) {
+        "${(this / 10_000.0).formatDecimal(1, trimTrailingZeros = false)}万"
+    } else {
+        "${(this / 100_000_000.0).formatDecimal(1, trimTrailingZeros = false)}亿"
     }
 }

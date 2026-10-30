@@ -32,7 +32,7 @@ import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.error.ShowErrorContent
 import tv.hsrui.bolo.ui.components.grid.ShowGridFABMenu
 import tv.hsrui.bolo.ui.components.grid.ShowHorizontalCardGrid
-import tv.hsrui.bolo.ui.components.video.ShowHistoryVideoCard
+import tv.hsrui.bolo.ui.components.history.ShowHistoryCard
 import tv.hsrui.bolo.utils.OnGridBottomReached
 import tv.hsrui.network.feature.history.deleteHistory
 
@@ -40,7 +40,7 @@ import tv.hsrui.network.feature.history.deleteHistory
 @Composable
 fun HistoryGridContent(
     modifier: Modifier = Modifier,
-    viewModel: HistoryVideosViewModel = viewModel { HistoryVideosViewModel() }
+    viewModel: HistoryViewModel = viewModel { HistoryViewModel() }
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val historyGridState = rememberLazyGridState()
@@ -51,23 +51,23 @@ fun HistoryGridContent(
     LaunchedEffect(currentRoute, refreshAfterSearch) {
         if (refreshAfterSearch && currentRoute == BoloRoute.AccountFeature.History) {
             refreshAfterSearch = false
-            viewModel.refreshVideos()
+            viewModel.refreshItems()
         }
     }
 
     historyGridState.OnGridBottomReached(buffer = 8, isLoading = viewModel.isLoading) {
-        viewModel.loadMoreVideos()
+        viewModel.loadMoreItems()
     }
 
     PullToRefreshBox(
         isRefreshing = false,
         onRefresh = {
-            viewModel.refreshVideos()
+            viewModel.refreshItems()
         },
         modifier = modifier
     ) {
         when (uiState) {
-            is HistoryVideosUiState.Loading -> {
+            is HistoryUiState.Loading -> {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -76,31 +76,31 @@ fun HistoryGridContent(
                 }
             }
 
-            is HistoryVideosUiState.Error -> {
+            is HistoryUiState.Error -> {
                 ShowErrorContent(
-                    message = (uiState as HistoryVideosUiState.Error).message,
-                    retry = { viewModel.refreshVideos() }
+                    message = (uiState as HistoryUiState.Error).message,
+                    retry = { viewModel.refreshItems() }
                 )
             }
 
-            is HistoryVideosUiState.Success -> {
+            is HistoryUiState.Success -> {
                 val snackbarManager: SnackbarManager = koinInject()
                 Box {
                     ShowHorizontalCardGrid(
-                        cards = (uiState as HistoryVideosUiState.Success).videos,
+                        cards = (uiState as HistoryUiState.Success).items,
                         keySelector = { it.recordKey },
                         gridState = historyGridState
-                    ) { video ->
-                        ShowHistoryVideoCard(
-                            videoInfo = video,
+                    ) { item ->
+                        ShowHistoryCard(
+                            item = item,
                             onDelete = {
                                 try {
                                     val result = deleteHistory(
-                                        typeString = video.typeString,
-                                        id = video.recordId
+                                        typeString = item.typeString,
+                                        id = item.recordId
                                     )
                                     if (result.isSuccess) {
-                                        viewModel.removeItem(video.recordKey)
+                                        viewModel.removeItem(item.recordKey)
                                     } else {
                                         snackbarManager.showMessage(result.message)
                                     }
@@ -114,7 +114,7 @@ fun HistoryGridContent(
                     }
                     ShowGridFABMenu(
                         onBackToTop = { scope.launch { historyGridState.animateScrollToItem(0) } },
-                        onRefresh = { viewModel.refreshVideos() },
+                        onRefresh = { viewModel.refreshItems() },
                         modifier = Modifier.align(Alignment.BottomEnd)
                     ) {
                         FloatingActionButtonMenuItem(

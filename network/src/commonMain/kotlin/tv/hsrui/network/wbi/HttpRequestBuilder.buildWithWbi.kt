@@ -7,10 +7,11 @@ import org.koin.mp.KoinPlatform.getKoin
 import tv.hsrui.network.utils.toMD5
 import kotlin.time.Clock
 
-suspend fun HttpRequestBuilder.buildWithWbi(block: HttpRequestBuilder.() -> Unit) {
+suspend fun HttpRequestBuilder.buildWithWbi(addWebID: Boolean = false, block: HttpRequestBuilder.() -> Unit) {
     this.block()
 
     val wbiManager:WbiManager = getKoin().get()
+    if (addWebID) parameter("w_webid", wbiManager.getWebID())
     val wbiKey = wbiManager.getWbiKey()
 
     val params = url.parameters.entries()

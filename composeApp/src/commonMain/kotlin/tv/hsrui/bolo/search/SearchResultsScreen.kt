@@ -129,7 +129,7 @@ fun SearchResultsScreen(
                     )
                 }
             }
-            if (category == SearchCategory.Video || category == SearchCategory.User) Spacer(Modifier.height(4.dp))
+            if (category == SearchCategory.Video || category == SearchCategory.User || category == SearchCategory.Live) Spacer(Modifier.height(4.dp))
             categoryStates.SaveableStateProvider(category.name) {
                 SearchResultsPage(
                     keyword = keyword,

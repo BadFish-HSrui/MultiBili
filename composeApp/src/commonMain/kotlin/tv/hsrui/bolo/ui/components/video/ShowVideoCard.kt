@@ -55,6 +55,7 @@ import tv.hsrui.bolo.utils.isCompact
 import tv.hsrui.network.model.VideoCard
 import tv.hsrui.network.model.VideoCardExample
 import tv.hsrui.network.utils.formatCountToString
+import tv.hsrui.network.utils.formatDecimal
 
 @Composable
 fun ShowVideoCard(
@@ -187,7 +188,8 @@ fun ShowVideoCard(
                                     buildString {
                                         append(videoInfo.likeCount.formatCountToString())
                                         if (videoInfo.viewCount != 0) {
-                                            append(" ${videoInfo.likeCount * 1000 / videoInfo.viewCount / 10.0F}%")
+                                            val likeRate = videoInfo.likeCount.toDouble() * 100 / videoInfo.viewCount
+                                            append(" ${likeRate.formatDecimal(1, trimTrailingZeros = false)}%")
                                         }
                                     },
                                 )
@@ -216,11 +218,11 @@ fun ShowVideoCard(
                 text = videoInfo.title,
                 fontSize = 13.sp,
                 lineHeight = 16.sp,
+                minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .padding(start = 4.dp, top = 4.dp, end = 4.dp)
-                    .height(40.dp)
             )
             HorizontalDivider(Modifier.height(2.dp))
             Box(Modifier.fillMaxWidth()) {

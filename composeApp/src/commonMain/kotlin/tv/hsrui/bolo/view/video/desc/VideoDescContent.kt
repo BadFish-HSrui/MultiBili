@@ -2,6 +2,7 @@ package tv.hsrui.bolo.view.video.desc
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -50,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import tv.hsrui.bolo.ui.components.button.RelationButton
+import tv.hsrui.bolo.ui.components.scroll.containScroll
 import tv.hsrui.bolo.ui.components.video.actionsBar.VideoActionsBar
 import tv.hsrui.network.feature.user.info.UserCardStatsData
 import tv.hsrui.network.feature.video.VideoInfoData
@@ -70,7 +74,7 @@ fun VideoDescContent(
             if (videoInfo.isCooperation && videoInfo.staff.isNotEmpty()) {
                 key(videoInfo.bvid, videoInfo.avid) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        modifier = Modifier.fillMaxWidth().containScroll(Orientation.Horizontal).horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         videoInfo.staff.forEach { member ->
@@ -91,7 +95,9 @@ fun VideoDescContent(
                                     RelationButton(
                                         upName = member.name,
                                         mid = member.mid,
-                                        modifier = Modifier.height(24.dp),
+                                        // 非零最小高度让按钮随文字测量，跳过默认最小高度。
+                                        modifier = Modifier.width(48.dp).heightIn(min = 1.dp).offset(y = (-4).dp),
+                                        minimumInteractiveComponentSize = 0.dp,
                                     )
                                     Text(
                                         text = member.name,

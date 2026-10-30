@@ -18,18 +18,21 @@ data class HistorySearchResponse(
     private val data: HistorySearchData? = null,
 ) {
     val isSuccess: Boolean get() = code == 0
-    val videos: List<HistoryVideoCard> get() = data?.videos.orEmpty()
+    val items: List<HistoryItem> get() = data?.items.orEmpty()
     val hasMore: Boolean get() = data?.hasMore == true
 }
 
 @Serializable
 data class HistorySearchData(
-    @SerialName("list") private val items: List<HistoryRawItem>? = null,
+    @SerialName("list") private val rawItems: List<HistoryRawItem>? = null,
     @SerialName("has_more") val hasMore: Boolean = false,
 ) {
-    val videos: List<HistoryVideoCard> get() = items.orEmpty()
-        .filter { (it.typeString == "archive" && it.id > 0 && it.bvid.isNotBlank()) || it.typeString == "pgc" }
-        .map { it.toHistoryVideoCard() }
+    val items: List<HistoryItem> get() = rawItems.orEmpty()
+        .filter {
+            (it.typeString == "archive" && it.id > 0 && it.bvid.isNotBlank()) || it.typeString == "pgc" ||
+                (it.typeString == "live" && it.id > 0)
+        }
+        .map { it.toHistoryItem() }
 }
 
 @Serializable
@@ -60,7 +63,8 @@ data class HistoryRawItem(
     @SerialName("progress") val watchProgress: Int = 0,
     @SerialName("show_title") private val _showTitle: String = "",
     @SerialName("duration") val duration: Int = 0,
-    @SerialName("tag_name") val regionString: String = ""
+    @SerialName("tag_name") val regionString: String = "",
+    @SerialName("live_status") val liveStatus: Int? = null,
 
 ) {
     val id by info::id

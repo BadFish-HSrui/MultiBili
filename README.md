@@ -28,7 +28,7 @@
 > 
 > [开发计划](https://github.com/BadFish-HSrui/MultiBili/issues/3) [已知问题](https://github.com/BadFish-HSrui/MultiBili/issues/4)
 > 
-> 本项目目标不是实现官方客户端的所有功能,而是优先专注于视频/番剧,当前阶段不会添加关于 私信/动态/直播 的内容
+> 本项目目标不是实现官方客户端的所有功能,而是优先专注于视频/番剧,当前阶段不会添加关于 私信/动态 的内容
 
 > [!CAUTION]
 > 为了项目的存续,**请勿在国内社交平台公开推广**
@@ -42,3 +42,5 @@
 - [FFmpeg](https://ffmpeg.org/) / [libmpv](https://github.com/mpv-player/mpv): 底层播放器平台实现
 - [panpf/zoomimage](https://github.com/panpf/zoomimage): 处理评论图片查看器的缩放与手势交互，以及通过子采样优化大图显示
 - [Calvin-LL/Reorderable](https://github.com/Calvin-LL/Reorderable): 用于实现拖动排序UI
+- [MrTangLuyao/Bilibili-thread-ripper](https://github.com/MrTangLuyao/Bilibili-thread-ripper): 播放源优化功能参考
+- [jako-projects/jako](https://github.com/jako-projects/jako): 跨平台数值格式化与MD5计算

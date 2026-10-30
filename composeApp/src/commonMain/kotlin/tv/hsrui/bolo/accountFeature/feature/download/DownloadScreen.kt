@@ -1,10 +1,15 @@
 package tv.hsrui.bolo.accountFeature.feature.download
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -22,7 +27,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
@@ -32,6 +39,7 @@ import tv.hsrui.bolo.download.DownloadFiles
 import tv.hsrui.bolo.download.DownloadTask
 import tv.hsrui.bolo.download.DownloadStatus
 import tv.hsrui.bolo.download.groupedDownloads
+import tv.hsrui.bolo.download.orderedDownloadEpisodes
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.components.dialog.ShowConfirmDialog
 import tv.hsrui.bolo.ui.components.download.ShowDownloadTaskCard
@@ -51,7 +59,7 @@ fun DownloadScreen(modifier: Modifier = Modifier, isEntryFromList: Boolean = tru
     val tasks by manager.tasks.collectAsStateWithLifecycle()
     val initializationError by manager.initializationError.collectAsStateWithLifecycle()
     val gridState = rememberLazyGridState()
-    var removing by remember { mutableStateOf<String?>(null) }
+    var removing by remember { mutableStateOf<List<DownloadTask>?>(null) }
     var viewingGroup by rememberSaveable { mutableStateOf<String?>(null) }
     val checkedFiles = remember { mutableStateMapOf<DownloadTask, Unit>() }
     val fileChecks = remember { mutableStateMapOf<DownloadTask, Any>() }
@@ -113,7 +121,11 @@ fun DownloadScreen(modifier: Modifier = Modifier, isEntryFromList: Boolean = tru
             } else null
         ) { group ->
             if (group.size > 1) {
-                ShowDownloadGroupCard(group, onClick = { viewingGroup = group.first().displayGroupKey })
+                ShowDownloadGroupCard(
+                    tasks = group,
+                    onClick = { viewingGroup = group.first().displayGroupKey },
+                    onRemove = { removing = group.orderedDownloadEpisodes() },
+                )
             } else {
                 val task = group.single()
                 ShowDownloadTaskCard(
@@ -122,7 +134,7 @@ fun DownloadScreen(modifier: Modifier = Modifier, isEntryFromList: Boolean = tru
                     onShowFile = { openOutput(task, true) },
                     onRetry = { manager.retry(task.id) },
                     onCancel = { manager.cancel(task.id) },
-                    onRemove = { removing = task.id },
+                    onRemove = { removing = listOf(task) },
                     isCheckingFile = isCheckingFile(task),
                 )
             }
@@ -136,26 +148,27 @@ fun DownloadScreen(modifier: Modifier = Modifier, isEntryFromList: Boolean = tru
             onShowFile = { openOutput(it, true) },
             onRetry = manager::retry,
             onCancel = manager::cancel,
-            onRemove = { removing = it },
+            onRemove = { id -> tasks.firstOrNull { it.id == id }?.let { removing = listOf(it) } },
             isCheckingFile = isCheckingFile,
         )
     }
-    removing?.let { id ->
-        val taskTitle = remember(id) { tasks.firstOrNull { it.id == id }?.title.orEmpty() }
-        var deleteFile by remember(id) { mutableStateOf(false) }
-        var isRemoving by remember(id) { mutableStateOf(false) }
+    removing?.let { targets ->
+        val targetIds = remember(targets) { targets.map { it.id } }
+        val isGroup = targets.size > 1
+        val currentIds = tasks.mapTo(mutableSetOf()) { it.id }
+        val remainingTargets = targets.filter { it.id in currentIds }
+        val windowSize = LocalWindowInfo.current.containerDpSize
+        var deleteFile by remember(targets) { mutableStateOf(false) }
+        var isRemoving by remember(targets) { mutableStateOf(false) }
         ShowConfirmDialog(
-            title = { Text("移除该下载记录？") },
-            text = taskTitle,
-            textModifier = Modifier,
             onCancel = { if (!isRemoving) removing = null },
             onConfirm = {
                 if (!isRemoving) {
                     isRemoving = true
                     scope.launch {
                         try {
-                            if (manager.remove(id, deleteFile)) removing = null
-                            else manager.tasks.value.firstOrNull { it.id == id }?.let { checkFile(it) }
+                            if (manager.remove(targetIds, deleteFile, cancelActive = isGroup)) removing = null
+                            else manager.tasks.value.filter { it.id in targetIds }.forEach { checkFile(it) }
                         } finally { isRemoving = false }
                     }
                 }
@@ -165,23 +178,47 @@ fun DownloadScreen(modifier: Modifier = Modifier, isEntryFromList: Boolean = tru
             dismissOnClickOutside = !isRemoving,
             confirmText = "移除",
         ) {
-            Row(
-                modifier = Modifier.toggleable(
-                    value = deleteFile,
-                    enabled = !isRemoving,
-                    role = Role.Checkbox,
-                    onValueChange = { deleteFile = it },
-                ),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = if (isGroup) Modifier.heightIn(max = windowSize.height * 0.65f) else Modifier,
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Checkbox(
-                    checked = deleteFile,
-                    onCheckedChange = null,
-                    enabled = !isRemoving,
-                    modifier = Modifier.size(16.dp).scale(0.8f),
-                )
-                Text("清理本地文件", style = MaterialTheme.typography.bodyMedium)
+                Text(if (isGroup) "清除合集内所有下载记录？" else "移除该下载记录？")
+                if (isGroup) {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f, fill = false).padding(vertical = 12.dp)
+                            .heightIn(max = 640.dp).fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(remainingTargets, key = { it.id }) { task ->
+                            Text(task.title, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                } else {
+                    Text(
+                        text = targets.single().title,
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(vertical = 12.dp),
+                    )
+                }
+                Row(
+                    modifier = Modifier.toggleable(
+                        value = deleteFile,
+                        enabled = !isRemoving,
+                        role = Role.Checkbox,
+                        onValueChange = { deleteFile = it },
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = deleteFile,
+                        onCheckedChange = null,
+                        enabled = !isRemoving,
+                        modifier = Modifier.size(16.dp).scale(0.8f),
+                    )
+                    Text("清理本地文件", style = MaterialTheme.typography.bodyMedium)
+                }
             }
         }
     }

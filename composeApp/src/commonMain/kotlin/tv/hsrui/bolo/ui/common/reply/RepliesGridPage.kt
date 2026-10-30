@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -445,6 +446,7 @@ fun RepliesGridPage(
             urls = viewingPictures.map { it.url },
             previewUrls = viewingPictures.map { it.thumbnailUrl },
             initialShowOriginal = settings.general.commentOriginalImageEnabled,
+            originalSizes = viewingPictures.map { IntSize(it.width, it.height) },
             initialIndex = viewingImageIndex,
             onDismissRequest = { viewingPictures = emptyList() },
         )

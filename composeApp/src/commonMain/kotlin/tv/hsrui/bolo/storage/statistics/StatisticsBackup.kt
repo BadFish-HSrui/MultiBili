@@ -56,7 +56,7 @@ internal suspend fun StatisticsDatabase.restoreBackup(path: String) = withContex
         val version = validateStatisticsBackup(source)
         useWriterConnection { target ->
             target.immediateTransaction {
-                if (version == 2) {
+                if (version >= 2) {
                     source.prepare("SELECT source_key FROM playback_source").use { rows ->
                         while (rows.step()) {
                             currentCoroutineContext().ensureActive()
@@ -114,6 +114,7 @@ internal suspend fun StatisticsDatabase.restoreBackup(path: String) = withContex
                         }
                     }
                 }
+                if (version >= 3) restoreLiveStatistics(source)
                 // 汇总也必须能用 Long 表示；不能提交一个统计页无法读取的数据库。
                 usePrepared("SELECT SUM(total_played_ms), SUM(play_count) FROM playback_stats") { it.step() }
                 usePrepared("PRAGMA foreign_key_check") { check(!it.step()) { "备份数据关联无效" } }
@@ -124,7 +125,7 @@ internal suspend fun StatisticsDatabase.restoreBackup(path: String) = withContex
     }
 }
 
-private suspend fun PooledConnection.backupSourceId(key: String): Long {
+internal suspend fun PooledConnection.backupSourceId(key: String): Long {
     val existing = usePrepared("SELECT id FROM playback_source WHERE source_key = ?") {
         it.bindText(1, key)
         if (it.step()) it.getLong(0) else null
@@ -247,12 +248,19 @@ private fun openStatisticsBackup(path: String): SQLiteConnection =
 
 private suspend fun StatisticsDatabase.validateStatisticsBackup(source: SQLiteConnection): Int {
     val version = source.prepare("PRAGMA user_version").use { check(it.step()); it.getLong(0) }
-    check(version == 1L || version == 2L) { "备份数据库版本或结构不兼容" }
-    val tables = if (version == 1L) statisticsV1Tables else statisticsBackupTables
+    check(version in 1L..3L) { "备份数据库版本或结构不兼容" }
+    val tables = when (version) {
+        1L -> statisticsV1Tables
+        2L -> statisticsBackupTables
+        else -> statisticsBackupTables + liveStatisticsTables
+    }
     useReaderConnection { current ->
         val identitySql = "SELECT identity_hash FROM room_master_table WHERE id = 42"
-        val expectedIdentity = if (version == 1L) listOf(listOf("c3c0d2345654df6dff01732f82564e95"))
-            else current.usePrepared(identitySql) { it.readBackupSchemaRows() }
+        val expectedIdentity = when (version) {
+            1L -> listOf(listOf("c3c0d2345654df6dff01732f82564e95"))
+            2L -> listOf(listOf("836b7484ad10262e1907251647092cd5"))
+            else -> current.usePrepared(identitySql) { it.readBackupSchemaRows() }
+        }
         check(expectedIdentity == source.prepare(identitySql).use { it.readBackupSchemaRows() }) { "备份数据库版本或结构不兼容" }
         val schemaSql = "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE tbl_name IN " +
             "(${tables.joinToString { "'$it'" }}) ORDER BY type, name"
@@ -283,7 +291,7 @@ private suspend fun StatisticsDatabase.validateStatisticsBackup(source: SQLiteCo
         "SELECT 1 FROM playback_watched_range WHERE start_ms < 0 OR end_ms <= start_ms LIMIT 1",
         "SELECT 1 FROM playback_daily_stats WHERE total_played_ms < 0 OR play_count < 0 LIMIT 1",
     )
-    if (version == 2L) {
+    if (version >= 2L) {
         invalidQueries += listOf(
             "SELECT 1 FROM playback_source WHERE id <= 0 OR is_active NOT IN (0, 1) OR (source_key = '0' AND is_active <> 0) LIMIT 1",
             "SELECT 1 FROM playback_source WHERE is_active = 1 LIMIT 1 OFFSET 1",
@@ -301,7 +309,7 @@ private suspend fun StatisticsDatabase.validateStatisticsBackup(source: SQLiteCo
     }
     for (sql in invalidQueries) source.requireNoRows(sql, "备份包含无效的统计数据")
     val dateSql = "SELECT local_date FROM playback_daily_stats" +
-        if (version == 2L) " UNION SELECT local_date FROM playback_source_daily_stats" else " GROUP BY local_date"
+        if (version >= 2L) " UNION SELECT local_date FROM playback_source_daily_stats" else " GROUP BY local_date"
     source.prepare(dateSql).use { dates ->
         while (dates.step()) {
             currentCoroutineContext().ensureActive()
@@ -309,7 +317,7 @@ private suspend fun StatisticsDatabase.validateStatisticsBackup(source: SQLiteCo
             check(runCatching { LocalDate.parse(date).toString() == date }.getOrDefault(false)) { "备份包含无效日期" }
         }
     }
-    if (version == 2L) {
+    if (version >= 2L) {
         source.requireNoRows("SELECT 1 FROM playback_stats p WHERE (p.total_played_ms, p.play_count) <> " +
             "(${statisticsRecordTotalsSql("p.id")}) LIMIT 1", "备份累计缓存与来源数据不一致")
         val daily = "SELECT record_id, local_date, SUM(total_played_ms) AS total_played_ms, SUM(play_count) AS play_count " +
@@ -320,11 +328,12 @@ private suspend fun StatisticsDatabase.validateStatisticsBackup(source: SQLiteCo
         source.requireNoRows("SELECT 1 FROM ($daily) d LEFT JOIN playback_daily_stats c " +
             "ON c.record_id = d.record_id AND c.local_date = d.local_date WHERE c.record_id IS NULL LIMIT 1", "备份缺少每日缓存")
     }
+    if (version >= 3L) source.validateLiveStatistics()
     source.prepare("SELECT SUM(total_played_ms), SUM(play_count) FROM playback_stats").use { it.step() }
     return version.toInt()
 }
 
-private suspend fun SQLiteConnection.requireNoRows(sql: String, message: String) {
+internal suspend fun SQLiteConnection.requireNoRows(sql: String, message: String) {
     currentCoroutineContext().ensureActive()
     prepare(sql).use { check(!it.step()) { message } }
 }

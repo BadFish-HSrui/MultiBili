@@ -1,22 +1,11 @@
 package tv.hsrui.bolo.userSpace
 
-import tv.hsrui.bolo.navigation.openVideoList
-import tv.hsrui.bolo.view.video.VideoPlaybackRequest
-import tv.hsrui.network.feature.video.list.VideoListType
-import tv.hsrui.network.feature.video.list.VideoListSort
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.FloatingActionButtonMenuItem
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import tv.hsrui.bolo.navigation.BoloRoute
-import tv.hsrui.bolo.navigation.Navigator
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.foundation.gestures.scrollable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -27,13 +16,25 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButtonMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Surface
@@ -43,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,25 +57,40 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
+import tv.hsrui.bolo.boloSetting.BoloSettings
 import tv.hsrui.bolo.favorite.FavoriteFoldersContent
 import tv.hsrui.bolo.favorite.FavoriteFoldersUiState
+import tv.hsrui.bolo.navigation.BoloRoute
+import tv.hsrui.bolo.navigation.Navigator
+import tv.hsrui.bolo.navigation.openLive
+import tv.hsrui.bolo.navigation.openVideoList
 import tv.hsrui.bolo.ui.common.videosPage.VideosGridPage
 import tv.hsrui.bolo.ui.common.videosPage.VideosUiState
-import tv.hsrui.bolo.userSpace.collection.UserCollectionsContent
-import tv.hsrui.bolo.userSpace.series.UserSeriesContent
+import tv.hsrui.bolo.ui.components.live.ShowLiveCard
+import tv.hsrui.bolo.ui.components.scroll.containScroll
 import tv.hsrui.bolo.ui.components.topBar.ShowTopBarWithNavigationButton
 import tv.hsrui.bolo.ui.components.user.ShowUserInfoBar
-import tv.hsrui.network.login.storage.LoginStorage
+import tv.hsrui.bolo.ui.components.user.UserInfoBarUiState
+import tv.hsrui.bolo.ui.components.user.UserInfoBarViewModel
+import tv.hsrui.bolo.ui.theme.BiliColor
+import tv.hsrui.bolo.userSpace.collection.UserCollectionsContent
+import tv.hsrui.bolo.userSpace.series.UserSeriesContent
+import tv.hsrui.bolo.utils.isCompact
+import tv.hsrui.bolo.view.video.VideoPlaybackRequest
 import tv.hsrui.network.feature.user.space.UserSpaceUploadOrder
+import tv.hsrui.network.feature.video.list.VideoListSort
+import tv.hsrui.network.feature.video.list.VideoListType
+import tv.hsrui.network.login.storage.LoginStorage
 
 @Composable
 fun UserSpaceScreen(mid: Long, modifier: Modifier = Modifier) {
@@ -154,9 +171,10 @@ private fun UserSpaceContent(
         Column(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier.fillMaxWidth().heightIn(max = maxHeaderHeight)
-                    .clipToBounds().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                    .containScroll(Orientation.Vertical).verticalScroll(rememberScrollState())
+                    .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
             ) {
-                ShowUserInfoBar(mid = mid, refreshKey = state.refreshGeneration)
+                UserSpaceHeader(mid = mid, refreshKey = state.refreshGeneration)
             }
             Surface(modifier = Modifier.weight(1f).fillMaxWidth(), tonalElevation = 1.dp) {
                 PullToRefreshBox(
@@ -218,7 +236,7 @@ private fun UserSpaceContent(
                                             if (tab == UserSpaceTab.Uploads) {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     LazyRow(
-                                                        modifier = Modifier.weight(1f),
+                                                        modifier = Modifier.weight(1f).containScroll(Orientation.Horizontal),
                                                         contentPadding = PaddingValues(horizontal = 12.dp),
                                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                     ) {
@@ -315,6 +333,73 @@ private fun UserSpaceContent(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun UserSpaceHeader(mid: Long, refreshKey: Int, modifier: Modifier = Modifier) {
+    val settings: BoloSettings = koinInject()
+    val viewModel = viewModel(key = "UserInfoBar:$mid") { UserInfoBarViewModel(mid) }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    DisposableEffect(viewModel, refreshKey) {
+        viewModel.loadUserInfo()
+        onDispose { viewModel.cancelLoading() }
+    }
+    val liveRoom = (uiState as? UserInfoBarUiState.Success)?.info?.liveRoomCard
+    val showLiveCard = settings.general.userSpaceLiveRoomCardEnabled && !isCompact() && liveRoom != null
+
+    SubcomposeLayout(modifier = modifier.fillMaxWidth()) { constraints ->
+        val width = constraints.maxWidth
+        val spacing = if (showLiveCard) 12.dp.roundToPx() else 0
+        val liveCard = if (showLiveCard) {
+            subcompose("live") {
+                ShowLiveCard(
+                    liveInfo = checkNotNull(liveRoom),
+                    showStatistics = false,
+                    showOfflineStatus = true,
+                    showArea = false,
+                )
+            }.single().measure(Constraints.fixedWidth(200.dp.roundToPx()))
+        } else null
+        val userWidth = (width - (liveCard?.width ?: 0) - spacing).coerceAtLeast(0)
+        // 保持资料子组合的身份稳定，窗口尺寸切换只重新测量，不重建资料加载。
+        val userCard = subcompose("user") {
+            ShowUserInfoBar(
+                mid = mid,
+                uiState = uiState,
+                onRetry = viewModel::loadUserInfo,
+                refreshKey = refreshKey,
+                onLiveClick = ::openLive,
+                fixedHeight = liveCard?.height?.toDp(),
+                adaptiveNameDetails = liveRoom != null,
+                nameSuffixContent = {
+                    if (liveRoom != null) {
+                        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 24.dp) {
+                            Surface(
+                                onClick = { openLive(liveRoom.roomId) },
+                                modifier = Modifier.height(24.dp),
+                                shape = CircleShape,
+                                color = Color.Transparent,
+                                contentColor = BiliColor.Blue,
+                                border = BorderStroke(1.dp, BiliColor.Blue),
+                            ) {
+                                Text(
+                                    text = "Live ${liveRoom.roomId}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 6.dp).wrapContentHeight(),
+                                )
+                            }
+                        }
+                    }
+                },
+            )
+        }.single().measure(Constraints.fixedWidth(userWidth))
+        layout(width, maxOf(userCard.height, liveCard?.height ?: 0)) {
+            userCard.placeRelative(0, 0)
+            liveCard?.placeRelative(userWidth + spacing, 0)
         }
     }
 }

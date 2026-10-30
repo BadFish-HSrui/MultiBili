@@ -13,11 +13,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 
 @Composable
-actual fun BoloVideoPlayer(controller: BoloPlayerController, modifier: Modifier) {
+actual fun BoloVideoPlayer(controller: BoloPlayerOutputController, modifier: Modifier) {
     val context = LocalContext.current
     val host = remember { SurfaceView(context) }
     val backend by controller.backend.collectAsState()
@@ -38,10 +36,7 @@ actual fun BoloVideoPlayer(controller: BoloPlayerController, modifier: Modifier)
         engine?.setOutputForeground(host, lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         controller.outputAttached()
         if (engine == null) return@LaunchedEffect
-        combine(controller.state, controller.info) { playback, info ->
-            val active = playback.playWhenReady && !playback.isEnded && !playback.isPlaybackSuspended && !playback.isRebuilding
-            (info.video.fps?.times(playback.playbackSpeed)?.takeIf { active && it.isFinite() && it > 0 } ?: 0.0).toFloat()
-        }.distinctUntilChanged().collect { engine.requestFrameRate(host, it) }
+        controller.outputFrameRate.collect { engine.requestFrameRate(host, it) }
     }
     AndroidView(factory = { host }, modifier = modifier)
 }

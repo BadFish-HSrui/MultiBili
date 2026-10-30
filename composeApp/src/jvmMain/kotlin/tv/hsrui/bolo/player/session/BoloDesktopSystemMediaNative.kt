@@ -7,9 +7,9 @@ import tv.hsrui.bolo.player.base.loadBoloMpvLibrary
 
 /** JNI 只传输快照和命令；所有播放业务返回会话主线程执行。 */
 internal object BoloDesktopSystemMediaNative {
-    private val sessions = ConcurrentHashMap<Long, BoloPlaybackSession>()
+    private val sessions = ConcurrentHashMap<Long, BoloSystemMediaOwner>()
 
-    fun connect(session: BoloPlaybackSession): BoloSystemMediaSession {
+    fun connect(session: BoloSystemMediaOwner): BoloSystemMediaSession {
         loadBoloMpvLibrary()
         if (System.getProperty("os.name").startsWith("Windows")) System.loadLibrary("jawt")
         val handle = create(DesktopPlayerFullscreenWindow.window)
@@ -21,7 +21,8 @@ internal object BoloDesktopSystemMediaNative {
             override fun publish(state: BoloSystemMediaState) {
                 if (closed) return
                 val commands = (if (state.canPlay) 1 else 0) or (if (state.canPause) 2 else 0) or
-                    (if (state.canSeek) 4 else 0) or (if (state.canPrevious) 8 else 0) or (if (state.canNext) 16 else 0)
+                    (if (state.canSeek) 4 else 0) or (if (state.canPrevious) 8 else 0) or (if (state.canNext) 16 else 0) or
+                    (if (state.isLive) 32 else 0)
                 val artworkChanged = lastArtwork !== state.artwork
                 update(handle, state.metadata.mediaId, state.metadata.title, state.metadata.artist, state.metadata.album,
                     if (artworkChanged) state.artwork else null, artworkChanged,

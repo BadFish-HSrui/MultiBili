@@ -33,6 +33,7 @@ fun VideoPlayer(
     onPreviousEpisode: (() -> Unit)? = null,
     onNextEpisode: (() -> Unit)? = null,
     episodeNavigationEnabled: Boolean = true,
+    endedContent: (@Composable () -> Unit)? = null,
 ) {
     val settings: BoloSettings = koinInject()
     val playerSettings: BoloPlayerSettings = koinInject()
@@ -93,6 +94,7 @@ fun VideoPlayer(
                     onPreviousEpisode = onPreviousEpisode,
                     onNextEpisode = onNextEpisode,
                     episodeNavigationEnabled = episodeNavigationEnabled,
+                    endedContent = endedContent,
                 )
                 if (uiState.videoSource.isPreview) {
                     Text(

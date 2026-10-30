@@ -18,6 +18,10 @@ sealed class BoloPlayerError(
     class DecoderError(message: String, cause: Throwable? = null)
         : BoloPlayerError(message, cause)
 
+    /** 必要缓存无法分配，清空并重新加载后仍不能恢复。 */
+    class MemoryError(message: String, cause: Throwable? = null)
+        : BoloPlayerError(message, cause)
+
     /** 跳转失败；不会终止当前媒体播放 */
     class SeekError(message: String, cause: Throwable? = null)
         : BoloPlayerError(message, cause)

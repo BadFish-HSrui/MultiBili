@@ -82,3 +82,30 @@ suspend fun fetchSearchUsers(
     }
     return SearchUsersResponse(response.body())
 }
+
+
+suspend fun fetchSearchLiveRooms(keyword: String, page: Int, order: String?): SearchLiveRoomsResponse {
+    ensureBuvid3()
+    val response = ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.SEARCH) {
+        buildWithWbi {
+            parameter("search_type", SearchLiveType.RoomComprehensive.apiValue)
+            parameter("keyword", keyword)
+            parameter("page", page)
+            order?.let { parameter("order", it) }
+        }
+    }
+    return SearchLiveRoomsResponse(response.body())
+}
+
+suspend fun fetchSearchLiveUsers(keyword: String, page: Int, order: String?): SearchLiveUsersResponse {
+    ensureBuvid3()
+    val response = ApiClient.httpClient.get(ApiUrls.BASE + ApiUrls.SEARCH) {
+        buildWithWbi {
+            parameter("search_type", SearchLiveType.AnchorRelated.apiValue)
+            parameter("keyword", keyword)
+            parameter("page", page)
+            order?.let { parameter("order", it) }
+        }
+    }
+    return SearchLiveUsersResponse(response.body())
+}

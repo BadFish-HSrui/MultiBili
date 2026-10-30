@@ -1,17 +1,24 @@
 package tv.hsrui.network.utils
 
-fun Int.formatToDuration(): String {
-    val hours = this / 3600
-    val minutes = this % 3600 / 60
-    val seconds = this % 60
+import java.util.Formatter
+import java.util.Locale
 
-    return buildString {
-        if (hours > 0){
-            append(hours.toString().padStart(2, '0'))
-            append(':')
+fun Int.formatToDuration(): String = toLong().formatToDuration()
+
+fun Long.formatToDuration(): String {
+    val hours = this / 3600L
+    val minutes = this % 3600L / 60L
+    val seconds = this % 60L
+    val formatter = Formatter(Locale.ROOT)
+
+    return try {
+        if (hours > 0) {
+            formatter.format("%02d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            formatter.format("%02d:%02d", minutes, seconds)
         }
-        append(minutes.toString().padStart(2, '0'))
-        append(':')
-        append(seconds.toString().padStart(2, '0'))
+        formatter.toString()
+    } finally {
+        formatter.close()
     }
 }

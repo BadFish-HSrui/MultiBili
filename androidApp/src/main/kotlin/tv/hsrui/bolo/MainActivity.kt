@@ -9,7 +9,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import tv.hsrui.bolo.utils.url.AppContext
-import tv.hsrui.bolo.player.session.BoloPlaybackSession
+import tv.hsrui.bolo.player.session.BoloSystemMediaOwner
 import tv.hsrui.bolo.navigation.ExternalLinkHandler
 import tv.hsrui.bolo.download.DownloadFiles
 import tv.hsrui.bolo.utils.file.LocalFileAccess
@@ -32,16 +32,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        BoloPlaybackSession.current?.setForeground(true)
+        BoloSystemMediaOwner.current?.setForeground(true)
     }
 
     override fun onStop() {
-        if (!isChangingConfigurations) BoloPlaybackSession.current?.setForeground(false)
+        if (!isChangingConfigurations) BoloSystemMediaOwner.current?.setForeground(false)
         super.onStop()
     }
 
     override fun onDestroy() {
-        if (isFinishing) BoloPlaybackSession.current?.close()
+        if (isFinishing) BoloSystemMediaOwner.current?.close()
         super.onDestroy()
     }
 

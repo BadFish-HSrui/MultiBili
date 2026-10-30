@@ -7,12 +7,26 @@ extern "C" {
 
 typedef struct bolo_mpv bolo_mpv;
 typedef struct {
+    int64_t (*open)(void *context, const char *uri);
+    int64_t (*read)(void *context, int64_t stream, char *buffer, uint64_t size);
+    int64_t (*seek)(void *context, int64_t stream, int64_t offset);
+    int64_t (*size)(void *context, int64_t stream);
+    void (*cancel)(void *context, int64_t stream);
+    void (*close)(void *context, int64_t stream);
+} bolo_mpv_stream_callbacks;
+typedef struct {
     int type;
     int64_t generation;
     int64_t request;
     int error;
     double value;
 } bolo_mpv_event;
+
+typedef struct {
+    int64_t generation;
+    int64_t position_ms, buffered_end_ms, buffered_duration_ms;
+    int underrun, idle, demux_eof;
+} bolo_mpv_buffer_snapshot;
 
 enum {
     BOLO_LOADED = 1, BOLO_POSITION, BOLO_DURATION, BOLO_SEEKABLE,
@@ -21,12 +35,16 @@ enum {
 };
 
 bolo_mpv *bolo_mpv_create(const char *platform);
+int bolo_mpv_set_stream_callbacks(bolo_mpv *, const bolo_mpv_stream_callbacks *, void *context);
 int bolo_mpv_load(bolo_mpv *, const char *video, const char *audio, double start, int64_t generation, const char *user_agent, const char *referrer);
+int bolo_mpv_load_live(bolo_mpv *, const char *url, int64_t generation, const char *user_agent, const char *referrer, int prefetch_enabled, double target_seconds, int64_t request);
 int bolo_mpv_video_enabled(bolo_mpv *player, int enabled);
 void bolo_mpv_background(bolo_mpv *, int background);
 double bolo_mpv_retained_position(bolo_mpv *, int64_t generation, double target);
 int bolo_mpv_pause(bolo_mpv *, int paused);
 int bolo_mpv_speed(bolo_mpv *, double speed);
+double bolo_mpv_buffered_duration(bolo_mpv *);
+int bolo_mpv_read_buffer_snapshot(bolo_mpv *, bolo_mpv_buffer_snapshot *);
 int bolo_mpv_volume(bolo_mpv *, double volume);
 int bolo_mpv_loudness(bolo_mpv *, double gain_db, int dynamic_enabled, double target_lufs, double range_lu, double true_peak_dbtp);
 int bolo_mpv_merge_audio_channels(bolo_mpv *, int enabled);

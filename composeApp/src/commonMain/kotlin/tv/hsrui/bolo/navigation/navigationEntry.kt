@@ -16,6 +16,7 @@ import tv.hsrui.bolo.boloSetting.BoloSettingsScreen
 import tv.hsrui.bolo.boloSetting.setting.about.AboutScreen
 import tv.hsrui.bolo.boloSetting.setting.general.GeneralSettingsScreen
 import tv.hsrui.bolo.boloSetting.setting.playback.PlaybackSettingsScreen
+import tv.hsrui.bolo.boloSetting.setting.live.LiveSettingsScreen
 import tv.hsrui.bolo.boloSetting.setting.statistics.StatisticsScreen
 import tv.hsrui.bolo.debug.DebugScreen
 import tv.hsrui.bolo.login.LoginScreen
@@ -27,8 +28,10 @@ import tv.hsrui.bolo.accountFeature.feature.watchLater.WatchLaterSearchScreen
 import tv.hsrui.bolo.userSpace.collection.UserCollectionScreen
 import tv.hsrui.bolo.userSpace.series.UserSeriesScreen
 import tv.hsrui.bolo.main.MainScreen
+import tv.hsrui.bolo.main.live.area.LiveAreaRoomsScreen
 import tv.hsrui.bolo.search.SearchInputScreen
 import tv.hsrui.bolo.search.SearchResultsScreen
+import tv.hsrui.bolo.view.live.LivePlaybackScreen
 import tv.hsrui.bolo.view.video.VideoScreen
 import tv.hsrui.bolo.view.video.VideoPlaybackRequest
 import tv.hsrui.bolo.view.media.MediaPlaybackScreen
@@ -39,6 +42,15 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
     when (route) {
         is BoloRoute.Debug -> NavEntry(key = route) { DebugScreen() }
         is BoloRoute.Main -> NavEntry(key = route) { MainScreen() }
+
+        is BoloRoute.Live.Area -> NavEntry(key = route) {
+            val navigator: Navigator = koinInject()
+            LiveAreaRoomsScreen(
+                parentAreaId = route.parentAreaId,
+                areaId = route.areaId,
+                isActive = navigator.backStack.lastOrNull() == route,
+            )
+        }
 
         is BoloRoute.Search -> when (route) {
             is BoloRoute.Search.Input -> NavEntry(key = route) { SearchInputScreen() }
@@ -121,6 +133,12 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
                 metadata = ListDetailSceneStrategy.detailPane()
             ) { PlaybackSettingsScreen() }
 
+            is BoloRoute.BoloSetting.Live -> NavEntry(
+                key = route,
+                contentKey = "BoloSetting.Live",
+                metadata = ListDetailSceneStrategy.detailPane(),
+            ) { LiveSettingsScreen() }
+
             is BoloRoute.BoloSetting.Statistics -> NavEntry(
                 key = route,
                 contentKey = "BoloSetting.Statistics",
@@ -134,6 +152,10 @@ fun navigationEntry(route: BoloRoute): NavEntry<BoloRoute> =
         }
 
         is BoloRoute.View -> when (route) {
+            is BoloRoute.View.Live -> NavEntry(key = route) {
+                val navigator: Navigator = koinInject()
+                LivePlaybackScreen(roomId = route.roomId, isActive = navigator.backStack.lastOrNull() == route)
+            }
             is BoloRoute.View.Video -> NavEntry(key = route) {
                 val navigator: Navigator = koinInject()
                 VideoScreen(
