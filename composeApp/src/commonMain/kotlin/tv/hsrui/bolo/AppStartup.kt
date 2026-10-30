@@ -33,6 +33,7 @@ import multibili.composeapp.generated.resources.github_repo_url
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import tv.hsrui.bolo.storage.appData.AppDataStorage
+import tv.hsrui.bolo.storage.appData.playbackStatistics.addPlaybackStatistics
 import tv.hsrui.bolo.ui.common.snackbar.SnackbarManager
 import tv.hsrui.bolo.ui.common.update.CheckAppUpdate
 import tv.hsrui.bolo.ui.components.dialog.ShowInfoDialog
@@ -62,7 +63,10 @@ fun AppStartup() {
         if (warnings.dynamicLoudnessPending || isWatchTimeCheckFinished) return@LaunchedEffect
         if (warnings.Check114514) {
             try {
-                val totalPlayedMs = appDataStorage.playbackStatistics.totalPlayedMs()
+                val totalPlayedMs = addPlaybackStatistics(
+                    appDataStorage.playbackStatistics.totalPlayedMs(),
+                    appDataStorage.liveStatistics.totalPlayedMs(),
+                )
                 ensureActive()
                 showWatchTimePrompt = totalPlayedMs >= 114_514_000L
             } catch (error: CancellationException) {
